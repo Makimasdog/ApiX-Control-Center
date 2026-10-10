@@ -4,10 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f7" />
-    <title>ApiX · 你的智能工作台</title>
+    <title>ApiX · Agent 协调工作台</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./phase4.css" />
     <link rel="stylesheet" href="./director.css" />
+    <link rel="stylesheet" href="./coordinator.css" />
+    <script type="module" src="./dist/web/coordinator.js"></script>
     <script type="module" src="./agent-os.js"></script>
   </head>
   <body>
@@ -42,11 +44,10 @@
         <div class="sidebar-section nav-section">
           <div class="section-caption">工作空间</div>
           <nav class="nav-list" aria-label="主导航">
-            <button class="nav-item active" data-page-target="workspace" aria-label="工作台"><svg class="icon"><use href="#icon-grid"/></svg><span>工作台</span><span class="nav-dot"></span></button>
-            <button class="nav-item" data-page-target="director" aria-label="Director"><svg class="icon"><use href="#icon-spark"/></svg><span>Director</span></button>
+            <button class="nav-item active" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-grid"/></svg><span>ApiX 目标</span><span class="nav-dot"></span></button>
             <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
             <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
-            <button class="nav-item" data-page-target="models" aria-label="模型配置"><svg class="icon"><use href="#icon-cube"/></svg><span>模型配置</span></button>
+            <button class="nav-item" data-page-target="models" aria-label="模型偏好"><svg class="icon"><use href="#icon-cube"/></svg><span>模型偏好</span></button>
             <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
             <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button>
           </nav>
@@ -73,6 +74,7 @@
           <div class="topbar-actions"><span class="preview-chip"><span class="preview-dot"></span>本地预览</span><span class="topbar-divider"></span><button id="top-model-button" class="top-model-button"><span class="top-model-icon"><svg class="icon"><use href="#icon-spark"/></svg></span><span id="top-model-name">选择模型</span><svg class="icon chevron-down"><use href="#icon-chevron"/></svg></button></div>
         </header>
 
+        <main id="page-coordinator" class="page settings-page"></main>
         <main id="page-workspace" class="page workspace-page active-page">
           <section class="conversation-area">
             <div class="conversation-header"><div><div class="eyebrow"><span class="eyebrow-line"></span> 你的智能工作台</div><h1>让想法，<span>自然发生。</span></h1><p>选择项目和 Agent，派发真实任务并追踪结果。</p></div><div class="card-actions"><button class="primary-button" id="talk-to-director">与 ApiX 沟通</button><button class="outline-button" id="new-conversation"><svg class="icon"><use href="#icon-plus"/></svg>新员工对话</button></div></div>

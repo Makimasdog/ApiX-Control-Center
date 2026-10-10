@@ -67,10 +67,11 @@ function project() { return data.projects.find((item) => item.id === selectedPro
 function task() { return data.tasks.find((item) => item.id === selectedTaskId); }
 function runFor(taskId) { return data.runs.find((item) => item.task_id === taskId); }
 function go(page) {
+  if (["workspace", "director"].includes(page)) page = "coordinator";
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
-  $("#breadcrumb-page").textContent = { workspace: "工作台", director: "Director", missions: "任务与员工", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
 }
 async function refresh() {
   try {
@@ -88,6 +89,7 @@ async function refresh() {
       if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => refresh());
     }
     render();
+    document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
 }
 function render() { renderProjects(); renderAgents(); renderTasks(); renderPlans(); renderDirector(); renderConversations(); renderWorkspace(); renderSettings(); renderCollaboration(); renderMemory(); renderMessageSupervision(); }
@@ -213,7 +215,7 @@ function summary(event) {
 }
 function renderSettings() {
   const model = settings.models.find((item) => item.id === settings.selectedModelId);
-  $("#top-model-name").textContent = model?.name ?? "选择模型";
+  $("#top-model-name").textContent = "ApiX 推理模型";
   $("#active-model-title").textContent = model?.name ?? "尚未选择模型";
   $("#active-model-subtitle").textContent = model?.modelId ?? "仅保存偏好；具体运行模型由 Agent 自身配置决定";
   $("#active-provider").textContent = model?.provider ?? "—";
@@ -351,7 +353,7 @@ $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
 $("#task-details-close").addEventListener("click", () => $("#task-details-dialog").close());
 $("#dialog-cancel").addEventListener("click", () => $("#editor-dialog").close());
 $("#brand-home").addEventListener("click", () => go("workspace"));
-$("#top-model-button").addEventListener("click", () => go("models"));
+$("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
 $("#new-conversation").addEventListener("click", async () => { if (!selectedProjectId) { go("projects"); toast("请先选择项目"); return; } try { const created = await api("/api/conversations", { projectId: selectedProjectId }); selectedConversationId = created.id; selectedTaskId = null; await refresh(); go("workspace"); $("#chat-input").focus(); } catch (error) { toast(error.message); } });
@@ -450,7 +452,7 @@ $("#collab-plan-form").addEventListener("submit", async (event) => { event.preve
 $("#meeting-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const reviewerIds = $$("#meeting-reviewers input:checked").map((item) => item.value); await api("/api/meetings", { planId: $("#meeting-plan-select").value, sourceTaskId: $("#meeting-source-select").value, topic: event.currentTarget.elements.topic.value, reviewerIds }); event.currentTarget.elements.topic.value = ""; await refresh(); toast("评审任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
 $("#integration-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const result = await api("/api/integrations", { planId: $("#integration-plan-select").value, repositoryId: $("#integration-repository-select").value || null }); await refresh(); toast(result.status === "conflict" ? "发现冲突，请查看报告" : "集成预检已生成"); } catch (error) { toast(error.message); } });
 $("#manager-review-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await api("/api/manager-reviews", { planId: $("#manager-plan-select").value, departmentId: $("#manager-department-select").value }); await refresh(); toast("经理审查任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
-$("#page-director").insertAdjacentHTML("beforeend", `<section class="section-block"><div class="block-header"><div><h2>Agent 消息监督</h2><p>Director 可查看消息、关联交付物、超时重试与拦截记录。</p></div><span id="mailbox-summary" class="count-label"></span></div><div id="agent-message-list" class="collab-list"></div></section><section class="section-block"><div class="block-header"><div><h2>资源锁</h2><p>锁使用租约，到期后可重新获取；请核对仍在运行的 Agent。</p></div></div><div id="agent-lock-list" class="collab-list"></div></section>`);
+$("#page-missions").insertAdjacentHTML("beforeend", `<section class="section-block"><div class="block-header"><div><h2>Agent 消息监督</h2><p>Director 可查看消息、关联交付物、超时重试与拦截记录。</p></div><span id="mailbox-summary" class="count-label"></span></div><div id="agent-message-list" class="collab-list"></div></section><section class="section-block"><div class="block-header"><div><h2>资源锁</h2><p>锁使用租约，到期后可重新获取；请核对仍在运行的 Agent。</p></div></div><div id="agent-lock-list" class="collab-list"></div></section>`);
 document.addEventListener("click", async (event) => {
   const rejected = event.target.closest("[data-reject-message]");
   if (rejected) { if (await confirmAction("拦截 Agent 消息", "该消息将停止投递，并记录 Director 的拦截决定。")) await mutate(`/api/messages/${rejected.dataset.rejectMessage}/reject`, { agentId: "apix-director", reason: "Director 手动拦截" }); return; }
@@ -460,3 +462,5 @@ document.addEventListener("click", async (event) => {
 go("director");
 refresh();
 setInterval(refresh, 1500);
+
+document.addEventListener("apix:select-project", async (event) => { selectedProjectId = event.detail; localStorage.setItem("apix.selectedProject", selectedProjectId); await refresh(); });

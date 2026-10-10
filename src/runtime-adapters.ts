@@ -1,0 +1,50 @@
+import { existsSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+import type { Store, AgentCapabilities } from './contracts.js';
+import { object, text } from './contracts.js';
+
+export interface Command { executable: string; prefix: string[] }
+interface CustomAdapter { id: string; name: string; executable: string; args_json: string; format: 'plain' | 'jsonl' }
+export function createRuntimeAdapters(store: Store, findExecutable: (name: string) => string | null) {
+  const { db, row, rows } = store;
+  db.exec('CREATE TABLE IF NOT EXISTS apix_adapters(id TEXT PRIMARY KEY,name TEXT NOT NULL,executable TEXT NOT NULL,args_json TEXT NOT NULL,format TEXT NOT NULL)');
+  function command(id: string): Command | null {
+    const env = process.env[`APIX_${id.toUpperCase()}_ENTRY`];
+    if (env && existsSync(env)) return { executable: process.execPath, prefix: [env] };
+    const custom = row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id);
+    if (custom) return existsSync(custom.executable) ? { executable: custom.executable, prefix: JSON.parse(custom.args_json) as string[] } : null;
+    const name = id === 'claude' ? 'claude' : id;
+    const found = findExecutable(name);
+    if (!found) return null;
+    if (process.platform === 'win32' && /\.cmd$/i.test(found)) {
+      const entries: Record<string,string> = { pi:'@earendil-works/pi-coding-agent/dist/bundle/cli.js',codex:'@openai/codex/bin/codex.js',claude:'@anthropic-ai/claude-code/cli.js' };
+      const entry = entries[id]; if (!entry) return null;
+      const script = join(dirname(found),'node_modules',entry);
+      return existsSync(script) ? {executable:process.execPath,prefix:[script]} : null;
+    }
+    return {executable:found,prefix:[]};
+  }
+  function catalog(): AgentCapabilities[] {
+    return [{id:'pi',name:'Pi 员工',stateSource:'Pi RPC'},{id:'codex',name:'Codex CLI',stateSource:'Codex JSONL'},{id:'claude',name:'Claude Code',stateSource:'Claude stream-json'},
+      ...rows<CustomAdapter>('SELECT * FROM apix_adapters').map(c=>({id:c.id,name:c.name,stateSource:`自定义适配器 · ${c.format}`}))]
+      .map(c=>({...c,available:!!command(c.id),managed:true,observable:true,cancellable:true,resumable:false}));
+  }
+  function register(input: unknown) {
+    const v = object(input); const id = text(v.id,50); const name = text(v.name,100); const executable = text(v.executable,1000);
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || ['pi','codex','claude'].includes(id)) throw new Error('适配器 ID 无效或属于内置运行时');
+    if (!isAbsolute(executable) || !existsSync(executable) || /\.(cmd|bat|ps1)$/i.test(executable)) throw new Error('请选择已存在的可执行文件；脚本请通过 node.exe 等解释器和参数启动');
+    if (!Array.isArray(v.args) || v.args.some(a=>typeof a!=='string') || v.args.length>30) throw new Error('参数必须为字符串数组');
+    if (!['plain','jsonl'].includes(String(v.format))) throw new Error('输出格式应为 plain 或 jsonl');
+    if (row("SELECT id FROM tasks WHERE runtime=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1", id)) throw new Error('适配器有待处理任务，不能更换执行命令');
+    db.prepare('INSERT INTO apix_adapters VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,executable=excluded.executable,args_json=excluded.args_json,format=excluded.format').run(id,name,executable,JSON.stringify(v.args),String(v.format));
+    return catalog().find(c=>c.id===id);
+  }
+  function args(id: string, fullAccess: boolean, skipGit: boolean): string[] {
+    if (id === 'pi') return ['--mode','rpc','--no-session','--no-extensions'];
+    if (id === 'codex') return ['exec','--json','--ephemeral',...(fullAccess ? ['--dangerously-bypass-approvals-and-sandbox'] : ['--sandbox','workspace-write']),...(skipGit ? ['--skip-git-repo-check'] : []),'-'];
+    if (id === 'claude') return ['-p','--output-format','stream-json','--verbose',...(fullAccess ? ['--dangerously-skip-permissions'] : ['--permission-mode','dontAsk','--allowedTools','Read,Glob,Grep,Edit,Write,Bash'])];
+    return [];
+  }
+  function format(id: string) { return row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id)?.format ?? 'jsonl'; }
+  return { command, catalog, register, args, format };
+}

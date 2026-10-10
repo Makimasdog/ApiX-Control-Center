@@ -14,6 +14,20 @@ process.stdin.on("data", (chunk) => {
     if (command.type !== "prompt") continue;
     process.stdout.write(JSON.stringify({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }) + "\n");
     process.stdout.write('{"type":"agent_start"}\n');
+    if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n')) {
+      let answer;
+      if (command.message.startsWith('APIX_PLAN_JSON\n')) {
+        const employees = JSON.parse(command.message.split('\n员工：').at(-1));
+        answer = {steps:[{prompt:'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
+      } else {
+        const latest = command.message.split('用户最新消息：').at(-1);
+        let values = {}; try { values = JSON.parse(latest); } catch {}
+        answer = {kind:latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
+      }
+      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');
+      process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+      continue;
+    }
     if (command.message.startsWith("APIX_DIRECTOR_JSON\n")) {
       const latest = command.message.split("用户最新消息：").at(-1);
       const employees = JSON.parse(command.message.match(/可用员工：(.*?)\n当前计划与任务状态：/)?.[1] ?? "[]");
@@ -22,7 +36,7 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write('{"type":"agent_settled","aborted":false}\n');
       continue;
     }
-    if (command.message === "hold") continue;
+    if (command.message === "hold" || process.env.APIX_FIXTURE_HOLD === '1') continue;
     if (command.message.startsWith("write-file:")) {
       const [filename, content] = command.message.slice(11).split(":", 2);
       if (!/^[a-z]\.txt$/.test(filename)) throw new Error("Invalid test filename");

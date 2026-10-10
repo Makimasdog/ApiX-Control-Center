@@ -42,7 +42,7 @@ async function get(port, path, expected = 200) {
 test("message protocol persists mailbox, correlation, idempotency, retry, timeout, locks, and Director interception", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-message-"));
   const port = await freePort();
-  const server = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs") }, stdio: "ignore" });
+  const server = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs") }, stdio: "ignore" });
   try {
     await waitFor(async () => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok);
     const projectId = (await post(port, "/api/projects", { name: "Protocol test", path: root })).id;

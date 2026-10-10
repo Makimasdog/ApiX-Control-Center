@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 // Project-scoped message state, permissions, delivery and resource leases.
-export function createMailboxService({ db, row, rows, now }) {
+export function createMailboxService({ db, row, rows, now, recordEvent = () => {} }) {
   const MESSAGE_MAX_BYTES = 24000;
   const MESSAGE_DEFAULT_TIMEOUT_MS = 120000;
   const MESSAGE_MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -44,6 +44,7 @@ export function createMailboxService({ db, row, rows, now }) {
   function appendMessageEvent(projectId, messageId, eventType, actorAgent, payload = {}) {
     const createdAt = now();
     const result = db.prepare("INSERT INTO agent_message_events(message_id,project_id,event_type,actor_agent,payload,created_at) VALUES (?,?,?,?,?,?)").run(messageId, projectId, eventType, actorAgent ?? null, JSON.stringify(payload), createdAt);
+    recordEvent(projectId, messageId ?? projectId, eventType, payload, actorAgent ?? 'system');
     return { id: Number(result.lastInsertRowid), messageId, projectId, eventType, actorAgent: actorAgent ?? null, payload, createdAt };
   }
   function assertProject(projectId) {
@@ -99,10 +100,13 @@ export function createMailboxService({ db, row, rows, now }) {
     const bytes = messageBytes(payload);
     const maxContextChars = Math.max(1000, Math.min(100000, Number(input.maxContextChars ?? MESSAGE_MAX_BYTES)));
     if (bytes > maxContextChars || bytes > MESSAGE_MAX_BYTES) throw new Error(`消息超过上下文预算（最多 ${Math.min(maxContextChars, MESSAGE_MAX_BYTES)} 字节）`);
-    const existing = row("SELECT * FROM agent_messages WHERE project_id=? AND idempotency_key=?", input.projectId, idempotencyKey);
-    if (existing) return { ...publicMessage(existing), duplicate: true };
-    const blockedReason = blockedByDirector(input, fromMailbox.role, payload);
     const type = ["request", "response", "event", "artifact_ref", "cancel"].includes(input.type) ? input.type : "request";
+    const existing = row("SELECT * FROM agent_messages WHERE project_id=? AND idempotency_key=?", input.projectId, idempotencyKey);
+    if (existing) {
+      if (existing.from_agent !== from || existing.to_agent !== to || existing.type !== type || existing.payload !== payload || existing.reply_to !== (input.replyTo ?? null)) throw new Error('幂等键已被不同消息使用');
+      return { ...publicMessage(existing), duplicate: true };
+    }
+    const blockedReason = blockedByDirector({ ...input, from, to, type }, fromMailbox.role, payload);
     let replyTo = input.replyTo ?? null;
     let correlationId = input.correlationId ?? null;
     if (type === "response") {
@@ -140,10 +144,12 @@ export function createMailboxService({ db, row, rows, now }) {
     return rows("SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status='delivered' ORDER BY delivered_at DESC LIMIT ?", projectId, agentId, limit).map(publicMessage);
   }
   function ackMessage(id, input) {
+    expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
     ensureMessageAccess(message, input.agentId, "ack");
     if (!["delivered", "queued"].includes(message.status)) return publicMessage(message);
+    if (message.next_retry_at && message.next_retry_at > now()) throw new Error('尚未到达重试时间');
     db.prepare("UPDATE agent_messages SET status='processing',acknowledged_at=? WHERE id=? AND status IN ('delivered','queued')").run(now(), id);
     const attemptNo = message.retry_count + 1;
     db.prepare("INSERT OR IGNORE INTO agent_message_attempts(id,message_id,attempt_no,status,created_at) VALUES (?,?,?,?,?)").run(randomUUID(), id, attemptNo, "processing", now());
@@ -151,6 +157,7 @@ export function createMailboxService({ db, row, rows, now }) {
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
   function completeMessage(id, input) {
+    expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
     ensureMessageAccess(message, input.agentId, "complete");
@@ -161,6 +168,7 @@ export function createMailboxService({ db, row, rows, now }) {
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
   function nackMessage(id, input) {
+    expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
     ensureMessageAccess(message, input.agentId, "ack");

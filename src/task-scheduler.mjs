@@ -1,5 +1,5 @@
 // Advances approved DAG tasks when their dependencies finish or fail.
-export function createTaskScheduler({ db, row, rows, now, launch }) {
+export function createTaskScheduler({ db, row, rows, now, launch, recordTask = () => {} }) {
   function scheduleDependents(completedTaskId) {
     for (const candidate of rows("SELECT t.* FROM tasks t JOIN task_dependencies d ON d.task_id=t.id WHERE d.depends_on_id=?", completedTaskId)) {
       const dependencies = rows("SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?", candidate.id);
@@ -14,7 +14,11 @@ export function createTaskScheduler({ db, row, rows, now, launch }) {
       if (approval?.status !== "approved") continue;
       if (["queued", "awaiting_approval"].includes(candidate.status)) {
         db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), candidate.id);
-        try { launch(candidate); } catch { db.prepare("UPDATE tasks SET status='failed',updated_at=? WHERE id=?").run(now(), candidate.id); }
+        try { launch(candidate); } catch (error) {
+          db.prepare("UPDATE tasks SET status='failed',result=?,updated_at=? WHERE id=?").run(String(error.message), now(), candidate.id);
+          recordTask(candidate.id, 'task.launch_failed', {error: String(error.message)});
+          scheduleDependents(candidate.id);
+        }
       }
     }
   }

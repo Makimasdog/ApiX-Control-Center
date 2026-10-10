@@ -3,6 +3,9 @@ import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
+import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
+import { discussCoordinationSession, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory } from "./control-plane.mjs";
+import { registerRuntimeAdapter, authenticateAgent, agentTeam } from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -24,12 +27,34 @@ createServer(async (request, response) => {
     return;
   }
   if (pathname.startsWith("/api/")) {
+    if (![ `127.0.0.1:${port}`, `localhost:${port}` ].includes(request.headers.host ?? '')) { response.writeHead(403); response.end('Forbidden host'); return; }
     const origin = request.headers.origin;
     const expectedOrigin = `http://127.0.0.1:${port}`;
     if (origin && origin !== expectedOrigin) { response.writeHead(403); response.end("Forbidden origin"); return; }
     const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
+      if (pathname.startsWith('/api/agent/')) {
+        const actor = authenticateAgent(request.headers.authorization);
+        if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id)); return; }
+        if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveMessages({projectId:actor.project_id,agentId:actor.agent_id})); return; }
+        if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
+        let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
+        const input = JSON.parse(body || '{}');
+        if (pathname === '/api/agent/messages') { send(200, sendMessage({...input,projectId:actor.project_id,from:actor.agent_id,taskId:actor.task_id})); return; }
+        const match = /^\/api\/agent\/messages\/([^/]+)\/(ack|complete|nack)$/.exec(pathname);
+        if (match) {
+          if (messageDetails(match[1],actor.agent_id).message.project_id !== actor.project_id) throw new Error('消息不属于当前项目');
+          send(200, ({ack:ackMessage,complete:completeMessage,nack:nackMessage})[match[2]](match[1],{...input,agentId:actor.agent_id})); return;
+        }
+        throw new Error('Unknown Agent operation');
+      }
       if (pathname === "/api/snapshot" && request.method === "GET") { send(200, snapshot()); return; }
+      if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
+      if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
+      if (pathname === "/api/coordination/sessions" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listCoordinationSessions(query.get("projectId"))); return; }
+      if (/^\/api\/coordination\/sessions\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, coordinationSessionDetails(pathname.split("/")[4])); return; }
+      if (/^\/api\/coordination\/sessions\/[^/]+\/timeline$/.test(pathname) && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, coordinationTimeline(pathname.split("/")[4], q.has('at') ? Number(q.get('at')) : undefined)); return; }
       if (pathname === "/api/memories/search" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, searchMemories(query.get("projectId"), query.get("q"))); return; }
       if (pathname === "/api/mailboxes" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listMailboxes(query.get("projectId"))); return; }
       if (pathname === "/api/messages" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, receiveMessages({ projectId: query.get("projectId"), agentId: query.get("agentId"), limit: query.get("limit") })); return; }
@@ -70,8 +95,19 @@ createServer(async (request, response) => {
       let raw = "";
       for await (const chunk of request) { raw += chunk; if (raw.length > 30000) throw new Error("请求过大"); }
       const input = JSON.parse(raw || "{}");
+      if (process.env.APIX_LEGACY_API !== '1' && (['/api/tasks','/api/director/plans','/api/director/messages','/api/collaboration/plans','/api/meetings','/api/manager-reviews'].includes(pathname) || /^\/api\/tasks\/[^/]+\/(resume|revise)$/.test(pathname) || pathname.startsWith('/api/director/'))) { send(409, { error: '请在 ApiX 目标工作台澄清并确认需求后安排任务' }); return; }
       let result;
       if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
+      else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
+      else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
+      else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (pathname === "/api/coordination/sessions") result = createCoordinationSession(input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/messages$/.test(pathname)) result = await discussCoordinationSession(pathname.split('/')[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/plan$/.test(pathname)) result = editCoordinationPlan(pathname.split('/')[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/answers$/.test(pathname)) result = answerCoordinationSession(pathname.split("/")[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/confirm$/.test(pathname)) result = await confirmCoordinationSession(pathname.split("/")[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/dispatch$/.test(pathname)) result = dispatchCoordinationSession(pathname.split("/")[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/revise$/.test(pathname)) result = reviseCoordinationSession(pathname.split("/")[4], input);
       else if (pathname === "/api/projects") result = { id: createProject(input) };
       else if (/^\/api\/projects\/[^/]+\/profile$/.test(pathname)) result = saveProjectProfile(pathname.split("/")[3], input);
       else if (/^\/api\/projects\/[^/]+$/.test(pathname)) { updateProject(pathname.split("/")[3], input); result = { updated: true }; }
@@ -121,6 +157,8 @@ createServer(async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
+  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css']);
+  if (!publicFiles.has(relativePath) && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
   const filePath = normalize(join(root, relativePath));
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {
     response.writeHead(403);

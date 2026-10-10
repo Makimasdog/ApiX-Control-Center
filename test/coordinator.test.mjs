@@ -1,0 +1,137 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn, execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:net';
+import { DatabaseSync } from 'node:sqlite';
+import { createTaskScheduler } from '../src/task-scheduler.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const delay = ms => new Promise(r=>setTimeout(r,ms));
+async function waitFor(predicate) {
+  for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
+  throw new Error('Timed out');
+}
+async function harness(work, extraEnv={}) {
+  const dir=await mkdtemp(join(tmpdir(),'apix-coordinator-'));
+  const project=join(dir,'project');
+  execFileSync('git',['init',project],{stdio:'ignore'});
+  await writeFile(join(project,'README.md'),'fixture\n');
+  execFileSync('git',['add','.'],{cwd:project});
+  execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
+  const port=await new Promise(resolvePort=>{const s=createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolvePort(p));});});
+  let server; let errors='';
+  const env={...process.env,APIX_LEGACY_API:'0',APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_PI_ENTRY:join(root,'test/fake-pi.mjs'),APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-claude.mjs'),...extraEnv};
+  const request=async(path,body,expected=200,headers={})=>{
+    const res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+    const json=await res.json();assert.equal(res.status,expected,JSON.stringify(json));return json;
+  };
+  const start=async()=>{
+    server=spawn(process.execPath,[join(root,'server.mjs')],{cwd:root,env,stdio:['ignore','ignore','pipe']});
+    server.stderr.on('data',c=>errors+=c);
+    await waitFor(async()=>{if(server.exitCode!==null)throw new Error(errors);try{return(await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok;}catch{return false;}});
+  };
+  const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
+  try {await start(); await work({request,project,dir,restart:async()=>{await stop();await start();}});}
+  finally {await stop();await rm(dir,{recursive:true,force:true});}
+}
+const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+async function setup(h,runtime='pi') {
+  const projectId=(await h.request('/api/projects',{name:'协调系统',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'执行员工',runtime,role:'开发与验证'})).id;
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'检查项目并汇总发现'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:JSON.stringify(answers)});
+  return {projectId,employeeId,s};
+}
+test('ApiX requires complete confirmed requirements; approvals, independent memory and replay survive restart',async()=>harness(async h=>{
+  const {projectId,s}=await setup(h);
+  assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'Pi');assert.equal(s.assessment.ready,true);
+  await h.request('/api/tasks',{projectId,prompt:'bypass'},409);
+  const incomplete=await h.request('/api/coordination/sessions',{projectId,goal:'另一个目标'});
+  await h.request(`/api/coordination/sessions/${incomplete.id}/confirm`,{revision:1},400);
+  await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:1},400);
+  let plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(plan.status,'plan_review');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  const approval=(await h.request('/api/snapshot')).approvals.find(a=>a.task_id===plan.tasks[0].id);
+  await h.request(`/api/approvals/${approval.id}`,{approved:true},400);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'read_only',version:0});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion},400);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'ask_approval',version:1});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+  plan=await waitFor(async()=>{const p=await h.request(`/api/coordination/sessions/${s.id}`);return p.derivedStatus==='awaiting_acceptance'&&p;});
+  await h.request(`/api/tasks/${plan.tasks[0].id}/review`,{accepted:true});
+  const timeline=await h.request(`/api/coordination/sessions/${s.id}/timeline`);
+  assert(timeline.events.some(e=>e.kind==='artifact.collected'));
+  assert(timeline.events.some(e=>e.kind==='message.created'));
+  const first=timeline.events.find(e=>e.kind==='coordination.snapshot');
+  const past=await h.request(`/api/coordination/sessions/${s.id}/timeline?at=${first.sequence}`);
+  assert.equal(past.state.revision,1);assert.equal(past.state.tasks.length,0);
+  assert((await h.request(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent('代码检查报告')}`)).length);
+  await h.restart();
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus,'completed');
+  assert.equal((await h.request(`/api/coordination/sessions?projectId=${projectId}`)).length,2);
+}));
+test('full access requires explicit worker permission; automatic dispatch and permission revocation are enforced',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(p.status,'plan_review','worker does not inherit full access');
+  p=await h.request(`/api/coordination/sessions/${s.id}/revise`,{revision:p.revision,reason:'使用已授权员工'});
+  await h.request('/api/permissions',{projectId,subject:employeeId,mode:'full_access',version:0});
+  p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:p.revision});
+  assert.equal(p.status,'running');
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'read_only',version:1});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks.every(t=>t.status==='cancelled');});
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:1},400);
+},{APIX_FIXTURE_HOLD:'1'}));
+test('plan edits create a new immutable plan; model config is persisted; Claude adapter returns artifacts',async()=>harness(async h=>{
+  const {s}=await setup(h,'claude');
+  await h.request('/api/manager/settings',{provider:'test-provider',model:'test-model'});
+  assert.equal((await h.request('/api/manager/settings')).model,'test-model');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const oldPlan=p.plan_id;
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'verify changed plan',employeeId:p.tasks[0].employee_id,dependsOn:[]}]});
+  assert.notEqual(p.plan_id,oldPlan);
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
+  assert((await h.request('/api/snapshot')).artifacts.some(a=>a.content.includes('Claude result')));
+}));
+test('custom worker exchanges project-scoped mailbox messages using its run credential',async()=>harness(async h=>{
+  const worker=join(h.dir,'mailbox-worker.mjs');
+  await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
+    const base=process.env.APIX_MAILBOX_URL;
+    const headers={Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN,'Content-Type':'application/json'};
+    const res=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({from:'system',projectId:'fake',to:'apix-director',type:'event',idempotencyKey:'worker-progress',payload:{progress:'worker contacted mailbox'}})});
+    if(!res.ok)throw new Error(await res.text());
+    const self=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({to:process.env.APIX_AGENT_ID,type:'event',idempotencyKey:'self-checkpoint',payload:{checkpoint:true}})});
+    if(!self.ok)throw new Error(await self.text());
+    const inbox=await (await fetch(base+'/messages',{headers})).json();
+    if(!inbox.length)throw new Error('Expected mailbox delivery');
+    for(const message of inbox) {
+      const ack=await fetch(base+'/messages/'+message.id+'/ack',{method:'POST',headers,body:'{}'});
+      if(!ack.ok)throw new Error(await ack.text());
+    }
+    process.stdout.write('Worker completed mailbox exchange');
+  });`);
+  await h.request('/api/adapters',{id:'custom-worker',name:'自定义员工',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'custom-worker');
+  const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request('/api/adapters',{id:'custom-worker',name:'changed',executable:process.execPath,args:[],format:'plain'},400);
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);assert.notEqual(state.derivedStatus,'attention',JSON.stringify(state.tasks));return state.derivedStatus==='awaiting_acceptance';});
+  const messages=(await h.request('/api/snapshot')).messages;
+  assert(messages.some(m=>m.idempotency_key==='worker-progress'&&m.from_agent===employeeId&&m.payload.progress==='worker contacted mailbox'));
+  await h.request('/api/agent/messages',undefined,400,{Authorization:'Bearer invalid'});
+}));
+test('scheduler propagates launch failure through downstream dependencies',()=>{
+  const db=new DatabaseSync(':memory:');
+  try {
+    db.exec("CREATE TABLE tasks(id TEXT PRIMARY KEY,status TEXT,plan_id TEXT,updated_at TEXT,result TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE plans(id TEXT,mode TEXT);CREATE TABLE meeting_items(id TEXT,task_id TEXT);CREATE TABLE approvals(task_id TEXT,status TEXT,action TEXT,created_at TEXT);INSERT INTO tasks(id,status) VALUES ('a','completed'),('b','queued'),('c','queued');INSERT INTO task_dependencies VALUES ('b','a'),('c','b');INSERT INTO approvals VALUES ('b','approved','start-agent-in-project','now');");
+    const row=(q,...p)=>db.prepare(q).get(...p);const rows=(q,...p)=>db.prepare(q).all(...p);
+    createTaskScheduler({db,row,rows,now:()=>new Date().toISOString(),launch:()=>{throw new Error('runtime gone');}}).scheduleDependents('a');
+    assert.equal(row('SELECT status FROM tasks WHERE id=?','b').status,'failed');
+    assert.equal(row('SELECT status FROM tasks WHERE id=?','c').status,'blocked');
+  } finally {db.close();}
+});
