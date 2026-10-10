@@ -103,28 +103,71 @@ test('custom worker exchanges project-scoped mailbox messages using its run cred
   await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
     const base=process.env.APIX_MAILBOX_URL;
     const headers={Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN,'Content-Type':'application/json'};
-    const res=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({from:'system',projectId:'fake',to:'apix-director',type:'event',idempotencyKey:'worker-progress',payload:{progress:'worker contacted mailbox'}})});
+    const res=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({from:'system',projectId:'fake',to:'apix-director',type:'event',idempotencyKey:'worker-progress',payload:{kind:'progress_update',summary:'正在检查验收依据',blocked:false,progress:'worker contacted mailbox'}})});
     if(!res.ok)throw new Error(await res.text());
     const self=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({to:process.env.APIX_AGENT_ID,type:'event',idempotencyKey:'self-checkpoint',payload:{checkpoint:true}})});
     if(!self.ok)throw new Error(await self.text());
-    const inbox=await (await fetch(base+'/messages',{headers})).json();
-    if(!inbox.length)throw new Error('Expected mailbox delivery');
-    for(const message of inbox) {
-      const ack=await fetch(base+'/messages/'+message.id+'/ack',{method:'POST',headers,body:'{}'});
-      if(!ack.ok)throw new Error(await ack.text());
+    const guidance=new Set();
+    for(let attempt=0;attempt<60 && guidance.size<2;attempt++) {
+      const inbox=await (await fetch(base+'/messages',{headers})).json();
+      for(const message of inbox) {
+        const ack=await fetch(base+'/messages/'+message.id+'/ack',{method:'POST',headers,body:'{}'});
+        if(!ack.ok)throw new Error(await ack.text());
+        if(message.payload.kind==='guidance')guidance.add(message.payload.source);
+        const completed=await fetch(base+'/messages/'+message.id+'/complete',{method:'POST',headers,body:'{}'});
+        if(!completed.ok)throw new Error(await completed.text());
+      }
+      if(guidance.size<2)await new Promise(r=>setTimeout(r,100));
     }
-    process.stdout.write('Worker completed mailbox exchange');
+    if(!guidance.has('apix')||!guidance.has('user'))throw new Error('Expected both ApiX and user guidance');
+    process.stdout.write('Worker completed mailbox exchange with '+[...guidance].join(',')+' guidance');
   });`);
   await h.request('/api/adapters',{id:'custom-worker',name:'自定义员工',executable:process.execPath,args:[worker],format:'plain'});
   const {s,employeeId}=await setup(h,'custom-worker');
   const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   await h.request('/api/adapters',{id:'custom-worker',name:'changed',executable:process.execPath,args:[],format:'plain'},400);
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await h.request(`/api/coordination/sessions/${s.id}/instructions`,{revision:s.revision,taskId:p.tasks[0].id,content:'请核对验收标准'});
   await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);assert.notEqual(state.derivedStatus,'attention',JSON.stringify(state.tasks));return state.derivedStatus==='awaiting_acceptance';});
   const messages=(await h.request('/api/snapshot')).messages;
   assert(messages.some(m=>m.idempotency_key==='worker-progress'&&m.from_agent===employeeId&&m.payload.progress==='worker contacted mailbox'));
+  assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='apix'));
+  assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='user'));
+  const session=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert(session.turns.some(t=>t.kind==='worker_guidance'&&t.role==='apix'));
+  assert(session.guidance.some(g=>g.status==='sent'&&g.action==='guide'));
+  await h.request(`/api/coordination/sessions/${s.id}/instructions`,{revision:s.revision,taskId:p.tasks[0].id,content:'late instruction'},400);
   await h.request('/api/agent/messages',undefined,400,{Authorization:'Bearer invalid'});
 }));
+
+test('ApiX actively requests progress from a silent worker and records the supervision',async()=>harness(async h=>{
+  const worker=join(h.dir,'silent-worker.mjs');
+  await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
+    const base=process.env.APIX_MAILBOX_URL;
+    const headers={Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN,'Content-Type':'application/json'};
+    for(let attempt=0;attempt<80;attempt++) {
+      const inbox=await (await fetch(base+'/messages',{headers})).json();
+      const request=inbox.find(message=>message.payload.kind==='progress_request');
+      if(request){
+        const reply=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({to:'apix-director',type:'event',idempotencyKey:'idle-report',payload:{kind:'progress_update',summary:'已收到进度请求，正在核对验收标准',blocked:false}})});
+        if(!reply.ok)throw new Error(await reply.text());
+        process.stdout.write('Reported progress after ApiX request');return;
+      }
+      await new Promise(r=>setTimeout(r,100));
+    }
+    throw new Error('ApiX did not request progress');
+  });`);
+  await h.request('/api/adapters',{id:'silent-worker',name:'沉默员工',executable:process.execPath,args:[worker],format:'plain'});
+  const {s}=await setup(h,'silent-worker');
+  const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
+  const state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert(state.turns.some(t=>t.kind==='progress_requested'));
+  const messages=(await h.request('/api/snapshot')).messages;
+  assert.equal(messages.filter(m=>m.idempotency_key.startsWith('apix-status-request:')).length,1);
+  assert(messages.some(m=>m.idempotency_key==='idle-report'));
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_SUPERVISION_AFTER_MS:'300'}));
 test('scheduler propagates launch failure through downstream dependencies',()=>{
   const db=new DatabaseSync(':memory:');
   try {

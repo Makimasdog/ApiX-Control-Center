@@ -74,6 +74,14 @@ interface Policy { mode: PermissionMode; version: number }
 7. 适配器在 Git worktree 启动员工，发放本次 Run 的 mailbox 凭据；记录原生事件和实际输出。
 8. 前置成功后推进依赖；失败向下游传播。员工执行完成后目标进入待验收，全部任务通过验收才完成。
 
+### 运行中的自主指导
+
+1. 员工通过带 Run 凭据的 `/api/agent/messages` 向 `apix-director` 发送 `type=event`、`payload={kind:'progress_update',summary,blocked}`。服务器用凭据绑定项目、任务和发送者，拒绝身份伪造。
+2. ApiX 对进度报告做幂等登记，并核对当前计划、需求版本、权限 grant、员工和 Run 状态。Pi 只选择 `guide`、`escalate` 或 `observe`，以及从已确认需求选取的关注点。指导正文由控制平面从已批准任务和确认需求构造，不允许模型新增任务或授权。
+3. `guide` 发送有来源和版本的 mailbox 消息，员工读取、确认并继续执行；`escalate` 把阻塞展示给用户；`observe` 只记真实进度。每个任务最多自动发送三次指导，之后转为用户关注，避免循环指令。
+4. 运行超过一分钟且近期没有员工报告时，ApiX 主动发送一次进度请求。用户还可向运行中的员工发送当前任务范围内的补充说明，或通过“中途调整”撤销旧计划并请求停止。
+5. 决策、消息与状态写入目标会话、mailbox 事件和独立账本。计划或权限在推理期间变化，结果丢弃并记录跳过原因。员工进程必须主动读取 mailbox；不能读取的 CLI 不支持即时进程内指导。
+
 ### 中途修改与撤权
 
 用户请求调整 → 取消待启动步骤并撤销审批 → 请求停止活动 Run → 需求 revision 增加、确认失效 → 用户检查工作区 → 修改并重新确认。旧 Run 处于 running/stopping/unknown 时阻止新计划启动，避免把停止请求当作停止完成。

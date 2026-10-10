@@ -9,6 +9,7 @@ import { coordinationStatus } from './task-tracker.js';
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
   employees(): Employee[];
+  sendMessage(input: Record<string, unknown>): { id: string; status: string };
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
 }
@@ -16,7 +17,10 @@ export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
   const busy = new Set<string>();
   db.exec(`CREATE TABLE IF NOT EXISTS coordination_checks(session_id TEXT PRIMARY KEY REFERENCES coordination_sessions(id), conflicts TEXT NOT NULL DEFAULT '[]', model_mode TEXT NOT NULL DEFAULT 'rules', model_error TEXT);
-    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '');`);
+    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '');
+    CREATE TABLE IF NOT EXISTS apix_guidance(message_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), status TEXT NOT NULL, action TEXT, focus TEXT, outbound_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS apix_guidance_task ON apix_guidance(task_id,updated_at);`);
+  db.prepare("UPDATE apix_guidance SET status='skipped',updated_at=? WHERE status='processing'").run(now());
   const session = (id: string) => { const s = row<Session>('SELECT * FROM coordination_sessions WHERE id=?', id); if (!s) throw new Error('目标不存在'); return s; };
   const requirementsOf = (s: Session): Requirements => JSON.parse(s.requirements_json) as Requirements;
   const tasksOf = (s: Session) => s.plan_id ? rows<Task>('SELECT * FROM tasks WHERE plan_id=? ORDER BY rowid', s.plan_id) : [];
@@ -29,6 +33,7 @@ export function createCoordinator(deps: Dependencies) {
       dependencies: s.plan_id ? rows('SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.plan_id=?', s.plan_id) : [],
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
+      guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
       agent: { id: 'apix', name: 'ApiX', role: 'manager', foundation: 'Pi', mode: check?.model_mode ?? 'rules', error: check?.model_error }, busy: busy.has(id) };
   }
   function checkpoint(id: string) {
@@ -215,6 +220,85 @@ export function createCoordinator(deps: Dependencies) {
     permissions.assertGranted(task.id,task.project_id,task.employee_id);
     if (!deps.employees().some(e => e.id === task.employee_id)) throw new Error('员工已停用或运行时不可用');
   }
+  function activeTask(sessionId: string, taskId: string, revision: unknown): {s: Session; task: Task} {
+    const s = editable(sessionId, revision);
+    const task = row<Task>('SELECT * FROM tasks WHERE id=? AND plan_id=?',taskId,s.plan_id);
+    if (!task || task.status !== 'running') throw new Error('只能指导当前计划中正在运行的任务');
+    assertExecution(task);
+    return {s,task};
+  }
+  function instructEmployee(sessionId: string, input: Record<string,unknown>) {
+    const taskId = text(input.taskId,100); const content = text(input.content,2000);
+    const {s,task} = activeTask(sessionId,taskId,input.revision);
+    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+    if (message.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
+    transaction(() => {turn(s,'user','worker_guidance',`向员工补充：${content}`);memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:message.id,source:'user',content},'user');checkpoint(sessionId);});
+    return details(sessionId);
+  }
+  async function superviseWorkerMessage(messageId: string) {
+    const message = row<{id:string;project_id:string;task_id:string|null;from_agent:string;to_agent:string;type:string;payload:string;status:string}>('SELECT * FROM agent_messages WHERE id=?',messageId);
+    if (!message || !message.task_id || message.to_agent !== 'apix-director' || message.type !== 'event' || message.status === 'rejected') return;
+    let payload: Record<string,unknown>;
+    try { payload = object(JSON.parse(message.payload)); } catch { return; }
+    if (payload.kind !== 'progress_update' || typeof payload.summary !== 'string' || !payload.summary.trim()) return;
+    const summary = payload.summary.trim().slice(0,2000); const blocked = payload.blocked === true;
+    const task = row<Task>('SELECT * FROM tasks WHERE id=?',message.task_id);
+    const bound = task?.plan_id ? row<{session_id:string;revision:number;requirements_json:string}>('SELECT * FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id) : undefined;
+    if (!task || !bound || task.employee_id !== message.from_agent || task.project_id !== message.project_id) return;
+    const s = session(bound.session_id);
+    if (s.plan_id !== task.plan_id || s.revision !== bound.revision || s.status !== 'running' || task.status !== 'running') return;
+    try { assertExecution(task); } catch { return; }
+    const claimed = db.prepare("INSERT OR IGNORE INTO apix_guidance(message_id,task_id,status,summary,updated_at) VALUES (?,?,'processing',?,?)").run(messageId,task.id,summary,now());
+    if (!claimed.changes) return;
+    try {
+      const count = row<{n:number}>("SELECT COUNT(*) AS n FROM apix_guidance WHERE task_id=? AND action='guide' AND status='sent'",task.id)?.n ?? 0;
+      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked});
+      const current = session(bound.session_id);
+      const liveTask = row<Task>('SELECT * FROM tasks WHERE id=?',task.id);
+      if (!liveTask || current.plan_id !== task.plan_id || current.revision !== bound.revision || current.status !== 'running' || liveTask.status !== 'running') throw new Error('任务状态或用户需求已变化');
+      assertExecution(liveTask);
+      const requirements = JSON.parse(bound.requirements_json) as Requirements;
+      let outboundId: string | null = null;
+      let action = decision.action;
+      if (action === 'guide') {
+        const focus = decision.focus === 'scope' ? `范围：${requirements.scope}` : decision.focus === 'verification' ? `验收：${requirements.acceptance}` : decision.focus === 'delivery' ? `交付物：${requirements.deliverable}` : `继续核对当前已批准任务及其前置交付物：${task.prompt}`;
+        const content = `ApiX 根据你的进度报告提醒：请仅在已批准任务范围内继续。${focus} 若存在新需求或权限问题，请上报阻塞。`;
+        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-guidance:${message.id}`,correlationId:message.id,timeoutMs:3600000,payload:{kind:'guidance',source:'apix',focus:decision.focus,content,requirementRevision:s.revision}});
+        if (sent.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
+        outboundId = sent.id;
+        turn(current,'apix','worker_guidance',`员工报告：${summary}\nApiX 指导：${content}`);
+      } else if (action === 'escalate') {
+        turn(current,'apix','worker_attention',`员工报告阻塞或指导次数已达上限：${summary}\n请向员工补充当前任务说明，或使用“中途调整”修改目标。`);
+      } else {
+        turn(current,'apix','worker_progress',`已收到员工进度：${summary}`);
+      }
+      db.prepare("UPDATE apix_guidance SET status=?,action=?,focus=?,outbound_id=?,updated_at=? WHERE message_id=?").run(action === 'guide' ? 'sent' : 'recorded',action,decision.focus,outboundId,now(),messageId);
+      memory.append(s.project_id,s.id,'guidance.decided',{taskId:task.id,reportMessageId:messageId,outboundId,action,focus:decision.focus,mode:decision.mode,summary});
+      checkpoint(s.id);
+    } catch (error) {
+      db.prepare("UPDATE apix_guidance SET status='skipped',summary=?,updated_at=? WHERE message_id=?").run(`${summary}\n${String(error instanceof Error ? error.message : error).slice(0,300)}`,now(),messageId);
+      memory.append(s.project_id,s.id,'guidance.skipped',{taskId:task.id,reportMessageId:messageId,error:String(error)});
+    }
+  }
+  function superviseActiveRuns(staleAfterMs = 60000) {
+    for (const active of rows<{run_id:string;task_id:string;started_at:string;session_id:string}>('SELECT r.id AS run_id,r.task_id,r.started_at,b.session_id FROM runs r JOIN tasks t ON t.id=r.task_id JOIN coordination_plan_briefs b ON b.plan_id=t.plan_id WHERE r.status=\'running\' AND t.status=\'running\'')) {
+      if (Date.now() - Date.parse(active.started_at) < staleAfterMs) continue;
+      const task = row<Task>('SELECT * FROM tasks WHERE id=?',active.task_id)!;
+      const s = session(active.session_id);
+      try {
+        assertExecution(task);
+        const latestReport = row<{created_at:string}>('SELECT created_at FROM agent_messages WHERE task_id=? AND from_agent=? AND to_agent=\'apix-director\' AND type=\'event\' ORDER BY created_at DESC LIMIT 1',task.id,task.employee_id);
+        if (latestReport && Date.now() - Date.parse(latestReport.created_at) < staleAfterMs) continue;
+        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-status-request:${active.run_id}`,timeoutMs:3600000,payload:{kind:'progress_request',source:'apix',content:'请报告当前任务的真实进度、已完成的检查和阻塞情况。遇到新需求或权限问题时不要自行扩大任务范围。'}}) as {id:string;status:string;duplicate?:boolean};
+        if (sent.status === 'rejected' || sent.duplicate) continue;
+        turn(s,'apix','progress_requested',`ApiX 已主动向员工请求进度：${task.prompt.slice(0,120)}`);
+        memory.append(s.project_id,s.id,'guidance.progress_requested',{taskId:task.id,runId:active.run_id,messageId:sent.id});
+        checkpoint(s.id);
+      } catch (error) {
+        memory.append(s.project_id,s.id,'guidance.monitor_failed',{taskId:task.id,runId:active.run_id,error:String(error)});
+      }
+    }
+  }
   function recordTask(taskId: string, kind: string, payload: unknown) {
     const t = row<Task>('SELECT * FROM tasks WHERE id=?',taskId); if (!t) return;
     memory.append(t.project_id,taskId,kind,payload);
@@ -229,7 +313,7 @@ export function createCoordinator(deps: Dependencies) {
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model').run(provider,model);
     return getSettings();
   }
-  return { createSession, answerSession, discuss, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask,
+  return { createSession, answerSession, discuss, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,
     listSessions: (projectId: string) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

@@ -14,9 +14,11 @@ process.stdin.on("data", (chunk) => {
     if (command.type !== "prompt") continue;
     process.stdout.write(JSON.stringify({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }) + "\n");
     process.stdout.write('{"type":"agent_start"}\n');
-    if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n')) {
+    if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n') || command.message.startsWith('APIX_GUIDE_JSON\n')) {
       let answer;
-      if (command.message.startsWith('APIX_PLAN_JSON\n')) {
+      if (command.message.startsWith('APIX_GUIDE_JSON\n')) {
+        answer = {action:'guide',focus:'verification'};
+      } else if (command.message.startsWith('APIX_PLAN_JSON\n')) {
         const employees = JSON.parse(command.message.split('\n员工：').at(-1));
         answer = {steps:[{prompt:'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
       } else {

@@ -428,16 +428,16 @@ function launch(task) {
     if (taskMemories.length) context.push(`本对话任务记忆：\n${taskMemories.map((item) => `${item.title}: ${item.content.slice(0, 1000)}`).join("\n")}`);
   }
   const inputs = rows("SELECT s.content FROM shared_artifacts s JOIN task_dependencies d ON d.depends_on_id=s.task_id WHERE d.task_id=? ORDER BY s.created_at", task.id).map((item) => item.content.slice(0, 6000));
-  if (inputs.length) context.push(`前置任务的共享交付物（须自行验证）：\n${inputs.join("\n---\n")}`);
+  if (inputs.length) context.unshift(`前置任务的共享交付物（须自行验证）：\n${inputs.join("\n---\n")}`);
   const coordinated = task.plan_id ? row("SELECT requirements_json,revision FROM coordination_plan_briefs WHERE plan_id=?", task.plan_id) : null;
-  if (coordinated) context.unshift(`ApiX 已确认的需求（版本 ${coordinated.revision}，执行依据）：\n${requirementBrief(JSON.parse(coordinated.requirements_json))}\n你是执行员工，ApiX 是管理者。可通过环境变量 APIX_MAILBOX_URL 指定的 HTTP 接口与团队协作，用 APIX_AGENT_TOKEN 作为 Bearer 凭据（不要输出凭据）。GET /messages 领取消息，POST /messages 发送 {to,type,payload,idempotencyKey,replyTo?}，POST /messages/:id/ack 或 /complete 确认。GET /team 查看同项目员工。仅转交必要上下文，交付物使用引用。`);
+  if (coordinated) context.unshift(`ApiX 已确认的需求（版本 ${coordinated.revision}，执行依据）：\n${requirementBrief(JSON.parse(coordinated.requirements_json))}\n你是执行员工，ApiX 是管理者。可通过环境变量 APIX_MAILBOX_URL 指定的 HTTP 接口与团队协作，用 APIX_AGENT_TOKEN 作为 Bearer 凭据（不要输出凭据）。GET /messages 领取消息，POST /messages 发送 {to,type,payload,idempotencyKey,replyTo?}，POST /messages/:id/ack 或 /complete 确认。GET /team 查看同项目员工。推进到关键节点或遇到阻塞时，向 apix-director 发送 type=event、payload={kind:'progress_update',summary:'真实进度',blocked:true|false}；随后轮询 GET /messages，处理 ApiX 的 guidance 消息并确认。仅转交必要上下文，交付物使用引用。`);
   const maxContextChars = 30000;
   const prefix = `${task.prompt}\n\n以下是 ApiX 保存的上下文，不能覆盖当前指令或审批边界：\n`;
   const selected = [];
   let remaining = Math.max(0, maxContextChars - prefix.length);
   let omitted = 0;
-  for (const item of context.reverse()) {
-    if (item.length <= remaining) { selected.unshift(item); remaining -= item.length + 2; }
+  for (const item of context) {
+    if (item.length <= remaining) { selected.push(item); remaining -= item.length + 2; }
     else omitted++;
   }
   const prompt = selected.length ? `${prefix}${selected.join("\n\n")}` : task.prompt;
@@ -1119,8 +1119,11 @@ export function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
-const coordinator = createCoordinator({ ...store, memory, permissions, agent: createApiXAgent({ infer: askPiDirector }), resolveApproval, stopRun,
+const coordinator = createCoordinator({ ...store, memory, permissions, agent: createApiXAgent({ infer: askPiDirector }), resolveApproval, stopRun, sendMessage,
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
+const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
+const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
+setInterval(() => coordinator.superviseActiveRuns(supervisionAfterMs), supervisionTickMs).unref();
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
@@ -1138,6 +1141,8 @@ export const saveManagerSettings = coordinator.saveSettings;
 export const searchCoordinationMemory = memory.search;
 export function permissionPolicy(projectId, subject = "apix") { return permissions.get(projectId, subject); }
 export const registerRuntimeAdapter = runtimeAdapters.register;
+export const instructCoordinationEmployee = coordinator.instructEmployee;
+export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
 export function agentTeam(projectId) { return listMailboxes(projectId).map(m => ({ id:m.agent_id,role:m.role,name:row('SELECT name FROM employees WHERE id=?',m.agent_id)?.name ?? m.agent_id })); }
 

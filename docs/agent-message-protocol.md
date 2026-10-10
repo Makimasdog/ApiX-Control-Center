@@ -59,6 +59,8 @@ Agent 运行结束会保存 `agent-response` artifact，并自动向 Director �
 
 经用户批准的任务启动时，Director 自动写入一条关联该任务的 `request`，交给执行员工的 mailbox 并记录确认处理。实际完整指令仍通过 Pi/Codex 运行适配器发送。运行结束时员工结果以 `response` 回复该请求；有输出时附加 artifact 引用，从而在同一 `correlation_id` 下查看派发与交付。
 
+执行中员工可发送 `type=event`、`payload={"kind":"progress_update","summary":"真实进度","blocked":false}` 到 `apix-director`。ApiX 核对该 Run 的任务、权限及已确认需求，决定是否发出 `payload.kind="guidance"` 的指导或向用户报告阻塞。长期没有进度报告时，ApiX 发送一次 `payload.kind="progress_request"`。用户在目标工作台发出的补充说明以 `source="user"` 标注。员工须调用 `/api/agent/messages` 读取并确认；消息发送成功只证明进入 mailbox，不代表外部 CLI 已采纳。
+
 ## 文件与资源锁
 
 `POST /api/locks/acquire` 需要 `projectId`、`agentId`、`resourceType`、`resourceKey`，可设置 `taskId` 和 `ttlMs`。锁类型为 `file`、`directory`、`repository`、`worktree`、`resource`。同项目同资源只能有一个未过期租约。持有者可调用 `/api/locks/:id/renew` 与 `/api/locks/:id/release`；Director 可强制释放。`POST /api/locks` 可查询活跃锁。锁到期后可重新获取。

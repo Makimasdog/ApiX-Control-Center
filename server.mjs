@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
 import { discussCoordinationSession, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory } from "./control-plane.mjs";
-import { registerRuntimeAdapter, authenticateAgent, agentTeam } from './control-plane.mjs';
+import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage } from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -40,7 +40,12 @@ createServer(async (request, response) => {
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
         let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
         const input = JSON.parse(body || '{}');
-        if (pathname === '/api/agent/messages') { send(200, sendMessage({...input,projectId:actor.project_id,from:actor.agent_id,taskId:actor.task_id})); return; }
+        if (pathname === '/api/agent/messages') {
+          const message = sendMessage({...input,projectId:actor.project_id,from:actor.agent_id,taskId:actor.task_id});
+          send(200,message);
+          void superviseWorkerMessage(message.id).catch(error => process.stderr.write(`ApiX guidance: ${error.message}\n`));
+          return;
+        }
         const match = /^\/api\/agent\/messages\/([^/]+)\/(ack|complete|nack)$/.exec(pathname);
         if (match) {
           if (messageDetails(match[1],actor.agent_id).message.project_id !== actor.project_id) throw new Error('消息不属于当前项目');
@@ -108,6 +113,7 @@ createServer(async (request, response) => {
       else if (/^\/api\/coordination\/sessions\/[^/]+\/confirm$/.test(pathname)) result = await confirmCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/dispatch$/.test(pathname)) result = dispatchCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/revise$/.test(pathname)) result = reviseCoordinationSession(pathname.split("/")[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/instructions$/.test(pathname)) result = instructCoordinationEmployee(pathname.split("/")[4], input);
       else if (pathname === "/api/projects") result = { id: createProject(input) };
       else if (/^\/api\/projects\/[^/]+\/profile$/.test(pathname)) result = saveProjectProfile(pathname.split("/")[3], input);
       else if (/^\/api\/projects\/[^/]+$/.test(pathname)) { updateProject(pathname.split("/")[3], input); result = { updated: true }; }
