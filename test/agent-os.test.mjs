@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { createServer } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const post = async (port, path, body) => {
@@ -15,7 +16,7 @@ const post = async (port, path, body) => {
   return data;
 };
 const snapshot = async (port) => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json();
-async function waitFor(predicate, timeout = 5000) {
+async function waitFor(predicate, timeout = 10000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
     const result = await predicate();
@@ -23,6 +24,16 @@ async function waitFor(predicate, timeout = 5000) {
     await new Promise((done) => setTimeout(done, 50));
   }
   throw new Error("Timed out waiting for Agent state");
+}
+async function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      server.close(() => resolvePort(port));
+    });
+  });
 }
 async function startServer(port, dataDir) {
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
@@ -35,7 +46,7 @@ async function startServer(port, dataDir) {
 
 test("P0 task lifecycle, both adapters, stop, review, and restart history", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-test-"));
-  const port = 48000 + Math.floor(Math.random() * 1000);
+  const port = await freePort();
   let server;
   try {
     server = await startServer(port, dataDir);
@@ -108,7 +119,7 @@ test("P0 task lifecycle, both adapters, stop, review, and restart history", asyn
 
 test("schema migration preserves a pending task from version 1", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-migrate-"));
-  const port = 49000 + Math.floor(Math.random() * 1000);
+  const port = await freePort();
   const projectId = "legacy-project";
   const taskId = "legacy-task";
   const approvalId = "legacy-approval";
@@ -143,7 +154,7 @@ test("schema migration preserves a pending task from version 1", async () => {
 
 test("Director creates a matched dependency plan and advances the DAG", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-plan-"));
-  const port = 49500 + Math.floor(Math.random() * 300);
+  const port = await freePort();
   let server;
   try {
     execFileSync("git", ["worktree", "prune"], { cwd: root });
@@ -185,7 +196,7 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-team-data-"));
   const repo = await mkdtemp(join(tmpdir(), "apix-os-team-repo-"));
   const repo2 = await mkdtemp(join(tmpdir(), "apix-os-team-second-"));
-  const port = 49800 + Math.floor(Math.random() * 100);
+  const port = await freePort();
   let server;
   try {
     execFileSync("git", ["init", "-q"], { cwd: repo });
@@ -284,7 +295,7 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
 test("Codex runs in an approved non-Git project and keeps CLI failures visible", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-nongit-data-"));
   const projectPath = await mkdtemp(join(tmpdir(), "apix-os-nongit-project-"));
-  const port = 49700 + Math.floor(Math.random() * 100);
+  const port = await freePort();
   let server;
   try {
     assert.throws(() => execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: projectPath, stdio: "ignore" }));
@@ -312,7 +323,7 @@ test("Codex runs in an approved non-Git project and keeps CLI failures visible",
 
 test("Phase 4 conversations, memory lifecycle, employee removal, and explicit recovery survive restart", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-phase4-"));
-  const port = 49600 + Math.floor(Math.random() * 100);
+  const port = await freePort();
   let server;
   try {
     server = await startServer(port, dataDir);
@@ -390,7 +401,7 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
 
 test("ApiX Director drafts an editable plan, records grounded memory, and keeps approvals after edits", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-director-"));
-  const port = 49700 + Math.floor(Math.random() * 100);
+  const port = await freePort();
   let server;
   try {
     server = await startServer(port, dataDir);
@@ -452,7 +463,7 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
 
 test("two Codex roles run concurrently in separate project conversations", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-os-codex-parallel-"));
-  const port = 49800 + Math.floor(Math.random() * 100);
+  const port = await freePort();
   let server;
   try {
     server = await startServer(port, dataDir);

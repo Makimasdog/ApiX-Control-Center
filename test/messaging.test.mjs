@@ -5,8 +5,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+async function freePort() {
+  return new Promise((resolvePort, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      server.close(() => resolvePort(port));
+    });
+  });
+}
 async function waitFor(predicate, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -30,7 +41,7 @@ async function get(port, path, expected = 200) {
 
 test("message protocol persists mailbox, correlation, idempotency, retry, timeout, locks, and Director interception", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-message-"));
-  const port = 50100 + Math.floor(Math.random() * 1000);
+  const port = await freePort();
   const server = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs") }, stdio: "ignore" });
   try {
     await waitFor(async () => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok);
