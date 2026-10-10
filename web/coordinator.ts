@@ -13,7 +13,7 @@ const root = document.querySelector<HTMLElement>('#page-coordinator')!;
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
 let snapshot: Snapshot = {projects:[],employees:[],artifacts:[],runs:[]};
-let projectId = ''; let sessionId = ''; let current: Session | null = null; let loading = false; let editingBrief = false; let planKey = ''; let draft: Step[] = []; let reloadVersion = 0;
+let projectId = ''; let sessionId = ''; let current: Session | null = null; let loading = false; let reloading = false; let editingBrief = false; let planKey = ''; let draft: Step[] = []; let reloadVersion = 0;
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
 const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'等待依赖',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -24,32 +24,32 @@ function notice(message: string, error = false) { $('#coord-notice').textContent
 async function action(work:()=>Promise<void>) {
   if (loading) return; loading=true; root.classList.add('is-busy'); notice('ApiX 正在处理…');
   try { await work(); notice('已保存'); await reload(); } catch(e) { notice(e instanceof Error ? e.message : String(e),true); }
-  finally { loading=false; root.classList.remove('is-busy'); }
+  finally { $('#coord-stream').hidden=true; loading=false; root.classList.remove('is-busy'); }
 }
 function modeOptions(mode: Mode) { return [['ask_approval','请求批准'],['full_access','完全访问'],['read_only','只读规划']].map(([v,l])=>`<option value="${v}" ${v===mode?'selected':''}>${l}</option>`).join(''); }
 function interactionOptions(mode: InteractionMode) { return [['conversational','对话模式'],['structured','约束模式']].map(([v,l])=>`<option value="${v}" ${v===mode?'selected':''}>${l}</option>`).join(''); }
 async function streamMessage(id:string,body:unknown) {
+  const output=$('#coord-stream'); const text=$('#coord-stream-text'); output.hidden=false; text.textContent='ApiX 正在思考…';$('#coord-turns').scrollTop=$('#coord-turns').scrollHeight;
   const response=await fetch(`/api/coordination/sessions/${id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!response.ok || !response.body) { let detail='流式连接失败'; try{detail=(await response.json()).error ?? detail;}catch{} throw new Error(detail); }
-  const output=$('#coord-stream'); output.hidden=false; output.textContent='';
-  const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer=''; let completed=false;
+  const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer=''; let completed=false; let receivedDelta=false;
   const consume=(frame:string)=>{let type='';let data='';for(const line of frame.split('\n')){if(line.startsWith('event: '))type=line.slice(7);if(line.startsWith('data: '))data=line.slice(6);}
     if(!data)return; const payload=JSON.parse(data);
-    if(type==='delta'){output.textContent+=payload.text;$('#coord-turns').scrollTop=$('#coord-turns').scrollHeight;}
+    if(type==='delta'){if(!receivedDelta)text.textContent='';receivedDelta=true;text.textContent+=payload.text;$('#coord-turns').scrollTop=$('#coord-turns').scrollHeight;}
     if(type==='error')throw new Error(payload.error);
-    if(type==='complete'){completed=true;output.hidden=true;output.textContent='';}
+    if(type==='complete'){completed=true;if(!receivedDelta)text.textContent=payload.turns?.at(-1)?.content ?? 'ApiX 已回复';}
   };
   try { while(true){const {done,value}=await reader.read();buffer+=decoder.decode(value ?? new Uint8Array(),{stream:!done});let index;while((index=buffer.indexOf('\n\n'))>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+2);}if(done)break;} if(!completed)throw new Error('对话连接中断，请刷新查看目标状态'); }
-  finally {output.hidden=true;output.textContent='';reader.releaseLock();}
+  finally {reader.releaseLock();}
 }
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
 <details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。自定义 URL 会在 ApiX 的独立 Pi 配置中生效。</p><form id="coord-model"><label>Provider<input name="provider" placeholder="使用 Pi 默认配置；自定义 URL 时自动设为 apix-custom"></label><label>模型 ID<input name="model" placeholder="使用 Pi 默认模型"></label><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="apiKeyEnv" placeholder="例如 APIX_MANAGER_API_KEY"></label><button class="outline-button">保存模型</button></form></details></aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
-<section id="coord-body" hidden><div class="coord-title"><h2 id="coord-title"></h2><span id="coord-status" class="coord-pill"></span></div>
-<div class="coord-columns"><section class="surface-card"><div class="coord-title"><h3>与 ApiX 沟通</h3><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"></div><div id="coord-stream" class="coord-stream" aria-live="polite" hidden></div><form id="coord-message"><label>补充需求或询问进展<textarea name="content" required maxlength="10000" placeholder="可以一次描述范围、约束和验收要求，也可以与 ApiX 逐步讨论。"></textarea></label><button class="primary-button">发送给 ApiX</button></form></section>
-<section class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">${fields.map(([key,label])=>`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')}<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
+<section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
+<div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
+<section id="coord-requirements" class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">${fields.map(([key,label])=>`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')}<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
 <section class="surface-card coord-section"><h3>权限由你决定</h3><p class="coord-muted">ApiX 与员工分别授权。请求批准会等待你审查计划；只读规划不会启动员工。更改权限将使已有执行授权失效。</p><div id="coord-permissions"></div></section>
 <section class="surface-card coord-section"><div class="coord-title"><h3>任务安排</h3><button id="coord-add-step" class="text-action">新增步骤</button></div><div id="coord-plan"></div><div class="coord-actions"><button id="coord-save-plan" class="outline-button">保存计划修改</button><button id="coord-dispatch" class="primary-button">批准此计划并执行</button></div><div id="coord-tasks"></div></section>
 <section id="coord-guidance-section" class="surface-card coord-section"><h3>指导正在执行的员工</h3><p class="coord-muted">ApiX 会依据员工的进度报告继续指导。你也可以补充当前任务范围内的说明；员工需在运行中读取 mailbox 才能收到。</p><form id="coord-instruction"><label>员工任务<select name="taskId"></select></label><label>补充说明<textarea name="content" required maxlength="2000" placeholder="例如：请优先核对已确认的验收标准。"></textarea></label><button class="outline-button">发送给员工</button></form></section>
@@ -58,13 +58,17 @@ root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MA
 <details class="surface-card coord-section"><summary>独立记忆与历史追溯</summary><form id="coord-history"><label>事件序号<input name="at" type="number" min="0" placeholder="留空查看当前"></label><button class="outline-button">重建该时刻状态</button></form><form id="coord-search"><label>检索项目记录<input name="q" required placeholder="需求、决策、执行记录中的关键词"></label><button class="outline-button">检索</button></form><pre id="coord-history-output"></pre></details></section></div>`;
 function render(s: Session) {
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
+  root.dataset.interactionMode=s.interaction_mode;
   $('#coord-title').textContent=s.title; $('#coord-status').textContent=statuses[s.derivedStatus] ?? s.derivedStatus;
+  $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'与 ApiX 对话':'需求澄清记录';
+  $('#coord-message-label').textContent=s.interaction_mode==='conversational'?'给 ApiX 发消息':'补充需求或询问进展';
   $<HTMLSelectElement>('#coord-interaction-mode').value=s.interaction_mode;
   $<HTMLSelectElement>('#coord-interaction-mode').disabled=!['clarifying','ready'].includes(s.status);
   $('#coord-score').textContent=`${Math.round(s.assessment.score*100)}% · v${s.revision}`;
   $('#coord-backend').textContent=s.agent.mode==='pi' ? 'ApiX 正在使用 Pi 推理底座' : `规则引导${s.agent.error ? ` · ${s.agent.error}` : ' · 发送消息后使用 Pi 深度澄清'}`;
   const turns=s.turns.map(t=>`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${esc(t.content)}</p></article>`).join('');
-  if ($('#coord-turns').innerHTML!==turns) { $('#coord-turns').innerHTML=turns; $('#coord-turns').scrollTop=$('#coord-turns').scrollHeight; }
+  const history=$('#coord-turns');
+  if (history.dataset.session!==s.id || history.dataset.rendered!==turns) {history.dataset.session=s.id;history.dataset.rendered=turns;history.querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());$('#coord-stream').insertAdjacentHTML('beforebegin',turns);history.scrollTop=history.scrollHeight;}
   if (!editingBrief) for(const [key] of fields) $<HTMLTextAreaElement>(`#coord-brief [name="${key}"]`).value=s.requirements[key!] ?? '';
   const editable=['clarifying','ready'].includes(s.status);
   root.querySelectorAll<HTMLTextAreaElement>('#coord-brief textarea').forEach(t=>t.disabled=!editable);
@@ -92,25 +96,28 @@ function renderPlan() {
 }
 function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map(el=>({prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
 async function reload() {
-  const version = ++reloadVersion; const selectedProject = projectId;
-  if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
-  const list=await api<Session[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}`);
-  if(version!==reloadVersion || selectedProject!==projectId) return;
-  if(!list.some(s=>s.id===sessionId)) sessionId=list[0]?.id ?? '';
-  $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
-  const selected=list.find(s=>s.id===sessionId); if(selected) render(selected); else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
+  const version = ++reloadVersion; const selectedProject = projectId; reloading=true;
+  try {
+    if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
+    const list=await api<Session[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}`);
+    if(version!==reloadVersion || selectedProject!==projectId) return;
+    if(!list.some(s=>s.id===sessionId)) sessionId=list[0]?.id ?? '';
+    $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
+    const selected=list.find(s=>s.id===sessionId); if(selected) render(selected); else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
+  } finally {if(version===reloadVersion)reloading=false;}
 }
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   if(projectId!==event.detail.projectId) {projectId=event.detail.projectId;sessionId='';editingBrief=false;planKey='';}
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
-  if(!loading) void reload().catch(e=>notice(String(e),true));
+  if(root.classList.contains('active-page') && !loading && !reloading) void reload().catch(e=>notice(String(e),true));
 }) as EventListener);
-document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{sessionId=event.detail;editingBrief=false;planKey='';document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();void reload().catch(e=>notice(String(e),true));}) as EventListener);
+document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(event.detail==='coordinator' && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
+document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{sessionId=event.detail;editingBrief=false;planKey='';document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 $('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});sessionId=created.id;editingBrief=false;form.reset();});});
 $('#coord-message').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await streamMessage(sessionId,{revision:current!.revision,content:new FormData(form).get('content')});editingBrief=false;form.reset();});});
-$('#coord-interaction-mode').addEventListener('change',event=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/mode`,{revision:current!.revision,mode:(event.target as HTMLSelectElement).value});}));
+$('#coord-interaction-mode').addEventListener('change',event=>{const mode=(event.target as HTMLSelectElement).value;void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/mode`,{revision:current!.revision,mode});}).then(()=>{if(current?.interaction_mode==='conversational')$<HTMLTextAreaElement>('#coord-message textarea').focus();});});
 $('#coord-brief').addEventListener('input',()=>editingBrief=true);
 $('#coord-brief').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const values=new FormData(event.target as HTMLFormElement);for(const [field] of fields){const value=String(values.get(field!) ?? '');if(value!==current!.requirements[field!])current=await api<Session>(`/api/coordination/sessions/${sessionId}/answers`,{revision:current!.revision,field,value});}editingBrief=false;});});
 $('#coord-confirm').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/confirm`,{revision:current!.revision});}));

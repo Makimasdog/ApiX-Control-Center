@@ -115,7 +115,13 @@ test('interaction modes, conversation SSE and custom Pi endpoint persist across 
   await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:changed.revision,mode:'invalid'},400);
   const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
   assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,'http://127.0.0.1:11434/v1');
-  await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:changed.revision,content:'继续澄清'});
+  const conversation=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:changed.revision,content:'继续澄清'})});
+  const conversationFrames=(await conversation.text()).split('\n\n').filter(Boolean);
+  assert.equal(conversation.status,200);
+  assert(conversationFrames.some(frame=>frame.startsWith('event: delta\n')));
+  const conversationComplete=conversationFrames.find(frame=>frame.startsWith('event: complete\n'));
+  assert(conversationComplete);
+  assert.equal(JSON.parse(conversationComplete.split('data: ')[1]).interaction_mode,'conversational');
   const generated=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
   assert.equal(generated.providers['apix-custom'].baseUrl,settings.baseUrl);
   assert.equal(generated.providers['apix-custom'].models[0].id,'qwen-test');

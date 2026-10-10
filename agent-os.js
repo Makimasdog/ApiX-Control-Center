@@ -72,6 +72,7 @@ function go(page) {
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $("#breadcrumb-page").textContent = { overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 async function refresh() {
   try {

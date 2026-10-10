@@ -3,3 +3,17 @@
 .coord-mode{display:flex!important;align-items:center;gap:8px;white-space:nowrap}.coord-mode select{min-width:112px}.coord-stream{white-space:pre-wrap;border-left:3px solid #6796ec;background:#f4f7ff;border-radius:8px;padding:12px 14px;margin:12px 0;font-size:13px;line-height:1.8}.employee-link{border:0;background:none;color:inherit;font:inherit;font-weight:inherit;padding:0;text-align:left;cursor:pointer}.employee-link:hover{text-decoration:underline}.employee-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.employee-metrics .surface-card{display:grid;gap:9px}.employee-metrics strong{font-size:22px}.employee-metrics span{font-size:12px;color:#74747b}.employee-task{padding:16px 0;border-bottom:1px solid #ededf1}.employee-task>div{display:flex;justify-content:space-between;gap:16px;align-items:start}.employee-task strong{font-size:14px;line-height:1.6}.employee-task p{font-size:12px;color:#74747b;line-height:1.7}.employee-task small{color:#466187}@media(max-width:800px){.employee-metrics{grid-template-columns:1fr}.coord-mode{align-items:start;flex-direction:column}}
 @media(max-width:1100px){.coord-layout{grid-template-columns:1fr}.coord-rail{display:block}.coord-rail form,.coord-rail details{margin-bottom:16px}}
 @media(max-width:1100px){.coord-header{display:block}.coord-header select{max-width:360px;margin-top:12px}}
+#page-coordinator[data-interaction-mode="conversational"] .coord-columns{grid-template-columns:minmax(0,1.4fr) minmax(290px,.8fr)}
+#page-coordinator[data-interaction-mode="structured"] .coord-columns{grid-template-columns:minmax(290px,.8fr) minmax(0,1.2fr)}
+#page-coordinator[data-interaction-mode="structured"] #coord-requirements{order:-1}
+.coord-header h1{font-size:30px}.coord-header select{width:min(320px,100%);flex:none}
+.coord-goal-head{align-items:start}.coord-goal-head h2{min-width:0;overflow-wrap:anywhere}.coord-head-controls{display:flex;align-items:center;gap:12px;flex:none}.coord-head-controls .coord-mode select{min-width:112px}
+#coord-conversation{display:flex;flex-direction:column;min-width:0;min-height:560px}
+#coord-conversation .coord-turns{flex:1;min-height:260px;max-height:520px;margin:8px 0 0;padding:0 4px 10px 0}
+#coord-conversation .coord-composer{margin-top:auto;padding-top:16px;border-top:1px solid #e8ebf2}
+#coord-conversation .coord-composer textarea{min-height:84px;border-radius:8px}
+#coord-conversation .coord-composer button{justify-self:end}
+#coord-conversation .coord-stream{background:#f4f7ff;border:0;border-left:3px solid #6796ec;border-radius:6px;padding:12px 14px;margin:8px 0}
+#coord-conversation .coord-stream p{margin-bottom:0}
+@media(max-width:1450px){#page-coordinator[data-interaction-mode] .coord-columns{grid-template-columns:1fr}#coord-conversation{min-height:500px}}
+@media(max-width:700px){.coord-goal-head{display:grid}.coord-head-controls{justify-content:space-between;flex-wrap:wrap}}
