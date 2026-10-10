@@ -377,12 +377,17 @@ function launch(task) {
     if (runtimeAdapters.format(task.runtime) === "plain") { running.get(runId).output += chunk.toString('utf8'); return; }
     buffer += chunk.toString("utf8");
     let index;
-    while ((index = buffer.indexOf("\n")) !== -1) {
-      const line = buffer.slice(0, index).replace(/\r$/, ""); buffer = buffer.slice(index + 1);
-      if (!line.trim()) continue;
-      try { handleNative(runId, task.runtime, JSON.parse(line)); }
-      catch { event(runId, task.runtime, "unparsed_stdout", { text: line.slice(0, 3000) }); }
-    }
+    // One durable commit per received chunk keeps event bursts from issuing
+    // hundreds of synchronous disk flushes while the HTTP loop is blocked.
+    db.exec('SAVEPOINT runtime_chunk');
+    try {
+      while ((index = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, index).replace(/\r$/, ""); buffer = buffer.slice(index + 1);
+        if (!line.trim()) continue;
+        try { handleNative(runId, task.runtime, JSON.parse(line)); }
+        catch { event(runId, task.runtime, "unparsed_stdout", { text: line.slice(0, 3000) }); }
+      }
+    } finally { db.exec('RELEASE runtime_chunk'); }
   });
   child.stderr.on("data", (chunk) => {
     const value = chunk.toString("utf8");

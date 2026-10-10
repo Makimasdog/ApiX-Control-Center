@@ -18,7 +18,7 @@ const post = async (port, path, body) => {
 };
 const snapshot = async (port) => {
   try { return await (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json(); }
-  catch (error) { throw new Error(`ApiX snapshot failed: ${error.message}; server stderr: ${serverErrors.get(port) ?? ""}`); }
+  catch (error) { throw new Error(`ApiX snapshot failed: ${error.message}; cause: ${error.cause?.code ?? error.cause ?? "unknown"}; server stderr: ${serverErrors.get(port) ?? ""}`); }
 };
 async function waitFor(predicate, timeout = 10000) {
   const started = Date.now();
