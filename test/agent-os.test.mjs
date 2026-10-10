@@ -9,13 +9,17 @@ import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const serverErrors = new Map();
 const post = async (port, path, body) => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await response.json();
   assert.equal(response.status, 200, JSON.stringify(data));
   return data;
 };
-const snapshot = async (port) => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json();
+const snapshot = async (port) => {
+  try { return await (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json(); }
+  catch (error) { throw new Error(`ApiX snapshot failed: ${error.message}; server stderr: ${serverErrors.get(port) ?? ""}`); }
+};
 async function waitFor(predicate, timeout = 10000) {
   const started = Date.now();
   while (Date.now() - started < timeout) {
@@ -38,7 +42,7 @@ async function freePort() {
 async function startServer(port, dataDir) {
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
-  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); });
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); serverErrors.set(port, stderr); });
   try { await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok; } catch { return false; } }); }
   catch (error) { throw new Error(`ApiX server did not start (exit ${child.exitCode}): ${stderr || error.message}`); }
   return child;

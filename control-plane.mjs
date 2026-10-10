@@ -535,7 +535,7 @@ function recordOutput(runId, output, status) {
 }
 
 function gitRoot(projectPath) {
-  try { return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: projectPath, encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; }
+  try { return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: projectPath, encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return null; }
 }
 function workspaceFor(task, project) {
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
