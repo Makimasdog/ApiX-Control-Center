@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
@@ -996,7 +996,8 @@ export function addRepository(input) {
   const path = resolve(String(input.path ?? "").trim());
   const name = String(input.name ?? "").trim().slice(0, 100);
   const root = gitRoot(path);
-  if (!project || !name || !input.path || !existsSync(path) || !root || resolve(root).toLowerCase() !== path.toLowerCase()) throw new Error("请选择项目及独立的 Git 仓库根目录");
+  const sameRoot = root && existsSync(path) && realpathSync.native(root).toLowerCase() === realpathSync.native(path).toLowerCase();
+  if (!project || !name || !input.path || !sameRoot) throw new Error(`请选择项目及独立的 Git 仓库根目录（所选：${path}；检测到：${root ?? "无"}）`);
   const id = randomUUID();
   db.prepare("INSERT INTO project_repositories(id,project_id,name,path) VALUES (?,?,?,?)").run(id, project.id, name, path);
   return id;
