@@ -1,15 +1,37 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { createTaskScheduler } from '../src/task-scheduler.mjs';
+import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+test('Windows npm shims resolve package bin entries without a shell', {skip:process.platform!=='win32'}, async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-shims-'));
+  const db=new DatabaseSync(':memory:');
+  try {
+    for(const [runtime,packageName,entry] of [['gemini','@google/gemini-cli','bundle/gemini.js'],['opencode','opencode-ai','bin/opencode.exe']]) {
+      const packageDir=join(dir,'node_modules',packageName);
+      await mkdir(dirname(join(packageDir,entry)),{recursive:true});
+      await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{[runtime]:entry}}));
+      await writeFile(join(packageDir,entry),'fixture');
+      await writeFile(join(dir,`${runtime}.cmd`),'fixture');
+    }
+    const row=(sql,...params)=>db.prepare(sql).get(...params);
+    const rows=(sql,...params)=>db.prepare(sql).all(...params);
+    const adapters=createRuntimeAdapters({db,row,rows,now:()=>new Date().toISOString()},name=>['gemini','opencode'].includes(name)?join(dir,`${name}.cmd`):null);
+    assert.equal(adapters.command('gemini').executable,process.execPath);
+    assert.equal(adapters.command('gemini').prefix[0],join(dir,'node_modules','@google','gemini-cli','bundle','gemini.js'));
+    assert.equal(adapters.command('opencode').executable,join(dir,'node_modules','opencode-ai','bin','opencode.exe'));
+    assert.equal(adapters.command('kimi'),null);
+    assert.equal(adapters.catalog().find(item=>item.id==='kimi').available,false);
+  } finally {db.close();await rm(dir,{recursive:true,force:true});}
+});
 const delay = ms => new Promise(r=>setTimeout(r,ms));
 async function waitFor(predicate) {
   for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
@@ -141,6 +163,44 @@ test('employee details combine task history, progress and measured runtime usage
   assert.equal(details.usage.measuredRuns,1);
   await h.request('/api/employees/nonexistent/details',undefined,400);
 }));
+test('Gemini, OpenCode and Kimi execute through approved plans and collect structured results',async()=>harness(async h=>{
+  const {projectId,s}=await setup(h,'gemini');
+  const employees={gemini:(await h.request('/api/snapshot')).employees[0].id};
+  for(const runtime of ['opencode','kimi']) employees[runtime]=(await h.request('/api/employees',{name:`${runtime} worker`,runtime,role:'Developer'})).id;
+  const catalog=(await h.request('/api/snapshot')).runtimes;
+  for(const runtime of Object.keys(employees)) assert(catalog.some(item=>item.id===runtime&&item.available&&item.managed));
+  let plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  plan=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:plan.revision,planVersion:plan.planVersion,steps:Object.entries(employees).map(([runtime,employeeId])=>({prompt:`Ask ${runtime} to inspect`,employeeId,dependsOn:[]}))});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.derivedStatus==='awaiting_acceptance'&&state;});
+  const state=await h.request('/api/snapshot');
+  for(const [runtime,employeeId] of Object.entries(employees)) {
+    const task=state.tasks.find(item=>item.employee_id===employeeId);
+    assert.equal(task.status,'completed',JSON.stringify(task));
+    assert.match(task.result,new RegExp(runtime==='opencode'?'OpenCode result':runtime==='gemini'?'Gemini result':'Kimi result'));
+    assert(state.artifacts.some(item=>item.run_id===state.runs.find(run=>run.task_id===task.id).id));
+    assert(state.messages.some(item=>item.task_id===task.id&&item.type==='response'&&item.to_agent==='apix-director'));
+    const details=await h.request(`/api/employees/${employeeId}/details`);
+    assert.equal(details.usage.measuredRuns,1);
+  }
+  assert.equal((await h.request(`/api/employees/${employees.gemini}/details`)).usage.inputTokens,41);
+  assert.equal((await h.request(`/api/employees/${employees.opencode}/details`)).usage.outputTokens,15);
+  assert.equal((await h.request(`/api/employees/${employees.kimi}/details`)).usage.cachedTokens,5);
+  assert(state.events.some(item=>item.source==='gemini-stream'&&item.kind==='message'));
+  assert(state.events.some(item=>item.source==='opencode-stream'&&item.kind==='text'));
+  assert(state.events.some(item=>item.source==='kimi-stream'&&item.kind==='result'));
+  assert.equal(projectId,state.projects[0].id);
+},{APIX_GEMINI_ENTRY:join(root,'test/fake-provider.mjs'),APIX_OPENCODE_ENTRY:join(root,'test/fake-provider.mjs'),APIX_KIMI_ENTRY:join(root,'test/fake-provider.mjs')}));
+
+test('structured provider error fails a run even when its process exits zero',async()=>harness(async h=>{
+  const {s}=await setup(h,'gemini');
+  const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+  await waitFor(async()=>{const state=await h.request('/api/snapshot');return state.tasks.some(item=>item.status==='failed')&&state;});
+  const state=await h.request('/api/snapshot');
+  assert.equal(state.runs[0].status,'failed');
+  assert.match(state.tasks[0].result,/gemini fixture error/);
+},{APIX_GEMINI_ENTRY:join(root,'test/fake-provider.mjs'),APIX_FIXTURE_FAIL_RUNTIME:'gemini'}));
 test('custom worker exchanges project-scoped mailbox messages using its run credential',async()=>harness(async h=>{
   const worker=join(h.dir,'mailbox-worker.mjs');
   await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{

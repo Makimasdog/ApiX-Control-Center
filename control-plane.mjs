@@ -13,6 +13,7 @@ import { createMemory as createEventMemory } from "./dist/src/memory.js";
 import { createPermissions } from "./dist/src/permissions.js";
 import { createApiXAgent } from "./dist/src/apix-agent.js";
 import { createRuntimeAdapters } from "./dist/src/runtime-adapters.js";
+import { normalizeWorkerEvent } from "./dist/src/worker-events.js";
 import { createAgentMailbox } from "./dist/src/agent-mailbox.js";
 import { createEmployeeInsights } from "./dist/src/employee-insights.js";
 
@@ -465,6 +466,15 @@ function handleNative(runId, runtime, item) {
     if (type === 'assistant') active.output = textFromMessage(item.message) || active.output;
     if (type === 'result') { active.failed = item.is_error === true; if (typeof item.result === 'string') active.output = item.result; }
     event(runId, 'claude-stream', type, item);
+  } else if (["gemini", "opencode", "kimi"].includes(runtime)) {
+    const normalized = normalizeWorkerEvent(runtime, item);
+    if (normalized?.text) active.output = normalized.textMode === 'append' ? active.output + normalized.text : normalized.text;
+    if (normalized?.failed) {
+      active.failed = true;
+      const errorText = typeof item.error === 'string' ? item.error : item.error?.message ?? item.message;
+      if (typeof errorText === 'string') active.stderr = (active.stderr + errorText).slice(-4000);
+    }
+    event(runId, `${runtime}-stream`, normalized?.kind ?? type, item);
   } else {
     if (type === 'result' && typeof item.text === 'string') active.output = item.text;
     if (type === 'error') active.failed = true;

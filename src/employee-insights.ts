@@ -22,6 +22,21 @@ export function createEmployeeInsights(store: Store) {
       const u=object(item.usage); const input=number(u.input_tokens); const output=number(u.output_tokens);
       if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:(number(u.cache_read_input_tokens) ?? 0)+(number(u.cache_creation_input_tokens) ?? 0),source:'claude-stream'};
     }
+    if (runtime === 'gemini' && item.type === 'result') {
+      const u=object(item.stats ?? item.usage);
+      const input=number(u.input_tokens); const output=number(u.output_tokens);
+      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:number(u.cached_tokens) ?? 0,source:'gemini-stream'};
+    }
+    if (runtime === 'opencode' && item.type === 'step_finish') {
+      const tokens=object(object(item.part).tokens);
+      const input=number(tokens.input); const output=number(tokens.output);
+      if (input !== null || output !== null) {usage={input:input ?? 0,output:output ?? 0,cached:number(object(tokens.cache).read) ?? 0,source:'opencode-json'}; additive=true;}
+    }
+    if (runtime === 'kimi' && item.type === 'result') {
+      const u=object(item.usage);
+      const input=number(u.input_tokens); const output=number(u.output_tokens);
+      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:number(u.cached_input_tokens) ?? 0,source:'kimi-stream'};
+    }
     if (!usage) return;
     if (additive) db.prepare('INSERT INTO apix_run_usage VALUES (?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET input_tokens=apix_run_usage.input_tokens+excluded.input_tokens,output_tokens=apix_run_usage.output_tokens+excluded.output_tokens,cached_tokens=apix_run_usage.cached_tokens+excluded.cached_tokens,updated_at=excluded.updated_at').run(runId,usage.input,usage.output,usage.cached,usage.source,store.now());
     else db.prepare('INSERT INTO apix_run_usage VALUES (?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET input_tokens=excluded.input_tokens,output_tokens=excluded.output_tokens,cached_tokens=excluded.cached_tokens,source=excluded.source,updated_at=excluded.updated_at').run(runId,usage.input,usage.output,usage.cached,usage.source,store.now());

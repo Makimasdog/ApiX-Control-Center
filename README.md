@@ -4,7 +4,7 @@ ApiX 是用户的管理者 Agent：与用户澄清需求、规划和分派任务
 
 ## 启动
 
-需要 Node.js 22.19 或更新版本、Git，以及已安装并认证的 Pi（管理者推理）。执行员工可使用 Pi、Codex CLI、Claude Code 或显式注册的自定义 CLI。
+需要 Node.js 22.19 或更新版本、Git，以及已安装并认证的 Pi（管理者推理）。执行员工可使用 Pi、Codex CLI、Claude Code、Gemini CLI、OpenCode、Kimi Code 或显式注册的自定义 CLI；每种 CLI 都需单独安装和认证。
 
 ```powershell
 cd E:\Projects\wyy\ApiX-Control-Center
@@ -35,7 +35,9 @@ ApiX 目标对话使用独立的 POST SSE 流，逐步展示模型生成的澄�
 
 ## 运行时配置
 
-可用 APIX_PI_ENTRY、APIX_CODEX_ENTRY、APIX_CLAUDE_ENTRY 指定对应 Node CLI 入口；APIX_MANAGER_PI_ENTRY 可单独指定管理者 Pi 入口。环境变量值均为 JavaScript 入口绝对路径。
+可用 APIX_PI_ENTRY、APIX_CODEX_ENTRY、APIX_CLAUDE_ENTRY、APIX_GEMINI_ENTRY、APIX_OPENCODE_ENTRY、APIX_KIMI_ENTRY 指定对应 CLI 入口；APIX_MANAGER_PI_ENTRY 可单独指定管理者 Pi 入口。环境变量值为 JavaScript 入口或原生可执行文件的绝对路径，不接受 .cmd/.bat/.ps1。Windows 上全局 npm 安装的命令会根据包清单定位实际入口，找不到入口时显示为未安装。
+
+Gemini 使用 stream-json，OpenCode 使用 `run --format json`，Kimi 使用 `--print --output-format=stream-json`。ApiX 通过标准输入传入任务，在统一 Run 中收集事件、结果和用量。请求批准指 ApiX 的任务启动审批；Gemini 的普通模式使用 `auto_edit`、完全访问使用 `--yolo`。OpenCode 与 Kimi 的工具权限仍由各自 CLI 配置决定，ApiX 不提供操作系统级隔离。首次使用请在终端分别完成 CLI 登录，并运行一个小任务验证版本、权限及工作目录行为。
 
 自定义 CLI 在“任务与员工”登记可执行文件、参数数组及输出格式；Qoder 等需提供并验证非交互 CLI 或包装器。Trae、Qoder、WorkBuddy 的桌面应用发现不代表可托管执行。
 
@@ -54,4 +56,4 @@ npm test
 - [功能与限制](docs/功能与限制.md)：本版本能力边界。
 - [消息协议](docs/agent-message-protocol.md)、[分支管理](docs/分支管理.md)、[第三方来源](THIRD_PARTY.md)。
 
-测试使用假 CLI 和隔离数据库，不调用真实模型。服务仅监听本机；管理 API 采用可信本机模式，不能直接暴露到网络。已有数据保留，旧直接派发 API 默认关闭；APIX_LEGACY_API=1 仅用于兼容旧流程和历史回归。
+测试使用假 CLI 和隔离数据库，不调用真实模型；当前机器未安装 Gemini/OpenCode/Kimi，尚未完成真实 CLI 联调。服务仅监听本机；管理 API 采用可信本机模式，不能直接暴露到网络。已有数据保留，旧直接派发 API 默认关闭；APIX_LEGACY_API=1 仅用于兼容旧流程和历史回归。

@@ -55,7 +55,7 @@ test("P0 task lifecycle, both adapters, stop, review, and restart history", asyn
   try {
     server = await startServer(port, dataDir);
     const initial = await snapshot(port);
-    assert(initial.runtimes.filter((item) => item.managed).every((item) => item.available));
+    assert(["pi", "codex", "claude"].every((id) => initial.runtimes.some((item) => item.id === id && item.available && item.managed)));
     const { id: projectId } = await post(port, "/api/projects", { name: "Test project", path: root });
     const employees = {};
     for (const runtime of ["pi", "codex"]) {
