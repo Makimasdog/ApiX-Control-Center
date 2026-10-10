@@ -28,10 +28,13 @@ npm test
 ## 架构与边界
 
 - `server.mjs`：本机 HTTP API、静态页面和 SSE 事件流。
-- `control-plane.mjs`：Director、项目、任务、审批、Agent mailbox、消息策略、SQLite 存储和运行适配器。
+- `control-plane.mjs`：Director、项目、任务、审批、SQLite 建表与迁移、运行适配器，以及模块装配。
+- `src/mailbox.mjs`：项目 mailbox、消息权限和状态、超时重试、Director 拦截、交付物引用与资源锁的实际实现。
+- `src/task-scheduler.mjs`：已批准任务的依赖检查、阻塞传播和可运行任务启动。
 - `agent-discovery.mjs`：本机桌面 Agent 发现。
 - `agent-os.js` 与 `index.html`：Web 工作台和监督界面。
 - `docs/agent-message-protocol.md`：消息信封、权限、超时、重试、锁和事件协议。
+- `docs/代码索引.md`：从 HTTP 请求到调度、运行、mailbox 与事件流的代码入口。
 - `docs/ApiX Agent OS.md`：产品目标与阶段设计。
 
 批准任务后，ApiX 才启动 Pi RPC 或 Codex CLI 进程。计划任务使用独立 Git worktree；普通任务使用项目目录，可能发生文件冲突。资源锁是 ApiX 内部协作租约，不能阻止外部程序修改文件。当前 HTTP API 没有独立 Agent 身份认证，仅适合本机使用。
