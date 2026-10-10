@@ -1,0 +1,18 @@
+.director-dialogue{max-width:1080px}
+.conversation-header .card-actions{flex-wrap:wrap;justify-content:flex-end}
+.director-messages{display:grid;gap:10px;max-height:420px;overflow:auto;margin-top:15px;padding:4px}
+.director-message{max-width:85%;padding:13px 16px;border:1px solid #e8ebf2;border-radius:14px;background:#f8faff}
+.director-message.user{justify-self:end;background:#edf3ff;border-color:#dce8ff}
+.director-message.assistant{justify-self:start;background:#fff}
+.director-message strong{font-size:11px;color:#4b6fbd}
+.director-message p{margin:7px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.65;color:#4d5b70}
+.director-message small{font-size:9px;color:#9aa7b7}
+#director-proposal .surface-card>p{font-size:11px;color:#7f8b9a}
+.director-step-list{display:grid;gap:12px}
+.director-step{display:grid;grid-template-columns:minmax(0,2fr) minmax(150px,1fr) minmax(140px,.7fr);gap:12px;padding:15px;border:1px solid #e7ebf2;border-radius:12px;background:#fbfcff}
+.director-step>strong{grid-column:1/-1;color:#5871a2;font-size:11px}
+.director-step textarea{min-height:76px}
+.task-details-dialog{width:min(700px,calc(100vw - 28px))}
+.task-details-dialog #task-details-content{max-height:65vh;overflow:auto;font-size:11px;line-height:1.6;color:#536177}
+.task-details-dialog pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:9px;background:#f7f9fc}
+@media(max-width:800px){.director-step{grid-template-columns:1fr}.director-message{max-width:100%}.conversation-header{align-items:flex-start;flex-direction:column}.conversation-header .card-actions{justify-content:flex-start}}

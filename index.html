@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f5f7" />
+    <title>ApiX · 你的智能工作台</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./phase4.css" />
+    <link rel="stylesheet" href="./director.css" />
+    <script type="module" src="./agent-os.js"></script>
+  </head>
+  <body>
+    <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 2 1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></symbol>
+      <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="icon-cube" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="M3 7v10l9 5 9-5V7M12 12v10"/></symbol>
+      <symbol id="icon-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+      <symbol id="icon-layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 17l9 5 9-5"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.8 1.8 0 0 0 .35 2l.1.1-2.1 2.1-.1-.1a1.8 1.8 0 0 0-2-.35 1.8 1.8 0 0 0-1.1 1.65V21h-3v-.15A1.8 1.8 0 0 0 10.4 19a1.8 1.8 0 0 0-2 .35l-.1.1-2.1-2.1.1-.1a1.8 1.8 0 0 0 .35-2A1.8 1.8 0 0 0 5 14.15H4v-3h1A1.8 1.8 0 0 0 6.65 10a1.8 1.8 0 0 0-.35-2l-.1-.1 2.1-2.1.1.1a1.8 1.8 0 0 0 2 .35A1.8 1.8 0 0 0 11.5 4.6V4h3v.6A1.8 1.8 0 0 0 15.6 6.25a1.8 1.8 0 0 0 2-.35l.1-.1 2.1 2.1-.1.1a1.8 1.8 0 0 0-.35 2A1.8 1.8 0 0 0 21 11.15v3h-.6A1.8 1.8 0 0 0 19.4 15Z"/></symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24"><path d="m12 19 0-14M5 12l7-7 7 7"/></symbol>
+      <symbol id="icon-dots" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+      <symbol id="icon-terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="m6 9 3 3-3 3M12 16h5"/></symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24"><path d="M6 2h8l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M14 2v5h5"/></symbol>
+      <symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></symbol>
+      <symbol id="icon-close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></symbol>
+    </svg>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <button class="brand" id="brand-home" aria-label="ApiX 工作台">
+          <span class="brand-mark"><svg class="icon"><use href="#icon-spark"/></svg></span>
+          <span class="brand-copy"><strong>ApiX</strong><small>Intelligence, refined.</small></span>
+        </button>
+
+        <div class="sidebar-section nav-section">
+          <div class="section-caption">工作空间</div>
+          <nav class="nav-list" aria-label="主导航">
+            <button class="nav-item active" data-page-target="workspace" aria-label="工作台"><svg class="icon"><use href="#icon-grid"/></svg><span>工作台</span><span class="nav-dot"></span></button>
+            <button class="nav-item" data-page-target="director" aria-label="Director"><svg class="icon"><use href="#icon-spark"/></svg><span>Director</span></button>
+            <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
+            <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
+            <button class="nav-item" data-page-target="models" aria-label="模型配置"><svg class="icon"><use href="#icon-cube"/></svg><span>模型配置</span></button>
+            <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
+            <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button>
+          </nav>
+        </div>
+
+        <div class="sidebar-section project-section">
+          <div class="section-heading"><span class="section-caption">我的项目</span><button class="icon-button tiny" id="sidebar-add-project" title="添加项目" aria-label="添加项目"><svg class="icon"><use href="#icon-plus"/></svg></button></div>
+          <div id="sidebar-projects" class="sidebar-projects"></div>
+        </div>
+
+        <div class="sidebar-bottom">
+          <div class="local-badge"><span class="status-pulse"></span><span>本地工作台</span><span class="badge-meta">真实运行</span></div>
+          <button class="profile-card" id="open-about">
+            <span class="avatar">A</span>
+            <span class="profile-copy"><strong>ApiX Studio</strong><small>个人工作空间</small></span>
+            <svg class="icon"><use href="#icon-dots"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div class="breadcrumb"><span>ApiX</span><svg class="icon"><use href="#icon-chevron"/></svg><strong id="breadcrumb-page">工作台</strong></div>
+          <div class="topbar-actions"><span class="preview-chip"><span class="preview-dot"></span>本地预览</span><span class="topbar-divider"></span><button id="top-model-button" class="top-model-button"><span class="top-model-icon"><svg class="icon"><use href="#icon-spark"/></svg></span><span id="top-model-name">选择模型</span><svg class="icon chevron-down"><use href="#icon-chevron"/></svg></button></div>
+        </header>
+
+        <main id="page-workspace" class="page workspace-page active-page">
+          <section class="conversation-area">
+            <div class="conversation-header"><div><div class="eyebrow"><span class="eyebrow-line"></span> 你的智能工作台</div><h1>让想法，<span>自然发生。</span></h1><p>选择项目和 Agent，派发真实任务并追踪结果。</p></div><div class="card-actions"><button class="primary-button" id="talk-to-director">与 ApiX 沟通</button><button class="outline-button" id="new-conversation"><svg class="icon"><use href="#icon-plus"/></svg>新员工对话</button></div></div>
+            <div class="conversation-context"><span class="context-label">当前项目</span><button id="workspace-project-button" class="context-project"><span id="workspace-project-icon" class="project-icon violet"><svg class="icon"><use href="#icon-folder"/></svg></span><span id="workspace-project-name">选择项目</span><svg class="icon chevron-down"><use href="#icon-chevron"/></svg></button><span class="context-separator"></span><span class="context-label">任务 · <span id="message-count">0</span> 条记录</span></div>
+            <div class="conversation-switcher"><div class="conversation-switcher-heading"><strong id="conversation-name">新对话</strong><span>项目内对话</span></div><div id="conversation-list" class="conversation-list" aria-label="当前项目的对话"></div></div>
+            <div id="chat-scroll" class="chat-scroll"><div id="chat-list" class="chat-list" aria-live="polite"></div></div>
+            <div class="composer-wrap"><div class="demo-notice"><svg class="icon"><use href="#icon-spark"/></svg><span>手动并行任务共享项目目录，可能改动同一文件。多 Agent 编码建议使用 Director 的独立 worktree 计划。每个 Run 启动前都要审批。</span></div><form id="chat-form" class="composer"><textarea id="chat-input" rows="2" placeholder="描述要交给 Agent 的任务…" aria-label="输入任务"></textarea><div class="composer-bottom"><div class="composer-hints"><select id="employee-select" aria-label="选择员工"></select><button id="parallel-submit" class="text-action" type="button" title="在新的独立对话中派发当前输入">并行新对话派发</button><span class="hint-pill muted">Enter 创建任务 · Shift + Enter 换行</span></div><button class="send-button" type="submit" aria-label="创建任务"><svg class="icon"><use href="#icon-send"/></svg></button></div></form></div>
+          </section>
+
+          <aside class="activity-panel"><div class="activity-heading"><div><div class="eyebrow tiny-eyebrow">LIVE ACTIVITY</div><h2>Agent 活动</h2></div><span class="activity-count" id="activity-count">00</span></div><div class="activity-intro">来自 Agent 接口或本地进程的事件。</div><div id="activity-list" class="activity-list"></div><div class="activity-footer"><div class="activity-footer-icon"><svg class="icon"><use href="#icon-spark"/></svg></div><div><strong>状态来源</strong><span>运行状态由本地服务确认</span></div></div></aside>
+        </main>
+
+        <main id="page-director" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> APIX DIRECTOR</div><h1>与 ApiX 沟通<span class="title-period">.</span></h1><p>ApiX 主 Agent 通过 Pi 整理目标并提出可编辑方案。你检查计划后再创建任务；每个员工 Run 都保留独立审批记录。</p></div><section class="surface-card director-dialogue"><div class="block-header"><div><h2>主 Agent 对话</h2><p id="director-project-name">选择项目后描述目标、约束或中途调整。</p></div></div><div id="director-messages" class="director-messages" aria-live="polite"></div><form id="director-chat-form" class="stacked-form"><label>给 ApiX 的消息<textarea name="content" id="director-chat-input" required maxlength="10000" placeholder="例如：设计并实现多语言支持，先给我可检查的方案"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section><section id="director-proposal" class="section-block"></section><section class="section-block"><div class="block-header"><div><h2>计划看板</h2><p>可修改未启动的步骤；运行中可请求停止，再与 ApiX 讨论新方案。</p></div></div><div id="plan-board" class="plan-board"></div></section><section class="surface-card director-composer section-block"><h2>规则型快速拆分</h2><p>Pi 不可用时也可以手动使用固定规则创建计划；任务仍需逐项审批。</p><form id="director-form" class="stacked-form"><label>目标<textarea id="director-goal" name="goal" required maxlength="20000" placeholder="例如：分析项目结构；实现功能；验证并形成报告"></textarea></label><button class="outline-button" type="submit">按规则生成计划</button></form></section></main>
+
+        <main id="page-missions" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> MISSION CONTROL</div><h1>任务与员工<span class="title-period">.</span></h1><p>发现本机 Agent，注册逻辑员工，查看任务审批、运行状态、交付物与历史。</p></div><section class="section-block"><div class="block-header"><div><h2>已发现的 Runtime</h2><p>可用性来自本机命令探测；无法控制外部独立启动的会话。</p></div><button class="outline-button" id="scan-agents">重新扫描</button></div><div id="runtime-grid" class="resource-grid"></div></section><section class="section-block"><div class="block-header"><div><h2>Agent 员工</h2><p>一个 Runtime 可以注册多个岗位；任务派发给具体员工。</p></div><button class="primary-button" id="add-employee">注册员工</button></div><div id="agent-grid" class="resource-grid"></div></section><section class="section-block"><div class="block-header"><div><h2>任务列表</h2><p>所有历史保存在本地 SQLite，服务重启后继续可见。</p></div></div><div id="task-list" class="task-list"></div></section></main>
+
+        <main id="page-memory" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> PROJECT MEMORY</div><h1>项目记忆<span class="title-period">.</span></h1><p id="memory-project-name">为当前项目维护经你确认的决策与工作记录。</p></div><section class="surface-card memory-profile"><div class="block-header"><div><h2>结构化项目档案</h2><p>以下内容会在本项目的后续任务中提供给 Agent。</p></div><span id="profile-version" class="count-label"></span></div><form id="profile-form" class="stacked-form"><label>项目概述<textarea name="summary" maxlength="5000"></textarea></label><label>目标<textarea name="goals" maxlength="5000"></textarea></label><label>约束<textarea name="constraints" maxlength="5000"></textarea></label><label>已确认决策<textarea name="decisions" maxlength="5000"></textarea></label><button class="primary-button" type="submit">保存项目档案</button></form></section><section class="section-block"><div class="block-header"><div><h2>记忆记录</h2><p>手动添加、编辑和删除；任务记忆只关联当前项目中的任务。</p></div></div><form id="memory-form" class="surface-card stacked-form"><div class="memory-form-grid"><label>范围<select name="scope" id="memory-scope"><option value="project">项目记忆</option><option value="task">任务记忆</option></select></label><label id="memory-task-field" class="hidden">来源任务<select name="taskId" id="memory-task-select"></select></label><label>类别<input name="category" required maxlength="50" placeholder="例如：决策、约束、进展"></label></div><label>标题<input name="title" required maxlength="120"></label><label>内容<textarea name="content" required maxlength="10000"></textarea></label><button class="primary-button" type="submit">添加记忆</button></form><form id="memory-search-form" class="memory-search"><input id="memory-search-input" aria-label="搜索记忆" placeholder="搜索当前项目记忆"><button class="outline-button" type="submit">搜索</button><button class="text-action" type="button" id="memory-clear-search">清除</button></form><div id="memory-list" class="memory-list"></div></section></main>
+
+        <main id="page-models" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> MODEL STUDIO</div><h1>模型偏好<span class="title-period">.</span></h1><p>记录常用模型；实际执行使用 Pi 或 Codex 自身的模型配置。</p></div><div class="settings-grid"><section class="surface-card featured-card"><div class="card-heading"><div><span class="card-kicker">当前偏好</span><h2>默认模型</h2></div><span class="soft-badge">浏览器配置</span></div><div class="active-model-display"><span class="large-model-icon"><svg class="icon"><use href="#icon-spark"/></svg></span><div><strong id="active-model-title">尚未选择模型</strong><span id="active-model-subtitle">选择一个模型开始配置</span></div></div><div class="card-divider"></div><div class="info-row"><span>提供商</span><strong id="active-provider">—</strong></div><div class="info-row"><span>推理级别</span><strong id="active-thinking">—</strong></div><div class="info-row"><span>运行时连接</span><strong class="amber-text">由 Agent 自身配置</strong></div></section><section class="surface-card form-card"><div class="card-heading"><div><span class="card-kicker">自定义</span><h2>记录模型偏好</h2></div><svg class="icon card-icon"><use href="#icon-settings"/></svg></div><form id="model-form" class="stacked-form"><label>提供商<select name="provider" id="model-provider" required><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google</option><option value="openrouter">OpenRouter</option><option value="custom">自定义</option></select></label><label>模型名称<input name="name" id="model-name" placeholder="例如：GPT-4.1" required maxlength="60" /></label><label>模型 ID<input name="modelId" id="model-id" placeholder="例如：gpt-4.1" required maxlength="100" /></label><label>API 地址 <span class="field-optional">可选</span><input name="endpoint" id="model-endpoint" type="url" placeholder="https://api.example.com/v1" /></label><label>推理级别<select name="thinking" id="model-thinking"><option value="off">关闭</option><option value="low">低</option><option value="medium" selected>中</option><option value="high">高</option></select></label><div class="form-actions"><button class="primary-button" type="submit">保存偏好</button><span class="form-note">仅保存在当前浏览器，不会切换 Agent 模型</span></div></form></section></div><section class="section-block"><div class="block-header"><div><h2>我的模型</h2><p>选择默认偏好或移除不再使用的配置。</p></div><span id="model-total" class="count-label">0 个模型</span></div><div id="model-grid" class="model-grid"></div></section></main>
+
+        <main id="page-projects" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> PROJECT SPACES</div><h1>项目空间<span class="title-period">.</span></h1><p>绑定已有的本地目录，作为 Agent 的工作目录。</p></div><div class="section-block"><div class="block-header"><div><h2>所有项目</h2><p>项目路径由本地服务验证。</p></div><button class="primary-button" id="add-project"><svg class="icon"><use href="#icon-plus"/></svg>新建项目</button></div><div id="project-grid" class="project-grid"></div></div></main>
+
+        <main id="page-resources" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> CAPABILITY LIBRARY</div><h1>能力中心<span class="title-period">.</span></h1><p>让 ApiX 按需掌握技能，并与外部服务建立连接。</p></div><div class="resource-tabs" role="tablist" aria-label="能力类型"><button class="resource-tab active" data-resource-tab="skills" role="tab" aria-selected="true">Skills <span id="skill-tab-count">0</span></button><button class="resource-tab" data-resource-tab="mcp" role="tab" aria-selected="false">MCP 服务 <span id="mcp-tab-count">0</span></button></div><div id="skills-panel" class="resource-panel"><div class="block-header"><div><h2>我的 Skills</h2><p>定义 ApiX 可以使用的专门工作方式。</p></div><button class="primary-button" id="add-skill"><svg class="icon"><use href="#icon-plus"/></svg>添加 Skill</button></div><div id="skill-grid" class="resource-grid"></div></div><div id="mcp-panel" class="resource-panel hidden"><div class="block-header"><div><h2>MCP 服务</h2><p>管理外部能力的配置。实际连接需要本地运行时。</p></div><button class="primary-button" id="add-mcp"><svg class="icon"><use href="#icon-plus"/></svg>添加服务</button></div><div id="mcp-grid" class="resource-grid"></div></div></main>
+      </div>
+    </div>
+
+    <dialog id="task-details-dialog" class="editor-dialog task-details-dialog"><div class="dialog-top"><h2>任务与 Agent 事件</h2><button type="button" class="icon-button" id="task-details-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="task-details-content"></div></dialog>
+    <dialog id="editor-dialog" class="editor-dialog"><form id="editor-form" method="dialog"><div class="dialog-top"><div><span class="card-kicker" id="dialog-kicker">新建</span><h2 id="dialog-title">添加项目</h2></div><button type="button" class="icon-button" id="dialog-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="dialog-fields" class="stacked-form"></div><div class="dialog-actions"><button type="button" class="outline-button" id="dialog-cancel">取消</button><button type="submit" class="primary-button" id="dialog-submit">保存</button></div></form></dialog>
+    <dialog id="confirm-dialog" class="editor-dialog confirm-dialog"><div class="dialog-top"><div><span class="card-kicker">请确认</span><h2 id="confirm-title">确认操作</h2></div><button type="button" class="icon-button" id="confirm-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><p id="confirm-message"></p><div class="dialog-actions"><button type="button" class="outline-button" id="confirm-cancel">取消</button><button type="button" class="primary-button" id="confirm-accept">确认</button></div></dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
