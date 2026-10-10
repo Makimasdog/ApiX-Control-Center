@@ -45,7 +45,7 @@ async function streamMessage(id:string,body:unknown) {
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
-<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。自定义 URL 会在 ApiX 的独立 Pi 配置中生效。</p><form id="coord-model"><label>Provider<input name="provider" placeholder="使用 Pi 默认配置；自定义 URL 时自动设为 apix-custom"></label><label>模型 ID<input name="model" placeholder="使用 Pi 默认模型"></label><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="apiKeyEnv" placeholder="例如 APIX_MANAGER_API_KEY"></label><button class="outline-button">保存模型</button></form></details></aside>
+<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">使用 Pi 默认配置</option><option value="deepseek">DeepSeek 深度求索</option><option value="dashscope">阿里云百炼 (通义千问)</option><option value="doubao">火山引擎豆包</option><option value="openai">OpenAI GPT</option><option value="anthropic">Anthropic Claude</option><option value="zhipu">智谱 AI (GLM)</option><option value="moonshot">月之暗面 (Kimi)</option><option value="local-ollama">Ollama (本地)</option><option value="local-lm-studio">LM Studio (本地)</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
@@ -134,8 +134,85 @@ root.addEventListener('click',event=>{const el=(event.target as Element).closest
 });
 $('#coord-history').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const at=new FormData(event.target as HTMLFormElement).get('at');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/sessions/${sessionId}/timeline${at?`?at=${at}`:''}`),null,2);});});
 $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const q=new FormData(event.target as HTMLFormElement).get('q');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent(String(q))}`),null,2);});});
-$('#coord-model').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{await api('/api/manager/settings',Object.fromEntries(new FormData(event.target as HTMLFormElement)));});});
-void api<{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string}>('/api/manager/settings').then(s=>{ for(const name of ['provider','model','baseUrl','apiType','apiKeyEnv'] as const) $<HTMLInputElement|HTMLSelectElement>(`#coord-model [name="${name}"]`).value=s[name]; }).catch(e=>notice(String(e),true));
+// 模型提供商配置
+const MODEL_PROVIDERS:{[key:string]:{name:string;baseUrl:string;apiType:string;apiKeyEnv:string;models:{id:string;name:string}[]}} = {
+  deepseek: {name:'DeepSeek',baseUrl:'https://api.deepseek.com/v1',apiType:'openai-completions',apiKeyEnv:'DEEPSEEK_API_KEY',models:[{id:'deepseek-chat',name:'DeepSeek Chat'},{id:'deepseek-coder',name:'DeepSeek Coder'},{id:'deepseek-reasoner',name:'DeepSeek Reasoner (R1)'}]},
+  dashscope: {name:'阿里云百炼',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',apiType:'openai-completions',apiKeyEnv:'DASHSCOPE_API_KEY',models:[{id:'qwen-max',name:'Qwen Max'},{id:'qwen-plus',name:'Qwen Plus'},{id:'qwen-turbo',name:'Qwen Turbo'},{id:'qwen-coder-plus',name:'Qwen Coder Plus'}]},
+  doubao: {name:'火山引擎豆包',baseUrl:'https://ark.cn-beijing.volces.com/api/v3',apiType:'openai-completions',apiKeyEnv:'DOUBAO_API_KEY',models:[{id:'doubao-pro-32k',name:'Doubao Pro 32K'},{id:'doubao-pro-128k',name:'Doubao Pro 128K'},{id:'doubao-lite-32k',name:'Doubao Lite 32K'}]},
+  openai: {name:'OpenAI',baseUrl:'https://api.openai.com/v1',apiType:'openai-completions',apiKeyEnv:'OPENAI_API_KEY',models:[{id:'gpt-4o',name:'GPT-4o'},{id:'gpt-4o-mini',name:'GPT-4o Mini'},{id:'o1',name:'o1'},{id:'o1-mini',name:'o1 Mini'}]},
+  anthropic: {name:'Anthropic',baseUrl:'https://api.anthropic.com',apiType:'anthropic-messages',apiKeyEnv:'ANTHROPIC_API_KEY',models:[{id:'claude-opus-5-5',name:'Claude Opus 5.5'},{id:'claude-sonnet-5-5',name:'Claude Sonnet 5.5'},{id:'claude-haiku-5-5',name:'Claude Haiku 5.5'}]},
+  zhipu: {name:'智谱 AI',baseUrl:'https://open.bigmodel.cn/api/paas/v4',apiType:'openai-completions',apiKeyEnv:'ZHIPU_API_KEY',models:[{id:'glm-4-plus',name:'GLM-4 Plus'},{id:'glm-4-air',name:'GLM-4 Air'},{id:'glm-4-flash',name:'GLM-4 Flash'}]},
+  moonshot: {name:'月之暗面',baseUrl:'https://api.moonshot.cn/v1',apiType:'openai-completions',apiKeyEnv:'MOONSHOT_API_KEY',models:[{id:'moonshot-v1-8k',name:'Moonshot v1 8K'},{id:'moonshot-v1-32k',name:'Moonshot v1 32K'},{id:'moonshot-v1-128k',name:'Moonshot v1 128K'}]},
+  'local-ollama': {name:'Ollama',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:'',models:[{id:'qwen2.5:32b',name:'Qwen 2.5 32B'},{id:'deepseek-r1:32b',name:'DeepSeek R1 32B'},{id:'llama3.3:70b',name:'Llama 3.3 70B'}]},
+  'local-lm-studio': {name:'LM Studio',baseUrl:'http://127.0.0.1:1234/v1',apiType:'openai-completions',apiKeyEnv:'',models:[{id:'local-model',name:'当前加载的模型'}]}
+};
+const providerSelect=$<HTMLSelectElement>('#model-provider-select');
+const modelSelect=$<HTMLSelectElement>('#model-select');
+const apiKeyInput=$<HTMLInputElement>('#api-key-input');
+const apiKeyLabel=$<HTMLElement>('#api-key-label');
+const apiKeyHint=$<HTMLElement>('#api-key-hint');
+const presetConfig=$<HTMLElement>('#model-preset-config');
+const customConfig=$<HTMLElement>('#model-custom-config');
+providerSelect.addEventListener('change',()=>{
+  const provider=providerSelect.value;
+  presetConfig.hidden=!provider || provider==='custom';
+  customConfig.hidden=provider!=='custom';
+  if(provider && provider!=='custom' && MODEL_PROVIDERS[provider]){
+    const config=MODEL_PROVIDERS[provider];
+    modelSelect.innerHTML=config.models.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+    apiKeyInput.value=config.apiKeyEnv;
+    apiKeyInput.placeholder=config.apiKeyEnv;
+    const isLocal=provider.startsWith('local-');
+    apiKeyLabel.hidden=isLocal;
+    apiKeyHint.textContent=isLocal?'':`请在启动前设置环境变量 ${config.apiKeyEnv}`;
+  }
+});
+$('#coord-model').addEventListener('submit',event=>{
+  event.preventDefault();
+  void action(async()=>{
+    const form=event.target as HTMLFormElement;
+    const formData=new FormData(form);
+    const provider=formData.get('provider') as string;
+    let payload:{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string};
+    if(provider==='custom'){
+      payload={provider:'apix-custom',model:String(formData.get('customModel')),baseUrl:String(formData.get('baseUrl')),apiType:String(formData.get('apiType')),apiKeyEnv:String(formData.get('customApiKeyEnv'))};
+    }else if(provider && MODEL_PROVIDERS[provider]){
+      const config=MODEL_PROVIDERS[provider];
+      payload={provider:'apix-custom',model:String(formData.get('model')),baseUrl:config.baseUrl,apiType:config.apiType,apiKeyEnv:String(formData.get('apiKeyEnv'))};
+    }else{
+      payload={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
+    }
+    await api('/api/manager/settings',payload);
+  });
+});
+void api<{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string}>('/api/manager/settings').then(s=>{
+  if(!s.provider || s.provider==='apix-custom'){
+    if(s.baseUrl){
+      let matched=false;
+      for(const [key,config] of Object.entries(MODEL_PROVIDERS)){
+        if(config.baseUrl===s.baseUrl){
+          providerSelect.value=key;
+          modelSelect.innerHTML=config.models.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
+          modelSelect.value=s.model;
+          apiKeyInput.value=s.apiKeyEnv;
+          presetConfig.hidden=false;
+          matched=true;
+          break;
+        }
+      }
+      if(!matched){
+        providerSelect.value='custom';
+        customConfig.hidden=false;
+        $<HTMLInputElement>('#coord-model [name="baseUrl"]').value=s.baseUrl;
+        $<HTMLInputElement>('#coord-model [name="customModel"]').value=s.model;
+        $<HTMLSelectElement>('#coord-model [name="apiType"]').value=s.apiType;
+        $<HTMLInputElement>('#coord-model [name="customApiKeyEnv"]').value=s.apiKeyEnv;
+      }
+    }else{
+      providerSelect.value='';
+    }
+  }
+}).catch(e=>notice(String(e),true));
 
 document.querySelector('#page-missions')!.insertAdjacentHTML('beforeend', `<section class="surface-card coord-section"><h3>接入自定义 CLI</h3><p class="coord-muted">适用于提供非交互 CLI 的 Agent。通过标准输入接收任务，通过标准输出返回结果；注册后可在运行时列表中添加员工。</p><form id="adapter-form" class="stacked-form"><label>适配器 ID<input name="id" required placeholder="qoder-cli"></label><label>名称<input name="name" required placeholder="Qoder CLI"></label><label>可执行文件绝对路径<input name="executable" required placeholder="C:\\Program Files\\nodejs\\node.exe"></label><label>启动参数（JSON 字符串数组）<input name="args" required value="[]"></label><label>输出格式<select name="format"><option value="plain">纯文本</option><option value="jsonl">JSONL 事件</option></select></label><button class="outline-button">注册适配器</button><p id="adapter-notice" role="status"></p></form></section>`);
 document.querySelector('#adapter-form')!.addEventListener('submit',async event=>{
