@@ -1,12 +1,24 @@
-import { type ModelBackend, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, object, text } from './contracts.js';
+import { type ModelBackend, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text } from './contracts.js';
 import { nextQuestion, requirementFields, requirementBrief } from './requirement-engine.js';
 
 function parse(raw: string) { return object(JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''))); }
 export function createApiXAgent(backend: ModelBackend) {
   const identity = '你是 ApiX，用户的管理者 Agent。Pi 是你的推理技术底座，不是你的上级，也不是此对话的员工。你与用户沟通、理解需求、安排员工、监督任务。不得直接产出代码、报告等执行成果，不声称已执行。不能授予权限。';
-  async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown): Promise<CoordinatorDecision> {
+  async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void): Promise<CoordinatorDecision> {
     try {
-      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n根据当前目标递进澄清。只问最有价值的一个问题，已明确的信息不要重复问。用户询问进度时 kind=progress，状态由系统展示，不生成猜测的状态。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。只输出 JSON：{"kind":"clarification|requirement_review|progress","question":"澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`);
+      let streamed = ''; let emitted = '';
+      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n交互模式：${interactionMode === 'structured' ? '约束模式：按目标、范围、约束、交付物、验收标准逐项检查；优先追问下一个缺失或冲突字段，措辞明确。' : '对话模式：自然沟通并从用户表达中整理需求；根据上下文追问最关键的不确定点，不强迫用户按表单顺序回答。'}\n根据当前目标递进澄清。只问最有价值的一个问题，已明确的信息不要重复问。用户询问进度时 kind=progress，状态由系统展示，不生成猜测的状态。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。JSON 中首先输出 kind 和 question，再输出 updates 与 conflicts。只输出 JSON：{"kind":"clarification|requirement_review|progress","question":"澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`, delta => {
+        if (!onQuestion) return;
+        streamed += delta;
+        const start = /"question"\s*:\s*"/.exec(streamed);
+        if (!start) return;
+        const tail = streamed.slice(start.index + start[0].length);
+        let end = 0; let escaped = false;
+        for (; end < tail.length; end++) { const char = tail[end]; if (char === '"' && !escaped) break; if (char === '\\' && !escaped) escaped = true; else escaped = false; }
+        let fragment = tail.slice(0, end);
+        if (fragment.endsWith('\\')) fragment = fragment.slice(0, -1);
+        try { const visible = JSON.parse(`"${fragment}"`) as string; if (visible.length > emitted.length && visible.startsWith(emitted)) { onQuestion(visible.slice(emitted.length)); emitted = visible; } } catch { /* Wait for a complete escape sequence. */ }
+      });
       const parsed = parse(raw);
       if (!['clarification', 'requirement_review', 'progress'].includes(String(parsed.kind))) throw new Error('ApiX 推理返回了不支持的行为');
       const updates: Partial<Requirements> = {};

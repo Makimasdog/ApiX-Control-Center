@@ -71,7 +71,7 @@ function go(page) {
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
-  $("#breadcrumb-page").textContent = { coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
 }
 async function refresh() {
   try {
@@ -151,7 +151,7 @@ function renderAgents() {
     const runtime = data.runtimes.find((entry) => entry.id === item.runtime);
     const available = !!item.enabled && !!runtime?.available;
     const active = data.tasks.filter((task) => task.employee_id === item.id && ["running", "stopping"].includes(task.status)).length;
-    return `<article class="resource-card ${item.enabled ? "" : "off"}"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><span class="${available ? "selected-label" : "type-label"}">${!item.enabled ? "已停用" : !runtime?.available ? "Runtime 不可用" : active ? `${active} 个任务运行中` : "待命"}</span></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.role)} · ${escapeHtml(item.department || "未分组")} · ${escapeHtml(runtime?.name ?? item.runtime)}</p><div class="item-card-bottom"><span class="type-label">${escapeHtml(item.runtime)}</span><div><button class="text-action" data-edit-employee="${item.id}">编辑</button> <button class="text-action danger" data-delete-employee="${item.id}">删除</button></div></div></article>`;
+    return `<article class="resource-card ${item.enabled ? "" : "off"}"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><span class="${available ? "selected-label" : "type-label"}">${!item.enabled ? "已停用" : !runtime?.available ? "Runtime 不可用" : active ? `${active} 个任务运行中` : "待命"}</span></div><h3 class="item-card-title"><button class="employee-link" data-open-employee="${item.id}">${escapeHtml(item.name)}</button></h3><p class="item-card-description">${escapeHtml(item.role)} · ${escapeHtml(item.department || "未分组")} · ${escapeHtml(runtime?.name ?? item.runtime)}</p><div class="item-card-bottom"><button class="text-action" data-open-employee="${item.id}">查看详情</button><div><button class="text-action" data-edit-employee="${item.id}">编辑</button> <button class="text-action danger" data-delete-employee="${item.id}">删除</button></div></div></article>`;
   }).join("") || `<div class="empty-card">还没有员工。先从已发现的 Runtime 注册一个岗位。</div>`;
   const select = $("#employee-select"); const current = select.value;
   const availableEmployees = data.employees.filter((item) => item.enabled && data.runtimes.some((runtime) => runtime.id === item.runtime && runtime.available && runtime.managed));
@@ -249,7 +249,7 @@ function openEditor(kind, id = null) {
 async function mutate(path, body) { try { await api(path, body); await refresh(); } catch (error) { toast(error.message); } }
 
 document.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-model],[data-remove-model],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
+  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-open-employee],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-model],[data-remove-model],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
   if (!target) return;
   const d = target.dataset;
   if (d.pageTarget) go(d.pageTarget);
@@ -261,6 +261,7 @@ document.addEventListener("click", async (event) => {
   else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("workspace"); }
   else if (d.editProject) openEditor("project", d.editProject);
   else if (d.registerRuntime) openEditor("employee", d.registerRuntime);
+  else if (d.openEmployee) { go('employee'); document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:d.openEmployee})); }
   else if (d.editEmployee) openEditor("employee", d.editEmployee);
   else if (d.deleteEmployee) { const employee = data.employees.find((item) => item.id === d.deleteEmployee); if (employee && await confirmAction("删除员工", `删除 ${employee.name} 后，历史任务和运行审计仍保留姓名。若该员工是部门经理或有活动任务，请先处理。`)) { await mutate(`/api/employees/${employee.id}/delete`, {}); } }
   else if (d.selectConversation) { selectedConversationId = d.selectConversation; selectedTaskId = null; selectedDetails = null; await refresh(); go("workspace"); }

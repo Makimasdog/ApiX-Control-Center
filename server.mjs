@@ -4,7 +4,7 @@ import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
-import { discussCoordinationSession, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory } from "./control-plane.mjs";
+import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
 import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage } from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -95,11 +95,20 @@ createServer(async (request, response) => {
         return;
       }
       if (/^\/api\/tasks\/[^/]+\/details$/.test(pathname) && request.method === "GET") { send(200, taskDetails(pathname.split("/")[3])); return; }
+      if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
       let raw = "";
       for await (const chunk of request) { raw += chunk; if (raw.length > 30000) throw new Error("请求过大"); }
       const input = JSON.parse(raw || "{}");
+      if (/^\/api\/coordination\/sessions\/[^/]+\/messages\/stream$/.test(pathname)) {
+        response.writeHead(200, { 'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-store',Connection:'keep-alive','X-Accel-Buffering':'no' });
+        const emit=(type,value)=>{if(!response.destroyed)response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`);};
+        emit('start',{sessionId:pathname.split('/')[4]});
+        try { const result=await discussCoordinationSession(pathname.split('/')[4],input,delta=>emit('delta',{text:delta})); emit('complete',result); }
+        catch(error) { emit('error',{error:error.message}); }
+        response.end(); return;
+      }
       if (process.env.APIX_LEGACY_API !== '1' && (['/api/tasks','/api/director/plans','/api/director/messages','/api/collaboration/plans','/api/meetings','/api/manager-reviews'].includes(pathname) || /^\/api\/tasks\/[^/]+\/(resume|revise)$/.test(pathname) || pathname.startsWith('/api/director/'))) { send(409, { error: '请在 ApiX 目标工作台澄清并确认需求后安排任务' }); return; }
       let result;
       if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
@@ -108,6 +117,7 @@ createServer(async (request, response) => {
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
       else if (pathname === "/api/coordination/sessions") result = createCoordinationSession(input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/messages$/.test(pathname)) result = await discussCoordinationSession(pathname.split('/')[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/mode$/.test(pathname)) result = setCoordinationInteractionMode(pathname.split('/')[4],input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/plan$/.test(pathname)) result = editCoordinationPlan(pathname.split('/')[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/answers$/.test(pathname)) result = answerCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/confirm$/.test(pathname)) result = await confirmCoordinationSession(pathname.split("/")[4], input);

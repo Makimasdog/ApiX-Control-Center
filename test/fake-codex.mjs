@@ -12,5 +12,5 @@ process.stdin.on("end", async () => {
   if (prompt.startsWith("hold-codex:")) await delay(2000);
   process.stdout.write('{"type":"thread.started","thread_id":"fake"}\n');
   process.stdout.write(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: `Codex result: ${prompt}` } }) + "\n");
-  process.stdout.write('{"type":"turn.completed"}\n');
+  process.stdout.write('{"type":"turn.completed","usage":{"input_tokens":120,"cached_input_tokens":10,"output_tokens":34}}\n');
 });

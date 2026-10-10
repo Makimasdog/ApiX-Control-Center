@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +35,7 @@ async function harness(work, extraEnv={}) {
     await waitFor(async()=>{if(server.exitCode!==null)throw new Error(errors);try{return(await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok;}catch{return false;}});
   };
   const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
-  try {await start(); await work({request,project,dir,restart:async()=>{await stop();await start();}});}
+  try {await start(); await work({request,project,dir,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
@@ -97,6 +97,43 @@ test('plan edits create a new immutable plan; model config is persisted; Claude 
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
   assert((await h.request('/api/snapshot')).artifacts.some(a=>a.content.includes('Claude result')));
+}));
+test('interaction modes, conversation SSE and custom Pi endpoint persist across restart',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'模式测试',path:h.project})).id;
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'梳理新功能',interactionMode:'structured'});
+  assert.equal(s.interaction_mode,'structured');
+  assert.match(s.turns.at(-1).content,/范围与边界/);
+  const response=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:s.revision,content:'请先确认范围'})});
+  assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/text\/event-stream/);
+  const frames=(await response.text()).split('\n\n').filter(Boolean);
+  assert(frames.some(frame=>frame.startsWith('event: delta\n')));
+  const completed=frames.find(frame=>frame.startsWith('event: complete\n'));
+  assert(completed);s=JSON.parse(completed.split('data: ')[1]);
+  assert.equal(s.interaction_mode,'structured');assert(s.turns.some(turn=>turn.role==='apix'&&turn.content.includes('约束')));
+  const changed=await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:s.revision,mode:'conversational'});
+  assert.equal(changed.interaction_mode,'conversational');assert.equal(changed.revision,s.revision+1);
+  await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:changed.revision,mode:'invalid'},400);
+  const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
+  assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,'http://127.0.0.1:11434/v1');
+  await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:changed.revision,content:'继续澄清'});
+  const generated=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
+  assert.equal(generated.providers['apix-custom'].baseUrl,settings.baseUrl);
+  assert.equal(generated.providers['apix-custom'].models[0].id,'qwen-test');
+  await h.restart();
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).interaction_mode,'conversational');
+  assert.equal((await h.request('/api/manager/settings')).baseUrl,settings.baseUrl);
+},{APIX_FIXTURE_STREAM:'1'}));
+test('employee details combine task history, progress and measured runtime usage',async()=>harness(async h=>{
+  const {employeeId,s}=await setup(h,'codex');
+  const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
+  const details=await h.request(`/api/employees/${employeeId}/details`);
+  assert.equal(details.employee.id,employeeId);
+  assert.equal(details.tasks.length,1);assert.equal(details.runs.length,1);
+  assert.equal(details.usage.inputTokens,120);assert.equal(details.usage.outputTokens,34);
+  assert.equal(details.usage.measuredRuns,1);
+  await h.request('/api/employees/nonexistent/details',undefined,400);
 }));
 test('custom worker exchanges project-scoped mailbox messages using its run credential',async()=>harness(async h=>{
   const worker=join(h.dir,'mailbox-worker.mjs');

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, object, text } from './contracts.js';
+import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, type InteractionMode, object, text } from './contracts.js';
 import { assess, emptyRequirements, nextQuestion, normalizeAnswer, requirementBrief } from './requirement-engine.js';
 import type { ApiXAgent } from './apix-agent.js';
 import type { Memory } from './memory.js';
@@ -17,9 +17,15 @@ export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
   const busy = new Set<string>();
   db.exec(`CREATE TABLE IF NOT EXISTS coordination_checks(session_id TEXT PRIMARY KEY REFERENCES coordination_sessions(id), conflicts TEXT NOT NULL DEFAULT '[]', model_mode TEXT NOT NULL DEFAULT 'rules', model_error TEXT);
-    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '');
+    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL DEFAULT '', api_type TEXT NOT NULL DEFAULT 'openai-completions', api_key_env TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS apix_guidance(message_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), status TEXT NOT NULL, action TEXT, focus TEXT, outbound_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS apix_guidance_task ON apix_guidance(task_id,updated_at);`);
+  const sessionColumns = rows<{name:string}>('PRAGMA table_info(coordination_sessions)');
+  if (!sessionColumns.some(column => column.name === 'interaction_mode')) db.exec("ALTER TABLE coordination_sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'conversational'");
+  const settingsColumns = rows<{name:string}>('PRAGMA table_info(apix_manager_settings)');
+  if (!settingsColumns.some(column => column.name === 'base_url')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN base_url TEXT NOT NULL DEFAULT ''");
+  if (!settingsColumns.some(column => column.name === 'api_type')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN api_type TEXT NOT NULL DEFAULT 'openai-completions'");
+  if (!settingsColumns.some(column => column.name === 'api_key_env')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN api_key_env TEXT NOT NULL DEFAULT ''");
   db.prepare("UPDATE apix_guidance SET status='skipped',updated_at=? WHERE status='processing'").run(now());
   const session = (id: string) => { const s = row<Session>('SELECT * FROM coordination_sessions WHERE id=?', id); if (!s) throw new Error('目标不存在'); return s; };
   const requirementsOf = (s: Session): Requirements => JSON.parse(s.requirements_json) as Requirements;
@@ -53,12 +59,13 @@ export function createCoordinator(deps: Dependencies) {
   }
   function createSession(input: Record<string, unknown>) {
     const projectId = text(input.projectId, 100); const goal = text(input.goal, 4000);
+    const interactionMode = parseInteractionMode(input.interactionMode ?? 'conversational');
     if (!row('SELECT id FROM projects WHERE id=?', projectId)) throw new Error('项目不存在');
     const id = randomUUID();
     transaction(() => {
-      db.prepare('INSERT INTO coordination_sessions(id,project_id,title,status,requirements_json,revision,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)').run(id, projectId, goal.slice(0, 100), 'clarifying', JSON.stringify({ ...emptyRequirements(), goal }), 1, now(), now());
+      db.prepare('INSERT INTO coordination_sessions(id,project_id,title,status,requirements_json,revision,created_at,updated_at,interaction_mode) VALUES (?,?,?,?,?,?,?,?,?)').run(id, projectId, goal.slice(0, 100), 'clarifying', JSON.stringify({ ...emptyRequirements(), goal }), 1, now(), now(), interactionMode);
       turn(session(id), 'user', 'goal', goal);
-      turn(session(id), 'apix', 'clarification', '我是 ApiX，会与你澄清目标并安排员工执行。请补充任务范围、约束、交付物和验收方式；也可以一次说明已明确的内容。');
+      turn(session(id), 'apix', 'clarification', interactionMode === 'structured' ? '我是 ApiX。先核对任务范围，再确认约束、交付物和验收标准。请说明本次任务的范围与边界。' : '我是 ApiX，会与你讨论目标并安排员工执行。你可以自然描述想法，我会逐步澄清范围、约束和验收方式。');
       checkpoint(id);
     });
     return details(id);
@@ -76,7 +83,15 @@ export function createCoordinator(deps: Dependencies) {
     });
     return details(id);
   }
-  async function discuss(id: string, input: Record<string, unknown>) {
+  function parseInteractionMode(value: unknown): InteractionMode { if (value !== 'structured' && value !== 'conversational') throw new Error('交互模式无效'); return value; }
+  function setInteractionMode(id: string, input: Record<string, unknown>) {
+    const s = editable(id,input.revision); const mode = parseInteractionMode(input.mode);
+    if (!['clarifying','ready'].includes(s.status)) throw new Error('已确认计划不能直接切换交互模式，请先调整需求');
+    if (s.interaction_mode === mode) return details(id);
+    transaction(() => { db.prepare('UPDATE coordination_sessions SET interaction_mode=?,revision=revision+1,updated_at=? WHERE id=?').run(mode,now(),id); turn(session(id),'user','mode_changed',mode === 'structured' ? '切换为约束模式' : '切换为对话模式'); checkpoint(id); });
+    return details(id);
+  }
+  async function discuss(id: string, input: Record<string, unknown>, onQuestion?: (delta: string) => void) {
     const s = editable(id, input.revision); const content = text(input.content);
     busy.add(id);
     try {
@@ -85,7 +100,7 @@ export function createCoordinator(deps: Dependencies) {
       const priorBriefs = rows<{id:string;title:string;requirements_json:string}>('SELECT id,title,requirements_json FROM coordination_sessions WHERE project_id=? AND id<>? AND confirmed_revision IS NOT NULL ORDER BY updated_at DESC LIMIT 3',s.project_id,id);
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
-      const decision = await agent.discuss(requirementsOf(s), content, history, tasksOf(s));
+      const decision = await agent.discuss(requirementsOf(s), content, history, tasksOf(s), s.interaction_mode, onQuestion);
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
@@ -306,14 +321,17 @@ export function createCoordinator(deps: Dependencies) {
     if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id); }
   }
   function timeline(id: string, at?: number) { const s = session(id); return memory.stateAt(s.project_id,id,at); }
-  function getSettings() { return row<{provider: string; model: string}>('SELECT provider,model FROM apix_manager_settings WHERE id=1') ?? { provider:'',model:'' }; }
+  function getSettings() { return row<{provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string}>("SELECT provider,model,base_url AS baseUrl,api_type AS apiType,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1") ?? { provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'' }; }
   function saveSettings(input: Record<string, unknown>) {
     const provider = String(input.provider ?? '').trim(); const model = String(input.model ?? '').trim();
     if (provider.length > 100 || model.length > 200 || provider.startsWith('-') || model.startsWith('-')) throw new Error('模型配置无效');
-    db.prepare('INSERT INTO apix_manager_settings(id,provider,model) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model').run(provider,model);
+    const baseUrl = String(input.baseUrl ?? '').trim(); const apiType = String(input.apiType ?? 'openai-completions').trim(); const apiKeyEnv = String(input.apiKeyEnv ?? '').trim();
+    if (baseUrl) { const parsed = new URL(baseUrl); if (!['http:','https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !model) throw new Error('自定义 URL 或模型 ID 无效'); }
+    if (baseUrl.length > 1000 || !['openai-completions','openai-responses','anthropic-messages'].includes(apiType) || (apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))) throw new Error('自定义模型配置无效');
+    db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }
-  return { createSession, answerSession, discuss, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,
+  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,
     listSessions: (projectId: string) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

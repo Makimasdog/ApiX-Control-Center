@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
@@ -14,6 +14,7 @@ import { createPermissions } from "./dist/src/permissions.js";
 import { createApiXAgent } from "./dist/src/apix-agent.js";
 import { createRuntimeAdapters } from "./dist/src/runtime-adapters.js";
 import { createAgentMailbox } from "./dist/src/agent-mailbox.js";
+import { createEmployeeInsights } from "./dist/src/employee-insights.js";
 
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
 mkdirSync(dataDir, { recursive: true });
@@ -262,6 +263,7 @@ export async function scanRuntimes() { await scanExternalAgents(); return runtim
 const rows = (sql, ...params) => db.prepare(sql).all(...params);
 const row = (sql, ...params) => db.prepare(sql).get(...params);
 const store = { db, row, rows, now };
+const employeeInsights = createEmployeeInsights(store);
 const memory = createEventMemory(store);
 const permissions = createPermissions(store, memory);
 const runtimeAdapters = createRuntimeAdapters(store, findExecutable);
@@ -450,6 +452,7 @@ function launch(task) {
 function handleNative(runId, runtime, item) {
   const active = running.get(runId);
   if (!active) return;
+  employeeInsights.observe(runId,runtime,item);
   const type = item.type ?? "unknown";
   if (runtime === "pi") {
     if (type === "response" && item.command === "prompt" && !item.success) { event(runId, "pi-rpc", "prompt_rejected", { error: item.error }); active.child.stdin.end(); }
@@ -854,14 +857,23 @@ function directorPrompt(project, history, employees, progress, message) {
   return `APIX_DIRECTOR_JSON\n你是 ApiX 主 Agent（Director）。只负责理解用户、整理需求、设计可修改的多 Agent 提案，不运行工具，也不声称任务已经完成。只返回一个 JSON 对象，不要 Markdown。格式：{"reply":"给用户的简短中文答复","goal":"可检查的目标","steps":[{"prompt":"具体任务","employeeId":"可用员工 ID 或空字符串","dependsOn":[前序步骤的零基索引]}],"memoryCandidates":[{"category":"需求或决策","title":"短标题","content":"整理后的事实","evidence":"用户原话中的准确片段"}]}。需要新计划时 steps 为 2 至 8 项；仅回答问题、解释进度或澄清时 steps=[]，不要重复创建计划。无依赖步骤可以并行。未确定的内容在 reply 中提出，不能擅自启动任务。记忆候选必须有可在用户原话中逐字找到的 evidence，不要编造。对于正在执行的计划，先根据下列真实状态向用户说明进展；如需调整，只提新草案，不声称已改变运行中任务。\n项目：${project.name}\n项目描述：${project.description}\n可用员工：${JSON.stringify(employees.map((item) => ({ id: item.id, name: item.name, role: item.role, department: item.department })))}\n当前计划与任务状态：${JSON.stringify(progress)}\n最近对话：${JSON.stringify(history.map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })))}\n用户最新消息：${message}`;
 }
 
-async function askPiDirector(prompt) {
+async function askPiDirector(prompt, onDelta) {
   const managerEntry = process.env.APIX_MANAGER_PI_ENTRY;
   const command = managerEntry && existsSync(managerEntry) ? { executable: process.execPath, prefix: [resolve(managerEntry)] } : commandFor("pi");
   if (!command) throw new Error("Pi 未安装或不可用");
+  const settings = coordinator.getSettings();
+  let managerEnv = process.env;
+  if (settings.baseUrl) {
+    if (settings.apiKeyEnv && !process.env[settings.apiKeyEnv]) throw new Error(`请先设置 ${settings.apiKeyEnv} 环境变量`);
+    if (!settings.apiKeyEnv && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(settings.baseUrl)) throw new Error('远程自定义模型必须指定 API Key 环境变量');
+    const managerDir = join(dataDir, 'manager-pi');
+    mkdirSync(managerDir, { recursive: true });
+    writeFileSync(join(managerDir, 'models.json'), JSON.stringify({providers:{'apix-custom':{baseUrl:settings.baseUrl,api:settings.apiType,apiKey:settings.apiKeyEnv ? `$${settings.apiKeyEnv}` : 'apix-local',models:[{id:settings.model}]}}}));
+    managerEnv = {...process.env,PI_CODING_AGENT_DIR:managerDir};
+  }
   return new Promise((resolve, reject) => {
-    const settings = coordinator.getSettings();
-    const child = spawn(command.executable, [...command.prefix, "--mode", "rpc", "--no-session", "--no-extensions", "--no-tools", ...(settings.provider ? ["--provider", settings.provider] : []), ...(settings.model ? ["--model", settings.model] : [])], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
-    let stdout = ""; let stderr = ""; let answer = ""; let settled = false; let finished = false;
+    const child = spawn(command.executable, [...command.prefix, "--mode", "rpc", "--no-session", "--no-extensions", "--no-tools", ...(settings.provider ? ["--provider", settings.provider] : []), ...(settings.model ? ["--model", settings.model] : [])], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env:managerEnv });
+    let stdout = ""; let stderr = ""; let answer = ""; let settled = false; let finished = false; let streamed = false;
     const timer = setTimeout(() => { child.kill(); }, 90_000);
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString("utf8");
@@ -871,6 +883,7 @@ async function askPiDirector(prompt) {
         const line = stdout.slice(0, index); stdout = stdout.slice(index + 1);
         try {
           const item = JSON.parse(line);
+          if (item.type === 'message_update' && item.assistantMessageEvent?.type === 'text_delta' && typeof item.assistantMessageEvent.delta === 'string') { streamed = true; onDelta?.(item.assistantMessageEvent.delta); }
           if (item.type === "message_end" && item.message?.role === "assistant") answer = textFromMessage(item.message);
           if (item.type === "agent_settled") { settled = true; child.stdin.end(); }
         } catch { /* Ignore non-JSON diagnostics from the runtime. */ }
@@ -881,7 +894,7 @@ async function askPiDirector(prompt) {
     child.on("close", (code) => {
       if (finished) return;
       finished = true; clearTimeout(timer);
-      if (code === 0 && settled && answer.trim()) resolve(answer.trim());
+      if (code === 0 && settled && answer.trim()) { if (!streamed) onDelta?.(answer); resolve(answer.trim()); }
       else reject(new Error(stderr || "Pi 未返回可用答复"));
     });
     child.stdin.write(JSON.stringify({ id: randomUUID(), type: "prompt", message: prompt }) + "\n");
@@ -1134,6 +1147,7 @@ export const dispatchCoordinationSession = coordinator.dispatchSession;
 export const reviseCoordinationSession = coordinator.reviseSession;
 export const coordinationTimeline = coordinator.timeline;
 export const discussCoordinationSession = coordinator.discuss;
+export const setCoordinationInteractionMode = coordinator.setInteractionMode;
 export const editCoordinationPlan = coordinator.editPlan;
 export const changePermission = coordinator.changePolicy;
 export const managerSettings = coordinator.getSettings;
@@ -1144,6 +1158,7 @@ export const registerRuntimeAdapter = runtimeAdapters.register;
 export const instructCoordinationEmployee = coordinator.instructEmployee;
 export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
+export const employeeDetails = employeeInsights.details;
 export function agentTeam(projectId) { return listMailboxes(projectId).map(m => ({ id:m.agent_id,role:m.role,name:row('SELECT name FROM employees WHERE id=?',m.agent_id)?.name ?? m.agent_id })); }
 
 export { registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact };

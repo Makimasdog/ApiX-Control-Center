@@ -26,8 +26,14 @@ process.stdin.on("data", (chunk) => {
         let values = {}; try { values = JSON.parse(latest); } catch {}
         answer = {kind:latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
       }
-      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');
-      process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+      if (process.env.APIX_FIXTURE_STREAM === '1' && command.message.startsWith('APIX_COORDINATOR_JSON\n')) {
+        const raw=JSON.stringify(answer);
+        for (const part of [raw.slice(0,20),raw.slice(20,48),raw.slice(48)]) process.stdout.write(JSON.stringify({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:part}})+'\n');
+        setTimeout(()=>{process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:raw}]}})+'\n');process.stdout.write('{"type":"agent_settled","aborted":false}\n');},40);
+      } else {
+        process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');
+        process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+      }
       continue;
     }
     if (command.message.startsWith("APIX_DIRECTOR_JSON\n")) {

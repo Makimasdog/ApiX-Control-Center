@@ -1,6 +1,7 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 
 export type PermissionMode = 'full_access' | 'ask_approval' | 'read_only';
+export type InteractionMode = 'structured' | 'conversational';
 export type RequirementField = 'goal' | 'scope' | 'constraints' | 'deliverable' | 'acceptance';
 export type Requirements = Record<RequirementField, string>;
 export interface RequirementAssessment { score: number; threshold: number; missing: RequirementField[]; conflicts: string[]; ready: boolean }
@@ -10,6 +11,7 @@ export interface Task { id: string; project_id: string; plan_id: string | null; 
 export interface Session {
   id: string; project_id: string; title: string; status: string; requirements_json: string;
   revision: number; confirmed_revision: number | null; plan_id: string | null;
+  interaction_mode: InteractionMode;
   created_at: string; updated_at: string;
 }
 export interface Store {
@@ -18,7 +20,7 @@ export interface Store {
   rows<T>(sql: string, ...params: SQLInputValue[]): T[];
   now(): string;
 }
-export interface ModelBackend { infer(prompt: string): Promise<string> }
+export interface ModelBackend { infer(prompt: string, onDelta?: (delta: string) => void): Promise<string> }
 export interface CoordinatorDecision {
   kind: 'clarification' | 'requirement_review' | 'progress';
   question: string; updates: Partial<Requirements>; conflicts: string[]; mode: 'pi' | 'rules'; error?: string;
