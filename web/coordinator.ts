@@ -106,6 +106,7 @@ document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;p
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
   if(!loading) void reload().catch(e=>notice(String(e),true));
 }) as EventListener);
+document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{sessionId=event.detail;editingBrief=false;planKey='';document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();void reload().catch(e=>notice(String(e),true));}) as EventListener);
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 $('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});sessionId=created.id;editingBrief=false;form.reset();});});
 $('#coord-message').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await streamMessage(sessionId,{revision:current!.revision,content:new FormData(form).get('content')});editingBrief=false;form.reset();});});

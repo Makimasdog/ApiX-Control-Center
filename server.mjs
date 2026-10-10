@@ -173,7 +173,7 @@ createServer(async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css']);
+  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css']);
   if (!publicFiles.has(relativePath) && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
   const filePath = normalize(join(root, relativePath));
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {
