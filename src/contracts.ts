@@ -25,7 +25,7 @@ export interface CoordinatorDecision {
   kind: 'clarification' | 'requirement_review' | 'progress';
   question: string; updates: Partial<Requirements>; conflicts: string[]; mode: 'pi' | 'rules'; error?: string;
 }
-export interface AgentCapabilities { id: string; name: string; available: boolean; managed: boolean; observable: boolean; cancellable: boolean; resumable: boolean; stateSource: string }
+export interface AgentCapabilities { id: string; name: string; available: boolean; managed: boolean; observable: boolean; cancellable: boolean; resumable: boolean; stateSource: string; mailbox?: boolean }
 export interface DomainEvent { sequence: number; projectId: string; aggregateId: string; kind: string; actor: string; payload: unknown; createdAt: string }
 export interface Policy { mode: PermissionMode; version: number }
 export function object(value: unknown): Record<string, unknown> {

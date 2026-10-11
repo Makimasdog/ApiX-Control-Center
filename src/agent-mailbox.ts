@@ -12,7 +12,7 @@ export function createAgentMailbox(store: Store) {
   }
   function authenticate(header: string | undefined) {
     const token = header?.startsWith('Bearer ') ? header.slice(7) : '';
-    const actor = token ? row<{project_id:string;agent_id:string;run_id:string;task_id:string}>('SELECT a.*,r.task_id FROM apix_agent_tokens a JOIN runs r ON r.id=a.run_id WHERE token_hash=? AND r.status IN (\'starting\',\'running\')',hash(token)) : undefined;
+    const actor = token ? row<{project_id:string;agent_id:string;run_id:string;task_id:string}>('SELECT a.*,r.task_id FROM apix_agent_tokens a JOIN runs r ON r.id=a.run_id JOIN tasks t ON t.id=r.task_id WHERE token_hash=? AND r.status IN (\'starting\',\'running\') AND t.status=\'running\' AND t.project_id=a.project_id AND t.employee_id=a.agent_id',hash(token)) : undefined;
     if (!actor) throw new Error('Agent 凭据无效或运行已结束');
     return actor;
   }

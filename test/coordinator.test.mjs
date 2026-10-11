@@ -262,7 +262,7 @@ test('custom worker exchanges project-scoped mailbox messages using its run cred
   await h.request(`/api/coordination/sessions/${s.id}/instructions`,{revision:s.revision,taskId:p.tasks[0].id,content:'请核对验收标准'});
   await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);assert.notEqual(state.derivedStatus,'attention',JSON.stringify(state.tasks));return state.derivedStatus==='awaiting_acceptance';});
   const messages=(await h.request('/api/snapshot')).messages;
-  assert(messages.some(m=>m.idempotency_key==='worker-progress'&&m.from_agent===employeeId&&m.payload.progress==='worker contacted mailbox'));
+  assert(messages.some(m=>m.idempotency_key.endsWith(':worker-progress')&&m.from_agent===employeeId&&m.payload.progress==='worker contacted mailbox'&&m.source_run_id));
   assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='apix'));
   assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='user'));
   const session=await h.request(`/api/coordination/sessions/${s.id}`);
@@ -298,7 +298,7 @@ test('ApiX actively requests progress from a silent worker and records the super
   assert(state.turns.some(t=>t.kind==='progress_requested'));
   const messages=(await h.request('/api/snapshot')).messages;
   assert.equal(messages.filter(m=>m.idempotency_key.startsWith('apix-status-request:')).length,1);
-  assert(messages.some(m=>m.idempotency_key==='idle-report'));
+  assert(messages.some(m=>m.idempotency_key.endsWith(':idle-report')));
 },{APIX_SUPERVISION_TICK_MS:'100',APIX_SUPERVISION_AFTER_MS:'300'}));
 test('provider catalog and manager validation preserve old settings on every failure',async()=>harness(async h=>{
   assert.deepEqual((await h.request('/api/manager/providers')).providers,BUILTIN_PROVIDERS);
@@ -436,4 +436,46 @@ test('coordinator dependencies wait for acceptance and rejection blocks downstre
   assert.deepEqual(blocked.tasks.map(task=>task.status),['accepted','needs_revision','blocked']);
   assert.equal(blocked.derivedStatus,'attention');
   assert.equal((await h.request('/api/snapshot')).runs.length,2);
+}));
+
+test('run credentials isolate concurrent employee inboxes, acknowledgements and idempotency',async()=>harness(async h=>{
+  const worker=join(h.dir,'run-mailbox-worker.mjs');
+  await writeFile(worker,`import {writeFileSync} from 'node:fs';let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(h.dir)}+'/'+process.env.APIX_RUN_ID+'.json',JSON.stringify({token:process.env.APIX_AGENT_TOKEN}));setTimeout(()=>process.exit(0),60000);});`);
+  await h.request('/api/adapters',{id:'run-worker',name:'Run worker',executable:process.execPath,args:[worker],format:'plain',mailbox:true});
+  const {s,employeeId}=await setup(h,'run-worker');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'检查 A',employeeId,dependsOn:[]},{prompt:'检查 B',employeeId,dependsOn:[]}]});
+  try {
+    await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+    const state=await waitFor(async()=>{const state=await h.request('/api/snapshot');return state.runs.length===2&&state;});
+    const run0=state.runs.find(r=>r.task_id===p.tasks[0].id),run1=state.runs.find(r=>r.task_id===p.tasks[1].id);
+    const headers=[];
+    for(const run of [run0,run1]) {const fixture=await waitFor(async()=>{try{return JSON.parse(await readFile(join(h.dir,run.id+'.json'),'utf8'));}catch{return false;}});headers.push({Authorization:'Bearer '+fixture.token});}
+    const message=await h.request('/api/messages',{projectId:s.project_id,taskId:p.tasks[0].id,from:'apix-director',to:employeeId,type:'event',idempotencyKey:'isolated-guidance',payload:{kind:'guidance',content:'A only'}});
+    assert.equal(message.target_run_id,run0.id);
+    assert.equal((await h.request('/api/agent/messages',undefined,200,headers[1])).length,0);
+    assert.equal((await h.request('/api/agent/messages',undefined,200,headers[0]))[0].id,message.id);
+    for(const action of ['ack','complete','nack'])await h.request(`/api/agent/messages/${message.id}/${action}`,{},400,headers[1]);
+    await h.request('/api/agent/messages',{to:'apix-director',type:'response',replyTo:message.id,idempotencyKey:'wrong-reply',payload:'wrong'},400,headers[1]);
+    await h.request(`/api/agent/messages/${message.id}/ack`,{},200,headers[0]);
+    let detail=await h.request(`/api/coordination/sessions/${s.id}`);
+    assert.equal(detail.instructions.find(m=>m.id===message.id).status,'processing');
+    await h.request(`/api/agent/messages/${message.id}/complete`,{},200,headers[0]);
+    detail=await h.request(`/api/coordination/sessions/${s.id}`);
+    assert.equal(detail.instructions.find(m=>m.id===message.id).status,'completed');
+    for(const header of headers)await h.request('/api/agent/messages',{to:'apix-director',type:'event',idempotencyKey:'checkpoint',payload:{kind:'checkpoint'}},200,header);
+    const messages=(await h.request('/api/snapshot')).messages.filter(m=>m.idempotency_key.endsWith(':checkpoint'));
+    assert.equal(messages.length,2); assert.notEqual(messages[0].source_run_id,messages[1].source_run_id);
+    const peer=await h.request('/api/agent/messages',{to:employeeId,targetTaskId:p.tasks[1].id,type:'event',idempotencyKey:'peer',payload:{summary:'同计划交接'}},200,headers[0]);
+    const team=await h.request('/api/agent/team',undefined,200,headers[0]);
+    assert.equal(team.find(e=>e.id===employeeId).tasks.length,2);
+    assert.equal(peer.target_run_id,run1.id);
+    assert((await h.request('/api/agent/messages',undefined,200,headers[1])).some(m=>m.id===peer.id));
+    assert(!(await h.request('/api/agent/messages',undefined,200,headers[0])).some(m=>m.id===peer.id));
+    await h.request(`/api/runs/${run0.id}/stop`,{});
+    await waitFor(async()=>(await h.request('/api/snapshot')).runs.find(r=>r.id===run0.id).status==='cancelled');
+    await h.request('/api/agent/messages',undefined,400,headers[0]);
+  } finally {
+    for(const run of (await h.request('/api/snapshot')).runs.filter(r=>['running','starting'].includes(r.status)))await h.request(`/api/runs/${run.id}/stop`,{});
+  }
 }));

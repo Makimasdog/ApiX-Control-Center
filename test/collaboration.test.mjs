@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { workerPrompt } from '../dist/src/worker-context.js';
 import { coordinationStatus, progressSummary } from '../dist/src/task-tracker.js';
 import { createApiXAgent } from '../dist/src/apix-agent.js';
+import { instructionState } from '../dist/web/execution-view.js';
 
 test('worker context keeps approved instructions and all large dependency references within budget', () => {
   const {prompt,truncated}=workerPrompt('本次任务','已确认需求 v3 与消息协议',['前置 A: '+ 'a'.repeat(40000),'前置 B: '+ 'b'.repeat(40000),'项目档案'],1500);
@@ -37,4 +38,12 @@ test('ApiX planning supports parallel ownership, evidence and explicit integrati
   const result=await agent.plan({goal:'优化协作',scope:'现有模块',constraints:'保留审批',deliverable:'代码与审查',acceptance:'可复现验证'},[{id:'one',role:'开发'},{id:'two',role:'审查'}]);
   assert.equal(result.mode,'pi'); assert.deepEqual(result.steps.map(step=>step.dependsOn),[[],[],[0,1]]);
   assert.match(prompt,/文件范围不重叠/); assert.match(prompt,/另一位合适员工/); assert.match(prompt,/集成后才能验证/);
+});
+
+test('guidance acknowledgement is distinguished from delivery and reported processing',()=>{
+  assert.equal(instructionState('queued'),'待接收');
+  assert.equal(instructionState('delivered'),'已送达，待确认');
+  assert.equal(instructionState('processing'),'员工已确认接收');
+  assert.equal(instructionState('completed'),'员工已报告处理');
+  assert.equal(instructionState('expired'),'已超时');
 });

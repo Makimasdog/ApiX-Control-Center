@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
-import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage } from './control-plane.mjs';
+import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { readLocalModels } from './dist/src/local-models.js';
 
@@ -36,22 +36,22 @@ createServer(async (request, response) => {
     const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
       if (pathname.startsWith('/api/agent/')) {
-        const actor = authenticateAgent(request.headers.authorization);
-        if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id)); return; }
-        if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveMessages({projectId:actor.project_id,agentId:actor.agent_id})); return; }
+        let actor = authenticateAgent(request.headers.authorization);
+        if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id,actor.task_id)); return; }
+        if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveAgentMessages(actor)); return; }
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
         let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
         const input = JSON.parse(body || '{}');
+        actor = authenticateAgent(request.headers.authorization);
         if (pathname === '/api/agent/messages') {
-          const message = sendMessage({...input,projectId:actor.project_id,from:actor.agent_id,taskId:actor.task_id});
+          const message = sendAgentMessage(actor,input);
           send(200,message);
           void superviseWorkerMessage(message.id).catch(error => process.stderr.write(`ApiX guidance: ${error.message}\n`));
           return;
         }
         const match = /^\/api\/agent\/messages\/([^/]+)\/(ack|complete|nack)$/.exec(pathname);
         if (match) {
-          if (messageDetails(match[1],actor.agent_id).message.project_id !== actor.project_id) throw new Error('消息不属于当前项目');
-          send(200, ({ack:ackMessage,complete:completeMessage,nack:nackMessage})[match[2]](match[1],{...input,agentId:actor.agent_id})); return;
+          send(200,handleAgentMessage(actor,match[1],match[2],input)); return;
         }
         throw new Error('Unknown Agent operation');
       }

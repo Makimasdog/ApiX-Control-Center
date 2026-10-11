@@ -236,6 +236,18 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=9").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+if (!db.prepare("SELECT version FROM schema_migrations WHERE version=10").get()) {
+  db.exec("BEGIN");
+  try {
+    db.exec(`ALTER TABLE agent_messages ADD COLUMN target_task_id TEXT REFERENCES tasks(id);
+      ALTER TABLE agent_messages ADD COLUMN target_run_id TEXT REFERENCES runs(id);
+      ALTER TABLE agent_messages ADD COLUMN source_run_id TEXT REFERENCES runs(id);
+      ALTER TABLE runs ADD COLUMN mailbox_seen_at TEXT;
+      CREATE INDEX agent_messages_run ON agent_messages(project_id,to_agent,target_task_id,target_run_id,status);
+      INSERT INTO schema_migrations(version) VALUES (10);`);
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+}
 const now = () => new Date().toISOString();
 const running = new Map();
 
@@ -245,12 +257,17 @@ db.prepare("UPDATE runs SET status='unknown', status_source='recovery', ended_at
 db.prepare("UPDATE tasks SET status='unknown', updated_at=? WHERE status IN ('running','stopping')").run(now());
 db.prepare("UPDATE director_messages SET status='failed',content='主 Agent 推理被服务重启中断，请重新发送消息。' WHERE status='processing'").run();
 
+const executableCache = new Map();
 function findExecutable(name) {
+  const cached=executableCache.get(name);
+  if(cached && cached.until>Date.now() && (!cached.path || existsSync(cached.path))) return cached.path;
+  let found=null;
   try {
-    const paths = execFileSync(process.platform === "win32" ? "where.exe" : "which", [name], { encoding: "utf8", timeout: 2000 }).trim().split(/\r?\n/);
-    if (process.platform === "win32") return paths.find((path) => path.toLowerCase().endsWith(".exe")) ?? paths.find((path) => path.toLowerCase().endsWith(".cmd")) ?? null;
-    return paths[0];
-  } catch { return null; }
+    const paths = execFileSync(process.platform === "win32" ? "where.exe" : "which", [name], { encoding: "utf8", timeout: 2000, windowsHide:true, stdio:['ignore','pipe','ignore'] }).trim().split(/\r?\n/);
+    found=process.platform === 'win32' ? paths.find(path=>path.toLowerCase().endsWith('.exe')) ?? paths.find(path=>path.toLowerCase().endsWith('.cmd')) ?? null : paths[0] ?? null;
+  } catch { /* Optional executable is absent. */ }
+  executableCache.set(name,{path:found,until:Date.now()+10000});
+  return found;
 }
 
 function commandFor(runtime) {
@@ -261,7 +278,7 @@ export function runtimes() {
   const managed = runtimeAdapters.catalog();
   return [...managed, ...externalAgents().filter(a => !managed.some(m => m.id === a.id))];
 }
-export async function scanRuntimes() { await scanExternalAgents(); return runtimes(); }
+export async function scanRuntimes() { executableCache.clear(); await scanExternalAgents(); return runtimes(); }
 
 const rows = (sql, ...params) => db.prepare(sql).all(...params);
 const row = (sql, ...params) => db.prepare(sql).get(...params);
@@ -380,7 +397,7 @@ function launch(task) {
   const args = runtimeAdapters.args(task.runtime, fullAccess, skipGitRepoCheck);
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-    env: { ...process.env, APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
+    env: { ...process.env, APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
   catch (error) { setRun(runId, "failed", "spawn"); event(runId, "apix", "spawn_error", { message: error.message }); throw error; }
   running.set(runId, { child, runtime: task.runtime, output: "", stderr: "", stopped: false, settled: false });
   if (task.employee_id) {
@@ -1138,7 +1155,7 @@ export function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
-const coordinator = createCoordinator({ ...store, memory, permissions, agent: createApiXAgent({ infer: askPiDirector }), resolveApproval, stopRun, sendMessage,
+const coordinator = createCoordinator({ ...store, memory, permissions, agent: createApiXAgent({ infer: askPiDirector }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
@@ -1164,7 +1181,36 @@ export const registerRuntimeAdapter = runtimeAdapters.register;
 export const instructCoordinationEmployee = coordinator.instructEmployee;
 export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
+export function receiveAgentMessages(actor) {
+  db.prepare('UPDATE runs SET mailbox_seen_at=? WHERE id=?').run(now(),actor.run_id);
+  return receiveMessages({projectId:actor.project_id,agentId:actor.agent_id,targetTaskId:actor.task_id,targetRunId:actor.run_id});
+}
+export function sendAgentMessage(actor, input) {
+  if (typeof input.idempotencyKey!=='string' || !input.idempotencyKey.trim() || input.idempotencyKey.length>200) throw new Error('消息需要有效的幂等键');
+  let targetTaskId = actor.task_id;
+  let targetRunId = actor.run_id;
+  if (!['apix-director','director'].includes(input.to) && (input.to!==actor.agent_id || input.targetTaskId && input.targetTaskId!==actor.task_id)) {
+    const source = row('SELECT plan_id FROM tasks WHERE id=?',actor.task_id);
+    const target = row("SELECT t.id,t.plan_id,r.id AS run_id FROM tasks t JOIN runs r ON r.task_id=t.id WHERE t.id=? AND t.project_id=? AND t.employee_id=? AND t.status='running' AND r.status='running' ORDER BY r.rowid DESC LIMIT 1",input.targetTaskId ?? null,actor.project_id,input.to ?? null);
+    if (!target || !source?.plan_id || target.plan_id !== source.plan_id) throw new Error('同事交接须指定同一已批准计划中正在运行的目标任务');
+    targetTaskId=target.id; targetRunId=target.run_id;
+  }
+  if (input.replyTo) {
+    const request = row('SELECT * FROM agent_messages WHERE id=?',input.replyTo);
+    if (!request || request.project_id!==actor.project_id || request.to_agent!==actor.agent_id || request.target_task_id!==actor.task_id || request.target_run_id!==actor.run_id) throw new Error('不能回复其他任务或运行的消息');
+  }
+  return sendMessage({...input,projectId:actor.project_id,from:actor.agent_id,taskId:actor.task_id,targetTaskId,targetRunId,sourceRunId:actor.run_id,idempotencyKey:`run:${actor.run_id}:${input.idempotencyKey.trim()}`});
+}
+export function handleAgentMessage(actor, id, action, input) {
+  const message=messageDetails(id,actor.agent_id).message;
+  if(message.project_id!==actor.project_id || message.to_agent!==actor.agent_id || message.target_task_id!==actor.task_id || message.target_run_id!==actor.run_id) throw new Error('消息不属于当前任务与运行');
+  return ({ack:ackMessage,complete:completeMessage,nack:nackMessage})[action](id,{...input,agentId:actor.agent_id});
+}
 export const employeeDetails = employeeInsights.details;
-export function agentTeam(projectId) { return listMailboxes(projectId).map(m => ({ id:m.agent_id,role:m.role,name:row('SELECT name FROM employees WHERE id=?',m.agent_id)?.name ?? m.agent_id })); }
+export function agentTeam(projectId, taskId) {
+  const source=taskId ? row('SELECT plan_id FROM tasks WHERE id=? AND project_id=?',taskId,projectId) : null;
+  return listMailboxes(projectId).map(m => ({id:m.agent_id,role:m.role,name:row('SELECT name FROM employees WHERE id=?',m.agent_id)?.name ?? m.agent_id,
+    tasks:source?.plan_id ? rows("SELECT t.id AS taskId,r.id AS runId,substr(t.prompt,1,200) AS instruction FROM tasks t JOIN runs r ON r.task_id=t.id WHERE t.project_id=? AND t.plan_id=? AND t.employee_id=? AND t.status='running' AND r.status='running'",projectId,source.plan_id,m.agent_id) : []}));
+}
 
 export { registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact };

@@ -101,9 +101,17 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     const maxContextChars = Math.max(1000, Math.min(100000, Number(input.maxContextChars ?? MESSAGE_MAX_BYTES)));
     if (bytes > maxContextChars || bytes > MESSAGE_MAX_BYTES) throw new Error(`消息超过上下文预算（最多 ${Math.min(maxContextChars, MESSAGE_MAX_BYTES)} 字节）`);
     const type = ["request", "response", "event", "artifact_ref", "cancel"].includes(input.type) ? input.type : "request";
+    const task = input.taskId ? row('SELECT * FROM tasks WHERE id=? AND project_id=?',input.taskId,input.projectId) : null;
+    if (input.taskId && !task) throw new Error('任务不属于当前项目');
+    const targetTaskId = input.targetTaskId ?? (task?.employee_id === to ? task.id : null);
+    const targetTask = targetTaskId ? row('SELECT * FROM tasks WHERE id=? AND project_id=?',targetTaskId,input.projectId) : null;
+    if (targetTaskId && (!targetTask || !['apix-director','director'].includes(to) && targetTask.employee_id !== to)) throw new Error('目标任务与收件员工不匹配');
+    const targetRunId = input.targetRunId ?? (targetTaskId ? row("SELECT id FROM runs WHERE task_id=? AND status IN ('starting','running') ORDER BY rowid DESC LIMIT 1",targetTaskId)?.id ?? null : null);
+    if (targetRunId && !row("SELECT id FROM runs WHERE id=? AND task_id=? AND status IN ('starting','running')",targetRunId,targetTaskId)) throw new Error('目标运行不属于任务或已结束');
+    if (input.sourceRunId && !row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE r.id=? AND r.task_id=? AND t.employee_id=? AND t.project_id=?",input.sourceRunId,input.taskId,from,input.projectId)) throw new Error('来源运行不属于发件任务');
     const existing = row("SELECT * FROM agent_messages WHERE project_id=? AND idempotency_key=?", input.projectId, idempotencyKey);
     if (existing) {
-      if (existing.from_agent !== from || existing.to_agent !== to || existing.type !== type || existing.payload !== payload || existing.reply_to !== (input.replyTo ?? null)) throw new Error('幂等键已被不同消息使用');
+      if (existing.from_agent !== from || existing.to_agent !== to || existing.type !== type || existing.payload !== payload || existing.reply_to !== (input.replyTo ?? null) || existing.task_id !== (input.taskId ?? null) || existing.target_task_id !== targetTaskId || existing.target_run_id !== targetRunId || existing.source_run_id !== (input.sourceRunId ?? null)) throw new Error('幂等键已被不同消息使用');
       return { ...publicMessage(existing), duplicate: true };
     }
     const blockedReason = blockedByDirector({ ...input, from, to, type }, fromMailbox.role, payload);
@@ -123,8 +131,8 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     correlationId ||= type === "response" ? replyTo : id;
     const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
     const status = blockedReason ? "rejected" : "queued";
-    db.prepare(`INSERT INTO agent_messages(id,idempotency_key,correlation_id,reply_to,project_id,task_id,conversation_id,from_agent,to_agent,type,status,priority,payload,payload_bytes,context_tokens,timeout_ms,expires_at,max_retries,error,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, idempotencyKey, correlationId, replyTo, input.projectId, input.taskId ?? null, input.conversationId ?? null, from, to, type, status, input.priority === "high" ? "high" : "normal", payload, bytes, Number.isFinite(Number(input.contextTokens)) ? Number(input.contextTokens) : null, timeoutMs, expiresAt, maxRetries, blockedReason, createdAt);
+    db.prepare(`INSERT INTO agent_messages(id,idempotency_key,correlation_id,reply_to,project_id,task_id,conversation_id,from_agent,to_agent,type,status,priority,payload,payload_bytes,context_tokens,timeout_ms,expires_at,max_retries,error,created_at,target_task_id,target_run_id,source_run_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, idempotencyKey, correlationId, replyTo, input.projectId, input.taskId ?? null, input.conversationId ?? null, from, to, type, status, input.priority === "high" ? "high" : "normal", payload, bytes, Number.isFinite(Number(input.contextTokens)) ? Number(input.contextTokens) : null, timeoutMs, expiresAt, maxRetries, blockedReason, createdAt,targetTaskId,targetRunId,input.sourceRunId ?? null);
     if (blockedReason) db.prepare("UPDATE agent_messages SET completed_at=? WHERE id=?").run(now(), id);
     appendMessageEvent(input.projectId, id, blockedReason ? "director.intercepted" : "message.created", "apix-director", { reason: blockedReason, from, to, type });
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
@@ -136,7 +144,9 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     assertActor(projectId, agentId);
     expireMessages(projectId);
     const limit = Math.max(1, Math.min(100, Number(input.limit ?? 20)));
-    const messages = rows("SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status IN ('queued','delivered') AND (next_retry_at IS NULL OR next_retry_at<=?) ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,created_at,id LIMIT ?", projectId, agentId, now(), limit);
+    const scope = input.targetTaskId ? ' AND target_task_id=? AND target_run_id=?' : '';
+    const params = input.targetTaskId ? [input.targetTaskId,input.targetRunId] : [];
+    const messages = rows(`SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status IN ('queued','delivered') AND (next_retry_at IS NULL OR next_retry_at<=?)${scope} ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,created_at,id LIMIT ?`, projectId, agentId, now(), ...params, limit);
     for (const message of messages) {
       if (message.status === 'delivered') continue;
       db.prepare("UPDATE agent_messages SET status='delivered',delivered_at=? WHERE id=? AND status='queued'").run(now(), message.id);

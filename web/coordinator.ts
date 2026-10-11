@@ -1,5 +1,6 @@
 import { readConversation } from './conversation-stream.js';
 import { saveBrief } from './requirements-form.js';
+import { instructionState } from './execution-view.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
@@ -10,6 +11,8 @@ interface Session {
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
   tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
   turns: {role:string;kind:string;content:string}[]; agent: {mode:string;error?:string};
+  instructions?: {id:string;taskId:string;runId:string;status:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
+  capabilities?: {id:string;mailbox?:boolean}[];
 }
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
@@ -158,10 +161,14 @@ function render(s: Session) {
     return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(hint)}</small></div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${t.status==='completed'?`<button class="text-action" data-coord-accept="${t.id}">通过验收</button><button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
   }).join('');
   const active=s.tasks.filter(t=>t.status==='running');
-  $('#coord-guidance-section').hidden=!active.length;
+  $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
+  $('#coord-instruction').hidden=!active.length;
+  let instructionList=root.querySelector<HTMLElement>('#coord-instructions');
+  if(!instructionList){instructionList=document.createElement('div');instructionList.id='coord-instructions';$('#coord-guidance-section').append(instructionList);}
+  instructionList.innerHTML=(s.instructions ?? []).map(m=>`<article class="coord-task"><div><strong>${esc(instructionState(m.status))}</strong><p>${esc(m.payload.content ?? (m.payload.kind==='progress_request'?'ApiX 请求真实进度':'协作消息'))}</p><small>${esc(s.tasks.findIndex(t=>t.id===m.taskId)+1)} 号任务 · ${esc(m.runId?.slice(0,8))} · ${m.mailbox_seen_at?'已检测到消息领取':'尚未检测到此运行领取消息'}</small></div></article>`).join('');
   const taskSelect=$<HTMLSelectElement>('#coord-instruction [name="taskId"]');
   const previousTask=taskSelect.value;
-  taskSelect.innerHTML=active.map(t=>`<option value="${esc(t.id)}">${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? t.employee_id)} · ${esc(t.prompt.slice(0,60))}</option>`).join('');
+  taskSelect.innerHTML=active.map(t=>`<option value="${esc(t.id)}">${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? t.employee_id)} · ${esc(t.prompt.slice(0,60))} · ${s.capabilities?.find(c=>c.id===snapshot.employees.find(e=>e.id===t.employee_id)?.runtime)?.mailbox?'声明支持实时消息':'需员工主动读取，未保证实时指导'}</option>`).join('');
   if(active.some(t=>t.id===previousTask)) taskSelect.value=previousTask;
   $('#coord-revise').hidden=['clarifying','ready'].includes(s.status);
   const runIds=snapshot.runs.filter(r=>s.tasks.some(t=>t.id===r.task_id)).map(r=>r.id);

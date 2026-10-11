@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, type InteractionMode, object, text } from './contracts.js';
+import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, type InteractionMode, type AgentCapabilities, object, text } from './contracts.js';
 import { assess, emptyRequirements, nextQuestion, normalizeAnswer, requirementBrief } from './requirement-engine.js';
 import type { ApiXAgent } from './apix-agent.js';
 import type { Memory } from './memory.js';
@@ -10,6 +10,7 @@ import { validateModelConfig } from './model-providers.js';
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
   employees(): Employee[];
+  capabilities(): AgentCapabilities[];
   sendMessage(input: Record<string, unknown>): { id: string; status: string };
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
@@ -41,7 +42,9 @@ export function createCoordinator(deps: Dependencies) {
       dependencies, progress: progressSummary(tasks, dependencies),
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
+      capabilities: deps.capabilities(),
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
+      instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
       agent: { id: 'apix', name: 'ApiX', role: 'manager', foundation: 'Pi', mode: check?.model_mode ?? 'rules', error: check?.model_error }, busy: busy.has(id) };
   }
   function checkpoint(id: string) {
