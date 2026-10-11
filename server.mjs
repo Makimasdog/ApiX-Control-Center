@@ -7,6 +7,7 @@ import { listCoordinationSessions, coordinationSessionDetails, createCoordinatio
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
 import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
+import { readLocalModels } from './dist/src/local-models.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -117,6 +118,7 @@ createServer(async (request, response) => {
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (pathname === '/api/manager/models') result = await readLocalModels(input);
       else if (pathname === "/api/coordination/sessions") result = createCoordinationSession(input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/messages$/.test(pathname)) result = await discussCoordinationSession(pathname.split('/')[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/mode$/.test(pathname)) result = setCoordinationInteractionMode(pathname.split('/')[4],input);

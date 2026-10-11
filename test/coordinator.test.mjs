@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { createTaskScheduler } from '../src/task-scheduler.mjs';
 import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
@@ -323,6 +324,26 @@ test('provider catalog and manager validation preserve old settings on every fai
   await h.restart();assert.deepEqual(await h.request('/api/manager/settings'),old);
   assert.deepEqual(await h.request('/api/manager/settings',{}),{provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''});
 }));
+
+test('local model discovery API is read-only, authenticated by environment and origin protected',async()=>harness(async h=>{
+  let calls=0;
+  const service=createHttpServer((req,res)=>{
+    calls++;assert.equal(req.method,'GET');assert.equal(req.url,'/v1/models');assert.equal(req.headers.authorization,'Bearer fixture-local-secret');
+    res.end(JSON.stringify({data:[{id:'actual-local-model',owned_by:'fixture'}]}));
+  });
+  await new Promise(resolve=>service.listen(0,'127.0.0.1',resolve));
+  try{
+    const baseUrl='http://127.0.0.1:'+service.address().port+'/v1';
+    const saved=await h.request('/api/manager/settings',{provider:'legacy',model:'manual-model'});
+    const input={baseUrl,apiKeyEnv:'APIX_TEST_LOCAL_MODEL_KEY'};
+    assert.deepEqual(await h.request('/api/manager/models',input),{models:[{id:'actual-local-model',name:'actual-local-model'}]});
+    assert.deepEqual(await h.request('/api/manager/settings'),saved);
+    const rejected=await fetch(h.origin+'/api/manager/models',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://example.invalid'},body:JSON.stringify(input)});
+    assert.equal(rejected.status,403);assert.equal(calls,1);
+    assert.match((await h.request('/api/manager/models',{baseUrl:'https://example.invalid/v1',apiKeyEnv:'APIX_TEST_LOCAL_MODEL_KEY'},400)).error,/回环/);
+    assert.equal(calls,1);assert.deepEqual(await h.request('/api/manager/settings'),saved);
+  }finally{service.closeAllConnections();await new Promise(resolve=>service.close(resolve));}
+},{APIX_TEST_LOCAL_MODEL_KEY:'fixture-local-secret'}));
 
 test('delayed SSE exposes deltas before completion, preserves context and confirmed requirements',async()=>harness(async h=>{
   const {s:initial}=await setup(h);

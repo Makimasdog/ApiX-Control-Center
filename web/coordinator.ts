@@ -1,6 +1,6 @@
 import { readConversation } from './conversation-stream.js';
 import { saveBrief } from './requirements-form.js';
-import { selectProvider, settingsDraft, settingsPayload, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
+import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
@@ -239,9 +239,19 @@ $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void
 
 // Model form uses the same state/payload functions as its regression tests.
 const modelForm=$<HTMLFormElement>('#coord-model');
+modelForm.insertAdjacentHTML('beforeend','<button type="button" id="model-discover" class="outline-button" hidden>读取本地模型</button><p id="model-discovery-status" class="coord-muted" role="status"></p><datalist id="local-model-options"></datalist>');
+for(const name of ['customModel','customModelName'])(modelForm.elements.namedItem(name) as HTMLInputElement).setAttribute('list','local-model-options');
 const providerSelect=$<HTMLSelectElement>('#model-provider-select');
 const modelSelect=$<HTMLSelectElement>('#model-select');
 let providers:ProviderConfig[]=[];let savedSettings:ModelSettings|null=null;let modelReady=false;
+let lookupVersion=0;let lookupSignature='';let lookupPending=false;
+function modelDraft(){return Object.fromEntries(new FormData(modelForm)) as ModelDraft;}
+function updateLocalLookup() {
+  const request=modelReady?localLookupRequest(modelDraft(),providers):null;
+  const signature=JSON.stringify([providerSelect.value,request]);
+  if(signature!==lookupSignature){lookupSignature=signature;lookupVersion++;lookupPending=false;$('#model-discovery-status').textContent='';$('#local-model-options').innerHTML='';}
+  const button=$<HTMLButtonElement>('#model-discover');button.hidden=!request;button.disabled=!request || lookupPending;
+}
 function applyModelDraft(draft:ModelDraft) {
   const config=providers.find(p=>p.id===draft.provider);
   modelSelect.innerHTML=config?.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('') || '<option value="">请先选择平台</option>';
@@ -249,8 +259,28 @@ function applyModelDraft(draft:ModelDraft) {
   $('#model-preset-config').hidden=!config;$('#model-custom-config').hidden=draft.provider!=='custom';
   $('#api-key-label').hidden=!!config && !config.requiresApiKey;
   $('#api-key-hint').textContent=config?.requiresApiKey?'请在启动前设置环境变量 '+draft.apiKeyEnv:'';
+  updateLocalLookup();
 }
 providerSelect.addEventListener('change',()=>{try{applyModelDraft(selectProvider(providerSelect.value,providers));}catch(e){notice(String(e),true);}});
+modelForm.addEventListener('input',updateLocalLookup);
+modelForm.addEventListener('change',updateLocalLookup);
+$('#model-discover').addEventListener('click',async()=>{
+  const request=localLookupRequest(modelDraft(),providers);if(!modelReady || !request || lookupPending)return;
+  const version=++lookupVersion;lookupPending=true;updateLocalLookup();
+  const status=$('#model-discovery-status');status.textContent='正在读取本地模型目录…';
+  try {
+    const result=await api<{models:{id:string;name:string}[]}>('/api/manager/models',request);
+    if(version!==lookupVersion)return;
+    $('#local-model-options').innerHTML=result.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('');
+    if(providerSelect.value!=='custom'){
+      const selected=modelSelect.value;
+      modelSelect.innerHTML=mergeLocalModels(result.models,selected).map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('');
+      modelSelect.value=selected;
+    }
+    status.textContent=result.models.length?'读取到 '+result.models.length+' 个模型；请自行选择并保存。目录不保证模型已加载或能够对话。':'服务目录为空；已保留当前模型，请先在本地服务安装或加载模型。';
+  } catch(e){if(version===lookupVersion)status.textContent='读取失败：'+(e instanceof Error?e.message:String(e))+'。已保留当前配置，可继续手动输入。';}
+  finally {if(version===lookupVersion){lookupPending=false;updateLocalLookup();}}
+});
 modelForm.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
   const draft=Object.fromEntries(new FormData(modelForm)) as ModelDraft;
   const payload=settingsPayload(draft,providers,savedSettings,modelReady);
@@ -262,6 +292,7 @@ void Promise.all([api<{providers:ProviderConfig[]}>('/api/manager/providers'),ap
   providerSelect.innerHTML='<option value="">使用 Pi 默认配置</option>'+providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'<option value="custom">自定义 URL / Pi 已配置模型</option>';
   applyModelDraft(settingsDraft(settings,providers));modelReady=true;
   modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=false);
+  updateLocalLookup();
 }).catch(e=>notice('模型目录或设置加载失败，已禁止保存以保护原配置。请刷新重试：'+String(e),true));
 
 document.querySelector('#page-missions')!.insertAdjacentHTML('beforeend', `<section class="surface-card coord-section"><h3>接入自定义 CLI</h3><p class="coord-muted">适用于提供非交互 CLI 的 Agent。通过标准输入接收任务，通过标准输出返回结果；注册后可在运行时列表中添加员工。</p><form id="adapter-form" class="stacked-form"><label>适配器 ID<input name="id" required placeholder="qoder-cli"></label><label>名称<input name="name" required placeholder="Qoder CLI"></label><label>可执行文件绝对路径<input name="executable" required placeholder="C:\\Program Files\\nodejs\\node.exe"></label><label>启动参数（JSON 字符串数组）<input name="args" required value="[]"></label><label>输出格式<select name="format"><option value="plain">纯文本</option><option value="jsonl">JSONL 事件</option></select></label><button class="outline-button">注册适配器</button><p id="adapter-notice" role="status"></p></form></section>`);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
-import { selectProvider, settingsDraft, settingsPayload } from '../dist/web/model-settings.js';
+import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels } from '../dist/web/model-settings.js';
 const providers=BUILTIN_PROVIDERS;
 const defaults={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
 test('provider change clears custom name; actual selected model is saved',()=>{
@@ -44,4 +44,19 @@ test('explicit default clears settings and directory changes drive actual select
   const extra={...providers[0],id:'test-added-provider',name:'测试目录'};
   const changed=[extra];assert.equal(selectProvider(extra.id,changed).provider,extra.id);
   assert.throws(()=>selectProvider('deepseek',changed),/未知/);
+});
+
+test('local lookup uses the current unsaved address and only OpenAI-compatible loopback services',()=>{
+  const draft=selectProvider('local-ollama',providers);
+  assert.deepEqual(localLookupRequest(draft,providers),{baseUrl:'http://127.0.0.1:11434/v1',apiKeyEnv:''});
+  const custom={...selectProvider('custom',providers),baseUrl:'http://[::1]:1234/v1',customApiKeyEnv:'LOCAL_KEY'};
+  assert.deepEqual(localLookupRequest(custom,providers),{baseUrl:custom.baseUrl,apiKeyEnv:'LOCAL_KEY'});
+  for(const baseUrl of ['https://example.invalid/v1','http://localhost.example.invalid/v1','http://user:secret@localhost/v1','http://localhost/v1?q=x'])assert.equal(localLookupRequest({...custom,baseUrl},providers),null);
+  assert.equal(localLookupRequest({...custom,apiType:'anthropic-messages'},providers),null);
+});
+test('discovery preserves a manually selected model, including when directory is empty',()=>{
+  const models=[{id:'actual-model',name:'actual-model'}];
+  assert.deepEqual(mergeLocalModels(models,'manual-model').map(m=>m.id),['manual-model','actual-model']);
+  assert.equal(mergeLocalModels(models,'actual-model'),models);
+  assert.deepEqual(mergeLocalModels([],'manual-model'),[{id:'manual-model',name:'manual-model（当前填写）'}]);
 });

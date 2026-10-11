@@ -31,3 +31,18 @@ export function settingsPayload(draft: ModelDraft, providers: ProviderConfig[], 
   if (!config) throw new Error('未知的平台配置，请重新加载目录');
   return { provider: 'apix-custom', model: draft.customModelName.trim() || draft.model, baseUrl: config.baseUrl, apiType: config.apiType, apiKeyEnv: draft.apiKeyEnv.trim() };
 }
+
+export function localLookupRequest(draft:ModelDraft, providers:ProviderConfig[]): {baseUrl:string;apiKeyEnv:string}|null {
+  const config=providers.find(p=>p.id===draft.provider);
+  const baseUrl=(draft.provider==='custom'?draft.baseUrl:config?.baseUrl ?? '').trim();
+  const apiType=draft.provider==='custom'?draft.apiType:config?.apiType;
+  try {
+    const url=new URL(baseUrl);
+    if(!['http:','https:'].includes(url.protocol) || !['localhost','127.0.0.1','[::1]'].includes(url.hostname.toLowerCase()) || url.username || url.password || url.search || url.hash || !['openai-completions','openai-responses'].includes(apiType ?? ''))return null;
+    return {baseUrl,apiKeyEnv:(draft.provider==='custom'?draft.customApiKeyEnv:draft.apiKeyEnv).trim()};
+  } catch { return null; }
+}
+
+export function mergeLocalModels(models:{id:string;name:string}[], selected:string):{id:string;name:string}[] {
+  return selected && !models.some(m=>m.id===selected)?[{id:selected,name:selected+'（当前填写）'},...models]:models;
+}
