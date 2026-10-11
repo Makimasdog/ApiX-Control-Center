@@ -327,7 +327,9 @@ export function createCoordinator(deps: Dependencies) {
     if (provider.length > 100 || model.length > 200 || provider.startsWith('-') || model.startsWith('-')) throw new Error('模型配置无效');
     const baseUrl = String(input.baseUrl ?? '').trim(); const apiType = String(input.apiType ?? 'openai-completions').trim(); const apiKeyEnv = String(input.apiKeyEnv ?? '').trim();
     if (baseUrl) { const parsed = new URL(baseUrl); if (!['http:','https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !model) throw new Error('自定义 URL 或模型 ID 无效'); }
-    if (baseUrl.length > 1000 || !['openai-completions','openai-responses','anthropic-messages'].includes(apiType) || (apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv))) throw new Error('自定义模型配置无效');
+    if (baseUrl.length > 1000) throw new Error('API URL 过长（最大 1000 字符）');
+    if (!['openai-completions','openai-responses','anthropic-messages'].includes(apiType)) throw new Error('API 类型无效');
+    if (apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv)) throw new Error('API Key 环境变量名必须以大写字母或下划线开头，只能包含大写字母、数字和下划线。例如：DEEPSEEK_API_KEY');
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }

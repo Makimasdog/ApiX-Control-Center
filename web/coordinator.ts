@@ -45,7 +45,7 @@ async function streamMessage(id:string,body:unknown) {
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
-<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">使用 Pi 默认配置</option><option value="deepseek">DeepSeek 深度求索</option><option value="dashscope">阿里云百炼 (通义千问)</option><option value="doubao">火山引擎豆包</option><option value="openai">OpenAI GPT</option><option value="anthropic">Anthropic Claude</option><option value="zhipu">智谱 AI (GLM)</option><option value="moonshot">月之暗面 (Kimi)</option><option value="local-ollama">Ollama (本地)</option><option value="local-lm-studio">LM Studio (本地)</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
+<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">使用 Pi 默认配置</option><option value="deepseek">DeepSeek 深度求索</option><option value="dashscope">阿里云百炼 (通义千问)</option><option value="doubao">火山引擎豆包</option><option value="openai">OpenAI GPT</option><option value="anthropic">Anthropic Claude</option><option value="zhipu">智谱 AI (GLM)</option><option value="moonshot">月之暗面 (Kimi)</option><option value="local-ollama">Ollama (本地)</option><option value="local-lm-studio">LM Studio (本地)</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
@@ -148,6 +148,7 @@ const MODEL_PROVIDERS:{[key:string]:{name:string;baseUrl:string;apiType:string;a
 };
 const providerSelect=$<HTMLSelectElement>('#model-provider-select');
 const modelSelect=$<HTMLSelectElement>('#model-select');
+const customModelNameInput=$<HTMLInputElement>('#custom-model-name-input');
 const apiKeyInput=$<HTMLInputElement>('#api-key-input');
 const apiKeyLabel=$<HTMLElement>('#api-key-label');
 const apiKeyHint=$<HTMLElement>('#api-key-hint');
@@ -178,7 +179,9 @@ $('#coord-model').addEventListener('submit',event=>{
       payload={provider:'apix-custom',model:String(formData.get('customModel')),baseUrl:String(formData.get('baseUrl')),apiType:String(formData.get('apiType')),apiKeyEnv:String(formData.get('customApiKeyEnv'))};
     }else if(provider && MODEL_PROVIDERS[provider]){
       const config=MODEL_PROVIDERS[provider];
-      payload={provider:'apix-custom',model:String(formData.get('model')),baseUrl:config.baseUrl,apiType:config.apiType,apiKeyEnv:String(formData.get('apiKeyEnv'))};
+      const customModelName=String(formData.get('customModelName') || '').trim();
+      const selectedModel=String(formData.get('model'));
+      payload={provider:'apix-custom',model:customModelName || selectedModel,baseUrl:config.baseUrl,apiType:config.apiType,apiKeyEnv:String(formData.get('apiKeyEnv'))};
     }else{
       payload={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
     }
@@ -193,7 +196,14 @@ void api<{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:s
         if(config.baseUrl===s.baseUrl){
           providerSelect.value=key;
           modelSelect.innerHTML=config.models.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
-          modelSelect.value=s.model;
+          const isPresetModel=config.models.some(m=>m.id===s.model);
+          if(isPresetModel){
+            modelSelect.value=s.model;
+            customModelNameInput.value='';
+          }else{
+            modelSelect.value=config.models[0]?.id ?? '';
+            customModelNameInput.value=s.model;
+          }
           apiKeyInput.value=s.apiKeyEnv;
           presetConfig.hidden=false;
           matched=true;
