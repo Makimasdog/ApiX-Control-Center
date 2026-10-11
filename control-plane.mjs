@@ -12,6 +12,7 @@ import { requirementBrief } from "./dist/src/requirement-engine.js";
 import { createMemory as createEventMemory } from "./dist/src/memory.js";
 import { createPermissions } from "./dist/src/permissions.js";
 import { createApiXAgent } from "./dist/src/apix-agent.js";
+import { isLoopbackModelUrl } from "./dist/src/model-providers.js";
 import { createRuntimeAdapters } from "./dist/src/runtime-adapters.js";
 import { normalizeWorkerEvent } from "./dist/src/worker-events.js";
 import { createAgentMailbox } from "./dist/src/agent-mailbox.js";
@@ -875,7 +876,7 @@ async function askPiDirector(prompt, onDelta) {
   let managerEnv = process.env;
   if (settings.baseUrl) {
     if (settings.apiKeyEnv && !process.env[settings.apiKeyEnv]) throw new Error(`请先设置 ${settings.apiKeyEnv} 环境变量`);
-    if (!settings.apiKeyEnv && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(settings.baseUrl)) throw new Error('远程自定义模型必须指定 API Key 环境变量');
+    if (!settings.apiKeyEnv && !isLoopbackModelUrl(settings.baseUrl)) throw new Error('远程自定义模型必须指定 API Key 环境变量');
     const managerDir = join(dataDir, 'manager-pi');
     mkdirSync(managerDir, { recursive: true });
     writeFileSync(join(managerDir, 'models.json'), JSON.stringify({providers:{'apix-custom':{baseUrl:settings.baseUrl,api:settings.apiType,apiKey:settings.apiKeyEnv ? `$${settings.apiKeyEnv}` : 'apix-local',models:[{id:settings.model}]}}}));
@@ -883,7 +884,7 @@ async function askPiDirector(prompt, onDelta) {
   }
   return new Promise((resolve, reject) => {
     const child = spawn(command.executable, [...command.prefix, "--mode", "rpc", "--no-session", "--no-extensions", "--no-tools", ...(settings.provider ? ["--provider", settings.provider] : []), ...(settings.model ? ["--model", settings.model] : [])], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env:managerEnv });
-    let stdout = ""; let stderr = ""; let answer = ""; let settled = false; let finished = false; let streamed = false;
+    let stdout = ""; let stderr = ""; let answer = ""; let settled = false; let finished = false; let streamed = false; let runtimeFailed = false;
     const timer = setTimeout(() => { child.kill(); }, 90_000);
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString("utf8");
@@ -894,7 +895,10 @@ async function askPiDirector(prompt, onDelta) {
         try {
           const item = JSON.parse(line);
           if (item.type === 'message_update' && item.assistantMessageEvent?.type === 'text_delta' && typeof item.assistantMessageEvent.delta === 'string') { streamed = true; onDelta?.(item.assistantMessageEvent.delta); }
-          if (item.type === "message_end" && item.message?.role === "assistant") answer = textFromMessage(item.message);
+          if (item.type === "message_end" && item.message?.role === "assistant") {
+            answer = textFromMessage(item.message);
+            runtimeFailed = ['error', 'aborted'].includes(item.message.stopReason);
+          }
           if (item.type === "agent_settled") { settled = true; child.stdin.end(); }
         } catch { /* Ignore non-JSON diagnostics from the runtime. */ }
       }
@@ -904,7 +908,7 @@ async function askPiDirector(prompt, onDelta) {
     child.on("close", (code) => {
       if (finished) return;
       finished = true; clearTimeout(timer);
-      if (code === 0 && settled && answer.trim()) { if (!streamed) onDelta?.(answer); resolve(answer.trim()); }
+      if (code === 0 && settled && answer.trim() && !runtimeFailed) { if (!streamed) onDelta?.(answer); resolve(answer.trim()); }
       else reject(new Error(stderr || "Pi 未返回可用答复"));
     });
     child.stdin.write(JSON.stringify({ id: randomUUID(), type: "prompt", message: prompt }) + "\n");

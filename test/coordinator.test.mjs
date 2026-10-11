@@ -9,6 +9,7 @@ import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { createTaskScheduler } from '../src/task-scheduler.mjs';
 import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
+import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 test('Windows npm shims resolve package bin entries without a shell', {skip:process.platform!=='win32'}, async()=>{
@@ -61,6 +62,26 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+async function* streamFrames(response) {
+  assert.equal(response.status,200);
+  assert.match(response.headers.get('content-type'),/text\/event-stream/);
+  const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';
+  try {
+    while(true) {
+      const {done,value}=await reader.read();buffer+=decoder.decode(value??new Uint8Array(),{stream:!done});
+      let index;
+      while((index=buffer.indexOf('\n\n'))>=0) {
+        const frame=buffer.slice(0,index);buffer=buffer.slice(index+2);
+        const type=frame.match(/^event: (.+)$/m)?.[1];const data=frame.match(/^data: (.+)$/m)?.[1];
+        if(type&&data) yield {type,data:JSON.parse(data)};
+      }
+      if(done)break;
+    }
+  } finally {reader.releaseLock();}
+}
+function streamRequest(h,s,content) {
+  return fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:s.revision,content})});
+}
 async function setup(h,runtime='pi') {
   const projectId=(await h.request('/api/projects',{name:'协调系统',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'执行员工',runtime,role:'开发与验证'})).id;
@@ -271,6 +292,90 @@ test('ApiX actively requests progress from a silent worker and records the super
   assert.equal(messages.filter(m=>m.idempotency_key.startsWith('apix-status-request:')).length,1);
   assert(messages.some(m=>m.idempotency_key==='idle-report'));
 },{APIX_SUPERVISION_TICK_MS:'100',APIX_SUPERVISION_AFTER_MS:'300'}));
+test('provider catalog and manager validation preserve old settings on every failure',async()=>harness(async h=>{
+  assert.deepEqual((await h.request('/api/manager/providers')).providers,BUILTIN_PROVIDERS);
+  const local={provider:'apix-custom',model:'qwen-test',baseUrl:'http://[::1]:11434/v1',apiType:'openai-completions',apiKeyEnv:''};
+  await h.request('/api/manager/settings',local);
+  const invalid=[
+    [{baseUrl:'invalid-url'},/URL 格式无效/],
+    [{baseUrl:'ftp://example.invalid'},/HTTP\/HTTPS/],
+    [{baseUrl:'https://user:pass@example.invalid'},/认证信息/],
+    [{baseUrl:'https://example.invalid/?key=x'},/查询参数/],
+    [{baseUrl:'https://example.invalid/#x'},/锚点/],
+    [{model:''},/模型 ID/],
+    [{baseUrl:'https://example.invalid'},/API Key/],
+    [{baseUrl:'http://localhost.example.invalid'},/API Key/],
+    [{apiType:'invalid'},/API 类型/],
+    [{apiKeyEnv:'lower_case'},/大写字母/],
+    [{baseUrl:'http://localhost/'+ 'a'.repeat(1001)},/1000/],
+    [{model:'-option'},/模型配置/],
+    [{provider:'p'.repeat(101)},/模型配置/],
+    [{model:'m'.repeat(201)},/模型配置/]
+  ];
+  for(const [changes,error] of invalid) {
+    assert.match((await h.request('/api/manager/settings',{...local,...changes},400)).error,error);
+    assert.deepEqual(await h.request('/api/manager/settings'),local);
+  }
+  const remote={...local,baseUrl:'https://example.invalid/v1',apiKeyEnv:'APIX_TEST_NOT_SET'};
+  assert.deepEqual(await h.request('/api/manager/settings',remote),remote,'save validates the variable name, not its value');
+  const old={provider:'old-pi-provider',model:'old-model',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
+  assert.deepEqual(await h.request('/api/manager/settings',old),old);
+  await h.restart();assert.deepEqual(await h.request('/api/manager/settings'),old);
+  assert.deepEqual(await h.request('/api/manager/settings',{}),{provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''});
+}));
+
+test('delayed SSE exposes deltas before completion, preserves context and confirmed requirements',async()=>harness(async h=>{
+  const {s:initial}=await setup(h);
+  let s=initial;let preview='';let checkedPending=false;const events=[];
+  for await(const event of streamFrames(await streamRequest(h,s,'fixture-long-reply'))) {
+    events.push(event.type);
+    if(event.type==='delta') {
+      preview+=event.data.text;
+      if(!checkedPending) {
+        checkedPending=true;
+        const pending=await h.request(`/api/coordination/sessions/${s.id}`);
+        assert.equal(pending.busy,true);
+        assert.equal(pending.turns.at(-1).role,'user');
+        assert.match((await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'duplicate'},400)).error,/正在处理/);
+      }
+    }
+    if(event.type==='complete')s=event.data;
+  }
+  assert(checkedPending);assert.equal(events[0],'start');assert.equal(events.at(-1),'complete');
+  assert.equal(events.filter(type=>type==='complete').length,1);
+  assert.equal(preview,s.turns.at(-1).content);assert(preview.length>1000);assert.equal(s.busy,false);
+  for await(const event of streamFrames(await streamRequest(h,s,'fixture-context')))if(event.type==='complete')s=event.data;
+  assert.match(s.turns.at(-1).content,/fixture-long-reply/);
+  const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  const requirements=plan.requirements;
+  for await(const event of streamFrames(await streamRequest(h,plan,'请解释当前进度')))if(event.type==='complete')s=event.data;
+  assert.equal(s.turns.at(-1).content,'请检查这些需求，是否还有需要调整的约束？','natural reply must not be replaced with a canned summary');
+  assert.deepEqual(s.requirements,requirements);assert.equal(s.plan_id,plan.plan_id);
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.restart();assert.deepEqual((await h.request(`/api/coordination/sessions/${s.id}`)).turns,s.turns);
+},{APIX_FIXTURE_STREAM:'1',APIX_FIXTURE_STREAM_DELAY_MS:'100'}));
+
+test('SSE stale revisions, model fallback and client disconnect leave the session usable',async()=>harness(async h=>{
+  const {s:initial}=await setup(h);let s=initial;
+  const stale=[];
+  for await(const event of streamFrames(await streamRequest(h,{...s,revision:s.revision-1},'stale')))stale.push(event);
+  assert.deepEqual(stale.map(event=>event.type),['start','error']);
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).turns.length,s.turns.length);
+  for await(const event of streamFrames(await streamRequest(h,s,'fixture-invalid-reply')))if(event.type==='complete')s=event.data;
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/不支持的行为/);assert.equal(s.busy,false);
+  for await(const event of streamFrames(await streamRequest(h,s,'fixture-runtime-error')))if(event.type==='complete')s=event.data;
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/Pi 未返回可用答复/);assert.equal(s.busy,false);
+  const frames=streamFrames(await streamRequest(h,s,'fixture-context'));
+  for await(const event of frames)if(event.type==='delta')break;
+  // Stop reading without reissuing the request; the backend still owns this turn.
+  s=await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return !state.busy&&state;});
+  assert.equal(s.turns.filter(turn=>turn.role==='user'&&turn.content==='fixture-context').length,1);
+  assert.equal(s.turns.at(-1).role,'apix');
+  const reader=(await streamRequest(h,s,'断开后继续')).body.getReader();await reader.cancel();
+  s=await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return !state.busy&&state;});
+  assert.equal(s.turns.filter(turn=>turn.role==='user'&&turn.content==='断开后继续').length,1);
+},{APIX_FIXTURE_STREAM:'1',APIX_FIXTURE_STREAM_DELAY_MS:'60'}));
+
 test('scheduler propagates launch failure through downstream dependencies',()=>{
   const db=new DatabaseSync(':memory:');
   try {

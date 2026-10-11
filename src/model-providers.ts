@@ -289,6 +289,10 @@ export function getProviderConfig(providerId: string): ProviderConfig | undefine
   return BUILTIN_PROVIDERS.find(p => p.id === providerId);
 }
 
+export function isLoopbackModelUrl(baseUrl: string): boolean {
+  return ['localhost', '127.0.0.1', '[::1]'].includes(new URL(baseUrl).hostname.toLowerCase());
+}
+
 /**
  * 验证模型配置
  */
@@ -299,6 +303,12 @@ export function validateModelConfig(config: {
   apiType: string;
   apiKeyEnv?: string;
 }): { valid: boolean; error?: string } {
+  if (config.provider.length > 100 || config.model.length > 200 || config.provider.startsWith('-') || config.model.startsWith('-')) {
+    return { valid: false, error: '模型配置无效' };
+  }
+  if (config.baseUrl && config.baseUrl.length > 1000) {
+    return { valid: false, error: 'API URL 过长（最大 1000 字符）' };
+  }
   // 自定义 URL 模式
   if (config.baseUrl) {
     try {
@@ -325,11 +335,11 @@ export function validateModelConfig(config: {
 
   // 验证 API Key 环境变量名
   if (config.apiKeyEnv && !/^[A-Z_][A-Z0-9_]*$/.test(config.apiKeyEnv)) {
-    return { valid: false, error: 'API Key 环境变量名格式无效（应为大写字母、数字和下划线）' };
+    return { valid: false, error: 'API Key 环境变量名必须以大写字母或下划线开头，只能包含大写字母、数字和下划线。例如：DEEPSEEK_API_KEY' };
   }
 
   // 检查远程 URL 是否需要 API Key
-  if (config.baseUrl && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(config.baseUrl)) {
+  if (config.baseUrl && !isLoopbackModelUrl(config.baseUrl)) {
     if (!config.apiKeyEnv) {
       return { valid: false, error: '远程模型服务必须配置 API Key 环境变量' };
     }

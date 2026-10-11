@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,15 @@ import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+async function isolatedProject(dataDir) {
+  const project = join(dataDir, 'project');
+  await mkdir(project);
+  execFileSync('git', ['init', '-q', project]);
+  await writeFile(join(project, 'README.md'), 'Isolated ApiX test project\n');
+  execFileSync('git', ['add', 'README.md'], {cwd: project});
+  execFileSync('git', ['-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
+  return project;
+}
 const serverErrors = new Map();
 const post = async (port, path, body) => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -161,9 +170,9 @@ test("Director creates a matched dependency plan and advances the DAG", async ()
   const port = await freePort();
   let server;
   try {
-    execFileSync("git", ["worktree", "prune"], { cwd: root });
+    const project = await isolatedProject(dataDir);
     server = await startServer(port, dataDir);
-    const { id: projectId } = await post(port, "/api/projects", { name: "Plan project", path: root });
+    const { id: projectId } = await post(port, "/api/projects", { name: "Plan project", path: project });
     const developer = (await post(port, "/api/employees", { name: "Developer", runtime: "pi", role: "开发工程师", department: "研发" })).id;
     const reviewer = (await post(port, "/api/employees", { name: "Reviewer", runtime: "codex", role: "代码审查", department: "质量" })).id;
     const plan = await post(port, "/api/director/plans", { projectId, goal: "实现登录功能；代码审查" });
@@ -192,7 +201,6 @@ test("Director creates a matched dependency plan and advances the DAG", async ()
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
-    execFileSync("git", ["worktree", "prune"], { cwd: root });
   }
 });
 
@@ -408,8 +416,9 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
   const port = await freePort();
   let server;
   try {
+    const project = await isolatedProject(dataDir);
     server = await startServer(port, dataDir);
-    const projectId = (await post(port, "/api/projects", { name: "Director project", path: root })).id;
+    const projectId = (await post(port, "/api/projects", { name: "Director project", path: project })).id;
     const designer = (await post(port, "/api/employees", { name: "Designer", runtime: "pi", role: "Designer" })).id;
     const developer = (await post(port, "/api/employees", { name: "Developer", runtime: "codex", role: "Developer" })).id;
     const unavailable = await fetch(`http://127.0.0.1:${port}/api/employees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Qoder role", runtime: "qoder", role: "Developer" }) });

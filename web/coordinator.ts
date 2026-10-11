@@ -1,9 +1,12 @@
+import { readConversation } from './conversation-stream.js';
+import { saveBrief } from './requirements-form.js';
+import { selectProvider, settingsDraft, settingsPayload, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
 type Step = { prompt: string; employeeId: string; dependsOn: number[] };
 interface Session {
-  id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode;
+  id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
   tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
   turns: {role:string;kind:string;content:string}[]; agent: {mode:string;error?:string};
@@ -14,6 +17,10 @@ const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&'
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
 let snapshot: Snapshot = {projects:[],employees:[],artifacts:[],runs:[]};
 let projectId = ''; let sessionId = ''; let current: Session | null = null; let loading = false; let reloading = false; let editingBrief = false; let planKey = ''; let draft: Step[] = []; let reloadVersion = 0;
+let streaming = false; let isComposing = false;
+const messageDrafts = new Map<string,string>();
+const failedReplies = new Map<string,{text:string;error:string}>();
+const unsynced = new Set<string>();
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
 const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'等待依赖',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -22,33 +29,84 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
 }
 function notice(message: string, error = false) { $('#coord-notice').textContent=message; $('#coord-notice').classList.toggle('error',error); }
 async function action(work:()=>Promise<void>) {
-  if (loading) return; loading=true; root.classList.add('is-busy'); notice('ApiX 正在处理…');
-  try { await work(); notice('已保存'); await reload(); } catch(e) { notice(e instanceof Error ? e.message : String(e),true); }
-  finally { $('#coord-stream').hidden=true; loading=false; root.classList.remove('is-busy'); }
+  if (loading) return; loading=true; root.classList.add('is-busy'); updateStreamingControls();
+  const originProject=projectId; const originSession=sessionId;
+  notice('ApiX 正在处理…');
+  try { await work(); if(projectId===originProject && sessionId===originSession)notice('已保存'); await reload(); }
+  catch(e) { if(projectId===originProject && sessionId===originSession)notice(e instanceof Error ? e.message : String(e),true); }
+  finally { loading=false; root.classList.remove('is-busy'); if(projectId!==originProject || sessionId!==originSession)notice('');updateStreamingControls(); }
 }
 function modeOptions(mode: Mode) { return [['ask_approval','请求批准'],['full_access','完全访问'],['read_only','只读规划']].map(([v,l])=>`<option value="${v}" ${v===mode?'selected':''}>${l}</option>`).join(''); }
 function interactionOptions(mode: InteractionMode) { return [['conversational','对话模式'],['structured','约束模式']].map(([v,l])=>`<option value="${v}" ${v===mode?'selected':''}>${l}</option>`).join(''); }
-async function streamMessage(id:string,body:unknown) {
-  const output=$('#coord-stream'); const text=$('#coord-stream-text'); output.hidden=false; text.textContent='ApiX 正在思考…';$('#coord-turns').scrollTop=$('#coord-turns').scrollHeight;
-  const response=await fetch(`/api/coordination/sessions/${id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(!response.ok || !response.body) { let detail='流式连接失败'; try{detail=(await response.json()).error ?? detail;}catch{} throw new Error(detail); }
-  const reader=response.body.getReader(); const decoder=new TextDecoder(); let buffer=''; let completed=false; let receivedDelta=false;
-  const consume=(frame:string)=>{let type='';let data='';for(const line of frame.split('\n')){if(line.startsWith('event: '))type=line.slice(7);if(line.startsWith('data: '))data=line.slice(6);}
-    if(!data)return; const payload=JSON.parse(data);
-    if(type==='delta'){if(!receivedDelta)text.textContent='';receivedDelta=true;text.textContent+=payload.text;$('#coord-turns').scrollTop=$('#coord-turns').scrollHeight;}
-    if(type==='error')throw new Error(payload.error);
-    if(type==='complete'){completed=true;if(!receivedDelta)text.textContent=payload.turns?.at(-1)?.content ?? 'ApiX 已回复';}
-  };
-  try { while(true){const {done,value}=await reader.read();buffer+=decoder.decode(value ?? new Uint8Array(),{stream:!done});let index;while((index=buffer.indexOf('\n\n'))>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+2);}if(done)break;} if(!completed)throw new Error('对话连接中断，请刷新查看目标状态'); }
-  finally {reader.releaseLock();}
+function updateStreamingControls() {
+  const disabled=streaming || loading || !current || current.id!==sessionId || !!current.busy || unsynced.has(sessionId);
+  $<HTMLTextAreaElement>('#coord-message textarea').disabled=disabled;
+  $<HTMLButtonElement>('#coord-message button').disabled=disabled;
+}
+function selectSession(id:string) {
+  const input=$<HTMLTextAreaElement>('#coord-message textarea');
+  if(sessionId)messageDrafts.set(sessionId,input.value);
+  sessionId=id;current=null;reloadVersion++;editingBrief=false;planKey='';
+  input.value=messageDrafts.get(id) ?? '';
+  $('#coord-turns').querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());
+  $('#coord-turns').dataset.session='';$('#coord-turns').dataset.rendered='';
+  $('#coord-body').hidden=true;updateStreamingControls();
+}
+async function streamMessage(id:string,body:unknown,userContent:string) {
+  if(streaming || current?.busy || unsynced.has(id))throw new Error('正在生成或同步回复，请稍后再试');
+  const originProject=projectId;
+  const ownsView=()=>sessionId===id && projectId===originProject;
+  streaming=true;failedReplies.delete(id);updateStreamingControls();
+  const history=$('#coord-turns');
+  const nearBottom=()=>history.scrollHeight-history.scrollTop-history.clientHeight<100;
+  history.querySelectorAll('[data-failed-reply]').forEach(node=>node.remove());
+  const userTurn=document.createElement('article');userTurn.className='coord-turn from-user';userTurn.dataset.tempId='user';
+  userTurn.innerHTML='<strong>你</strong><p>'+esc(userContent)+'</p>';
+  const apixTurn=document.createElement('article');apixTurn.className='coord-turn coord-stream';apixTurn.dataset.tempId='apix';
+  apixTurn.innerHTML='<strong>ApiX</strong><p class="stream-text">正在思考…</p>';
+  const follow=nearBottom();$('#coord-stream').before(userTurn,apixTurn);if(follow)history.scrollTop=history.scrollHeight;
+  const streamText=apixTurn.querySelector<HTMLElement>('.stream-text')!;
+  let partial='';let finalSession:Session|null=null;
+  try {
+    const response=await fetch('/api/coordination/sessions/'+encodeURIComponent(id)+'/messages/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await readConversation<Session>(response,id,{
+      delta(text){partial+=text;if(ownsView()){const follow=nearBottom();streamText.textContent=partial;if(follow)history.scrollTop=history.scrollHeight;}},
+      complete(session){finalSession=session;},
+    });
+    userTurn.remove();apixTurn.remove();
+    messageDrafts.delete(id);
+    if(ownsView()){
+      $<HTMLTextAreaElement>('#coord-message textarea').value='';
+      if(finalSession)render(finalSession);
+    }
+  } catch(error) {
+    const detail=error instanceof Error?error.message:String(error);
+    failedReplies.set(id,{text:partial,error:detail});unsynced.add(id);
+    userTurn.remove();apixTurn.remove();
+    try {
+      const session=await api<Session>('/api/coordination/sessions/'+encodeURIComponent(id));
+      unsynced.delete(id);if(ownsView())render(session);
+    } catch { if(ownsView()){renderFailedReply(id);notice('同步目标失败，请等待恢复或刷新；请勿重复发送',true);} }
+    throw error;
+  } finally {
+    streaming=false;updateStreamingControls();
+    if(ownsView() && current)render(current);
+  }
+}
+function renderFailedReply(id:string) {
+  const history=$('#coord-turns');history.querySelectorAll('[data-failed-reply]').forEach(node=>node.remove());
+  const failed=failedReplies.get(id);if(!failed)return;
+  const article=document.createElement('article');article.className='coord-turn coord-turn-error';article.dataset.failedReply=id;
+  article.innerHTML='<strong>ApiX</strong><p>'+esc(failed.text || '尚未收到回复')+'</p><div class="stream-error-note">'+esc('[生成中断] '+failed.error)+'</div>';
+  $('#coord-stream').before(article);
 }
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
-<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">使用 Pi 默认配置</option><option value="deepseek">DeepSeek 深度求索</option><option value="dashscope">阿里云百炼 (通义千问)</option><option value="doubao">火山引擎豆包</option><option value="openai">OpenAI GPT</option><option value="anthropic">Anthropic Claude</option><option value="zhipu">智谱 AI (GLM)</option><option value="moonshot">月之暗面 (Kimi)</option><option value="local-ollama">Ollama (本地)</option><option value="local-lm-studio">LM Studio (本地)</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
+<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 使用 Pi 推理底座；这不是员工 Pi 的配置。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">使用 Pi 默认配置</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
-<div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
+<div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
 <section id="coord-requirements" class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">${fields.map(([key,label])=>`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')}<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
 <section class="surface-card coord-section"><h3>权限由你决定</h3><p class="coord-muted">ApiX 与员工分别授权。请求批准会等待你审查计划；只读规划不会启动员工。更改权限将使已有执行授权失效。</p><div id="coord-permissions"></div></section>
 <section class="surface-card coord-section"><div class="coord-title"><h3>任务安排</h3><button id="coord-add-step" class="text-action">新增步骤</button></div><div id="coord-plan"></div><div class="coord-actions"><button id="coord-save-plan" class="outline-button">保存计划修改</button><button id="coord-dispatch" class="primary-button">批准此计划并执行</button></div><div id="coord-tasks"></div></section>
@@ -68,12 +126,26 @@ function render(s: Session) {
   $('#coord-backend').textContent=s.agent.mode==='pi' ? 'ApiX 正在使用 Pi 推理底座' : `规则引导${s.agent.error ? ` · ${s.agent.error}` : ' · 发送消息后使用 Pi 深度澄清'}`;
   const turns=s.turns.map(t=>`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${esc(t.content)}</p></article>`).join('');
   const history=$('#coord-turns');
-  if (history.dataset.session!==s.id || history.dataset.rendered!==turns) {history.dataset.session=s.id;history.dataset.rendered=turns;history.querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());$('#coord-stream').insertAdjacentHTML('beforebegin',turns);history.scrollTop=history.scrollHeight;}
+
+  if (!streaming || history.dataset.session!==s.id || !history.querySelector('[data-temp-id]')) {
+    if(history.dataset.session!==s.id || history.dataset.rendered!==turns) {
+      const follow=history.dataset.session!==s.id || history.scrollHeight-history.scrollTop-history.clientHeight<100;
+      history.dataset.session=s.id;history.dataset.rendered=turns;
+      history.querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());
+      $('#coord-stream').insertAdjacentHTML('beforebegin',turns);
+      if(follow)history.scrollTop=history.scrollHeight;
+    }
+    renderFailedReply(s.id);
+  }
+
   if (!editingBrief) for(const [key] of fields) $<HTMLTextAreaElement>(`#coord-brief [name="${key}"]`).value=s.requirements[key!] ?? '';
   const editable=['clarifying','ready'].includes(s.status);
   root.querySelectorAll<HTMLTextAreaElement>('#coord-brief textarea').forEach(t=>t.disabled=!editable);
   $<HTMLButtonElement>('#coord-brief button').disabled=!editable;
   $<HTMLButtonElement>('#coord-confirm').disabled=!editable || !s.assessment.ready;
+
+  updateStreamingControls();
+
   $('#coord-conflicts').textContent=s.assessment.conflicts.join('；');
   const actors=[{id:'apix',name:'ApiX · 管理者'},...snapshot.employees.map(e=>({id:e.id,name:`${e.name} · ${e.runtime}`}))];
   if (!$('#coord-permissions').contains(document.activeElement)) $('#coord-permissions').innerHTML=actors.map(a=>`<label class="coord-permission">${esc(a.name)}<select data-permission="${esc(a.id)}">${modeOptions((a.id==='apix'?s.policy:s.workerPolicies[a.id])?.mode ?? 'ask_approval')}</select></label>`).join('');
@@ -101,25 +173,55 @@ async function reload() {
     if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
     const list=await api<Session[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}`);
     if(version!==reloadVersion || selectedProject!==projectId) return;
-    if(!list.some(s=>s.id===sessionId)) sessionId=list[0]?.id ?? '';
+    if(!list.some(s=>s.id===sessionId)) selectSession(list[0]?.id ?? '');
     $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
-    const selected=list.find(s=>s.id===sessionId); if(selected) render(selected); else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
+    const selected=list.find(s=>s.id===sessionId); if(selected) {unsynced.delete(selected.id);render(selected);} else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
   } finally {if(version===reloadVersion)reloading=false;}
 }
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
-  if(projectId!==event.detail.projectId) {projectId=event.detail.projectId;sessionId='';editingBrief=false;planKey='';}
+  const changed=projectId!==event.detail.projectId;
+  if(changed) {selectSession('');projectId=event.detail.projectId;}
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
-  if(root.classList.contains('active-page') && !loading && !reloading) void reload().catch(e=>notice(String(e),true));
+  if(root.classList.contains('active-page') && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
 }) as EventListener);
 document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(event.detail==='coordinator' && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
-document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{sessionId=event.detail;editingBrief=false;planKey='';document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
+document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{selectSession(event.detail);void reload().catch(e=>notice(String(e),true));document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
-$('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});sessionId=created.id;editingBrief=false;form.reset();});});
-$('#coord-message').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await streamMessage(sessionId,{revision:current!.revision,content:new FormData(form).get('content')});editingBrief=false;form.reset();});});
-$('#coord-interaction-mode').addEventListener('change',event=>{const mode=(event.target as HTMLSelectElement).value;void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/mode`,{revision:current!.revision,mode});}).then(()=>{if(current?.interaction_mode==='conversational')$<HTMLTextAreaElement>('#coord-message textarea').focus();});});
+$('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});selectSession(created.id);form.reset();});});
+$('#coord-message').addEventListener('submit',event=>{event.preventDefault();if(!current || $<HTMLButtonElement>('#coord-message button').disabled)return;void action(async()=>{const content=$<HTMLTextAreaElement>('#coord-message textarea').value.trim();if(!content)return;const id=sessionId;messageDrafts.set(id,content);await streamMessage(id,{revision:current!.revision,content},content);});});
+// 支持 Enter 发送、Shift+Enter 换行、处理中文输入法
+const messageTextarea=$<HTMLTextAreaElement>('#coord-message textarea');
+messageTextarea.addEventListener('input',()=>messageDrafts.set(sessionId,messageTextarea.value));
+messageTextarea.addEventListener('compositionstart',()=>isComposing=true);
+messageTextarea.addEventListener('compositionend',()=>isComposing=false);
+messageTextarea.addEventListener('keydown',event=>{
+  if(event.key==='Enter' && !event.shiftKey && !isComposing && !event.isComposing){
+    event.preventDefault();
+    if(!streaming && messageTextarea.value.trim()) {
+      $<HTMLFormElement>('#coord-message').requestSubmit();
+    }
+  }
+});
+
+// 滚动监听和回到底部功能
+const turnsContainer=$<HTMLElement>('#coord-turns');
+const scrollBottomBtn=$<HTMLButtonElement>('#coord-scroll-bottom');
+turnsContainer.addEventListener('scroll',()=>{
+  const isNearBottom=turnsContainer.scrollHeight - turnsContainer.scrollTop - turnsContainer.clientHeight < 100;
+  scrollBottomBtn.classList.toggle('visible',!isNearBottom && turnsContainer.scrollHeight > turnsContainer.clientHeight + 200);
+});
+scrollBottomBtn.addEventListener('click',()=>{
+  turnsContainer.scrollTo({top:turnsContainer.scrollHeight,behavior:'smooth'});
+});
+$('#coord-interaction-mode').addEventListener('change',event=>{const mode=(event.target as HTMLSelectElement).value;void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/mode`,{revision:current!.revision,mode});}).then(()=>{if(mode==='conversational')$<HTMLTextAreaElement>('#coord-message textarea').focus();});});
 $('#coord-brief').addEventListener('input',()=>editingBrief=true);
-$('#coord-brief').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const values=new FormData(event.target as HTMLFormElement);for(const [field] of fields){const value=String(values.get(field!) ?? '');if(value!==current!.requirements[field!])current=await api<Session>(`/api/coordination/sessions/${sessionId}/answers`,{revision:current!.revision,field,value});}editingBrief=false;});});
+$('#coord-brief').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
+  const original=current!;const originProject=projectId;const values=new FormData(event.target as HTMLFormElement);
+  const entries: [string,string][]=fields.map(([field])=>[field!,String(values.get(field!) ?? '')]);
+  const updated=await saveBrief(original,entries,(id,revision,field,value)=>api<Session>(`/api/coordination/sessions/${id}/answers`,{revision,field,value}));
+  if(sessionId===original.id && projectId===originProject){current=updated;editingBrief=false;}
+});});
 $('#coord-confirm').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/confirm`,{revision:current!.revision});}));
 $('#coord-dispatch').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/dispatch`,{planVersion:current!.planVersion});}));
 $('#coord-save-plan').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/plan`,{revision:current!.revision,planVersion:current!.planVersion,steps:readDraft()});planKey='';}));
@@ -128,101 +230,39 @@ $('#coord-revise').addEventListener('submit',event=>{event.preventDefault();void
 $('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await api(`/api/coordination/sessions/${sessionId}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});form.querySelector<HTMLTextAreaElement>('textarea')!.value='';});});
 $('#coord-permissions').addEventListener('change',event=>{const select=event.target as HTMLSelectElement;const subject=select.dataset.permission!;void action(async()=>{const policy=subject==='apix'?current!.policy:current!.workerPolicies[subject] ?? {version:0};await api('/api/permissions',{projectId,subject,mode:select.value,version:policy.version});});});
 root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-session],[data-remove],[data-coord-accept],[data-coord-reject]');if(!el)return;
-  if(el.dataset.session && !loading){sessionId=el.dataset.session;editingBrief=false;planKey='';void reload().catch(e=>notice(String(e),true));}
+  if(el.dataset.session){selectSession(el.dataset.session);void reload().catch(e=>notice(String(e),true));}
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}
   if(el.dataset.coordAccept || el.dataset.coordReject)void action(async()=>{await api(`/api/tasks/${el.dataset.coordAccept ?? el.dataset.coordReject}/review`,{accepted:!!el.dataset.coordAccept});});
 });
 $('#coord-history').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const at=new FormData(event.target as HTMLFormElement).get('at');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/sessions/${sessionId}/timeline${at?`?at=${at}`:''}`),null,2);});});
 $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const q=new FormData(event.target as HTMLFormElement).get('q');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent(String(q))}`),null,2);});});
-// 模型提供商配置
-const MODEL_PROVIDERS:{[key:string]:{name:string;baseUrl:string;apiType:string;apiKeyEnv:string;models:{id:string;name:string}[]}} = {
-  deepseek: {name:'DeepSeek',baseUrl:'https://api.deepseek.com/v1',apiType:'openai-completions',apiKeyEnv:'DEEPSEEK_API_KEY',models:[{id:'deepseek-chat',name:'DeepSeek Chat'},{id:'deepseek-coder',name:'DeepSeek Coder'},{id:'deepseek-reasoner',name:'DeepSeek Reasoner (R1)'}]},
-  dashscope: {name:'阿里云百炼',baseUrl:'https://dashscope.aliyuncs.com/compatible-mode/v1',apiType:'openai-completions',apiKeyEnv:'DASHSCOPE_API_KEY',models:[{id:'qwen-max',name:'Qwen Max'},{id:'qwen-plus',name:'Qwen Plus'},{id:'qwen-turbo',name:'Qwen Turbo'},{id:'qwen-coder-plus',name:'Qwen Coder Plus'}]},
-  doubao: {name:'火山引擎豆包',baseUrl:'https://ark.cn-beijing.volces.com/api/v3',apiType:'openai-completions',apiKeyEnv:'DOUBAO_API_KEY',models:[{id:'doubao-pro-32k',name:'Doubao Pro 32K'},{id:'doubao-pro-128k',name:'Doubao Pro 128K'},{id:'doubao-lite-32k',name:'Doubao Lite 32K'}]},
-  openai: {name:'OpenAI',baseUrl:'https://api.openai.com/v1',apiType:'openai-completions',apiKeyEnv:'OPENAI_API_KEY',models:[{id:'gpt-4o',name:'GPT-4o'},{id:'gpt-4o-mini',name:'GPT-4o Mini'},{id:'o1',name:'o1'},{id:'o1-mini',name:'o1 Mini'}]},
-  anthropic: {name:'Anthropic',baseUrl:'https://api.anthropic.com',apiType:'anthropic-messages',apiKeyEnv:'ANTHROPIC_API_KEY',models:[{id:'claude-opus-5-5',name:'Claude Opus 5.5'},{id:'claude-sonnet-5-5',name:'Claude Sonnet 5.5'},{id:'claude-haiku-5-5',name:'Claude Haiku 5.5'}]},
-  zhipu: {name:'智谱 AI',baseUrl:'https://open.bigmodel.cn/api/paas/v4',apiType:'openai-completions',apiKeyEnv:'ZHIPU_API_KEY',models:[{id:'glm-4-plus',name:'GLM-4 Plus'},{id:'glm-4-air',name:'GLM-4 Air'},{id:'glm-4-flash',name:'GLM-4 Flash'}]},
-  moonshot: {name:'月之暗面',baseUrl:'https://api.moonshot.cn/v1',apiType:'openai-completions',apiKeyEnv:'MOONSHOT_API_KEY',models:[{id:'moonshot-v1-8k',name:'Moonshot v1 8K'},{id:'moonshot-v1-32k',name:'Moonshot v1 32K'},{id:'moonshot-v1-128k',name:'Moonshot v1 128K'}]},
-  'local-ollama': {name:'Ollama',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:'',models:[{id:'qwen2.5:32b',name:'Qwen 2.5 32B'},{id:'deepseek-r1:32b',name:'DeepSeek R1 32B'},{id:'llama3.3:70b',name:'Llama 3.3 70B'}]},
-  'local-lm-studio': {name:'LM Studio',baseUrl:'http://127.0.0.1:1234/v1',apiType:'openai-completions',apiKeyEnv:'',models:[{id:'local-model',name:'当前加载的模型'}]}
-};
+
+// Model form uses the same state/payload functions as its regression tests.
+const modelForm=$<HTMLFormElement>('#coord-model');
 const providerSelect=$<HTMLSelectElement>('#model-provider-select');
 const modelSelect=$<HTMLSelectElement>('#model-select');
-const customModelNameInput=$<HTMLInputElement>('#custom-model-name-input');
-const apiKeyInput=$<HTMLInputElement>('#api-key-input');
-const apiKeyLabel=$<HTMLElement>('#api-key-label');
-const apiKeyHint=$<HTMLElement>('#api-key-hint');
-const presetConfig=$<HTMLElement>('#model-preset-config');
-const customConfig=$<HTMLElement>('#model-custom-config');
-providerSelect.addEventListener('change',()=>{
-  const provider=providerSelect.value;
-  presetConfig.hidden=!provider || provider==='custom';
-  customConfig.hidden=provider!=='custom';
-  if(provider && provider!=='custom' && MODEL_PROVIDERS[provider]){
-    const config=MODEL_PROVIDERS[provider];
-    modelSelect.innerHTML=config.models.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
-    apiKeyInput.value=config.apiKeyEnv;
-    apiKeyInput.placeholder=config.apiKeyEnv;
-    const isLocal=provider.startsWith('local-');
-    apiKeyLabel.hidden=isLocal;
-    apiKeyHint.textContent=isLocal?'':`请在启动前设置环境变量 ${config.apiKeyEnv}`;
-  }
-});
-$('#coord-model').addEventListener('submit',event=>{
-  event.preventDefault();
-  void action(async()=>{
-    const form=event.target as HTMLFormElement;
-    const formData=new FormData(form);
-    const provider=formData.get('provider') as string;
-    let payload:{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string};
-    if(provider==='custom'){
-      payload={provider:'apix-custom',model:String(formData.get('customModel')),baseUrl:String(formData.get('baseUrl')),apiType:String(formData.get('apiType')),apiKeyEnv:String(formData.get('customApiKeyEnv'))};
-    }else if(provider && MODEL_PROVIDERS[provider]){
-      const config=MODEL_PROVIDERS[provider];
-      const customModelName=String(formData.get('customModelName') || '').trim();
-      const selectedModel=String(formData.get('model'));
-      payload={provider:'apix-custom',model:customModelName || selectedModel,baseUrl:config.baseUrl,apiType:config.apiType,apiKeyEnv:String(formData.get('apiKeyEnv'))};
-    }else{
-      payload={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
-    }
-    await api('/api/manager/settings',payload);
-  });
-});
-void api<{provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string}>('/api/manager/settings').then(s=>{
-  if(!s.provider || s.provider==='apix-custom'){
-    if(s.baseUrl){
-      let matched=false;
-      for(const [key,config] of Object.entries(MODEL_PROVIDERS)){
-        if(config.baseUrl===s.baseUrl){
-          providerSelect.value=key;
-          modelSelect.innerHTML=config.models.map(m=>`<option value="${m.id}">${m.name}</option>`).join('');
-          const isPresetModel=config.models.some(m=>m.id===s.model);
-          if(isPresetModel){
-            modelSelect.value=s.model;
-            customModelNameInput.value='';
-          }else{
-            modelSelect.value=config.models[0]?.id ?? '';
-            customModelNameInput.value=s.model;
-          }
-          apiKeyInput.value=s.apiKeyEnv;
-          presetConfig.hidden=false;
-          matched=true;
-          break;
-        }
-      }
-      if(!matched){
-        providerSelect.value='custom';
-        customConfig.hidden=false;
-        $<HTMLInputElement>('#coord-model [name="baseUrl"]').value=s.baseUrl;
-        $<HTMLInputElement>('#coord-model [name="customModel"]').value=s.model;
-        $<HTMLSelectElement>('#coord-model [name="apiType"]').value=s.apiType;
-        $<HTMLInputElement>('#coord-model [name="customApiKeyEnv"]').value=s.apiKeyEnv;
-      }
-    }else{
-      providerSelect.value='';
-    }
-  }
-}).catch(e=>notice(String(e),true));
+let providers:ProviderConfig[]=[];let savedSettings:ModelSettings|null=null;let modelReady=false;
+function applyModelDraft(draft:ModelDraft) {
+  const config=providers.find(p=>p.id===draft.provider);
+  modelSelect.innerHTML=config?.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('') || '<option value="">请先选择平台</option>';
+  for(const [name,value] of Object.entries(draft)) (modelForm.elements.namedItem(name) as HTMLInputElement).value=value;
+  $('#model-preset-config').hidden=!config;$('#model-custom-config').hidden=draft.provider!=='custom';
+  $('#api-key-label').hidden=!!config && !config.requiresApiKey;
+  $('#api-key-hint').textContent=config?.requiresApiKey?'请在启动前设置环境变量 '+draft.apiKeyEnv:'';
+}
+providerSelect.addEventListener('change',()=>{try{applyModelDraft(selectProvider(providerSelect.value,providers));}catch(e){notice(String(e),true);}});
+modelForm.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
+  const draft=Object.fromEntries(new FormData(modelForm)) as ModelDraft;
+  const payload=settingsPayload(draft,providers,savedSettings,modelReady);
+  savedSettings=await api<ModelSettings>('/api/manager/settings',payload);
+});});
+modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=true);
+void Promise.all([api<{providers:ProviderConfig[]}>('/api/manager/providers'),api<ModelSettings>('/api/manager/settings')]).then(([catalog,settings])=>{
+  providers=catalog.providers;savedSettings=settings;
+  providerSelect.innerHTML='<option value="">使用 Pi 默认配置</option>'+providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'<option value="custom">自定义 URL / Pi 已配置模型</option>';
+  applyModelDraft(settingsDraft(settings,providers));modelReady=true;
+  modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=false);
+}).catch(e=>notice('模型目录或设置加载失败，已禁止保存以保护原配置。请刷新重试：'+String(e),true));
 
 document.querySelector('#page-missions')!.insertAdjacentHTML('beforeend', `<section class="surface-card coord-section"><h3>接入自定义 CLI</h3><p class="coord-muted">适用于提供非交互 CLI 的 Agent。通过标准输入接收任务，通过标准输出返回结果；注册后可在运行时列表中添加员工。</p><form id="adapter-form" class="stacked-form"><label>适配器 ID<input name="id" required placeholder="qoder-cli"></label><label>名称<input name="name" required placeholder="Qoder CLI"></label><label>可执行文件绝对路径<input name="executable" required placeholder="C:\\Program Files\\nodejs\\node.exe"></label><label>启动参数（JSON 字符串数组）<input name="args" required value="[]"></label><label>输出格式<select name="format"><option value="plain">纯文本</option><option value="jsonl">JSONL 事件</option></select></label><button class="outline-button">注册适配器</button><p id="adapter-notice" role="status"></p></form></section>`);
 document.querySelector('#adapter-form')!.addEventListener('submit',async event=>{
