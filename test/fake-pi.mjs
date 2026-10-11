@@ -31,6 +31,10 @@ process.stdin.on("data", (chunk) => {
           answer.question = `前文：${history.filter(turn=>turn.role==='user').map(turn=>turn.content).join('；')}`;
         }
         if (latest === 'fixture-invalid-reply') answer.kind = 'invalid';
+        if (latest === 'fixture-progress-state') {
+          answer.kind = 'progress';
+          answer.question = command.message.split('\n真实进度：')[1].split('\n用户最新消息：')[0];
+        }
       }
       if (process.env.APIX_FIXTURE_STREAM === '1' && command.message.startsWith('APIX_COORDINATOR_JSON\n')) {
         const raw=JSON.stringify(answer);

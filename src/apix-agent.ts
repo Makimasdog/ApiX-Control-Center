@@ -71,7 +71,7 @@ export function createApiXAgent(backend: ModelBackend) {
     if (!employees.length) throw new Error('请先注册一个可用员工');
     const brief = requirementBrief(requirements);
     try {
-      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，按员工岗位匹配。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`));
+      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，按员工岗位匹配。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`));
       if (!Array.isArray(parsed.steps) || !parsed.steps.length || parsed.steps.length > 8) throw new Error('计划步骤无效');
       const steps = parsed.steps.map((value, index) => {
         const step = object(value);

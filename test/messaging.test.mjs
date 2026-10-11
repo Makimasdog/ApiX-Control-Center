@@ -62,6 +62,15 @@ test("message protocol persists mailbox, correlation, idempotency, retry, timeou
     assert.equal(response.correlation_id, first.correlation_id);
     assert.equal((await get(port, `/api/messages/thread?projectId=${projectId}&correlationId=${first.correlation_id}&agentId=apix-director`)).length, 2);
     assert.equal((await post(port, "/api/messages", { projectId, from: alice, to: "apix-director", type: "request", idempotencyKey: "danger", payload: { action: "start_agent" } })).status, "rejected");
+    const batchOne = await post(port, '/api/messages', {projectId,from:'apix-director',to:bob,idempotencyKey:'batch-one',payload:'one'});
+    const batchTwo = await post(port, '/api/messages', {projectId,from:'apix-director',to:bob,idempotencyKey:'batch-two',payload:'two'});
+    const inbox = `/api/messages?projectId=${projectId}&agentId=${bob}&limit=1`;
+    assert.equal((await get(port,inbox))[0].id,batchOne.id);
+    assert.equal((await get(port,inbox))[0].id,batchOne.id, 'unacknowledged delivery must be retried');
+    assert.equal((await get(port,`/api/messages/${batchTwo.id}?agentId=${bob}`)).message.status,'queued', 'unreturned messages must stay queued');
+    await post(port,`/api/messages/${batchOne.id}/complete`,{agentId:bob});
+    assert.equal((await get(port,inbox))[0].id,batchTwo.id);
+    await post(port,`/api/messages/${batchTwo.id}/complete`,{agentId:bob});
     const task = await post(port, "/api/tasks", { projectId, employeeId: alice, prompt: "inspect messaging" });
     await post(port, `/api/approvals/${task.approvalId}`, { approved: true });
     await waitFor(async () => (await get(port, "/api/snapshot")).tasks.find((item) => item.id === task.taskId)?.status === "completed");

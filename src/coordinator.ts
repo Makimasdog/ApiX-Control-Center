@@ -4,7 +4,7 @@ import { assess, emptyRequirements, nextQuestion, normalizeAnswer, requirementBr
 import type { ApiXAgent } from './apix-agent.js';
 import type { Memory } from './memory.js';
 import type { Permissions } from './permissions.js';
-import { coordinationStatus } from './task-tracker.js';
+import { coordinationStatus, progressSummary } from './task-tracker.js';
 import { validateModelConfig } from './model-providers.js';
 
 interface Dependencies extends Store {
@@ -35,9 +35,10 @@ export function createCoordinator(deps: Dependencies) {
     const s = session(id); const requirements = requirementsOf(s); const tasks = tasksOf(s);
     const check = row<{conflicts: string; model_mode: string; model_error: string | null}>('SELECT * FROM coordination_checks WHERE session_id=?', id);
     const plan = s.plan_id ? row<{updated_at: string}>('SELECT updated_at FROM plans WHERE id=?', s.plan_id) : null;
+    const dependencies = s.plan_id ? rows<{task_id:string;depends_on_id:string}>('SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.plan_id=?', s.plan_id) : [];
     return { ...s, requirements, requirements_json: undefined, assessment: assess(requirements, JSON.parse(check?.conflicts ?? '[]') as string[]), nextQuestion: nextQuestion(requirements),
       derivedStatus: coordinationStatus(s.status, tasks), tasks, planVersion: plan ? s.plan_id : null,
-      dependencies: s.plan_id ? rows('SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.plan_id=?', s.plan_id) : [],
+      dependencies, progress: progressSummary(tasks, dependencies),
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
@@ -101,7 +102,8 @@ export function createCoordinator(deps: Dependencies) {
       const priorBriefs = rows<{id:string;title:string;requirements_json:string}>('SELECT id,title,requirements_json FROM coordination_sessions WHERE project_id=? AND id<>? AND confirmed_revision IS NOT NULL ORDER BY updated_at DESC LIMIT 3',s.project_id,id);
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
-      const decision = await agent.discuss(requirementsOf(s), content, history, tasksOf(s), s.interaction_mode, onQuestion);
+      const progress = details(id);
+      const decision = await agent.discuss(requirementsOf(s), content, history, {status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion);
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
@@ -112,7 +114,7 @@ export function createCoordinator(deps: Dependencies) {
         const output = s.interaction_mode === 'conversational' && decision.mode === 'pi'
           ? decision.question
           : decision.kind === 'progress' || !mutable
-          ? `当前目标状态：${coordinationStatus(s.status, tasksOf(s))}。${tasksOf(s).length} 个任务，${tasksOf(s).filter(t => ['completed','accepted'].includes(t.status)).length} 个已完成。需要调整时，请使用“调整需求”。`
+          ? `当前有 ${tasksOf(s).length} 个任务：${tasksOf(s).filter(t => t.status === 'running').length} 个执行中，${tasksOf(s).filter(t => t.status === 'completed').length} 个待验收，${tasksOf(s).filter(t => t.status === 'accepted').length} 个已验收，${tasksOf(s).filter(t => ['failed','blocked','unknown','needs_revision','rejected','cancelled'].includes(t.status)).length} 个需要处理。前置任务验收后才会推进后续步骤。需要调整时，请使用“调整需求”。`
           : decision.question;
         turn(session(id), 'apix', mutable ? decision.kind : 'progress', output); checkpoint(id);
       });

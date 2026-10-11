@@ -240,7 +240,10 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
     assert.equal((await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2]).status, "queued");
     for (const id of plan.taskIds.slice(0, 2)) await post(port, `/api/tasks/${id}/review`, { accepted: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2])?.status === "completed");
-    assert.match((await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2]).result, /前置任务的共享交付物/);
+    const handoff = await snapshot(port);
+    const reviewInput = handoff.tasks.find((item) => item.id === plan.taskIds[2]).result;
+    assert.match(reviewInput, /前置交付物/);
+    for (const artifact of handoff.sharedArtifacts.filter(item => plan.taskIds.slice(0,2).includes(item.task_id))) assert(reviewInput.includes(artifact.id), 'dependency artifacts must retain their source references');
     await post(port, `/api/tasks/${plan.taskIds[2]}/review`, { accepted: true });
     const managerReview = await post(port, "/api/manager-reviews", { planId: plan.id, departmentId });
     await post(port, `/api/approvals/${managerReview.approvalId}`, { approved: true });

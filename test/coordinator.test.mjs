@@ -106,6 +106,13 @@ test('ApiX requires complete confirmed requirements; approvals, independent memo
   await h.request('/api/permissions',{projectId,subject:'apix',mode:'ask_approval',version:1});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
   plan=await waitFor(async()=>{const p=await h.request(`/api/coordination/sessions/${s.id}`);return p.derivedStatus==='awaiting_acceptance'&&p;});
+  const discussed=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:plan.revision,content:'fixture-progress-state'});
+  const progress=JSON.parse(discussed.turns.at(-1).content);
+  assert.equal(progress.status,'awaiting_acceptance');
+  assert.equal(progress.tasks[0].status,'completed');
+  assert.equal(progress.progress[0].taskId,plan.tasks[0].id);
+  assert.deepEqual(progress.dependencies,[]); assert.deepEqual(progress.guidance,[]);
+  assert.equal(discussed.revision,plan.revision,'progress must not change confirmed requirements');
   await h.request(`/api/tasks/${plan.tasks[0].id}/review`,{accepted:true});
   const timeline=await h.request(`/api/coordination/sessions/${s.id}/timeline`);
   assert(timeline.events.some(e=>e.kind==='artifact.collected'));
@@ -407,3 +414,26 @@ test('scheduler propagates launch failure through downstream dependencies',()=>{
     assert.equal(row('SELECT status FROM tasks WHERE id=?','c').status,'blocked');
   } finally {db.close();}
 });
+
+test('coordinator dependencies wait for acceptance and rejection blocks downstream work',async()=>harness(async h=>{
+  const {s,employeeId}=await setup(h);
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[
+    {prompt:'检查并提交首个报告',employeeId,dependsOn:[]},
+    {prompt:'核对前置交付',employeeId,dependsOn:[0]},
+    {prompt:'最终汇总',employeeId,dependsOn:[1]},
+  ]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  const waiting=await waitFor(async()=>{const current=await h.request(`/api/coordination/sessions/${s.id}`);return current.tasks[0].status==='completed'&&current;});
+  assert.equal(waiting.derivedStatus,'awaiting_acceptance');
+  assert.deepEqual(waiting.tasks.map(task=>task.status),['completed','queued','queued']);
+  assert.deepEqual(waiting.progress[1].waitingFor,[p.tasks[0].id]);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
+  await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true});
+  await waitFor(async()=>{const current=await h.request(`/api/coordination/sessions/${s.id}`);return current.tasks[1].status==='completed';});
+  await h.request(`/api/tasks/${p.tasks[1].id}/review`,{accepted:false});
+  const blocked=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.deepEqual(blocked.tasks.map(task=>task.status),['accepted','needs_revision','blocked']);
+  assert.equal(blocked.derivedStatus,'attention');
+  assert.equal((await h.request('/api/snapshot')).runs.length,2);
+}));

@@ -8,7 +8,7 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
         scheduleDependents(candidate.id);
         continue;
       }
-      const requiresAcceptance = row("SELECT mode FROM plans WHERE id=?", candidate.plan_id)?.mode === "collaboration" || !!row("SELECT id FROM meeting_items WHERE task_id=?", candidate.id);
+      const requiresAcceptance = ['collaboration','coordinator'].includes(row("SELECT mode FROM plans WHERE id=?", candidate.plan_id)?.mode) || !!row("SELECT id FROM meeting_items WHERE task_id=?", candidate.id);
       if (!dependencies.every((dependency) => requiresAcceptance ? dependency.status === "accepted" : ["completed", "accepted"].includes(dependency.status))) continue;
       const approval = row("SELECT status FROM approvals WHERE task_id=? AND action='start-agent-in-project' ORDER BY created_at DESC LIMIT 1", candidate.id);
       if (approval?.status !== "approved") continue;

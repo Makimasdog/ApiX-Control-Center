@@ -136,12 +136,14 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     assertActor(projectId, agentId);
     expireMessages(projectId);
     const limit = Math.max(1, Math.min(100, Number(input.limit ?? 20)));
-    const messages = rows("SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status='queued' AND (next_retry_at IS NULL OR next_retry_at<=?) ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,created_at LIMIT ?", projectId, agentId, now(), limit);
+    const messages = rows("SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status IN ('queued','delivered') AND (next_retry_at IS NULL OR next_retry_at<=?) ORDER BY CASE priority WHEN 'high' THEN 0 ELSE 1 END,created_at,id LIMIT ?", projectId, agentId, now(), limit);
     for (const message of messages) {
+      if (message.status === 'delivered') continue;
       db.prepare("UPDATE agent_messages SET status='delivered',delivered_at=? WHERE id=? AND status='queued'").run(now(), message.id);
       appendMessageEvent(projectId, message.id, "message.delivered", agentId, {});
     }
-    return rows("SELECT * FROM agent_messages WHERE project_id=? AND to_agent=? AND status='delivered' ORDER BY delivered_at DESC LIMIT ?", projectId, agentId, limit).map(publicMessage);
+    // Re-deliver unacknowledged messages; only mark the returned batch as delivered.
+    return messages.map(message => publicMessage(row("SELECT * FROM agent_messages WHERE id=?", message.id)));
   }
   function ackMessage(id, input) {
     expireMessages();
