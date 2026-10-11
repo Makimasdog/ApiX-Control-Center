@@ -74,15 +74,18 @@ function go(page) {
   $("#breadcrumb-page").textContent = { overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
+let refreshing=false;let snapshotETag='';
 async function refresh() {
+  if(refreshing)return;refreshing=true;
   try {
-    data = await api("/api/snapshot");
+    const response=await fetch('/api/snapshot',{headers:snapshotETag?{'If-None-Match':snapshotETag}:{}});
+    if(response.status!==304){if(!response.ok)throw new Error(`HTTP ${response.status}`);data=await response.json();snapshotETag=response.headers.get('ETag') ?? '';}
     if (!data.projects.some((item) => item.id === selectedProjectId)) selectedProjectId = data.projects[0]?.id ?? null;
     if (!data.conversations.some((item) => item.id === selectedConversationId && item.project_id === selectedProjectId)) selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null;
     if (selectedConversationId) localStorage.setItem("apix.selectedConversation", selectedConversationId);
     else localStorage.removeItem("apix.selectedConversation");
     if (!data.tasks.some((item) => item.id === selectedTaskId && item.conversation_id === selectedConversationId)) selectedTaskId = data.tasks.find((item) => item.conversation_id === selectedConversationId)?.id ?? null;
-    selectedDetails = selectedTaskId ? await api(`/api/tasks/${selectedTaskId}/details`) : null;
+    selectedDetails = selectedTaskId && currentPage==='workspace' ? await api(`/api/tasks/${selectedTaskId}/details`) : null;
     if (selectedProjectId !== streamProjectId) {
       messageStream?.close();
       streamProjectId = selectedProjectId;
@@ -92,6 +95,7 @@ async function refresh() {
     render();
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
+  finally{refreshing=false;}
 }
 function render() { renderProjects(); renderAgents(); renderTasks(); renderPlans(); renderDirector(); renderConversations(); renderWorkspace(); renderSettings(); renderCollaboration(); renderMemory(); renderMessageSupervision(); }
 function renderMessageSupervision() {

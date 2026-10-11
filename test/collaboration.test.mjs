@@ -23,7 +23,7 @@ test('oversized approved context fails before it can be silently dropped', () =>
 test('parallel execution never hides a failed task and completion requires acceptance', () => {
   const tasks=statuses=>statuses.map((status,index)=>({id:String(index),status}));
   assert.equal(coordinationStatus('running',tasks(['failed','running'])),'attention');
-  assert.equal(coordinationStatus('running',tasks(['accepted','queued'])),'running');
+  assert.equal(coordinationStatus('running',tasks(['accepted','queued'])),'queued');
   assert.equal(coordinationStatus('running',tasks(['accepted','completed'])),'awaiting_acceptance');
   assert.equal(coordinationStatus('running',tasks(['completed','queued'])),'awaiting_acceptance');
   assert.equal(coordinationStatus('running',tasks(['accepted','accepted'])),'completed');

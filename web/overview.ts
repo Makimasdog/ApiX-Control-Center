@@ -64,7 +64,7 @@ function renderBoard(tasks:Task[]){
 async function update(){const selected=projectId;const version=++loadVersion;if(!selected){goals=[];goalsProjectId='';render();return;}
   if(selected!==goalsProjectId){goals=[];goalsProjectId=selected;}
   render();
-  try{const response=await fetch(`/api/coordination/sessions?projectId=${encodeURIComponent(selected)}`);const result=await response.json() as Goal[] & {error?:string};if(!response.ok)throw new Error(result.error ?? `HTTP ${response.status}`);if(version!==loadVersion||selected!==projectId)return;goals=result;render();}
+  try{const response=await fetch(`/api/coordination/sessions?projectId=${encodeURIComponent(selected)}&summary=1`);const result=await response.json() as Goal[] & {error?:string};if(!response.ok)throw new Error(result.error ?? `HTTP ${response.status}`);if(version!==loadVersion||selected!==projectId)return;goals=result;render();}
   catch(error){if(version===loadVersion)$('#overview-updated').textContent=`总览读取失败：${String(error instanceof Error?error.message:error)}`;}
 }
 document.addEventListener('apix:snapshot',((event:CustomEvent<{data:Snapshot;projectId:string}>)=>{snapshot=event.detail.data;projectId=event.detail.projectId;void update();}) as EventListener);

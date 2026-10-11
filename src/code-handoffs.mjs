@@ -107,5 +107,19 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
       const failure=new Error('前置代码交接失败，工作区已保留，请检查冲突与基线后重新批准'); failure.code='HANDOFF_CONFLICT';throw failure;
     }
   }
-  return {workspace,inspect,freeze,patch,populate,ancestors};
+  function approveResolution(task,fingerprint) {
+    const h=row("SELECT * FROM code_handoffs WHERE task_id=? AND status='conflict'",task.id);
+    if(!h)return;
+    const w=workspace(task);const preview=inspect(task);
+    if(preview.conflicts.length || preview.fingerprint!==fingerprint)throw new Error('冲突尚未解决或检查后内容已变化');
+    const input=commitTree(w.path,preview.tree,w.input,`ApiX user reviewed conflict resolution ${task.id}`);
+    git(w.path,['update-ref','HEAD',input,preview.head]);
+    git(w.path,['read-tree',input]);
+    const report={...JSON.parse(h.report),conflicts:[],error:null,resolution:'用户检查并批准当前解决结果',files:preview.files};
+    db.prepare('UPDATE tasks SET input_commit=? WHERE id=?').run(input,task.id);
+    db.prepare("UPDATE code_handoffs SET status='ready',input_commit=?,report=?,updated_at=? WHERE task_id=?").run(input,JSON.stringify(report),now(),task.id);
+    recordTask(task.id,'handoff.resolved',{inputCommit:input,files:preview.files});
+    return {tree:preview.tree,inputCommit:input};
+  }
+  return {workspace,inspect,freeze,patch,populate,ancestors,approveResolution};
 }

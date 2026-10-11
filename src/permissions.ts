@@ -34,8 +34,8 @@ export function createPermissions(store: Store, memory: Memory) {
     memory.append(projectId, taskId, 'execution.authorized', { employeeId, source, manager: get(projectId), employee: get(projectId, employeeId) }, source === 'user' ? 'user' : 'apix');
   }
   function assertGranted(taskId: string, projectId: string, employeeId: string) {
-    const g = row<{manager_version: number; employee_version: number}>('SELECT * FROM apix_grants WHERE task_id=?', taskId);
-    if (!g || g.manager_version !== get(projectId).version || g.employee_version !== get(projectId, employeeId).version || decision(projectId, employeeId) === 'deny') throw new Error('执行授权缺失或已失效，请重新审查计划');
+    const g = row<{manager_version: number; employee_version: number;project_id:string;employee_id:string}>('SELECT * FROM apix_grants WHERE task_id=?', taskId);
+    if (!g || g.project_id!==projectId || g.employee_id!==employeeId || g.manager_version !== get(projectId).version || g.employee_version !== get(projectId, employeeId).version || decision(projectId, employeeId) === 'deny') throw new Error('执行授权缺失或已失效，请重新审查计划');
   }
   return { get, save, decision, grant, assertGranted };
 }

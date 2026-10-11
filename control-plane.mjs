@@ -8,6 +8,7 @@ import { externalAgents, scanExternalAgents } from "./agent-discovery.mjs";
 import { createMailboxService } from "./src/mailbox.mjs";
 import { createTaskScheduler } from "./src/task-scheduler.mjs";
 import { createCodeHandoffs } from "./src/code-handoffs.mjs";
+import { createExecutionControl, quotaFailure } from './src/execution-control.mjs';
 import { createCoordinator } from "./dist/src/coordinator.js";
 import { requirementBrief } from "./dist/src/requirement-engine.js";
 import { createMemory as createEventMemory } from "./dist/src/memory.js";
@@ -261,6 +262,17 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=11").get())
     db.exec('COMMIT');
   } catch(error){db.exec('ROLLBACK');throw error;}
 }
+if(!db.prepare('SELECT version FROM schema_migrations WHERE version=12').get()) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`ALTER TABLE tasks ADD COLUMN queue_reason TEXT;
+      ALTER TABLE tasks ADD COLUMN recovery_fingerprint TEXT;
+      CREATE TABLE execution_settings(project_id TEXT PRIMARY KEY REFERENCES projects(id),project_limit INTEGER NOT NULL,employee_limit INTEGER NOT NULL,paused INTEGER NOT NULL,version INTEGER NOT NULL,updated_at TEXT NOT NULL);
+      CREATE TABLE runtime_pauses(project_id TEXT NOT NULL REFERENCES projects(id),runtime TEXT NOT NULL,paused INTEGER NOT NULL,reason TEXT NOT NULL,source_run_id TEXT REFERENCES runs(id),updated_at TEXT NOT NULL,PRIMARY KEY(project_id,runtime));
+      INSERT INTO schema_migrations VALUES (12);`);
+    db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+}
 const now = () => new Date().toISOString();
 const running = new Map();
 
@@ -302,6 +314,7 @@ const permissions = createPermissions(store, memory);
 const runtimeAdapters = createRuntimeAdapters(store, findExecutable);
 const agentMailbox = createAgentMailbox(store);
 const codeHandoffs = createCodeHandoffs({...store,dataDir,recordTask:(...args)=>coordinator.recordTask(...args)});
+const executionControl=createExecutionControl({...store,recordEvent:(projectId,kind,payload)=>memory.append(projectId,projectId,kind,payload)});
 
 const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
@@ -321,10 +334,10 @@ function setRun(runId, status, source, exitCode = null) {
     db.prepare("UPDATE tasks SET status=?,updated_at=?,verification_status=? WHERE id=?").run(status, now(), status === "completed" ? "ready" : status === "failed" ? "failed" : "pending", run.task_id);
     const task = row("SELECT project_id,employee_id FROM tasks WHERE id=?", run.task_id);
     if (task) appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: run.task_id, runId, status, source });
-    if (["completed", "failed", "cancelled","blocked"].includes(status)) scheduleDependents(run.task_id);
+    if (["completed", "failed", "cancelled","blocked"].includes(status)) {scheduleDependents(run.task_id);pumpTasks();}
   }
 }
-const { scheduleDependents } = createTaskScheduler({ db, row, rows, now, launch, recordTask: (...args) => coordinator.recordTask(...args) });
+const { scheduleDependents,pump:pumpTasks } = createTaskScheduler({ db, row, rows, now, launch, admission:task=>executionControl.admission(task),onWaiting:(task,reason)=>db.prepare('UPDATE tasks SET queue_reason=? WHERE id=?').run(reason,task.id), recordTask: (...args) => coordinator.recordTask(...args) });
 
 function textFromMessage(message) {
   return (message?.content ?? []).filter((block) => block.type === "text").map((block) => block.text).join("\n");
@@ -355,7 +368,9 @@ function workspaceFor(task, project) {
   const sourcePath = repository?.path ?? project.path;
   if (!task.plan_id) return sourcePath;
   if (task.workspace_path) {
-    codeHandoffs.workspace(task);
+    const workspace=codeHandoffs.workspace(task);
+    const currentCommon=realpathSync(resolve(sourcePath,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:sourcePath,encoding:'utf8'}).trim()));
+    if(workspace.common!==currentCommon)throw new Error('项目或仓库路径已变化，请重新安排任务');
     if(row('SELECT status FROM code_handoffs WHERE task_id=?',task.id)?.status==='conflict'){const error=new Error('工作区仍有未审查的代码交接，请检查后恢复');error.code='HANDOFF_CONFLICT';throw error;}
     return task.workspace_path;
   }
@@ -390,6 +405,10 @@ function launch(task) {
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
   if (!existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) throw new Error("项目目录已不存在");
+  if(task.recovery_fingerprint) {
+    const actual=task.workspace_path ? codeHandoffs.inspect(task).fingerprint : 'head:'+execFileSync('git',['rev-parse','HEAD'],{cwd:sourcePath,encoding:'utf8'}).trim();
+    if(actual!==task.recovery_fingerprint)throw new Error('恢复检查后工作区或源仓库已变化，请重新检查并批准');
+  }
   const context = [];
   const profile = row("SELECT * FROM project_profiles WHERE project_id=?", task.project_id);
   if (profile) context.push(`项目档案（用户维护，仅供参考）：\n${[profile.summary, profile.goals, profile.constraints, profile.decisions].filter(Boolean).join("\n").slice(0, 5000)}`);
@@ -408,7 +427,7 @@ function launch(task) {
   const { prompt, truncated } = workerPrompt(task.prompt, coordinated ? context.shift() : '', context);
   const runId = randomUUID();
   db.prepare("INSERT INTO runs(id,task_id,runtime,status,status_source,started_at) VALUES (?,?,?,?,?,?)").run(runId, task.id, task.runtime, "starting", "apix", now());
-  db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), task.id);
+  db.prepare("UPDATE tasks SET status='running',queue_reason=NULL,recovery_fingerprint=NULL,updated_at=? WHERE id=?").run(now(), task.id);
   let child;
   let cwd;
   try { cwd = workspaceFor(task, project); }
@@ -462,6 +481,7 @@ function launch(task) {
     if (buffer.trim()) event(runId, task.runtime, "trailing_stdout", { text: buffer.slice(0, 3000) });
     const confirmedStop = active.aborted || (active.stopped && (signal !== null || code !== 0));
     const status = confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed";
+    if(status==='failed' && (active.quotaBlocked || quotaFailure(active.stderr)))executionControl.pauseRuntime(task.project_id,task.runtime,'运行时报告额度或速率限制，请检查账户后明确恢复或重新分配',runId);
     recordOutput(runId, active.output, status);
     if (active.dispatchMessageId) {
       if (!active.output.trim()) {
@@ -486,6 +506,10 @@ function handleNative(runId, runtime, item) {
   if (!active) return;
   employeeInsights.observe(runId,runtime,item);
   const type = item.type ?? "unknown";
+  if(type==='error' || type==='turn.failed' || type==='result' && item.is_error===true || type==='message_end' && item.message?.stopReason==='error' || type==='response' && item.command==='prompt' && item.success===false) {
+    const error=item.error ?? item.message?.error ?? {};
+    if(quotaFailure(String(error.code ?? error.type ?? error.status ?? '')) || quotaFailure(typeof error==='string'?error:error.message ?? item.message?.errorMessage ?? item.result ?? textFromMessage(item.message)))active.quotaBlocked=true;
+  }
   if (runtime === "pi") {
     if (type === "response" && item.command === "prompt" && !item.success) { event(runId, "pi-rpc", "prompt_rejected", { error: item.error }); active.child.stdin.end(); }
     if (type === "message_end" && item.message?.role === "assistant") { const value = textFromMessage(item.message); if (value) active.output = value; active.lastStopReason = item.message.stopReason; }
@@ -515,8 +539,11 @@ function handleNative(runId, runtime, item) {
   }
 }
 
-export function snapshot() {
-  return {
+const snapshotEpoch=randomUUID();
+export function snapshot(ifNoneMatch) {
+  const etag='"'+snapshotEpoch+':'+row('SELECT total_changes() AS n').n+':'+row('PRAGMA data_version').data_version+':'+Math.floor(Date.now()/10000)+'"';
+  if(ifNoneMatch===etag)return {etag,notModified:true};
+  const data={
     plans: plans(),
     runtimes: runtimes(),
     employees: rows("SELECT * FROM employees WHERE deleted_at IS NULL ORDER BY created_at DESC"),
@@ -548,6 +575,7 @@ export function snapshot() {
     messageArtifacts: rows("SELECT * FROM agent_message_artifacts ORDER BY created_at DESC LIMIT 300"),
     locks: rows("SELECT * FROM agent_locks WHERE released_at IS NULL ORDER BY created_at DESC"),
   };
+  return {etag,data};
 }
 
 export function taskDetails(id) {
@@ -719,9 +747,11 @@ export function resolveApproval(id, approved) {
   }
   const requiresAcceptance = ['collaboration','coordinator'].includes(row("SELECT mode FROM plans WHERE id=?", task.plan_id)?.mode) || !!row("SELECT id FROM meeting_items WHERE task_id=?", task.id);
   if (!dependencies.every((dependency) => requiresAcceptance ? dependency.status === "accepted" : ["completed", "accepted"].includes(dependency.status))) {
-    db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(), task.id);
+    db.prepare("UPDATE tasks SET status='queued',queue_reason='等待前置任务验收',updated_at=? WHERE id=?").run(now(), task.id);
     return null;
   }
+  const queueReason=executionControl.admission(task);
+  if(queueReason){db.prepare("UPDATE tasks SET status='queued',queue_reason=?,updated_at=? WHERE id=?").run(queueReason,now(),task.id);return null;}
   try { return launch(task); }
   catch (error) {
     db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(error.code==='HANDOFF_CONFLICT'?'blocked':'failed',error.message, now(), task.id);
@@ -1214,7 +1244,42 @@ export function taskDelivery(id) {
   if(task.workspace_path && ['completed','accepted','unknown','failed','blocked','needs_revision','cancelled'].includes(task.status)) {
     try {inspection=codeHandoffs.inspect(task);}catch(e){error=String(e.message);}
   }
-  return {taskId:id,status:task.status,inputCommit:task.input_commit,deliveryCommit:task.delivery_commit,inspection,error,handoff:handoff?{...handoff,report:JSON.parse(handoff.report)}:null};
+  const latestRun=row('SELECT id,status,pid,started_at,ended_at,exit_code FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',id) ?? null;
+  let processMayExist=null;
+  if(latestRun?.pid){try{process.kill(latestRun.pid,0);processMayExist=true;}catch(e){processMayExist=e.code==='ESRCH'?false:null;}}
+  const managedActive=!!(latestRun && running.get(latestRun.id)?.child.exitCode===null);
+  let sourceHead=null;
+  if(!task.workspace_path){const project=row('SELECT path FROM projects WHERE id=?',task.project_id);const repository=task.repository_id?row('SELECT path FROM project_repositories WHERE id=? AND project_id=?',task.repository_id,task.project_id):null;try{sourceHead=execFileSync('git',['rev-parse','HEAD'],{cwd:repository?.path ?? project.path,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();}catch{error='源仓库无法检查，不能恢复';}}
+  const recoveryFingerprint=(!error && (!task.workspace_path || inspection?.fingerprint)) ? createHash('sha256').update(JSON.stringify({taskId:id,status:task.status,employeeId:task.employee_id,runtime:task.runtime,prompt:task.prompt,input:task.input_commit,run:latestRun,files:inspection?.fingerprint,sourceHead,handoffStatus:handoff?.status})).digest('hex') : null;
+  return {taskId:id,status:task.status,workspacePath:task.workspace_path,inputCommit:task.input_commit,deliveryCommit:task.delivery_commit,inspection,error,latestRun,processMayExist,managedActive,recoveryFingerprint,sourceHead,handoff:handoff?{...handoff,report:JSON.parse(handoff.report)}:null};
+}
+export function executionSettings(projectId){return executionControl.get(projectId);}
+export function saveExecutionSettings(projectId,input){const result=executionControl.save(projectId,input);pumpTasks();return result;}
+export function changeRuntimePause(projectId,input){const result=executionControl.setRuntime(projectId,input);pumpTasks();return result;}
+export function recoverTask(id,input) {
+  const {task}=coordinator.assertRetry(id,input);
+  if(rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',id).some(t=>t.status!=='accepted'))throw new Error('请先恢复并验收前置任务');
+  const checked=taskDelivery(id);
+  if(input.reviewed!==true || !checked.recoveryFingerprint || input.fingerprint!==checked.recoveryFingerprint || input.runId!== (checked.latestRun?.id ?? null))throw new Error('请先检查最新进程、代码与交付记录，再重新批准');
+  if(checked.managedActive)throw new Error('原进程仍由本服务运行，请先停止并等待结束');
+  if(task.status==='unknown' && input.confirmedStopped!==true)throw new Error('原进程状态未知，须人工确认已停止；PID 可能已被复用');
+  const resolution=checked.handoff?.status==='conflict'?codeHandoffs.approveResolution(task,checked.inspection.fingerprint):null;
+  const fresh=row('SELECT * FROM tasks WHERE id=?',id);
+  const currentInspection=fresh.workspace_path?codeHandoffs.inspect(fresh):null;
+  if(currentInspection && (resolution ? currentInspection.tree!==resolution.tree : currentInspection.fingerprint!==checked.inspection.fingerprint))throw new Error('恢复检查后工作区已变化，请重新检查');
+  const workspaceFingerprint=currentInspection?.fingerprint ?? 'head:'+checked.sourceHead;
+  if(checked.latestRun?.status==='unknown')db.prepare("UPDATE runs SET status='cancelled',status_source='user-recovery-confirmed',ended_at=? WHERE id=?").run(now(),checked.latestRun.id);
+  db.prepare("UPDATE agent_messages SET status='rejected',error='旧运行已结束，恢复时不重放旧指导',completed_at=? WHERE target_task_id=? AND status IN ('queued','delivered','processing')").run(now(),id);
+  const approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint});
+  for(let pass=0;pass<8;pass++)for(const blocked of rows("SELECT id FROM tasks WHERE plan_id=? AND status='blocked'",task.plan_id)) {
+    if(row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",blocked.id))continue;
+    const bad=row("SELECT t.id FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=? AND t.status IN ('failed','cancelled','blocked','unknown','rejected','needs_revision') LIMIT 1",blocked.id);
+    if(!bad && row("SELECT id FROM approvals WHERE task_id=? AND status='approved'",blocked.id))db.prepare("UPDATE tasks SET status='queued',queue_reason='等待恢复任务验收',updated_at=? WHERE id=?").run(now(),blocked.id);
+  }
+  let failure=null;
+  try{resolveApproval(approved.approvalId,true);}catch(e){failure=String(e.message);}
+  pumpTasks();
+  return {session:coordinator.sessionDetails(approved.sessionId),failure};
 }
 export function freezeHistoricalDelivery(id,input) {
   const task=row("SELECT * FROM tasks WHERE id=? AND status='accepted'",id);

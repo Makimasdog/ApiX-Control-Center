@@ -9,13 +9,14 @@ type Step = { prompt: string; employeeId: string; dependsOn: number[] };
 interface Session {
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
-  tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
+  tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string;queue_reason?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
   turns: {role:string;kind:string;content:string}[]; agent: {mode:string;error?:string};
   instructions?: {id:string;taskId:string;runId:string;status:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
   capabilities?: {id:string;mailbox?:boolean}[];
   handoffs?: {task_id:string;status:string;input_commit:string;report:{files:string[];sources:{taskId:string;commit:string}[];error?:string}}[];
 }
-interface Delivery {taskId:string;status:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}}}
+interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null}
+interface ExecutionPolicy {projectLimit:number;employeeLimit:number;paused:boolean;version:number;runtimePauses:{runtime:string;reason:string}[]}
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -27,8 +28,10 @@ const messageDrafts = new Map<string,string>();
 const failedReplies = new Map<string,{text:string;error:string}>();
 const unsynced = new Set<string>();
 const deliveryFingerprints = new Map<string,string>();
+let executionPolicy:ExecutionPolicy|null=null;
+let inspectedDelivery:Delivery|null=null;
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
-const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'等待依赖',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
+const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(path,body === undefined ? undefined : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await r.json(); if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`); return data as T;
@@ -58,6 +61,7 @@ function selectSession(id:string) {
   $('#coord-turns').dataset.session='';$('#coord-turns').dataset.rendered='';
   $('#coord-body').hidden=true;updateStreamingControls();
   root.querySelector('#coord-delivery-panel')?.remove();
+  inspectedDelivery=null;
 }
 async function streamMessage(id:string,body:unknown,userContent:string) {
   if(streaming || current?.busy || unsynced.has(id))throw new Error('正在生成或同步回复，请稍后再试');
@@ -121,6 +125,14 @@ root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MA
 <section class="surface-card coord-section"><h3>中途调整</h3><form id="coord-revise"><label>需要怎样调整<textarea name="reason" required placeholder="说明新的要求，ApiX 会取消未启动任务并请求停止运行中的任务。"></textarea></label><button class="outline-button">请求调整需求</button></form></section>
 <section class="surface-card coord-section"><h3>员工交付与验收</h3><div id="coord-artifacts"></div></section>
 <details class="surface-card coord-section"><summary>独立记忆与历史追溯</summary><form id="coord-history"><label>事件序号<input name="at" type="number" min="0" placeholder="留空查看当前"></label><button class="outline-button">重建该时刻状态</button></form><form id="coord-search"><label>检索项目记录<input name="q" required placeholder="需求、决策、执行记录中的关键词"></label><button class="outline-button">检索</button></form><pre id="coord-history-output"></pre></details></section></div>`;
+const executionSection=document.createElement('section');executionSection.className='surface-card coord-section';executionSection.id='coord-execution';
+$('#coord-tasks').parentElement!.before(executionSection);
+function renderExecutionPolicy() {
+  const p=executionPolicy;if(!p || executionSection.contains(document.activeElement))return;
+  executionSection.innerHTML=`<h3>执行限额与暂停</h3><p>暂停或降低并发只影响新启动的任务。状态未知的任务占用名额，请检查后恢复。</p><form id="coord-execution-form"><label>项目并发<input name="projectLimit" type="number" min="1" max="8" required value="${p.projectLimit}"></label><label>每位员工在本项目的并发<input name="employeeLimit" type="number" min="1" max="4" required value="${p.employeeLimit}"></label><label><input name="paused" type="checkbox" ${p.paused?'checked':''}>暂停本项目的新任务</label><button class="outline-button">保存执行设置</button></form>${p.runtimePauses.map(r=>`<p>${esc(r.runtime)} · ${esc(r.reason)} <button class="outline-button" data-resume-runtime="${esc(r.runtime)}">已检查额度，恢复新启动</button></p>`).join('')}`;
+}
+executionSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const project=projectId;const form=event.target as HTMLFormElement;const values=new FormData(form);await api(`/api/projects/${project}/execution`,{version:executionPolicy!.version,projectLimit:Number(values.get('projectLimit')),employeeLimit:Number(values.get('employeeLimit')),paused:values.has('paused')});});});
+executionSection.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-resume-runtime]');if(button)void action(async()=>{await api(`/api/projects/${projectId}/execution/runtime`,{version:executionPolicy!.version,runtime:button.dataset.resumeRuntime,paused:false});});});
 function render(s: Session) {
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
   root.dataset.interactionMode=s.interaction_mode;
@@ -156,14 +168,14 @@ function render(s: Session) {
   $('#coord-conflicts').textContent=s.assessment.conflicts.join('；');
   const actors=[{id:'apix',name:'ApiX · 管理者'},...snapshot.employees.map(e=>({id:e.id,name:`${e.name} · ${e.runtime}`}))];
   if (!$('#coord-permissions').contains(document.activeElement)) $('#coord-permissions').innerHTML=actors.map(a=>`<label class="coord-permission">${esc(a.name)}<select data-permission="${esc(a.id)}">${modeOptions((a.id==='apix'?s.policy:s.workerPolicies[a.id])?.mode ?? 'ask_approval')}</select></label>`).join('');
-  const key=`${s.plan_id}:${s.planVersion}:${s.status}`;
+  const key=JSON.stringify([s.plan_id,s.planVersion,s.status,s.tasks.map(t=>[t.id,t.employee_id,t.prompt])]);
   if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id))})); renderPlan(); }
   for(const id of ['coord-save-plan','coord-dispatch','coord-add-step']) $( '#'+id).hidden=s.status!=='plan_review';
   $('#coord-tasks').innerHTML=s.tasks.map((t,i)=>{
     const waiting=s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(task=>task.id===d.depends_on_id)).filter(index=>index>=0 && s.tasks[index]!.status!=='accepted');
     const hint=waiting.length ? `前置步骤 ${waiting.map(index=>index+1).join('、')} 尚未验收` : '无待验收的前置步骤';
     const handoff=s.handoffs?.find(h=>h.task_id===t.id);
-    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(hint)}${handoff ? ' · '+esc(handoff.status==='ready'?`已交接 ${handoff.report.files.length} 个文件`:'代码交接需要处理') : ''}</small></div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">查看代码与交接</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
+    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
   }).join('');
   const active=s.tasks.filter(t=>t.status==='running');
   $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
@@ -184,14 +196,16 @@ function renderPlan() {
 }
 function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map(el=>({prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
 async function reload() {
-  const version = ++reloadVersion; const selectedProject = projectId; reloading=true;
+  let version = ++reloadVersion; const selectedProject = projectId; reloading=true;
   try {
     if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
-    const list=await api<Session[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}`);
+    const [list,policy]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`)]);
     if(version!==reloadVersion || selectedProject!==projectId) return;
-    if(!list.some(s=>s.id===sessionId)) selectSession(list[0]?.id ?? '');
+    if(!list.some(s=>s.id===sessionId)) {selectSession(list[0]?.id ?? '');version=reloadVersion;}
     $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
-    const selected=list.find(s=>s.id===sessionId); if(selected) {unsynced.delete(selected.id);render(selected);} else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
+    executionPolicy=policy;renderExecutionPolicy();
+    const selected=list.find(s=>s.id===sessionId);
+    if(selected) {const detail=await api<Session>(`/api/coordination/sessions/${selected.id}`);if(version!==reloadVersion || selectedProject!==projectId || selected.id!==sessionId)return;unsynced.delete(selected.id);render(detail);} else {current=null;$('#coord-body').hidden=true;$('#coord-empty').hidden=false;}
   } finally {if(version===reloadVersion)reloading=false;}
 }
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
@@ -243,15 +257,22 @@ $('#coord-dispatch').addEventListener('click',()=>void action(async()=>{await ap
 $('#coord-save-plan').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/plan`,{revision:current!.revision,planVersion:current!.planVersion,steps:readDraft()});planKey='';}));
 $('#coord-add-step').addEventListener('click',()=>{draft=readDraft();draft.push({prompt:'',employeeId:snapshot.employees[0]?.id ?? '',dependsOn:[]});renderPlan();});
 $('#coord-revise').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/revise`,{revision:current!.revision,reason:new FormData(event.target as HTMLFormElement).get('reason')});editingBrief=false;planKey='';});});
-$('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await api(`/api/coordination/sessions/${sessionId}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});form.querySelector<HTMLTextAreaElement>('textarea')!.value='';});});
+$('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const originSession=sessionId;const originProject=projectId;const input=form.querySelector<HTMLTextAreaElement>('textarea')!;const content=input.value;await api(`/api/coordination/sessions/${originSession}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});if(originSession===sessionId && originProject===projectId && input.value===content)input.value='';});});
 $('#coord-permissions').addEventListener('change',event=>{const select=event.target as HTMLSelectElement;const subject=select.dataset.permission!;void action(async()=>{const policy=subject==='apix'?current!.policy:current!.workerPolicies[subject] ?? {version:0};await api('/api/permissions',{projectId,subject,mode:select.value,version:policy.version});});});
 function renderDelivery(d:Delivery) {
+  inspectedDelivery=d;
   root.querySelector('#coord-delivery-panel')?.remove();
   const panel=document.createElement('section');panel.id='coord-delivery-panel';panel.className='surface-card coord-section';
   if(d.inspection?.fingerprint)deliveryFingerprints.set(d.taskId,d.inspection.fingerprint);else deliveryFingerprints.delete(d.taskId);
-  panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
+  panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(d.status==='completed'?'待验收':statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
   $('#coord-tasks').parentElement!.after(panel);
+  panel.querySelector('h3')!.insertAdjacentHTML('afterend',`<p>工作区：${esc(d.workspacePath ?? '尚未创建')}</p>`);
+  if(['failed','cancelled','unknown','needs_revision','blocked'].includes(d.status)) {
+    const task=current!.tasks.find(t=>t.id===d.taskId)!;
+    panel.insertAdjacentHTML('beforeend',`<h3>检查后重新批准</h3><p>最近运行：${esc(d.latestRun?.id ?? '未启动')} · ${esc(d.latestRun?.status ?? '无')} · PID ${esc(d.latestRun?.pid ?? '无')}。PID 探测：${d.processMayExist===true?'可能仍存在':d.processMayExist===false?'未发现原 PID':'无法确定'}；PID 可能被其他进程复用。</p><p>检查完整代码和运行报告，必要时先在工作区解决并暂存冲突，再重新打开检查。恢复会生成新运行，不重放旧凭据或旧指导消息。</p><form id="coord-recovery"><label>重新分配给员工<select name="employeeId">${snapshot.employees.map(e=>`<option value="${esc(e.id)}" ${e.id===task.employee_id?'selected':''}>${esc(e.name)} · ${esc(e.runtime)}</option>`).join('')}</select></label><label><input type="checkbox" name="reviewed" required>已检查最新代码、运行报告与验收要求</label>${d.status==='unknown'?'<label><input type="checkbox" name="confirmedStopped" required>已人工确认原进程停止</label>':''}<button class="primary-button" ${d.recoveryFingerprint && !d.managedActive?'':'disabled'}>重新批准并排队执行</button></form>`);
+  }
 }
+root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
 root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-session],[data-remove],[data-coord-accept],[data-coord-reject],[data-delivery],[data-freeze-delivery]');if(!el)return;
   if(el.dataset.session){selectSession(el.dataset.session);void reload().catch(e=>notice(String(e),true));}
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}

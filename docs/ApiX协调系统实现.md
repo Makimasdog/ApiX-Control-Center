@@ -45,7 +45,7 @@ interface Policy { mode: PermissionMode; version: number }
 | API | 输入要点 | 行为 |
 | --- | --- | --- |
 | POST /api/coordination/sessions | projectId, goal | 建立独立目标会话 |
-| GET /api/coordination/sessions | projectId 查询参数 | 项目所有目标及真实派生状态 |
+| GET /api/coordination/sessions | projectId，summary=1 可选 | 项目目标；摘要模式省略对话、能力、指导和完整任务 |
 | POST /api/coordination/sessions/:id/messages | revision, content | 沟通、带证据提取字段；不执行任务 |
 | POST /api/coordination/sessions/:id/answers | revision, field, value | 显式编辑需求；增加需求版本 |
 | POST /api/coordination/sessions/:id/confirm | revision | 检查完整度，记录确认版本并生成计划 |
@@ -57,7 +57,12 @@ interface Policy { mode: PermissionMode; version: number }
 | POST /api/permissions | projectId, subject, mode, version | 更新 ApiX 或员工权限，旧授权失效 |
 | GET/POST /api/manager/settings | provider, model | 管理者实际模型配置 |
 | POST /api/adapters | id, name, executable, args, format | 自定义非交互 CLI 注册 |
-| POST /api/tasks/:id/review | accepted | 已完成任务验收 |
+| POST /api/tasks/:id/review | accepted, fingerprint | 验收冻结代码；旧内容指纹拒绝 |
+| GET /api/tasks/:id/delivery | 任务 ID | 工作区路径、代码差异、冻结版本、进程线索及恢复指纹 |
+| POST /api/tasks/:id/recovery | revision, runId, fingerprint, reviewed, confirmedStopped?, employeeId? | 当前计划内失败/中断任务检查后重新批准，可换员工；unknown 须人工确认原进程停止 |
+| GET/POST /api/projects/:id/execution | POST：version, projectLimit?, employeeLimit?, paused? | 项目与员工并发设置、版本化暂停新启动 |
+| POST /api/projects/:id/execution/runtime | version, runtime, paused | 明确恢复已报告额度/速率限制的运行时 |
+| GET /api/snapshot | If-None-Match 可选 | 原完整数据格式；无变化返回 ETag/304，重启使用新标记 |
 
 编辑接口使用 revision/planVersion 防止覆盖过期数据；同一目标的异步推理期间拒绝冲突编辑。每次计划编辑创建全新 plan ID 作为 planVersion。不同目标可以独立推进。
 

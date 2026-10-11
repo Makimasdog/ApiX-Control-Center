@@ -329,6 +329,30 @@ export function createCoordinator(deps: Dependencies) {
     const b = t.plan_id ? row<{session_id: string}>('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',t.plan_id) : undefined;
     if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id); }
   }
+  function assertRetry(taskId:string,input:Record<string,unknown>) {
+    const task=row<Task>('SELECT * FROM tasks WHERE id=?',taskId);
+    const bound=task?.plan_id ? row<{session_id:string;revision:number}>('SELECT * FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id) : null;
+    if(!task || !bound || !['failed','cancelled','unknown','needs_revision','blocked'].includes(task.status))throw new Error('只能恢复当前 ApiX 计划中的失败、中断或待修改任务');
+    const s=editable(bound.session_id,input.revision);
+    if(s.status!=='running' || s.plan_id!==task.plan_id || s.revision!==bound.revision || s.confirmed_revision!==bound.revision)throw new Error('原需求或计划已失效，请重新安排');
+    const employeeId=input.employeeId===undefined?task.employee_id:text(input.employeeId,100);
+    const employee=deps.employees().find(e=>e.id===employeeId);
+    if(!employee || permissions.decision(s.project_id,employeeId)==='deny')throw new Error('员工不可用或只读权限不允许重试');
+    return {s,task,employee};
+  }
+  function authorizeRetry(taskId:string,input:Record<string,unknown>) {
+    const {s,task,employee}=assertRetry(taskId,input);
+    const approvalId=randomUUID();const project=row<{path:string}>('SELECT path FROM projects WHERE id=?',s.project_id)!;
+    const repository=row<{path:string}>('SELECT path FROM project_repositories WHERE id=? AND project_id=?',(task as Task & {repository_id?:string}).repository_id ?? '',s.project_id);
+    transaction(()=>{
+      permissions.grant(task.id,s.project_id,employee.id,'user');
+      db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id=? AND status IN ('pending','approved')").run(now(),task.id);
+      db.prepare("UPDATE tasks SET employee_id=?,runtime=?,status='awaiting_approval',queue_reason=NULL,recovery_fingerprint=?,delivery_commit=NULL,delivery_fingerprint=NULL,updated_at=? WHERE id=?").run(employee.id,employee.runtime,typeof input.workspaceFingerprint==='string'?input.workspaceFingerprint:null,now(),task.id);
+      db.prepare('INSERT INTO approvals(id,task_id,action,status,created_at,target_path,prompt_hash) VALUES (?,?,?,?,?,?,?)').run(approvalId,task.id,'start-agent-in-project','pending',now(),repository?.path ?? project.path,createHash('sha256').update(task.prompt).digest('hex'));
+      turn(s,'user','retry_approved',`检查工作区和原进程后，重新批准员工 ${employee.name} 执行原任务：${task.prompt}`);checkpoint(s.id);
+    });
+    return {approvalId,sessionId:s.id};
+  }
   function timeline(id: string, at?: number) { const s = session(id); return memory.stateAt(s.project_id,id,at); }
   function getSettings() { return row<{provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string}>("SELECT provider,model,base_url AS baseUrl,api_type AS apiType,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1") ?? { provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'' }; }
   function saveSettings(input: Record<string, unknown>) {
@@ -339,7 +363,7 @@ export function createCoordinator(deps: Dependencies) {
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }
-  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,
-    listSessions: (projectId: string) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>details(s.id)),
+  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
+    listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:coordinationStatus(s.status,tasksOf(s))} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

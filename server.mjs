@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
-import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery } from './control-plane.mjs';
+import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery,executionSettings,saveExecutionSettings,changeRuntimePause,recoverTask } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { readLocalModels } from './dist/src/local-models.js';
 
@@ -55,12 +55,17 @@ createServer(async (request, response) => {
         }
         throw new Error('Unknown Agent operation');
       }
-      if (pathname === "/api/snapshot" && request.method === "GET") { send(200, snapshot()); return; }
+      if (pathname === "/api/snapshot" && request.method === "GET") {
+        const value=snapshot(request.headers['if-none-match']);
+        if(value.notModified){response.writeHead(304,{'ETag':value.etag,'Cache-Control':'no-cache'});response.end();}
+        else {response.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-cache','ETag':value.etag});response.end(JSON.stringify(value.data));}
+        return;
+      }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
       if (pathname === '/api/manager/providers' && request.method === 'GET') { send(200, {providers: BUILTIN_PROVIDERS}); return; }
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
       if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
-      if (pathname === "/api/coordination/sessions" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listCoordinationSessions(query.get("projectId"))); return; }
+      if (pathname === "/api/coordination/sessions" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listCoordinationSessions(query.get("projectId"),query.get('summary')==='1')); return; }
       if (/^\/api\/coordination\/sessions\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, coordinationSessionDetails(pathname.split("/")[4])); return; }
       if (/^\/api\/coordination\/sessions\/[^/]+\/timeline$/.test(pathname) && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, coordinationTimeline(pathname.split("/")[4], q.has('at') ? Number(q.get('at')) : undefined)); return; }
       if (pathname === "/api/memories/search" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, searchMemories(query.get("projectId"), query.get("q"))); return; }
@@ -99,6 +104,7 @@ createServer(async (request, response) => {
       }
       if (/^\/api\/tasks\/[^/]+\/details$/.test(pathname) && request.method === "GET") { send(200, taskDetails(pathname.split("/")[3])); return; }
       if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,taskDelivery(pathname.split('/')[3]));return; }
+      if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname) && request.method === 'GET') {send(200,executionSettings(pathname.split('/')[3]));return;}
       if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
@@ -173,6 +179,9 @@ createServer(async (request, response) => {
       else if (/^\/api\/runs\/[^/]+\/stop$/.test(pathname)) { stopRun(pathname.split("/")[3]); result = { requested: true }; }
       else if (/^\/api\/tasks\/[^/]+\/review$/.test(pathname)) { acceptTask(pathname.split("/")[3], input.accepted === true,input.fingerprint); result = { reviewed: true }; }
       else if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname)) result=freezeHistoricalDelivery(pathname.split('/')[3],input);
+      else if (/^\/api\/tasks\/[^/]+\/recovery$/.test(pathname)) result=recoverTask(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname)) result=saveExecutionSettings(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/execution\/runtime$/.test(pathname)) result=changeRuntimePause(pathname.split('/')[3],input);
       else { send(404, { error: "Not found" }); return; }
       send(200, result);
     } catch (error) { send(400, { error: error.message }); }

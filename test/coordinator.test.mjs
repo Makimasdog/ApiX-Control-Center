@@ -124,6 +124,14 @@ test('ApiX requires complete confirmed requirements; approvals, independent memo
   await h.restart();
   assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus,'completed');
   assert.equal((await h.request(`/api/coordination/sessions?projectId=${projectId}`)).length,2);
+  const summaries=await h.request(`/api/coordination/sessions?projectId=${projectId}&summary=1`);
+  assert.equal(summaries.length,2);assert.equal(summaries.find(x=>x.id===s.id).derivedStatus,'completed');
+  for(const summary of summaries)for(const key of ['turns','instructions','requirements','capabilities','tasks'])assert.equal(key in summary,false,key);
+  const firstSnapshot=await fetch(h.origin+'/api/snapshot');const etag=firstSnapshot.headers.get('etag');assert.ok(etag);await firstSnapshot.json();
+  const unchanged=await fetch(h.origin+'/api/snapshot',{headers:{'If-None-Match':etag}});
+  assert.equal(unchanged.status,304);assert.equal(await unchanged.text(),'');
+  await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  const changed=await fetch(h.origin+'/api/snapshot',{headers:{'If-None-Match':etag}});assert.equal(changed.status,200);assert.notEqual(changed.headers.get('etag'),etag);await changed.json();
 }));
 test('full access requires explicit worker permission; automatic dispatch and permission revocation are enforced',async()=>harness(async h=>{
   const {projectId,employeeId,s}=await setup(h);
@@ -230,6 +238,19 @@ test('structured provider error fails a run even when its process exits zero',as
   assert.equal(state.runs[0].status,'failed');
   assert.match(state.tasks[0].result,/gemini fixture error/);
 },{APIX_GEMINI_ENTRY:join(root,'test/fake-provider.mjs'),APIX_FIXTURE_FAIL_RUNTIME:'gemini'}));
+test('structured quota error with only a message pauses new launches even on exit zero',async()=>harness(async h=>{
+  const worker=join(h.dir,'structured-quota.mjs');
+  await writeFile(worker,"process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(JSON.stringify({type:'turn.failed',error:{message:'insufficient_quota'}})+'\\n'));");
+  await h.request('/api/adapters',{id:'structured-quota',name:'Structured quota',executable:process.execPath,args:[worker],format:'jsonl'});
+  const {s,employeeId}=await setup(h,'structured-quota');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[0,1].map(i=>({prompt:'quota-'+i,employeeId,dependsOn:[]}))});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  p=await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks[0].status==='failed'&&state;});
+  assert.equal(p.tasks[1].status,'queued');assert.match(p.tasks[1].queue_reason,/已暂停/);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
+  assert.equal((await h.request(`/api/projects/${s.project_id}/execution`)).runtimePauses[0].runtime,'structured-quota');
+}));
 test('custom worker exchanges project-scoped mailbox messages using its run credential',async()=>harness(async h=>{
   const worker=join(h.dir,'mailbox-worker.mjs');
   await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
@@ -443,6 +464,7 @@ test('run credentials isolate concurrent employee inboxes, acknowledgements and 
   await writeFile(worker,`import {writeFileSync} from 'node:fs';let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(h.dir)}+'/'+process.env.APIX_RUN_ID+'.json',JSON.stringify({token:process.env.APIX_AGENT_TOKEN}));setTimeout(()=>process.exit(0),60000);});`);
   await h.request('/api/adapters',{id:'run-worker',name:'Run worker',executable:process.execPath,args:[worker],format:'plain',mailbox:true});
   const {s,employeeId}=await setup(h,'run-worker');
+  await h.request(`/api/projects/${s.project_id}/execution`,{version:0,projectLimit:4,employeeLimit:2,paused:false});
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'检查 A',employeeId,dependsOn:[]},{prompt:'检查 B',employeeId,dependsOn:[]}]});
   try {
@@ -532,4 +554,91 @@ test('conflicting accepted inputs block the consumer before process launch and p
   const inspection=await h.request(`/api/tasks/${p.tasks[2].id}/delivery`);
   assert.equal(inspection.handoff.status,'conflict'); assert.deepEqual(inspection.inspection.conflicts,['collision.txt']);
   await assert.rejects(readFile(join(h.project,'collision.txt'),'utf8'),{code:'ENOENT'});
+  const blocked=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[2].id);
+  await writeFile(join(blocked.workspace_path,'collision.txt'),'user resolved');
+  execFileSync('git',['add','--','collision.txt'],{cwd:blocked.workspace_path});
+  const reviewed=await h.request(`/api/tasks/${blocked.id}/delivery`);
+  await h.request(`/api/tasks/${blocked.id}/recovery`,{revision:s.revision,runId:reviewed.latestRun.id,fingerprint:reviewed.recoveryFingerprint,reviewed:true});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[2].status==='completed');
+  const resolved=await h.request(`/api/tasks/${blocked.id}/delivery`);
+  assert.equal(resolved.handoff.status,'ready'); assert.equal(resolved.handoff.report.resolution,'用户检查并批准当前解决结果');
+}));
+
+test('project pause and concurrency queue approved work and release slots without duplicate launches',async()=>harness(async h=>{
+  const release=join(h.dir,'release');const worker=join(h.dir,'limited-worker.mjs');
+  await writeFile(worker,`import {existsSync} from 'node:fs';process.stdin.resume();process.stdin.on('end',()=>{const timer=setInterval(()=>{if(existsSync(${JSON.stringify(release)})){clearInterval(timer);process.stdout.write('limited worker finished',()=>process.exit(0));}},50);setTimeout(()=>process.exit(1),30000).unref();});`);
+  await h.request('/api/adapters',{id:'limited-worker',name:'Limited worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'limited-worker');
+  await h.request(`/api/projects/${s.project_id}/execution`,{version:0,projectLimit:1,employeeLimit:2,paused:true});
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[0,1,2].map(i=>({prompt:'independent '+i,employeeId,dependsOn:[]}))});
+  try {
+    p=await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+    assert(p.tasks.every(t=>t.status==='queued'&&t.queue_reason.includes('项目已暂停')));
+    assert.equal((await h.request('/api/snapshot')).runs.length,0);
+    await h.request(`/api/projects/${s.project_id}/execution`,{version:0,paused:false},400);
+    await h.request(`/api/projects/${s.project_id}/execution`,{version:1,paused:false});
+    const running=await h.request(`/api/coordination/sessions/${s.id}`);
+    assert.deepEqual(running.tasks.map(t=>t.status),['running','queued','queued']);
+    assert(running.tasks[1].queue_reason.includes('项目并发已满'));
+    await writeFile(release,'go');
+    await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks.every(t=>t.status==='completed'));
+    const state=await h.request('/api/snapshot');assert.equal(state.runs.length,3);
+    let active=0,peak=0;
+    for(const event of state.messageEvents.filter(e=>e.event_type==='agent.status').reverse()) {if(event.payload.status==='running'){active++;peak=Math.max(peak,active);}if(['completed','failed','cancelled'].includes(event.payload.status))active--;}
+    assert.equal(peak,1);
+  } finally {await writeFile(release,'go');for(const run of (await h.request('/api/snapshot')).runs.filter(r=>r.status==='running'))await h.request(`/api/runs/${run.id}/stop`,{});}
+}));
+
+test('quota failure pauses its runtime, preserves partial work and supports reviewed reassignment',async()=>harness(async h=>{
+  const worker=join(h.dir,'quota-worker.mjs');
+  await writeFile(worker,`import {writeFileSync,existsSync,readFileSync} from 'node:fs';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(process.argv[2]==='bad'&&prompt.startsWith('quota')){writeFileSync('partial.txt','preserved partial');process.stderr.write('insufficient_quota',()=>process.exit(1));}else{process.stdout.write(existsSync('partial.txt')?readFileSync('partial.txt','utf8'):'healthy worker');}});`);
+  for(const [id,mode] of [['quota-worker','bad'],['healthy-worker','good']])await h.request('/api/adapters',{id,name:id,executable:process.execPath,args:[worker,mode],format:'plain'});
+  const {s,employeeId}=await setup(h,'quota-worker');
+  const alternate=(await h.request('/api/employees',{name:'alternate',runtime:'healthy-worker',role:'开发与验证'})).id;
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'quota first',employeeId,dependsOn:[]},{prompt:'healthy second',employeeId,dependsOn:[]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status==='failed');
+  const paused=await h.request(`/api/projects/${s.project_id}/execution`);
+  assert.equal(paused.runtimePauses[0].runtime,'quota-worker');
+  let state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.equal(state.tasks[1].status,'queued'); assert.match(state.tasks[1].queue_reason,/已暂停/);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
+  const inspected=await h.request(`/api/tasks/${state.tasks[0].id}/delivery`);
+  assert.equal(inspected.workspacePath,state.tasks[0].workspace_path);
+  const retry={revision:s.revision,employeeId:alternate,runId:inspected.latestRun.id,fingerprint:inspected.recoveryFingerprint,reviewed:true};
+  await h.request(`/api/tasks/${state.tasks[0].id}/recovery`,{...retry,reviewed:false},400);
+  await h.request(`/api/tasks/${state.tasks[0].id}/recovery`,retry);
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status==='completed');
+  state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.equal(state.tasks[0].employee_id,alternate); assert.equal(state.tasks[0].result,'preserved partial');
+  assert.equal(state.tasks[1].status,'queued');
+  await h.request(`/api/projects/${s.project_id}/execution/runtime`,{version:paused.version,runtime:'quota-worker',paused:false});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[1].status==='completed');
+  const runs=(await h.request('/api/snapshot')).runs;
+  assert.equal(runs.length,3); assert.equal(runs.filter(r=>r.task_id===state.tasks[0].id).length,2);
+}));
+
+test('restart recovery requires explicit stop confirmation and a fresh workspace fingerprint',async()=>harness(async h=>{
+  const worker=join(h.dir,'restart-worker.mjs');
+  await writeFile(worker,`import {existsSync,writeFileSync,readFileSync} from 'node:fs';process.stdin.resume();process.stdin.on('end',()=>{if(!existsSync('partial.txt')){writeFileSync('partial.txt','before restart');setTimeout(()=>process.exit(0),8000);}else{process.stdout.write('recovered '+readFileSync('partial.txt','utf8'));}});`);
+  await h.request('/api/adapters',{id:'restart-worker',name:'Restart worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s}=await setup(h,'restart-worker');const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  const first=await waitFor(async()=>{const state=await h.request('/api/snapshot');const task=state.tasks.find(t=>t.id===p.tasks[0].id);try{await readFile(join(task.workspace_path,'partial.txt'));return task;}catch{return false;}});
+  await h.restart();
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'unknown');
+  let inspected=await h.request(`/api/tasks/${first.id}/delivery`);
+  const retry={revision:s.revision,runId:inspected.latestRun.id,fingerprint:inspected.recoveryFingerprint,reviewed:true};
+  await h.request(`/api/tasks/${first.id}/recovery`,retry,400);
+  await waitFor(async()=>{const d=await h.request(`/api/tasks/${first.id}/delivery`);return d.processMayExist!==true;});
+  await writeFile(join(first.workspace_path,'partial.txt'),'checked after restart');
+  await h.request(`/api/tasks/${first.id}/recovery`,{...retry,confirmedStopped:true},400);
+  inspected=await h.request(`/api/tasks/${first.id}/delivery`);
+  await h.request(`/api/tasks/${first.id}/recovery`,{...retry,fingerprint:inspected.recoveryFingerprint,confirmedStopped:true});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status==='completed');
+  const state=await h.request('/api/snapshot');
+  assert.equal(state.tasks.find(t=>t.id===first.id).result,'recovered checked after restart');
+  assert.equal(state.runs.length,2);assert(state.runs.some(r=>r.status_source==='user-recovery-confirmed'));
 }));
