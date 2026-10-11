@@ -479,3 +479,57 @@ test('run credentials isolate concurrent employee inboxes, acknowledgements and 
     for(const run of (await h.request('/api/snapshot')).runs.filter(r=>['running','starting'].includes(r.status)))await h.request(`/api/runs/${run.id}/stop`,{});
   }
 }));
+
+test('accepted code including new files reaches chained workers from frozen Git deliveries',async()=>harness(async h=>{
+  const worker=join(h.dir,'code-worker.mjs');
+  await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
+  await h.request('/api/adapters',{id:'code-worker',name:'Code worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'code-worker');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'produce input',employeeId,dependsOn:[]},{prompt:'consume input',employeeId,dependsOn:[0]},{prompt:'verify chained inputs',employeeId,dependsOn:[1]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status==='completed');
+  const initial=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
+  assert.deepEqual(initial.inspection.files,['shared.txt','unstaged.txt']); assert.match(initial.inspection.preview,/accepted input/);
+  const source=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[0].id);
+  await writeFile(join(source.workspace_path,'shared.txt'),'accepted input changed');
+  await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true,fingerprint:initial.inspection.fingerprint},400);
+  await writeFile(join(source.workspace_path,'shared.txt'),'accepted input');
+  const inspected=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
+  await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true,fingerprint:inspected.inspection.fingerprint});
+  await writeFile(join(source.workspace_path,'shared.txt'),'unreviewed mutation');
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[1].status==='completed');
+  let state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.match(state.tasks[1].result,/consumed accepted input/);
+  assert(!state.tasks[1].result.includes('unreviewed mutation'));
+  await h.request(`/api/tasks/${p.tasks[1].id}/review`,{accepted:true});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[2].status==='completed');
+  state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.equal(state.tasks[2].result,'accepted input / accepted input');
+  assert.equal(state.handoffs.find(item=>item.task_id===p.tasks[2].id).report.sources.length,2);
+  await h.request(`/api/tasks/${p.tasks[2].id}/review`,{accepted:true});
+  const integration=await h.request('/api/integrations',{planId:state.plan_id});
+  assert.equal(integration.status,'ready'); assert.deepEqual(integration.report.changedFiles.sort(),['report.txt','shared.txt','unstaged.txt']);
+  await writeFile(join(integration.workspacePath,'shared.txt'),'integration changed after review');
+  await h.request(`/api/integrations/${integration.id}/apply`,{},400);
+  await assert.rejects(readFile(join(h.project,'shared.txt'),'utf8'),{code:'ENOENT'});
+}));
+
+test('conflicting accepted inputs block the consumer before process launch and preserve evidence',async()=>harness(async h=>{
+  const worker=join(h.dir,'conflict-worker.mjs');
+  await writeFile(worker,`import {writeFileSync} from 'node:fs';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{writeFileSync('collision.txt',prompt.startsWith('left')?'left':'right');process.stdout.write('produced conflict fixture');});`);
+  await h.request('/api/adapters',{id:'conflict-worker',name:'Conflict worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'conflict-worker');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'left input',employeeId,dependsOn:[]},{prompt:'right input',employeeId,dependsOn:[]},{prompt:'consumer',employeeId,dependsOn:[0,1]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks.slice(0,2).every(t=>t.status==='completed'));
+  for(const task of p.tasks.slice(0,2))await h.request(`/api/tasks/${task.id}/review`,{accepted:true});
+  const state=await h.request(`/api/coordination/sessions/${s.id}`);
+  assert.equal(state.tasks[2].status,'blocked'); assert.equal(state.derivedStatus,'attention');
+  const run=(await h.request('/api/snapshot')).runs.find(r=>r.task_id===p.tasks[2].id);
+  assert.equal(run.pid,null); assert.equal(run.status,'blocked'); assert(run.ended_at);
+  const inspection=await h.request(`/api/tasks/${p.tasks[2].id}/delivery`);
+  assert.equal(inspection.handoff.status,'conflict'); assert.deepEqual(inspection.inspection.conflicts,['collision.txt']);
+  await assert.rejects(readFile(join(h.project,'collision.txt'),'utf8'),{code:'ENOENT'});
+}));

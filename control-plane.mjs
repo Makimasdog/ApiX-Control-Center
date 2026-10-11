@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { externalAgents, scanExternalAgents } from "./agent-discovery.mjs";
 import { createMailboxService } from "./src/mailbox.mjs";
 import { createTaskScheduler } from "./src/task-scheduler.mjs";
+import { createCodeHandoffs } from "./src/code-handoffs.mjs";
 import { createCoordinator } from "./dist/src/coordinator.js";
 import { requirementBrief } from "./dist/src/requirement-engine.js";
 import { createMemory as createEventMemory } from "./dist/src/memory.js";
@@ -248,6 +249,18 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=10").get())
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+if (!db.prepare("SELECT version FROM schema_migrations WHERE version=11").get()) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`ALTER TABLE tasks ADD COLUMN input_commit TEXT;
+      ALTER TABLE tasks ADD COLUMN delivery_commit TEXT;
+      ALTER TABLE tasks ADD COLUMN delivery_fingerprint TEXT;
+      ALTER TABLE workspaces ADD COLUMN common_dir TEXT;
+      CREATE TABLE code_handoffs(task_id TEXT PRIMARY KEY REFERENCES tasks(id),status TEXT NOT NULL,base_sha TEXT NOT NULL,input_commit TEXT NOT NULL,report TEXT NOT NULL,updated_at TEXT NOT NULL);
+      INSERT INTO schema_migrations(version) VALUES (11);`);
+    db.exec('COMMIT');
+  } catch(error){db.exec('ROLLBACK');throw error;}
+}
 const now = () => new Date().toISOString();
 const running = new Map();
 
@@ -288,6 +301,7 @@ const memory = createEventMemory(store);
 const permissions = createPermissions(store, memory);
 const runtimeAdapters = createRuntimeAdapters(store, findExecutable);
 const agentMailbox = createAgentMailbox(store);
+const codeHandoffs = createCodeHandoffs({...store,dataDir,recordTask:(...args)=>coordinator.recordTask(...args)});
 
 const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
@@ -301,13 +315,13 @@ function event(runId, source, kind, payload = {}) {
   if (run) coordinator.recordTask(run.task_id, `runtime.${kind}`, { runId, source, payload });
 }
 function setRun(runId, status, source, exitCode = null) {
-  db.prepare("UPDATE runs SET status=?,status_source=?,ended_at=CASE WHEN ? IN ('completed','failed','cancelled','unknown') THEN ? ELSE ended_at END,exit_code=COALESCE(?,exit_code) WHERE id=?").run(status, source, status, now(), exitCode, runId);
+  db.prepare("UPDATE runs SET status=?,status_source=?,ended_at=CASE WHEN ? IN ('completed','failed','cancelled','unknown','blocked') THEN ? ELSE ended_at END,exit_code=COALESCE(?,exit_code) WHERE id=?").run(status, source, status, now(), exitCode, runId);
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
   if (run) {
     db.prepare("UPDATE tasks SET status=?,updated_at=?,verification_status=? WHERE id=?").run(status, now(), status === "completed" ? "ready" : status === "failed" ? "failed" : "pending", run.task_id);
     const task = row("SELECT project_id,employee_id FROM tasks WHERE id=?", run.task_id);
     if (task) appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: run.task_id, runId, status, source });
-    if (["completed", "failed", "cancelled"].includes(status)) scheduleDependents(run.task_id);
+    if (["completed", "failed", "cancelled","blocked"].includes(status)) scheduleDependents(run.task_id);
   }
 }
 const { scheduleDependents } = createTaskScheduler({ db, row, rows, now, launch, recordTask: (...args) => coordinator.recordTask(...args) });
@@ -340,19 +354,26 @@ function workspaceFor(task, project) {
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
   if (!task.plan_id) return sourcePath;
-  if (task.workspace_path) return task.workspace_path;
+  if (task.workspace_path) {
+    codeHandoffs.workspace(task);
+    if(row('SELECT status FROM code_handoffs WHERE task_id=?',task.id)?.status==='conflict'){const error=new Error('工作区仍有未审查的代码交接，请检查后恢复');error.code='HANDOFF_CONFLICT';throw error;}
+    return task.workspace_path;
+  }
   const root = gitRoot(sourcePath);
   if (!root) throw new Error("计划任务要求 Git 项目以创建独立 worktree");
   const workspaceRoot = join(dataDir, "workspaces", task.id);
   mkdirSync(dirname(workspaceRoot), { recursive: true });
   try {
-    execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, "HEAD"], { cwd: root, encoding: "utf8", timeout: 20000 });
     const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-    db.prepare("INSERT INTO workspaces(id,task_id,path,kind,status,created_at,base_sha) VALUES (?,?,?,?,?,?,?)").run(randomUUID(), task.id, workspaceRoot, "git-worktree", "ready", now(), baseSha);
-    db.prepare("UPDATE tasks SET workspace_path=? WHERE id=?").run(workspaceRoot, task.id);
+    const commonDir=realpathSync(resolve(root,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim()));
+    execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, baseSha], { cwd: root, encoding: "utf8", timeout: 20000 });
+    db.prepare("INSERT INTO workspaces(id,task_id,path,kind,status,created_at,base_sha,common_dir) VALUES (?,?,?,?,?,?,?,?)").run(randomUUID(), task.id, workspaceRoot, "git-worktree", "ready", now(), baseSha,commonDir);
+    db.prepare("UPDATE tasks SET workspace_path=?,input_commit=? WHERE id=?").run(workspaceRoot,baseSha, task.id);
+    if(['coordinator','collaboration'].includes(row("SELECT mode FROM plans WHERE id=?",task.plan_id)?.mode))codeHandoffs.populate({...task,workspace_path:workspaceRoot,input_commit:baseSha});
     return workspaceRoot;
   } catch (error) {
     eventForTask(task.id, "apix", "workspace_failed", { message: error.message });
+    if(error.code==='HANDOFF_CONFLICT')throw error;
     throw new Error(`无法创建独立工作区：${error.message}`);
   }
 }
@@ -391,7 +412,7 @@ function launch(task) {
   let child;
   let cwd;
   try { cwd = workspaceFor(task, project); }
-  catch (error) { setRun(runId, "failed", "workspace"); throw error; }
+  catch (error) { setRun(runId, error.code==='HANDOFF_CONFLICT'?'blocked':'failed', "workspace"); throw error; }
   const skipGitRepoCheck = task.runtime === "codex" && !gitRoot(cwd);
   const fullAccess = permissions.decision(task.project_id, task.employee_id) === "allow";
   const args = runtimeAdapters.args(task.runtime, fullAccess, skipGitRepoCheck);
@@ -703,7 +724,7 @@ export function resolveApproval(id, approved) {
   }
   try { return launch(task); }
   catch (error) {
-    db.prepare("UPDATE tasks SET status='failed',result=?,updated_at=? WHERE id=?").run(error.message, now(), task.id);
+    db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(error.code==='HANDOFF_CONFLICT'?'blocked':'failed',error.message, now(), task.id);
     coordinator.recordTask(task.id, "task.launch_failed", { error: error.message });
     scheduleDependents(task.id);
     throw error;
@@ -721,9 +742,10 @@ export function stopRun(id) {
   else active.child.kill();
   setTimeout(() => { if (running.has(id)) active.child.kill(); }, 3000).unref();
 }
-export function acceptTask(id, accepted) {
+export function acceptTask(id, accepted, fingerprint) {
   const task = row("SELECT * FROM tasks WHERE id=?", id);
   if (!task || task.status !== "completed") throw new Error("只有已完成的任务可以验收");
+  if(accepted && task.plan_id)codeHandoffs.freeze(task,fingerprint);
   db.prepare("UPDATE tasks SET status=?,updated_at=? WHERE id=?").run(accepted ? "accepted" : "needs_revision", now(), id);
   const run = row("SELECT id FROM runs WHERE task_id=? ORDER BY started_at DESC LIMIT 1", id);
   if (run) event(run.id, "user", "task_reviewed", { accepted });
@@ -1119,11 +1141,11 @@ export function prepareIntegration(input) {
   execFileSync("git", ["worktree", "add", "--detach", integrationPath, baseSha], { cwd: root, encoding: "utf8", timeout: 20000 });
   const report = { taskIds: tasks.map((task) => task.id), applied: [], conflicts: [], changedFiles: [] };
   for (const task of tasks) {
-    const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { cwd: task.workspace_path, encoding: "utf8" }).trim();
+    const untracked = task.delivery_commit ? '' : execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { cwd: task.workspace_path, encoding: "utf8" }).trim();
     if (untracked) { report.conflicts.push({ taskId: task.id, reason: `未跟踪文件：${untracked.slice(0, 500)}` }); continue; }
-    const patch = execFileSync("git", ["diff", "--binary", baseSha], { cwd: task.workspace_path, encoding: "utf8", maxBuffer: 10_000_000 });
+    const patch = task.delivery_commit ? codeHandoffs.patch(task) : execFileSync("git", ["diff", "--binary", baseSha], { cwd: task.workspace_path, encoding: "utf8", maxBuffer: 10_000_000 });
     if (!patch) continue;
-    const changed = execFileSync("git", ["diff", "--name-only", baseSha], { cwd: task.workspace_path, encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+    const changed = execFileSync("git", ["diff", "--name-only", task.input_commit ?? baseSha,task.delivery_commit ?? '--'], { cwd: task.workspace_path, encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
     try {
       execFileSync("git", ["apply", "--check", "-"], { cwd: integrationPath, input: patch, encoding: "utf8" });
       execFileSync("git", ["apply", "-"], { cwd: integrationPath, input: patch, encoding: "utf8" });
@@ -1133,6 +1155,7 @@ export function prepareIntegration(input) {
   }
   report.changedFiles = [...new Set(report.changedFiles)];
   const status = report.conflicts.length ? "conflict" : report.changedFiles.length ? "ready" : "no_changes";
+  report.patchDigest=createHash('sha256').update(execFileSync('git',['diff','--binary',baseSha],{cwd:integrationPath,encoding:'utf8',maxBuffer:10000000})).digest('hex');
   db.prepare("INSERT INTO integration_reviews(id,plan_id,repository_path,status,report,workspace_path,created_at,updated_at,base_sha) VALUES (?,?,?,?,?,?,?,?,?)").run(id, plan.id, root, status, JSON.stringify(report), integrationPath, now(), now(), baseSha);
   return { id, status, report, workspacePath: integrationPath };
 }
@@ -1147,6 +1170,7 @@ export function applyIntegration(id) {
   const dirty = execFileSync("git", ["status", "--porcelain"], { cwd: review.repository_path, encoding: "utf8" }).trim();
   if (head !== review.base_sha || dirty) throw new Error("源仓库已变化或工作区不干净，请重新审查");
   const patch = execFileSync("git", ["diff", "--binary", review.base_sha], { cwd: review.workspace_path, encoding: "utf8", maxBuffer: 10_000_000 });
+  if(JSON.parse(review.report).patchDigest!==createHash('sha256').update(patch).digest('hex'))throw new Error('集成内容已变化，请重新审查');
   if (!patch) throw new Error("集成工作区已无差异");
   execFileSync("git", ["apply", "--check", "-"], { cwd: review.repository_path, input: patch, encoding: "utf8" });
   execFileSync("git", ["apply", "-"], { cwd: review.repository_path, input: patch, encoding: "utf8" });
@@ -1181,6 +1205,23 @@ export const registerRuntimeAdapter = runtimeAdapters.register;
 export const instructCoordinationEmployee = coordinator.instructEmployee;
 export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
+export function taskDelivery(id) {
+  const task=row('SELECT * FROM tasks WHERE id=?',id);
+  if(!task)throw new Error('任务不存在');
+  const handoff=row('SELECT * FROM code_handoffs WHERE task_id=?',id);
+  let inspection=null;
+  let error=null;
+  if(task.workspace_path && ['completed','accepted','unknown','failed','blocked','needs_revision','cancelled'].includes(task.status)) {
+    try {inspection=codeHandoffs.inspect(task);}catch(e){error=String(e.message);}
+  }
+  return {taskId:id,status:task.status,inputCommit:task.input_commit,deliveryCommit:task.delivery_commit,inspection,error,handoff:handoff?{...handoff,report:JSON.parse(handoff.report)}:null};
+}
+export function freezeHistoricalDelivery(id,input) {
+  const task=row("SELECT * FROM tasks WHERE id=? AND status='accepted'",id);
+  if(!task || task.delivery_commit || typeof input.fingerprint!=='string')throw new Error('只能重新审查尚未冻结的历史验收交付');
+  if(permissions.get(task.project_id).mode==='read_only')throw new Error('只读模式不能冻结交付');
+  return codeHandoffs.freeze(task,input.fingerprint);
+}
 export function receiveAgentMessages(actor) {
   db.prepare('UPDATE runs SET mailbox_seen_at=? WHERE id=?').run(now(),actor.run_id);
   return receiveMessages({projectId:actor.project_id,agentId:actor.agent_id,targetTaskId:actor.task_id,targetRunId:actor.run_id});

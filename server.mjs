@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
-import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage } from './control-plane.mjs';
+import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { readLocalModels } from './dist/src/local-models.js';
 
@@ -98,6 +98,7 @@ createServer(async (request, response) => {
         return;
       }
       if (/^\/api\/tasks\/[^/]+\/details$/.test(pathname) && request.method === "GET") { send(200, taskDetails(pathname.split("/")[3])); return; }
+      if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,taskDelivery(pathname.split('/')[3]));return; }
       if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
@@ -170,7 +171,8 @@ createServer(async (request, response) => {
       else if (/^\/api\/locks\/[^/]+\/release$/.test(pathname)) result = releaseLock(pathname.split("/")[3], input);
       else if (/^\/api\/approvals\/[^/]+$/.test(pathname)) result = { runId: resolveApproval(pathname.split("/").at(-1), input.approved === true) };
       else if (/^\/api\/runs\/[^/]+\/stop$/.test(pathname)) { stopRun(pathname.split("/")[3]); result = { requested: true }; }
-      else if (/^\/api\/tasks\/[^/]+\/review$/.test(pathname)) { acceptTask(pathname.split("/")[3], input.accepted === true); result = { reviewed: true }; }
+      else if (/^\/api\/tasks\/[^/]+\/review$/.test(pathname)) { acceptTask(pathname.split("/")[3], input.accepted === true,input.fingerprint); result = { reviewed: true }; }
+      else if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname)) result=freezeHistoricalDelivery(pathname.split('/')[3],input);
       else { send(404, { error: "Not found" }); return; }
       send(200, result);
     } catch (error) { send(400, { error: error.message }); }

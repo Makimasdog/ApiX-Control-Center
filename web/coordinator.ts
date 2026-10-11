@@ -13,7 +13,9 @@ interface Session {
   turns: {role:string;kind:string;content:string}[]; agent: {mode:string;error?:string};
   instructions?: {id:string;taskId:string;runId:string;status:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
   capabilities?: {id:string;mailbox?:boolean}[];
+  handoffs?: {task_id:string;status:string;input_commit:string;report:{files:string[];sources:{taskId:string;commit:string}[];error?:string}}[];
 }
+interface Delivery {taskId:string;status:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}}}
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -24,6 +26,7 @@ let streaming = false; let isComposing = false;
 const messageDrafts = new Map<string,string>();
 const failedReplies = new Map<string,{text:string;error:string}>();
 const unsynced = new Set<string>();
+const deliveryFingerprints = new Map<string,string>();
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
 const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'等待依赖',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -54,6 +57,7 @@ function selectSession(id:string) {
   $('#coord-turns').querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());
   $('#coord-turns').dataset.session='';$('#coord-turns').dataset.rendered='';
   $('#coord-body').hidden=true;updateStreamingControls();
+  root.querySelector('#coord-delivery-panel')?.remove();
 }
 async function streamMessage(id:string,body:unknown,userContent:string) {
   if(streaming || current?.busy || unsynced.has(id))throw new Error('正在生成或同步回复，请稍后再试');
@@ -158,7 +162,8 @@ function render(s: Session) {
   $('#coord-tasks').innerHTML=s.tasks.map((t,i)=>{
     const waiting=s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(task=>task.id===d.depends_on_id)).filter(index=>index>=0 && s.tasks[index]!.status!=='accepted');
     const hint=waiting.length ? `前置步骤 ${waiting.map(index=>index+1).join('、')} 尚未验收` : '无待验收的前置步骤';
-    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(hint)}</small></div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${t.status==='completed'?`<button class="text-action" data-coord-accept="${t.id}">通过验收</button><button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
+    const handoff=s.handoffs?.find(h=>h.task_id===t.id);
+    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(hint)}${handoff ? ' · '+esc(handoff.status==='ready'?`已交接 ${handoff.report.files.length} 个文件`:'代码交接需要处理') : ''}</small></div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">查看代码与交接</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
   }).join('');
   const active=s.tasks.filter(t=>t.status==='running');
   $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
@@ -240,10 +245,19 @@ $('#coord-add-step').addEventListener('click',()=>{draft=readDraft();draft.push(
 $('#coord-revise').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/revise`,{revision:current!.revision,reason:new FormData(event.target as HTMLFormElement).get('reason')});editingBrief=false;planKey='';});});
 $('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;await api(`/api/coordination/sessions/${sessionId}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});form.querySelector<HTMLTextAreaElement>('textarea')!.value='';});});
 $('#coord-permissions').addEventListener('change',event=>{const select=event.target as HTMLSelectElement;const subject=select.dataset.permission!;void action(async()=>{const policy=subject==='apix'?current!.policy:current!.workerPolicies[subject] ?? {version:0};await api('/api/permissions',{projectId,subject,mode:select.value,version:policy.version});});});
-root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-session],[data-remove],[data-coord-accept],[data-coord-reject]');if(!el)return;
+function renderDelivery(d:Delivery) {
+  root.querySelector('#coord-delivery-panel')?.remove();
+  const panel=document.createElement('section');panel.id='coord-delivery-panel';panel.className='surface-card coord-section';
+  if(d.inspection?.fingerprint)deliveryFingerprints.set(d.taskId,d.inspection.fingerprint);else deliveryFingerprints.delete(d.taskId);
+  panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
+  $('#coord-tasks').parentElement!.after(panel);
+}
+root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-session],[data-remove],[data-coord-accept],[data-coord-reject],[data-delivery],[data-freeze-delivery]');if(!el)return;
   if(el.dataset.session){selectSession(el.dataset.session);void reload().catch(e=>notice(String(e),true));}
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}
-  if(el.dataset.coordAccept || el.dataset.coordReject)void action(async()=>{await api(`/api/tasks/${el.dataset.coordAccept ?? el.dataset.coordReject}/review`,{accepted:!!el.dataset.coordAccept});});
+  if(el.dataset.delivery)void action(async()=>{const id=el.dataset.delivery!;const originProject=projectId;const originSession=sessionId;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(projectId===originProject && sessionId===originSession)renderDelivery(d);});
+  if(el.dataset.freezeDelivery)void action(async()=>{const id=el.dataset.freezeDelivery!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/delivery`,{fingerprint:deliveryFingerprints.get(id)});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();});
+  if(el.dataset.coordAccept || el.dataset.coordReject)void action(async()=>{const id=el.dataset.coordAccept ?? el.dataset.coordReject!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/review`,{accepted:!!el.dataset.coordAccept,fingerprint:el.dataset.coordAccept?deliveryFingerprints.get(id):undefined});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();deliveryFingerprints.delete(id);});
 });
 $('#coord-history').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const at=new FormData(event.target as HTMLFormElement).get('at');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/sessions/${sessionId}/timeline${at?`?at=${at}`:''}`),null,2);});});
 $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const q=new FormData(event.target as HTMLFormElement).get('q');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent(String(q))}`),null,2);});});

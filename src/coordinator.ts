@@ -43,6 +43,7 @@ export function createCoordinator(deps: Dependencies) {
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
       capabilities: deps.capabilities(),
+      handoffs: s.plan_id ? rows<Record<string,unknown>>('SELECT h.* FROM code_handoffs h JOIN tasks t ON t.id=h.task_id WHERE t.plan_id=?',s.plan_id).map(h=>({...h,report:JSON.parse(String(h.report))})) : [],
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
       instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
       agent: { id: 'apix', name: 'ApiX', role: 'manager', foundation: 'Pi', mode: check?.model_mode ?? 'rules', error: check?.model_error }, busy: busy.has(id) };
