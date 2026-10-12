@@ -7,6 +7,7 @@ import { listCoordinationSessions, coordinationSessionDetails, createCoordinatio
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
 import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery,executionSettings,saveExecutionSettings,changeRuntimePause,recoverTask } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
+import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
 import { readLocalModels } from './dist/src/local-models.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -106,6 +107,8 @@ createServer(async (request, response) => {
       if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,taskDelivery(pathname.split('/')[3]));return; }
       if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname) && request.method === 'GET') {send(200,executionSettings(pathname.split('/')[3]));return;}
       if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
+      if (/^\/api\/employees\/[^/]+\/capabilities$/.test(pathname) && request.method === 'GET') { send(200,employeeCapability(pathname.split('/')[3])); return; }
+      if (/^\/api\/projects\/[^/]+\/scheduling$/.test(pathname) && request.method === 'GET') { send(200,schedulingView(pathname.split('/')[3]));return; }
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
       let raw = "";
@@ -125,11 +128,18 @@ createServer(async (request, response) => {
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (pathname === '/api/scheduling/accounts') result=schedulingAccount(input);
+      else if (pathname === '/api/scheduling/accounts/resume') result=resumeSchedulingAccount(input);
+      else if (/^\/api\/employees\/[^/]+\/capabilities$/.test(pathname)) result=saveEmployeeCapability(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/scheduling$/.test(pathname)) result=saveSchedulingPolicy(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/scheduling\/settle$/.test(pathname)) result=settleSchedulingCost(pathname.split('/')[3],input);
       else if (pathname === '/api/manager/models') result = await readLocalModels(input);
       else if (pathname === "/api/coordination/sessions") result = createCoordinationSession(input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/messages$/.test(pathname)) result = await discussCoordinationSession(pathname.split('/')[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/mode$/.test(pathname)) result = setCoordinationInteractionMode(pathname.split('/')[4],input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/plan$/.test(pathname)) result = editCoordinationPlan(pathname.split('/')[4], input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/planning-meetings$/.test(pathname)) result=await runPlanningMeeting(pathname.split('/')[4],input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/planning-meetings\/apply$/.test(pathname)) result=applyPlanningMeeting(pathname.split('/')[4],input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/answers$/.test(pathname)) result = answerCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/confirm$/.test(pathname)) result = await confirmCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/dispatch$/.test(pathname)) result = dispatchCoordinationSession(pathname.split("/")[4], input);

@@ -63,6 +63,70 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('planning meetings isolate participants, record disagreements and require a new plan approval',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);const second=(await h.request('/api/employees',{name:'第二参与者',runtime:'claude',role:'验证'})).id;
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  const original=p.planVersion;
+  await h.request(`/api/coordination/sessions/${s.id}/planning-meetings`,{revision:p.revision,planVersion:p.planVersion,participants:[{employeeId}]},400);
+  p=await h.request(`/api/coordination/sessions/${s.id}/planning-meetings`,{revision:p.revision,planVersion:p.planVersion,approved:true,participants:[{employeeId},{employeeId:second}]});
+  assert.equal(p.status,'plan_review');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  const meeting=p.planningMeetings.at(-1);assert.equal(meeting.status,'completed');assert.equal(meeting.body.proposals.length,2);assert.equal(meeting.body.disagreements.length,1);
+  assert.match(meeting.body.proposals[0].claims[0].reason,/isolated identity/);
+  await h.request(`/api/coordination/sessions/${s.id}/planning-meetings`,{revision:p.revision,planVersion:p.planVersion,approved:true,participants:[{employeeId}]},400);
+  p=await h.request(`/api/coordination/sessions/${s.id}/planning-meetings`,{revision:p.revision,planVersion:p.planVersion,approved:true,previousId:meeting.id,participants:[{employeeId}]});
+  assert.equal(p.planningMeetings.at(-1).round,2);
+  p=await h.request(`/api/coordination/sessions/${s.id}/planning-meetings/apply`,{revision:p.revision,planVersion:p.planVersion,meetingId:p.planningMeetings.at(-1).id});
+  assert.notEqual(p.planVersion,original);assert.equal(p.status,'plan_review');
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:original},400);
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks[0].status==='completed';});
+}));
+test('shared budgets gate real dispatch and quota snapshots bind approved plans',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);
+  await h.request('/api/scheduling/accounts',{id:'shared-api',alias:'测试 API 账户',type:'api',currency:'USD',limitMinor:100,remainingPercent:90,observedAt:new Date().toISOString(),version:0});
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'test-model',tags:['review'],tools:['git'],accountId:'shared-api'});
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,limitMinor:100,currency:'USD',managerAccountId:'shared-api',managerEstimateMinor:5});
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion},400);
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'fixture work',employeeId,dependsOn:[],scheduling:{kind:'review',tags:['review'],tools:['git'],estimateMinor:60}}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  p=await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks[0].status==='completed' && state;});
+  const budget=await h.request(`/api/projects/${projectId}/scheduling`);assert.equal(budget.committedMinor,65);assert.equal(budget.ledger[0].state,'unmeasured');
+  await h.request(`/api/projects/${projectId}/scheduling/settle`,{id:budget.ledger[0].id,actualMinor:15,reviewed:true});
+  assert.equal((await h.request(`/api/projects/${projectId}/scheduling`)).committedMinor,20);
+  const changed=await h.request(`/api/employees/${employeeId}/capabilities`,{version:1,model:'changed-model',accountId:'shared-api'});assert.equal(changed.version,2);
+}));
+test('queued reassignment requires fresh inspection and respects paused execution slots',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);const replacement=(await h.request('/api/employees',{name:'替代员工',runtime:'claude',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});assert.equal(p.tasks[0].status,'queued');
+  const task=p.tasks[0].id;const checked=await h.request(`/api/tasks/${task}/delivery`);assert.ok(checked.recoveryFingerprint);assert.equal(checked.workspacePath,null);
+  await h.request(`/api/tasks/${task}/recovery`,{revision:p.revision,runId:null,fingerprint:'stale',reviewed:true,employeeId:replacement},400);
+  const result=await h.request(`/api/tasks/${task}/recovery`,{revision:p.revision,runId:null,fingerprint:checked.recoveryFingerprint,reviewed:true,employeeId:replacement});
+  assert.equal(result.session.tasks[0].employee_id,replacement);assert.equal(result.session.tasks[0].status,'queued');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request(`/api/tasks/${task}/recovery`,{revision:p.revision,runId:null,fingerprint:checked.recoveryFingerprint,reviewed:true,employeeId},400);
+  await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks[0].status==='completed';});
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
+}));
+test('read-only ApiX can draft a plan but cannot launch consultation or execution workers',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);await h.request('/api/permissions',{projectId,subject:'apix',mode:'read_only',version:0});
+  const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});assert.equal(p.status,'plan_review');
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion},400);
+  await h.request(`/api/coordination/sessions/${s.id}/planning-meetings`,{revision:p.revision,planVersion:p.planVersion,approved:true,participants:[{employeeId}]},400);
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
+test('a manager quota failure pauses its shared account before any fallback work can launch',async()=>harness(async h=>{
+  const {projectId,employeeId,s}=await setup(h);
+  await h.request('/api/scheduling/accounts',{id:'shared',alias:'manager and workers',type:'api',currency:'USD',limitMinor:100,remainingPercent:90,observedAt:new Date().toISOString(),version:0});
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,accountId:'shared'});
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'shared',managerEstimateMinor:5});
+  await h.request('/api/manager/settings',{provider:'test-provider',model:'fixture-manager-quota'});
+  await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision},400);
+  const budget=await h.request(`/api/projects/${projectId}/scheduling`);assert.ok(budget.accounts[0].pause);assert.equal(budget.committedMinor,5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
 async function* streamFrames(response) {
   assert.equal(response.status,200);
   assert.match(response.headers.get('content-type'),/text\/event-stream/);

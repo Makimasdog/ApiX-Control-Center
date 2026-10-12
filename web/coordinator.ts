@@ -1,11 +1,13 @@
 import { readConversation } from './conversation-stream.js';
 import { saveBrief } from './requirements-form.js';
 import { instructionState } from './execution-view.js';
+import { schedulingView } from './scheduling-view.js';
+import type { TaskProfile } from '../src/scheduling.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
-type Step = { prompt: string; employeeId: string; dependsOn: number[] };
+type Step = { prompt: string; employeeId: string; dependsOn: number[]; scheduling?:TaskProfile };
 interface Session {
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
@@ -14,6 +16,9 @@ interface Session {
   instructions?: {id:string;taskId:string;runId:string;status:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
   capabilities?: {id:string;mailbox?:boolean}[];
   handoffs?: {task_id:string;status:string;input_commit:string;report:{files:string[];sources:{taskId:string;commit:string}[];error?:string}}[];
+  scheduling?:Parameters<ReturnType<typeof schedulingView>['render']>[1];
+  schedulingTasks?:{taskId:string;profile:TaskProfile;decision:{reviewMode?:string;candidates:{name:string;eligible:boolean;reasons:string[];warnings:string[];waiting:string|null;estimateMinor:number|null;currency:string|null;minutes:number|null;history:{samples:number;accepted:number}}[]}}[];
+  planningMeetings?:{id:string;plan_id:string;round:number;status:string;body:{minutes:string;disagreements:string[];proposals:{employeeId:string;status:string;claims:unknown[];decline?:string;error?:string}[]}}[];
 }
 interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null}
 interface ExecutionPolicy {projectLimit:number;employeeLimit:number;paused:boolean;version:number;runtimePauses:{runtime:string;reason:string}[]}
@@ -40,8 +45,9 @@ function notice(message: string, error = false) { $('#coord-notice').textContent
 async function action(work:()=>Promise<void>) {
   if (loading) return; loading=true; root.classList.add('is-busy'); updateStreamingControls();
   const originProject=projectId; const originSession=sessionId;
+  const originFocus=document.activeElement;
   notice('ApiX 正在处理…');
-  try { await work(); if(projectId===originProject && sessionId===originSession)notice('已保存'); await reload(); }
+  try { await work(); if(document.activeElement===originFocus && originFocus instanceof HTMLButtonElement)originFocus.blur();if(projectId===originProject && sessionId===originSession)notice('已保存'); await reload(); }
   catch(e) { if(projectId===originProject && sessionId===originSession)notice(e instanceof Error ? e.message : String(e),true); }
   finally { loading=false; root.classList.remove('is-busy'); if(projectId!==originProject || sessionId!==originSession)notice('');updateStreamingControls(); }
 }
@@ -133,8 +139,20 @@ function renderExecutionPolicy() {
 }
 executionSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const project=projectId;const form=event.target as HTMLFormElement;const values=new FormData(form);await api(`/api/projects/${project}/execution`,{version:executionPolicy!.version,projectLimit:Number(values.get('projectLimit')),employeeLimit:Number(values.get('employeeLimit')),paused:values.has('paused')});});});
 executionSection.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-resume-runtime]');if(button)void action(async()=>{await api(`/api/projects/${projectId}/execution/runtime`,{version:executionPolicy!.version,runtime:button.dataset.resumeRuntime,paused:false});});});
+const schedulingSection=document.createElement('section');schedulingSection.className='surface-card coord-section';executionSection.after(schedulingSection);
+const schedulingUI=schedulingView(schedulingSection,(path,body)=>void action(async()=>{const originalProject=projectId;const originalSession=sessionId;const focus=document.activeElement;await api(path,body);if(originalProject===projectId && originalSession===sessionId && document.activeElement===focus)(focus as HTMLElement)?.blur();}));
+const meetingSection=document.createElement('section');meetingSection.className='surface-card coord-section';schedulingSection.after(meetingSection);
+meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
+meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 function render(s: Session) {
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
+  if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
+  if(!meetingSection.contains(document.activeElement)){
+    const expanded=[...meetingSection.querySelectorAll<HTMLDetailsElement>('details[open]')].map(d=>d.querySelector('summary')?.textContent);
+    const meetings=s.planningMeetings??[];const active=meetings.filter(m=>m.plan_id===s.plan_id);const first=active.find(m=>m.round===1);
+    meetingSection.innerHTML=`<h3>规划会议</h3><p>参与者独立提出可领取的步骤、依据与风险。当前支持 Pi 和具有 bare/restricted 模式的 Claude CLI；Pi 可配置不同模型。Codex 等其他 CLI 尚未验证。会议建议不等于执行审批。</p>${s.status==='plan_review'?`<form data-meeting>${snapshot.employees.filter(e=>['pi','claude'].includes(e.runtime)).map(e=>`<label><input type="checkbox" data-participant value="${esc(e.id)}">${esc(e.name)}<input name="cap:${esc(e.id)}" type="number" min="0" step="1" aria-label="${esc(e.name)} 会议费用上界" placeholder="费用上界，未知留空"></label>`).join('')||'<p>没有支持此会议模式的员工。</p>'}${first && !active.some(m=>m.round===2) && first.body.disagreements.length?`<label><input type="checkbox" name="previousId" value="${esc(first.id)}">针对上一轮分歧进行第二轮</label>`:''}<label><input type="checkbox" name="approved" required>批准以上参与者与本次会议费用预留（最多三位）</label><button class="outline-button" ${s.busy?'disabled':''}>召开规划会议</button></form>`:''}${meetings.map(m=>`<details><summary>第 ${m.round} 轮 · ${esc(m.status)}${m.plan_id!==s.plan_id?' · 历史计划':''}</summary><p>${esc(m.body.minutes)}</p>${m.body.proposals.map(p=>`<article><strong>${esc(snapshot.employees.find(e=>e.id===p.employeeId)?.name??p.employeeId)} · ${esc(p.status)}</strong><pre>${esc(p.error??JSON.stringify(p.claims,null,2))}</pre><p>${esc(p.decline)}</p></article>`).join('')}<p>${esc(m.body.disagreements.join('；'))}</p>${m.status==='completed' && m.plan_id===s.plan_id && s.status==='plan_review'?`<button class="outline-button" data-apply-meeting="${esc(m.id)}">按可用领取建议生成新待审计划</button>`:''}</details>`).join('')}`;
+    for(const detail of meetingSection.querySelectorAll<HTMLDetailsElement>('details'))if(expanded.includes(detail.querySelector('summary')?.textContent))detail.open=true;
+  }
   root.dataset.interactionMode=s.interaction_mode;
   $('#coord-title').textContent=s.title; $('#coord-status').textContent=statuses[s.derivedStatus] ?? s.derivedStatus;
   $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'与 ApiX 对话':'需求澄清记录';
@@ -169,13 +187,13 @@ function render(s: Session) {
   const actors=[{id:'apix',name:'ApiX · 管理者'},...snapshot.employees.map(e=>({id:e.id,name:`${e.name} · ${e.runtime}`}))];
   if (!$('#coord-permissions').contains(document.activeElement)) $('#coord-permissions').innerHTML=actors.map(a=>`<label class="coord-permission">${esc(a.name)}<select data-permission="${esc(a.id)}">${modeOptions((a.id==='apix'?s.policy:s.workerPolicies[a.id])?.mode ?? 'ask_approval')}</select></label>`).join('');
   const key=JSON.stringify([s.plan_id,s.planVersion,s.status,s.tasks.map(t=>[t.id,t.employee_id,t.prompt])]);
-  if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id))})); renderPlan(); }
+  if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id)),scheduling:s.schedulingTasks?.find(p=>p.taskId===t.id)?.profile})); renderPlan(); }
   for(const id of ['coord-save-plan','coord-dispatch','coord-add-step']) $( '#'+id).hidden=s.status!=='plan_review';
   $('#coord-tasks').innerHTML=s.tasks.map((t,i)=>{
     const waiting=s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(task=>task.id===d.depends_on_id)).filter(index=>index>=0 && s.tasks[index]!.status!=='accepted');
     const hint=waiting.length ? `前置步骤 ${waiting.map(index=>index+1).join('、')} 尚未验收` : '无待验收的前置步骤';
     const handoff=s.handoffs?.find(h=>h.task_id===t.id);
-    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
+    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['queued','completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
   }).join('');
   const active=s.tasks.filter(t=>t.status==='running');
   $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
@@ -192,9 +210,14 @@ function render(s: Session) {
   $('#coord-artifacts').innerHTML=snapshot.artifacts.filter(a=>runIds.includes(a.run_id)).map(a=>`<details><summary>员工交付物 · ${esc(a.id.slice(0,8))}</summary><pre>${esc(a.content)}</pre></details>`).join('') || '<p class="coord-muted">员工的实际交付物会显示在这里。</p>';
 }
 function renderPlan() {
-  $('#coord-plan').innerHTML=current?.status==='plan_review' ? draft.map((s,i)=>`<div class="coord-plan-step" data-step="${i}"><strong>步骤 ${i+1}</strong><label>任务<textarea data-prompt>${esc(s.prompt)}</textarea></label><label>员工<select data-employee>${snapshot.employees.map(e=>`<option value="${e.id}" ${s.employeeId===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></label><label>等待步骤（逗号分隔的编号）<input data-deps value="${s.dependsOn.map(n=>n+1).join(',')}"></label><button data-remove="${i}" class="text-action">删除步骤</button></div>`).join('') : '';
+  $('#coord-plan').innerHTML=current?.status==='plan_review' ? draft.map((s,i)=>`<div class="coord-plan-step" data-step="${i}"><strong>步骤 ${i+1}</strong><label>任务<textarea data-prompt>${esc(s.prompt)}</textarea></label><label>员工<select data-employee>${snapshot.employees.map(e=>`<option value="${e.id}" ${s.employeeId===e.id?'selected':''}>${esc(e.name)}</option>`).join('')}</select></label><label>等待步骤（逗号分隔的编号）<input data-deps value="${s.dependsOn.map(n=>n+1).join(',')}"></label><label>调度约束（JSON；费用为已批准上界，写入范围为相对路径）<textarea data-scheduling>${esc(JSON.stringify(s.scheduling ?? {kind:'implementation',tags:[],tools:[],writePaths:[],estimateMinor:null},null,2))}</textarea></label>${candidateReasons(i)}<button data-remove="${i}" class="text-action">删除步骤</button></div>`).join('') : '';
 }
-function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map(el=>({prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
+function candidateReasons(index:number) {
+  const task=current?.tasks[index];const report=current?.schedulingTasks?.find(p=>p.taskId===task?.id);
+  const review=report?.decision.reviewMode;const reviewLabel=review==='self_review'?'此步骤为自审':review==='independent'?'此步骤由另一位员工审查':review?'未声明被审查步骤，独立性未验证':'';
+  return report?`<details><summary>选人与排除原因（计划生成时）</summary><p>${esc(reviewLabel)}</p><p>保存能力、账户、权限或任务约束后需要重新审查计划。可在 estimates 中为各 employeeId 填写人工估计的 estimateMinor 与 minutes；未知留空，不同币种不互相比价。</p>${report.decision.candidates.map(e=>`<p><strong>${esc(e.name)} · ${e.eligible?'满足当前草案约束':'已排除'}</strong><br>${esc([...e.reasons,...e.warnings,e.waiting??''].filter(Boolean).join('；')||'无已知阻塞')}<br>已验收 ${e.history.accepted}/${e.history.samples} 个可比样本 · 费用上界 ${e.estimateMinor??'未知'} ${esc(e.currency??'')} · 时间 ${e.minutes??'未知'} 分钟</p>`).join('')}</details>`:'';
+}
+function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map(el=>({scheduling:JSON.parse(el.querySelector<HTMLTextAreaElement>('[data-scheduling]')!.value),prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
 async function reload() {
   let version = ++reloadVersion; const selectedProject = projectId; reloading=true;
   try {
@@ -267,7 +290,7 @@ function renderDelivery(d:Delivery) {
   panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(d.status==='completed'?'待验收':statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
   $('#coord-tasks').parentElement!.after(panel);
   panel.querySelector('h3')!.insertAdjacentHTML('afterend',`<p>工作区：${esc(d.workspacePath ?? '尚未创建')}</p>`);
-  if(['failed','cancelled','unknown','needs_revision','blocked'].includes(d.status)) {
+  if(['queued','failed','cancelled','unknown','needs_revision','blocked'].includes(d.status)) {
     const task=current!.tasks.find(t=>t.id===d.taskId)!;
     panel.insertAdjacentHTML('beforeend',`<h3>检查后重新批准</h3><p>最近运行：${esc(d.latestRun?.id ?? '未启动')} · ${esc(d.latestRun?.status ?? '无')} · PID ${esc(d.latestRun?.pid ?? '无')}。PID 探测：${d.processMayExist===true?'可能仍存在':d.processMayExist===false?'未发现原 PID':'无法确定'}；PID 可能被其他进程复用。</p><p>检查完整代码和运行报告，必要时先在工作区解决并暂存冲突，再重新打开检查。恢复会生成新运行，不重放旧凭据或旧指导消息。</p><form id="coord-recovery"><label>重新分配给员工<select name="employeeId">${snapshot.employees.map(e=>`<option value="${esc(e.id)}" ${e.id===task.employee_id?'selected':''}>${esc(e.name)} · ${esc(e.runtime)}</option>`).join('')}</select></label><label><input type="checkbox" name="reviewed" required>已检查最新代码、运行报告与验收要求</label>${d.status==='unknown'?'<label><input type="checkbox" name="confirmedStopped" required>已人工确认原进程停止</label>':''}<button class="primary-button" ${d.recoveryFingerprint && !d.managedActive?'':'disabled'}>重新批准并排队执行</button></form>`);
   }

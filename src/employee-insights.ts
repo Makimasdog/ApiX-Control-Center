@@ -1,6 +1,7 @@
 import type { Store } from './contracts.js';
 
-type Usage = { input: number; output: number; cached: number; source: string };
+type Usage = { input: number | null; output: number | null; cached: number | null; source: string };
+function cache(read: unknown, write: unknown): number | null { const r=number(read); const w=number(write); return r===null || w===null ? null : r+w; }
 function number(value: unknown): number | null { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null; }
 function object(value: unknown): Record<string,unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string,unknown> : {}; }
 export function createEmployeeInsights(store: Store) {
@@ -11,31 +12,31 @@ export function createEmployeeInsights(store: Store) {
     if (runtime === 'pi' && item.type === 'message_end' && object(item.message).role === 'assistant') {
       const u = object(object(item.message).usage);
       const input = number(u.input) ?? number(u.inputTokens); const output = number(u.output) ?? number(u.outputTokens);
-      if (input !== null || output !== null) { usage={input:input ?? 0,output:output ?? 0,cached:(number(u.cacheRead) ?? 0)+(number(u.cacheWrite) ?? 0),source:'pi-rpc'}; additive=true; }
+      if (input !== null || output !== null) { usage={input,output,cached:cache(u.cacheRead,u.cacheWrite),source:'pi-rpc'}; additive=true; }
     }
     if (runtime === 'codex' && item.type === 'turn.completed') {
       const u = object(item.usage); const total = object(u.total_token_usage ?? u);
       const input=number(total.input_tokens); const output=number(total.output_tokens);
-      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:number(total.cached_input_tokens) ?? 0,source:'codex-jsonl'};
+      if (input !== null || output !== null) usage={input,output,cached:number(total.cached_input_tokens),source:'codex-jsonl'};
     }
     if (runtime === 'claude' && item.type === 'result') {
       const u=object(item.usage); const input=number(u.input_tokens); const output=number(u.output_tokens);
-      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:(number(u.cache_read_input_tokens) ?? 0)+(number(u.cache_creation_input_tokens) ?? 0),source:'claude-stream'};
+      if (input !== null || output !== null) usage={input,output,cached:cache(u.cache_read_input_tokens,u.cache_creation_input_tokens),source:'claude-stream'};
     }
     if (runtime === 'gemini' && item.type === 'result') {
       const u=object(item.stats ?? item.usage);
       const input=number(u.input_tokens); const output=number(u.output_tokens);
-      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:number(u.cached_tokens) ?? 0,source:'gemini-stream'};
+      if (input !== null || output !== null) usage={input,output,cached:number(u.cached_tokens),source:'gemini-stream'};
     }
     if (runtime === 'opencode' && item.type === 'step_finish') {
       const tokens=object(object(item.part).tokens);
       const input=number(tokens.input); const output=number(tokens.output);
-      if (input !== null || output !== null) {usage={input:input ?? 0,output:output ?? 0,cached:number(object(tokens.cache).read) ?? 0,source:'opencode-json'}; additive=true;}
+      if (input !== null || output !== null) {usage={input,output,cached:number(object(tokens.cache).read),source:'opencode-json'}; additive=true;}
     }
     if (runtime === 'kimi' && item.type === 'result') {
       const u=object(item.usage);
       const input=number(u.input_tokens); const output=number(u.output_tokens);
-      if (input !== null || output !== null) usage={input:input ?? 0,output:output ?? 0,cached:number(u.cached_input_tokens) ?? 0,source:'kimi-stream'};
+      if (input !== null || output !== null) usage={input,output,cached:number(u.cached_input_tokens),source:'kimi-stream'};
     }
     if (!usage) return;
     if (additive) db.prepare('INSERT INTO apix_run_usage VALUES (?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET input_tokens=apix_run_usage.input_tokens+excluded.input_tokens,output_tokens=apix_run_usage.output_tokens+excluded.output_tokens,cached_tokens=apix_run_usage.cached_tokens+excluded.cached_tokens,updated_at=excluded.updated_at').run(runId,usage.input,usage.output,usage.cached,usage.source,store.now());

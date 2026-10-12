@@ -5,8 +5,8 @@ export type InteractionMode = 'structured' | 'conversational';
 export type RequirementField = 'goal' | 'scope' | 'constraints' | 'deliverable' | 'acceptance';
 export type Requirements = Record<RequirementField, string>;
 export interface RequirementAssessment { score: number; threshold: number; missing: RequirementField[]; conflicts: string[]; ready: boolean }
-export interface PlanStep { prompt: string; employeeId: string; dependsOn: number[] }
-export interface Employee { id: string; name: string; role: string; runtime: string; enabled: number }
+export interface PlanStep { prompt: string; employeeId: string; dependsOn: number[]; scheduling?: import('./scheduling.js').TaskProfile }
+export interface Employee { id: string; name: string; role: string; runtime: string; enabled: number; capabilityProfile?: import('./scheduling.js').CapabilityProfile }
 export interface Task { id: string; project_id: string; plan_id: string | null; employee_id: string; runtime: string; prompt: string; status: string }
 export interface Session {
   id: string; project_id: string; title: string; status: string; requirements_json: string;

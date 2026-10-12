@@ -1,5 +1,6 @@
 import { type ModelBackend, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text } from './contracts.js';
 import { nextQuestion, requirementFields, requirementBrief } from './requirement-engine.js';
+import { taskProfile } from './scheduling.js';
 
 function parse(raw: string) { return object(JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''))); }
 
@@ -71,14 +72,14 @@ export function createApiXAgent(backend: ModelBackend) {
     if (!employees.length) throw new Error('请先注册一个可用员工');
     const brief = requirementBrief(requirements);
     try {
-      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，按员工岗位匹配。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`));
+      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，参考用户声明的 capabilityProfile 匹配实际能力，不按品牌固定分工。每步可提供 scheduling={kind:implementation|testing|review|analysis|docs,tags:[],tools:[],writePaths:[],contextTokens:null,fixedEmployeeId:null,estimateMinor:null,minutes:null}；未知填写 null 或空数组，费用上界及指定员工只能来自用户明确批准的信息，不能编造金额或工具能力。按任务实际范围填写项目内相对 writePaths，并行步骤不能重叠。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`));
       if (!Array.isArray(parsed.steps) || !parsed.steps.length || parsed.steps.length > 8) throw new Error('计划步骤无效');
       const steps = parsed.steps.map((value, index) => {
         const step = object(value);
         const employeeId = text(step.employeeId, 100);
         if (!employees.some(e => e.id === employeeId)) throw new Error('计划引用了不可用的员工');
         if (!Array.isArray(step.dependsOn) || step.dependsOn.some(i => !Number.isInteger(i) || i < 0 || i >= index)) throw new Error('计划依赖无效');
-        return { prompt: text(step.prompt, 10000), employeeId, dependsOn: [...new Set(step.dependsOn as number[])] };
+        return { prompt: text(step.prompt, 10000), employeeId, dependsOn: [...new Set(step.dependsOn as number[])], scheduling: taskProfile(step.scheduling) };
       });
       return { steps, mode: 'pi' };
     } catch (error) {

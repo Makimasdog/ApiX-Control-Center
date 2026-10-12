@@ -6,11 +6,16 @@ import type { Memory } from './memory.js';
 import type { Permissions } from './permissions.js';
 import { coordinationStatus, progressSummary } from './task-tracker.js';
 import { validateModelConfig } from './model-providers.js';
+import { taskProfile, type Scheduling } from './scheduling.js';
+import { createPlanningMeetings } from './planning-meetings.js';
 
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
   employees(): Employee[];
   capabilities(): AgentCapabilities[];
+  scheduling: Scheduling;
+  consult(employeeId:string,prompt:string):Promise<string>;
+  reportManagerFailure(projectId:string,sourceId:string,error:string):void;
   sendMessage(input: Record<string, unknown>): { id: string; status: string };
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
@@ -18,6 +23,13 @@ interface Dependencies extends Store {
 export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
   const busy = new Set<string>();
+  const planningMeetings=createPlanningMeetings(deps,deps.scheduling,deps.consult);
+  async function metered<T>(projectId:string,infer:()=>Promise<T>):Promise<T> {
+    const id='apix:'+randomUUID();const reserved=deps.scheduling.reserveManager(id,projectId);
+    try{const result=await infer();if(result && typeof result==='object' && 'error' in result && typeof result.error==='string')deps.reportManagerFailure(projectId,id,result.error);return result;}
+    catch(error){deps.reportManagerFailure(projectId,id,String(error instanceof Error?error.message:error));throw error;}
+    finally{if(reserved)deps.scheduling.settle(id,null);}
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS coordination_checks(session_id TEXT PRIMARY KEY REFERENCES coordination_sessions(id), conflicts TEXT NOT NULL DEFAULT '[]', model_mode TEXT NOT NULL DEFAULT 'rules', model_error TEXT);
     CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL DEFAULT '', api_type TEXT NOT NULL DEFAULT 'openai-completions', api_key_env TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS apix_guidance(message_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), status TEXT NOT NULL, action TEXT, focus TEXT, outbound_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL);
@@ -43,6 +55,8 @@ export function createCoordinator(deps: Dependencies) {
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
       capabilities: deps.capabilities(),
+      scheduling: deps.scheduling.view(s.project_id), schedulingTasks:s.plan_id?deps.scheduling.reports(s.plan_id):[],
+      planningMeetings:planningMeetings.details(id),consultationRuntimes:['pi','claude'],
       handoffs: s.plan_id ? rows<Record<string,unknown>>('SELECT h.* FROM code_handoffs h JOIN tasks t ON t.id=h.task_id WHERE t.plan_id=?',s.plan_id).map(h=>({...h,report:JSON.parse(String(h.report))})) : [],
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
       instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
@@ -107,7 +121,7 @@ export function createCoordinator(deps: Dependencies) {
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
       const progress = details(id);
-      const decision = await agent.discuss(requirementsOf(s), content, history, {status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion);
+      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion));
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
@@ -132,16 +146,18 @@ export function createCoordinator(deps: Dependencies) {
       const v = object(value); const employeeId = text(v.employeeId, 100);
       if (!employees.some(e => e.id === employeeId)) throw new Error('员工不可用');
       if (!Array.isArray(v.dependsOn) || v.dependsOn.some(i => !Number.isInteger(i) || i < 0 || i >= index)) throw new Error('依赖只能引用前序步骤');
-      return { prompt: text(v.prompt, 10000), employeeId, dependsOn: [...new Set(v.dependsOn as number[])] };
+      return { prompt: text(v.prompt, 10000), employeeId, dependsOn: [...new Set(v.dependsOn as number[])], scheduling:taskProfile(v.scheduling) };
     });
   }
   function writePlan(s: Session, steps: PlanStep[]) {
+    const assigned=deps.scheduling.assign(s.project_id,steps,false);
     const planId = randomUUID(); const taskIds = steps.map(() => randomUUID());
     const project = row<{path: string}>('SELECT path FROM projects WHERE id=?', s.project_id)!;
     db.prepare('INSERT INTO plans(id,project_id,goal,status,created_at,updated_at,mode) VALUES (?,?,?,?,?,?,?)').run(planId, s.project_id, requirementsOf(s).goal, 'planned', now(), now(), 'coordinator');
-    for (const [i, step] of steps.entries()) {
+    for (const [i, step] of assigned.entries()) {
       const e = deps.employees().find(e => e.id === step.employeeId)!; const taskId = taskIds[i]!;
       db.prepare('INSERT INTO tasks(id,project_id,runtime,prompt,status,created_at,updated_at,employee_id,plan_id) VALUES (?,?,?,?,?,?,?,?,?)').run(taskId,s.project_id,e.runtime,step.prompt,'awaiting_approval',now(),now(),e.id,planId);
+      deps.scheduling.bind(taskId,step.scheduling,step.decision,s.project_id);
       db.prepare('INSERT INTO approvals(id,task_id,action,status,created_at,target_path,prompt_hash) VALUES (?,?,?,?,?,?,?)').run(randomUUID(),taskId,'start-agent-in-project','pending',now(),project.path,createHash('sha256').update(step.prompt).digest('hex'));
       for (const dep of step.dependsOn) db.prepare('INSERT INTO task_dependencies(task_id,depends_on_id) VALUES (?,?)').run(taskId,taskIds[dep]!);
     }
@@ -156,8 +172,8 @@ export function createCoordinator(deps: Dependencies) {
     if (s.plan_id && tasksOf(s).some(t => ['running','stopping','unknown'].includes(t.status))) throw new Error('旧计划尚未确认停止，请先处理运行状态');
     busy.add(id); let mode = 'rules';
     try {
-      const generated = await agent.plan(requirementsOf(s),deps.employees()); mode = generated.mode;
-      const steps = validateSteps(generated.steps);
+      const generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),deps.employees().map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)})))); mode = generated.mode;
+      const steps = deps.scheduling.assign(s.project_id,validateSteps(generated.steps).map(step=>({...step,scheduling:{...taskProfile(step.scheduling),estimateMinor:null,fixedEmployeeId:null,estimates:[]}})),true);
       transaction(() => {
         writePlan(s,steps);
         turn(session(id),'apix','plan_review',mode === 'pi' ? '需求已确认，执行计划已生成。请查看任务安排和依赖。' : '推理后端不可用，已生成规则草案，需要你检查后批准。');
@@ -166,7 +182,7 @@ export function createCoordinator(deps: Dependencies) {
       });
     } finally { busy.delete(id); }
     const ready = details(id);
-    if (mode === 'pi' && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow')) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
+    if (mode === 'pi' && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null)) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
     return details(id);
   }
   function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {
@@ -176,6 +192,7 @@ export function createCoordinator(deps: Dependencies) {
     const tasks = rows<Task & {approval_id: string}>('SELECT t.*,a.id AS approval_id FROM tasks t JOIN approvals a ON a.task_id=t.id WHERE t.plan_id=? AND a.status=\'pending\' ORDER BY t.rowid',s.plan_id);
     if (!tasks.length || tasks.length !== d.tasks.length || tasks.some(t => t.status !== 'awaiting_approval')) throw new Error('计划已派发或部分任务已变化');
     if (tasks.some(t => permissions.decision(s.project_id,t.employee_id) === 'deny')) throw new Error('只读权限不允许启动员工');
+    for(const task of tasks){const reason=deps.scheduling.admission(task);if(reason)throw new Error(reason);}
     transaction(() => {
       for (const task of tasks) permissions.grant(task.id,s.project_id,task.employee_id,source);
       db.prepare("UPDATE coordination_sessions SET status='running',updated_at=? WHERE id=?").run(now(),id);
@@ -213,6 +230,23 @@ export function createCoordinator(deps: Dependencies) {
       writePlan(s,steps); checkpoint(id);
     });
     return details(id);
+  }
+  async function runPlanningMeeting(id:string,input:Record<string,unknown>) {
+    const s=editable(id,input.revision);
+    if(s.status!=='plan_review' || !s.plan_id || input.planVersion!==s.plan_id)throw new Error('只能讨论当前待审计划');
+    if(!Array.isArray(input.participants) || input.participants.some(v=>{const p=object(v);return !['pi','claude'].includes(deps.employees().find(e=>e.id===p.employeeId)?.runtime ?? '');}))throw new Error('当前无工具规划适配器仅支持 Pi 和支持 bare/restricted 的 Claude CLI，其他运行时尚未验证');
+    const tasks=tasksOf(s);const steps=tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:rows<{depends_on_id:string}>('SELECT depends_on_id FROM task_dependencies WHERE task_id=?',t.id).map(d=>tasks.findIndex(t=>t.id===d.depends_on_id)),scheduling:deps.scheduling.taskSpec(t.id)}));
+    const stillCurrent=()=>{const current=session(id);if(current.plan_id!==s.plan_id || current.revision!==s.revision || current.status!=='plan_review')throw new Error('会议期间计划已失效');for(const p of input.participants as {employeeId:string}[])if(permissions.decision(s.project_id,p.employeeId)==='deny')throw new Error('会议权限已撤销');};
+    busy.add(id);
+    try{await planningMeetings.run(id,s.plan_id,s.project_id,steps,input,stillCurrent);turn(s,'apix','planning_meeting','规划会议已记录。请检查提案、失败与分歧；任务尚未派发。');}
+    finally{busy.delete(id);}
+    return details(id);
+  }
+  function applyPlanningMeeting(id:string,input:Record<string,unknown>) {
+    const s=editable(id,input.revision);if(!s.plan_id || s.status!=='plan_review' || input.planVersion!==s.plan_id)throw new Error('计划已变化，请刷新');
+    const tasks=tasksOf(s);const steps=tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:rows<{depends_on_id:string}>('SELECT depends_on_id FROM task_dependencies WHERE task_id=?',t.id).map(d=>tasks.findIndex(t=>t.id===d.depends_on_id)),scheduling:deps.scheduling.taskSpec(t.id)}));
+    const proposed=planningMeetings.proposed(id,s.plan_id,s.project_id,text(input.meetingId,100),steps);
+    return editPlan(id,{...input,steps:proposed});
   }
   function changePolicy(projectId: string, input: Record<string, unknown>) {
     const subject = text(input.subject ?? 'apix',100);
@@ -276,7 +310,7 @@ export function createCoordinator(deps: Dependencies) {
     if (!claimed.changes) return;
     try {
       const count = row<{n:number}>("SELECT COUNT(*) AS n FROM apix_guidance WHERE task_id=? AND action='guide' AND status='sent'",task.id)?.n ?? 0;
-      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked});
+      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await metered(s.project_id,()=>agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked}));
       const current = session(bound.session_id);
       const liveTask = row<Task>('SELECT * FROM tasks WHERE id=?',task.id);
       if (!liveTask || current.plan_id !== task.plan_id || current.revision !== bound.revision || current.status !== 'running' || liveTask.status !== 'running') throw new Error('任务状态或用户需求已变化');
@@ -332,7 +366,7 @@ export function createCoordinator(deps: Dependencies) {
   function assertRetry(taskId:string,input:Record<string,unknown>) {
     const task=row<Task>('SELECT * FROM tasks WHERE id=?',taskId);
     const bound=task?.plan_id ? row<{session_id:string;revision:number}>('SELECT * FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id) : null;
-    if(!task || !bound || !['failed','cancelled','unknown','needs_revision','blocked'].includes(task.status))throw new Error('只能恢复当前 ApiX 计划中的失败、中断或待修改任务');
+    if(!task || !bound || !['queued','failed','cancelled','unknown','needs_revision','blocked'].includes(task.status))throw new Error('只能恢复当前 ApiX 计划中的排队、失败、中断或待修改任务');
     const s=editable(bound.session_id,input.revision);
     if(s.status!=='running' || s.plan_id!==task.plan_id || s.revision!==bound.revision || s.confirmed_revision!==bound.revision)throw new Error('原需求或计划已失效，请重新安排');
     const employeeId=input.employeeId===undefined?task.employee_id:text(input.employeeId,100);
@@ -346,6 +380,7 @@ export function createCoordinator(deps: Dependencies) {
     const repository=row<{path:string}>('SELECT path FROM project_repositories WHERE id=? AND project_id=?',(task as Task & {repository_id?:string}).repository_id ?? '',s.project_id);
     transaction(()=>{
       permissions.grant(task.id,s.project_id,employee.id,'user');
+      deps.scheduling.approveBinding(task.id,s.project_id,employee.id);
       db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id=? AND status IN ('pending','approved')").run(now(),task.id);
       db.prepare("UPDATE tasks SET employee_id=?,runtime=?,status='awaiting_approval',queue_reason=NULL,recovery_fingerprint=?,delivery_commit=NULL,delivery_fingerprint=NULL,updated_at=? WHERE id=?").run(employee.id,employee.runtime,typeof input.workspaceFingerprint==='string'?input.workspaceFingerprint:null,now(),task.id);
       db.prepare('INSERT INTO approvals(id,task_id,action,status,created_at,target_path,prompt_hash) VALUES (?,?,?,?,?,?,?)').run(approvalId,task.id,'start-agent-in-project','pending',now(),repository?.path ?? project.path,createHash('sha256').update(task.prompt).digest('hex'));
@@ -363,7 +398,7 @@ export function createCoordinator(deps: Dependencies) {
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }
-  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
+  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
     listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:coordinationStatus(s.status,tasksOf(s))} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

@@ -12,8 +12,18 @@ process.stdin.on("data", (chunk) => {
       process.exit(0);
     }
     if (command.type !== "prompt") continue;
+    if(process.argv.includes('fixture-manager-quota')){process.stderr.write('insufficient_quota',()=>process.exit(1));return;}
     process.stdout.write(JSON.stringify({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }) + "\n");
     process.stdout.write('{"type":"agent_start"}\n');
+    if(command.message.startsWith('APIX_PLANNING_CLAIM_JSON\n')){
+      const args=process.argv;
+      if(args.includes('fixture-meeting-fail')){process.stderr.write('fixture consultation unavailable');process.exit(1);}
+      const tasks=JSON.parse(command.message.split('\n任务：')[1].split('\n需要澄清')[0]);
+      const safe=args.includes('--no-tools') && args.includes('--no-extensions') && args.includes('--no-skills') && args.includes('--no-context-files') && !process.env.APIX_AGENT_TOKEN && /consultations/.test(process.cwd());
+      if(!safe)throw new Error('Consultation isolation flags missing');
+      const answer={claims:tasks.map((_,step)=>({step,reason:'fixture: no project tools, isolated identity and cwd',risk:'declared capability only',minutes:5})),decline:''};
+      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write('{"type":"agent_settled","aborted":false}\n');continue;
+    }
     if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n') || command.message.startsWith('APIX_GUIDE_JSON\n')) {
       let answer;
       if (command.message.startsWith('APIX_GUIDE_JSON\n')) {
