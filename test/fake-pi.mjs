@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { writeFileSync,readFileSync } from "node:fs";
 
 let buffer = "";
 process.stdin.on("data", (chunk) => {
@@ -32,9 +32,28 @@ process.stdin.on("data", (chunk) => {
         const employees = JSON.parse(command.message.split('\n员工：').at(-1));
         answer = {steps:[{prompt:'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
       } else {
-        const latest = command.message.split('用户最新消息：').at(-1);
+        const latest = command.message.split('用户最新消息：').at(-1).split('\n本次工具阶段的答复')[0];
+        if(process.env.APIX_FIXTURE_NON_JSON_AFTER_TOOLS==='1' && process.argv.includes('--tools')){
+          if(!process.argv.includes('--append-system-prompt'))throw new Error('Manager JSON system instruction missing');
+          process.stdout.write(JSON.stringify({type:'tool_execution_start',toolName:'read'})+'\n');
+          process.stdout.write(JSON.stringify({type:'tool_execution_end',toolName:'read',isError:false})+'\n');
+          process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:'已读取项目，准备安排任务。'}]}})+'\n');
+          process.stdout.write(JSON.stringify({type:'agent_end'})+'\n');continue;
+        }
+        if(latest==='fixture-manager-tools' || latest==='fixture-manager-wait'){
+          const tools=process.argv.includes('--tools')?process.argv[process.argv.indexOf('--tools')+1].split(','):[];
+          if(process.env.APIX_FIXTURE_MANAGER_LOG)writeFileSync(process.env.APIX_FIXTURE_MANAGER_LOG,JSON.stringify({tools,cwd:process.cwd()}));
+          if(latest==='fixture-manager-wait')continue;
+          if(tools.includes('read')){
+            readFileSync('README.md','utf8');
+            process.stdout.write(JSON.stringify({type:'tool_execution_start',toolName:'read',args:{path:'README.md'}})+'\n');
+            process.stdout.write(JSON.stringify({type:'tool_execution_end',toolName:'read',isError:false})+'\n');
+          }
+          if(tools.includes('write'))writeFileSync('manager-tool-fixture.txt','manager write fixture');
+          answer={kind:'progress',question:`实际提供工具：${tools.join(',') || '无'}`,updates:[],conflicts:[]};
+        }
         let values = {}; try { values = JSON.parse(latest); } catch {}
-        answer = {kind:latest.startsWith('开始工作')?'work':latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
+        answer ??= {kind:latest.startsWith('开始工作')?'work':latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
         if (latest === 'fixture-long-reply') answer.question = '这是较长的自然回复。\n'.repeat(160) + '结束。';
         if (latest === 'fixture-context') {
           const history = JSON.parse(command.message.split('\n历史：')[1].split('\n真实进度：')[0]);

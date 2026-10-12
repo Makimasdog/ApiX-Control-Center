@@ -20,7 +20,9 @@ export interface Store {
   rows<T>(sql: string, ...params: SQLInputValue[]): T[];
   now(): string;
 }
-export interface ModelBackend { infer(prompt: string, onDelta?: (delta: string) => void): Promise<string> }
+export interface ManagerToolEvent { toolName:string; phase:'start'|'end'; isError?:boolean }
+export interface InferenceContext { projectId:string; purpose:'discussion'|'planning'|'formatting'; onTool?:(event:ManagerToolEvent)=>void }
+export interface ModelBackend { infer(prompt: string, onDelta?: (delta: string) => void, context?:InferenceContext): Promise<string> }
 export interface CoordinatorDecision {
   kind: 'clarification' | 'requirement_review' | 'progress' | 'work';
   question: string; updates: Partial<Requirements>; conflicts: string[]; mode: 'pi' | 'rules'; error?: string;

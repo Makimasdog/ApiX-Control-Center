@@ -1,4 +1,4 @@
-import { type ModelBackend, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text } from './contracts.js';
+import { type ModelBackend, type InferenceContext, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text } from './contracts.js';
 import { nextQuestion, requirementFields, requirementBrief } from './requirement-engine.js';
 import { taskProfile } from './scheduling.js';
 
@@ -44,16 +44,16 @@ function visibleReply(raw: string): string {
   return '';
 }
 export function createApiXAgent(backend: ModelBackend) {
-  const identity = '你是 ApiX，用户的管理者 Agent。Pi 是你的推理技术底座，不是你的上级，也不是此对话的员工。你与用户沟通、理解需求、安排员工、监督任务。不得直接产出代码、报告等执行成果，不声称已执行。不能授予权限。';
-  async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void): Promise<CoordinatorDecision> {
+  const identity = '你是 ApiX，用户的管理者 Agent。Pi 是你的推理技术底座。你与用户沟通、理解需求、检查项目、安排员工、监督任务。可使用本次实际提供的工具检查项目和记录协作文件，遵守项目规则；实现工作优先交给员工。只根据真实工具结果描述操作，不虚构已完成、已写文件或已派发。不能授予权限。任务规划和派发由宿主根据结构化决策执行，不需要你用 bash 启动 Agent，也不依赖文件写入。不要因缺少 bash 或写文件工具拒绝生成 work 决策。';
+  async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void, context?:InferenceContext): Promise<CoordinatorDecision> {
     try {
       let streamed = ''; let emitted = '';
-      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n交互模式：${interactionMode === 'structured' ? '约束模式：按目标、范围、约束、交付物、验收标准逐项检查；优先追问下一个缺失或冲突字段，措辞明确。' : '对话模式：自然地回应用户本轮问题，结合历史持续沟通、解释和整理需求；必要时追问最关键的不确定点，不强迫用户按表单顺序回答。'}\n如果真实进度 automaticWork=true，用户明确要求实施、检查、修复等工作时 kind=work；一般问题、讨论、解释或信息不足时仍为 clarification。work 仅表达工作意图，不能授予权限；使用后台已有项目默认范围和验收，缺少关键功能信息才追问。已明确的信息不要重复问。用户询问进度时 kind=progress，只依据提供的真实状态解释，不猜测完成情况。question 是本轮完整可见回复，可以包含段落和列表，最多 10000 字符；澄清时只问最有价值的一个问题。已经确认的需求不能通过聊天修改，变更需使用调整需求并重新确认。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。JSON 中首先输出 kind 和 question，再输出 updates 与 conflicts。只输出 JSON：{"kind":"clarification|requirement_review|progress|work","question":"自然回复、澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`, delta => {
+      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n交互模式：${interactionMode === 'structured' ? '约束模式：按目标、范围、约束、交付物、验收标准逐项检查；优先追问下一个缺失或冲突字段，措辞明确。' : '对话模式：自然地回应用户本轮问题，结合历史持续沟通、解释和整理需求；必要时追问最关键的不确定点，不强迫用户按表单顺序回答。'}\n用户明确要求实施、检查、修复、任务分发或安排工作时 kind=work，无论 automaticWork 是否开启；一般问题、讨论、解释或信息不足时仍为 clarification。work 仅表达工作意图，不能授予权限。automaticWork=false 时宿主生成待审计划；true 时按现有授权派发。回复应说明即将规划或当前授权条件，不声称已经派发；使用后台已有项目默认范围和验收，缺少关键功能信息才追问。已明确的信息不要重复问。用户询问进度时 kind=progress，只依据提供的真实状态解释，不猜测完成情况。question 是本轮完整可见回复，可以包含段落和列表，最多 10000 字符；澄清时只问最有价值的一个问题。已经确认的需求不能通过聊天修改，变更需使用调整需求并重新确认。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。JSON 中首先输出 kind 和 question，再输出 updates 与 conflicts。只输出 JSON：{"kind":"clarification|requirement_review|progress|work","question":"自然回复、澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`, delta => {
         if (!onQuestion) return;
         streamed += delta;
         const visible = visibleReply(streamed);
         if (visible.length > emitted.length && visible.startsWith(emitted)) { onQuestion(visible.slice(emitted.length)); emitted = visible; }
-      });
+      }, context);
       const parsed = parse(raw);
       if (!['clarification', 'requirement_review', 'progress','work'].includes(String(parsed.kind))) throw new Error('ApiX 推理返回了不支持的行为');
       const updates: Partial<Requirements> = {};
@@ -68,11 +68,11 @@ export function createApiXAgent(backend: ModelBackend) {
       return { kind: 'clarification', question: nextQuestion(requirements)?.question ?? '请检查需求摘要并确认；也可以补充需要调整的内容。', updates: {}, conflicts: [], mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0, 300) };
     }
   }
-  async function plan(requirements: Requirements, employees: Employee[]): Promise<{ steps: PlanStep[]; mode: string; error?: string }> {
+  async function plan(requirements: Requirements, employees: Employee[], context?:InferenceContext): Promise<{ steps: PlanStep[]; mode: string; error?: string }> {
     if (!employees.length) throw new Error('请先注册一个可用员工');
     const brief = requirementBrief(requirements);
     try {
-      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，参考用户声明的 capabilityProfile 匹配实际能力，不按品牌固定分工。每步可提供 scheduling={kind:implementation|testing|review|analysis|docs,tags:[],tools:[],writePaths:[],contextTokens:null,fixedEmployeeId:null,estimateMinor:null,minutes:null}；未知填写 null 或空数组，费用上界及指定员工只能来自用户明确批准的信息，不能编造金额或工具能力。按任务实际范围填写项目内相对 writePaths，并行步骤不能重叠。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`));
+      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，参考用户声明的 capabilityProfile 匹配实际能力，不按品牌固定分工。每步可提供 scheduling={kind:implementation|testing|review|analysis|docs,tags:[],tools:[],writePaths:[],contextTokens:null,fixedEmployeeId:null,estimateMinor:null,minutes:null}；未知填写 null 或空数组，费用上界及指定员工只能来自用户明确批准的信息，不能编造金额或工具能力。按任务实际范围填写项目内相对 writePaths，并行步骤不能重叠。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}`, undefined, context));
       if (!Array.isArray(parsed.steps) || !parsed.steps.length || parsed.steps.length > 8) throw new Error('计划步骤无效');
       const steps = parsed.steps.map((value, index) => {
         const step = object(value);

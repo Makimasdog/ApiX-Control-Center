@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, type InteractionMode, type AgentCapabilities, object, text } from './contracts.js';
+import { type Store, type Session, type Requirements, type Task, type Employee, type PlanStep, type PermissionMode, type InteractionMode, type AgentCapabilities, type ManagerToolEvent, object, text } from './contracts.js';
 import { assess, emptyRequirements, nextQuestion, normalizeAnswer, requirementBrief } from './requirement-engine.js';
 import type { ApiXAgent } from './apix-agent.js';
 import type { Memory } from './memory.js';
@@ -55,6 +55,7 @@ export function createCoordinator(deps: Dependencies) {
       derivedStatus: coordinationStatus(s.status, tasks), tasks, planVersion: plan ? s.plan_id : null,
       dependencies, progress: progressSummary(tasks, dependencies),
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
+      managerTools:rows<{payload:string}>('SELECT payload FROM apix_ledger WHERE aggregate_id=? AND project_id=? AND kind=\'manager.tool\' ORDER BY sequence DESC LIMIT 20',id,s.project_id).reverse().map(e=>JSON.parse(e.payload) as ManagerToolEvent),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
       capabilities: deps.capabilities(),
       workflow:workflow.get(s.project_id),scheduling: deps.scheduling.view(s.project_id), schedulingTasks:s.plan_id?deps.scheduling.reports(s.plan_id):[],
@@ -128,7 +129,7 @@ export function createCoordinator(deps: Dependencies) {
     transaction(() => { db.prepare('UPDATE coordination_sessions SET interaction_mode=?,revision=revision+1,updated_at=? WHERE id=?').run(mode,now(),id); turn(session(id),'user','mode_changed',mode === 'structured' ? '切换为约束模式' : '切换为对话模式'); checkpoint(id); });
     return details(id);
   }
-  async function discuss(id: string, input: Record<string, unknown>, onQuestion?: (delta: string) => void) {
+  async function discuss(id: string, input: Record<string, unknown>, onQuestion?: (delta: string) => void, onTool?:(event:ManagerToolEvent)=>void) {
     const s = editable(id, input.revision); const content = text(input.content);
     const automation=workflow.get(s.project_id);let continueWork=false;
     busy.add(id);
@@ -139,11 +140,11 @@ export function createCoordinator(deps: Dependencies) {
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
       const progress = details(id);
-      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion));
+      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,managerPermission:permissions.get(s.project_id).mode,availableEmployees:deps.employees().map(e=>({id:e.id,name:e.name,runtime:e.runtime})),status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion,{projectId:s.project_id,purpose:'discussion',onTool:event=>{memory.append(s.project_id,id,'manager.tool',event);onTool?.(event);}}));
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
-      continueWork=mutable && automation.enabled && decision.mode==='pi' && decision.kind==='work' && !decision.conflicts.length;
+      continueWork=mutable && decision.mode==='pi' && decision.kind==='work' && !decision.conflicts.length;
       if(continueWork){if(workflow.get(s.project_id).version!==automation.version)throw new Error('自动协作授权已变化，请重新发送');for(const [key,value] of Object.entries(workflow.defaults(s.project_id)))if(!requirements[key as keyof Requirements])requirements[key as keyof Requirements]=value;}
       const conflicts = decision.mode === 'rules' ? details(id).assessment.conflicts : decision.conflicts;
       transaction(() => {
@@ -159,7 +160,7 @@ export function createCoordinator(deps: Dependencies) {
     } finally { busy.delete(id); }
     if(continueWork){
       const latest=session(id);
-      if(workflow.get(s.project_id).enabled && workflow.get(s.project_id).version===automation.version && assess(requirementsOf(latest),details(id).assessment.conflicts).ready){
+      if(workflow.get(s.project_id).version===automation.version && assess(requirementsOf(latest),details(id).assessment.conflicts).ready){
         try{return await confirmSession(id,{revision:latest.revision,workflowVersion:automation.version});}
         catch(error){turn(latest,'apix','workflow_blocked',`自动安排需要处理：${String(error instanceof Error?error.message:error).slice(0,500)}`);}
       }
@@ -199,8 +200,9 @@ export function createCoordinator(deps: Dependencies) {
     if (s.plan_id && tasksOf(s).some(t => ['running','stopping','unknown'].includes(t.status))) throw new Error('旧计划尚未确认停止，请先处理运行状态');
     busy.add(id); let mode = 'rules';
     try {
-      const generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),deps.employees().map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)})))); mode = generated.mode;
-      if(input.workflowVersion!==undefined){const currentWorkflow=workflow.get(s.project_id);if(!currentWorkflow.enabled || currentWorkflow.version!==input.workflowVersion)throw new Error('自动协作授权已变化，未派发任务');}
+      const authorized=workflow.get(s.project_id);
+      const generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)})),{projectId:s.project_id,purpose:'planning'})); mode = generated.mode;
+      if(input.workflowVersion!==undefined){const currentWorkflow=workflow.get(s.project_id);if(currentWorkflow.version!==input.workflowVersion)throw new Error('自动协作授权已变化，未派发任务');}
       const steps = deps.scheduling.assign(s.project_id,validateSteps(generated.steps).map(step=>({...step,scheduling:{...taskProfile(step.scheduling),estimateMinor:null,fixedEmployeeId:null,estimates:[]}})),true);
       transaction(() => {
         writePlan(s,steps);
@@ -211,7 +213,7 @@ export function createCoordinator(deps: Dependencies) {
     } finally { busy.delete(id); }
     const ready = details(id);
     const automation=workflow.get(s.project_id);
-    if (mode === 'pi' && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null)) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
+    if (mode === 'pi' && (input.workflowVersion===undefined || automation.enabled) && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null)) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
     return details(id);
   }
   function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {

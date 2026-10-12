@@ -63,6 +63,55 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('manager tools follow project permission, use project cwd and stream audited activity',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'工具验收',path:h.project})).id;
+  for(const [mode,expected] of [['ask_approval',[]],['read_only',['read','grep','find','ls']],['full_access',['read','bash','edit','write','grep','find','ls']]]){
+    const policy=(await h.request(`/api/projects/${projectId}/workflow`)).manager;
+    await h.request('/api/permissions',{projectId,subject:'apix',mode,version:policy.version});
+    const s=await h.request('/api/coordination/sessions',{projectId,goal:'测试工具'});
+    const res=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:s.revision,content:'fixture-manager-tools'})});
+    const stream=await res.text();assert.match(stream,/event: complete/);assert.doesNotMatch(stream,/event: error/);
+    const details=await h.request(`/api/coordination/sessions/${s.id}`);
+    assert.match(details.turns.at(-1).content,new RegExp(expected.length?expected.join(','):'无'));
+    assert.equal(details.managerTools.length,expected.length?2:0);
+    if(expected.length)assert.match(stream,/event: tool/);
+    if(mode!=='full_access')await assert.rejects(readFile(join(h.project,'manager-tool-fixture.txt')));
+  }
+  assert.equal(await readFile(join(h.project,'manager-tool-fixture.txt'),'utf8'),'manager write fixture');
+}));
+
+test('manager aborts tool-enabled inference when project permission is revoked',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'撤销工具',path:h.project})).id;
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  const s=await h.request('/api/coordination/sessions',{projectId,goal:'测试撤销'});
+  const pending=h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'fixture-manager-wait'});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.busy;});
+  await delay(300);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'read_only',version:1});
+  const result=await pending;assert.equal(result.agent.mode,'rules');assert.match(result.agent.error,/权限已变化/);assert.equal(result.plan_id,null);
+}));
+
+test('explicit work creates a real review plan without automatic authorization',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'待审计划',path:h.project})).id;
+  await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：安排项目检查'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：安排项目检查'});
+  assert.equal(s.status,'plan_review');assert.equal(s.tasks.length,1);assert.equal(s.tasks[0].status,'awaiting_approval');
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  assert.equal(s.policy.mode,'ask_approval');assert.equal(s.workflow.enabled,false);
+}));
+
+test('natural language after manager tools is formatted without replaying tools before dispatch',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'工具后结构化',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：安排检查'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：安排检查'});
+  assert.equal(s.agent.mode,'pi');assert.equal(s.status,'running');assert.equal(s.tasks.length,1);
+  assert.deepEqual(s.managerTools,[{toolName:'read',phase:'start'},{toolName:'read',phase:'end',isError:false}]);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
+},{APIX_FIXTURE_NON_JSON_AFTER_TOOLS:'1'}));
+
 test('project workflow turns one work message into an approved run and keeps questions and acceptance separate',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'自动工作区',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'工作员工',runtime:'pi',role:'开发'})).id;
@@ -83,7 +132,8 @@ test('project workflow turns one work message into an approved run and keeps que
   await h.request(`/api/projects/${projectId}/workflow`,{version:w.version,enabled:false});
   const another=await h.request('/api/coordination/sessions',{projectId,goal:'新的任务'});
   const blocked=await h.request(`/api/coordination/sessions/${another.id}/messages`,{revision:another.revision,content:'开始工作：检查项目'});
-  assert.equal(blocked.plan_id,null);
+  assert.equal(blocked.status,'plan_review');assert.ok(blocked.plan_id);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
 },{APIX_FIXTURE_MODERN_PI:'1'}));
 test('automatic work respects strict fee approval and stop cancels queued work before releasing slots',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'预算与停止',path:h.project})).id;

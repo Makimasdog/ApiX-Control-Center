@@ -120,7 +120,7 @@ createServer(async (request, response) => {
         response.writeHead(200, { 'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-store',Connection:'keep-alive','X-Accel-Buffering':'no' });
         const emit=(type,value)=>{if(!response.destroyed)response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`);};
         emit('start',{sessionId:pathname.split('/')[4]});
-        try { const result=await discussCoordinationSession(pathname.split('/')[4],input,delta=>emit('delta',{text:delta})); emit('complete',result); }
+        try { const result=await discussCoordinationSession(pathname.split('/')[4],input,delta=>emit('delta',{text:delta}),tool=>emit('tool',tool)); emit('complete',result); }
         catch(error) { emit('error',{error:error.message}); }
         response.end(); return;
       }

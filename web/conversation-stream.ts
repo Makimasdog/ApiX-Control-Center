@@ -28,6 +28,7 @@ export interface ConversationResult {
 }
 export async function readConversation<T extends ConversationResult>(response: Response, sessionId: string, callbacks: {
   delta: (text: string) => void; complete: (session: T) => void;
+  tool?: (event:{toolName:string;phase:'start'|'end';isError?:boolean})=>void;
 }): Promise<void> {
   if (!response.ok || !response.body) {
     let error = `流式连接失败（HTTP ${response.status}）`;
@@ -42,6 +43,10 @@ export async function readConversation<T extends ConversationResult>(response: R
         const data = event.data as Record<string, unknown>;
         if (event.type === 'start' && data.sessionId !== sessionId) throw new Error('对话目标不匹配');
         if (event.type === 'error') throw new Error(String(data.error || '对话生成失败'));
+        if(event.type==='tool'){
+          if(typeof data.toolName!=='string' || !['start','end'].includes(String(data.phase)))throw new Error('无效的工具活动');
+          callbacks.tool?.({toolName:data.toolName,phase:data.phase as 'start'|'end',isError:data.isError===true});
+        }
         if (event.type === 'delta') {
           if (typeof data.text !== 'string') throw new Error('无效的对话增量');
           callbacks.delta(data.text);

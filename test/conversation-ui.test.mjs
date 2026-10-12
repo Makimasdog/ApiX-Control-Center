@@ -46,6 +46,13 @@ test('HTTP errors do not become secondary parser errors',async()=>{
   await assert.rejects(readConversation(new Response('{"error":"拒绝"}',{status:400}),'s1',{delta(){},complete(){}}),/拒绝/);
 });
 
+test('tool activity reaches its callback without entering streamed reply text',async()=>{
+  const tools=[];let text='';
+  await readConversation(response([frame('tool',{toolName:'read',phase:'start'}),frame('tool',{toolName:'read',phase:'end',isError:false}),frame('delta',{text:'已检查'}),frame('complete',complete)]),'s1',{tool:e=>tools.push(e),delta:t=>text+=t,complete(){}});
+  assert.deepEqual(tools,[{toolName:'read',phase:'start',isError:false},{toolName:'read',phase:'end',isError:false}]);assert.equal(text,'已检查');
+  await assert.rejects(readConversation(response([frame('tool',{toolName:'read',phase:'invalid'})]),'s1',{delta(){},complete(){}}),/工具活动/);
+});
+
 test('brief saves retain the original target and chained revision across navigation',async()=>{
   const original={id:'old-target',revision:3,requirements:{goal:'old',scope:'old'}};
   const entries=[['goal','new goal'],['scope','new scope']];const calls=[];

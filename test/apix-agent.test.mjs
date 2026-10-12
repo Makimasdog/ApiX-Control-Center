@@ -36,3 +36,12 @@ test('malformed and over-limit model replies fall back without applying unvalida
     assert.deepEqual(result.updates,{});
   }
 });
+
+test('manager receives trusted project context and requests host scheduling even without tool authorization',async()=>{
+  let received;let prompt;
+  const context={projectId:'project-1',purpose:'discussion'};
+  const agent=createApiXAgent({infer:async(p,_delta,c)=>{prompt=p;received=c;return JSON.stringify({kind:'work',question:'将生成待审计划',updates:[],conflicts:[]});}});
+  const result=await agent.discuss(emptyRequirements(),'请分发任务',[],{automaticWork:false},'conversational',undefined,context);
+  assert.equal(result.kind,'work');assert.equal(received,context);
+  assert.match(prompt,/无论 automaticWork 是否开启/);assert.match(prompt,/不依赖文件写入/);
+});
