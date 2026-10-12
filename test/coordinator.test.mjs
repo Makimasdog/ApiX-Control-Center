@@ -577,6 +577,11 @@ test('coordinator dependencies wait for acceptance and rejection blocks downstre
   assert.deepEqual(waiting.tasks.map(task=>task.status),['completed','queued','queued']);
   assert.deepEqual(waiting.progress[1].waitingFor,[p.tasks[0].id]);
   assert.equal((await h.request('/api/snapshot')).runs.length,1);
+  const pendingDelivery=await h.request(`/api/tasks/${p.tasks[1].id}/delivery`);
+  const refused=await h.request(`/api/tasks/${p.tasks[1].id}/recovery`,{revision:waiting.revision,runId:null,fingerprint:pendingDelivery.recoveryFingerprint,reviewed:true,employeeId},400);
+  assert.match(refused.error,/前置任务/);
+  assert.deepEqual((await h.request(`/api/coordination/sessions/${s.id}`)).tasks.map(task=>task.status),['completed','queued','queued']);
+  assert.equal((await h.request('/api/snapshot')).runs.length,1);
   await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true});
   await waitFor(async()=>{const current=await h.request(`/api/coordination/sessions/${s.id}`);return current.tasks[1].status==='completed';});
   await h.request(`/api/tasks/${p.tasks[1].id}/review`,{accepted:false});

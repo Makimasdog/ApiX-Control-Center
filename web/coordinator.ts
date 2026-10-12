@@ -1,6 +1,6 @@
 import { readConversation } from './conversation-stream.js';
 import { saveBrief } from './requirements-form.js';
-import { instructionState } from './execution-view.js';
+import { instructionState, recoveryForm } from './execution-view.js';
 import { schedulingView } from './scheduling-view.js';
 import type { TaskProfile } from '../src/scheduling.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
@@ -21,7 +21,7 @@ interface Session {
   schedulingTasks?:{taskId:string;profile:TaskProfile;decision:{reviewMode?:string;candidates:{name:string;eligible:boolean;reasons:string[];warnings:string[];waiting:string|null;estimateMinor:number|null;currency:string|null;minutes:number|null;history:{samples:number;accepted:number}}[]}}[];
   planningMeetings?:{id:string;plan_id:string;round:number;status:string;body:{minutes:string;disagreements:string[];proposals:{employeeId:string;status:string;claims:unknown[];decline?:string;error?:string}[]}}[];
 }
-interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null}
+interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null;sourceHead?:string|null}
 interface ExecutionPolicy {projectLimit:number;employeeLimit:number;paused:boolean;version:number;runtimePauses:{runtime:string;reason:string}[]}
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
@@ -349,9 +349,11 @@ function renderDelivery(d:Delivery) {
   panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(d.status==='completed'?'待验收':statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
   $('#coord-tasks').parentElement!.after(panel);
   panel.querySelector('h3')!.insertAdjacentHTML('afterend',`<p>工作区：${esc(d.workspacePath ?? '尚未创建')}</p>`);
+  if(d.sourceHead) panel.querySelector('p')!.insertAdjacentHTML('afterend',`<p>源基线：${esc(d.sourceHead)}</p>`);
   if(['queued','failed','cancelled','unknown','needs_revision','blocked'].includes(d.status)) {
     const task=current!.tasks.find(t=>t.id===d.taskId)!;
-    panel.insertAdjacentHTML('beforeend',`<h3>检查后重新批准</h3><p>最近运行：${esc(d.latestRun?.id ?? '未启动')} · ${esc(d.latestRun?.status ?? '无')} · PID ${esc(d.latestRun?.pid ?? '无')}。PID 探测：${d.processMayExist===true?'可能仍存在':d.processMayExist===false?'未发现原 PID':'无法确定'}；PID 可能被其他进程复用。</p><p>检查完整代码和运行报告，必要时先在工作区解决并暂存冲突，再重新打开检查。恢复会生成新运行，不重放旧凭据或旧指导消息。</p><form id="coord-recovery"><label>重新分配给员工<select name="employeeId">${snapshot.employees.map(e=>`<option value="${esc(e.id)}" ${e.id===task.employee_id?'selected':''}>${esc(e.name)} · ${esc(e.runtime)}</option>`).join('')}</select></label><label><input type="checkbox" name="reviewed" required>已检查最新代码、运行报告与验收要求</label>${d.status==='unknown'?'<label><input type="checkbox" name="confirmedStopped" required>已人工确认原进程停止</label>':''}<button class="primary-button" ${d.recoveryFingerprint && !d.managedActive?'':'disabled'}>重新批准并排队执行</button></form>`);
+    const dependenciesAccepted=current!.dependencies.filter(dep=>dep.task_id===d.taskId).every(dep=>current!.tasks.some(t=>t.id===dep.depends_on_id && t.status==='accepted'));
+    panel.insertAdjacentHTML('beforeend',recoveryForm(d,task,snapshot.employees,dependenciesAccepted));
   }
 }
 root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
