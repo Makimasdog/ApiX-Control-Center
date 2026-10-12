@@ -34,7 +34,7 @@ process.stdin.on("data", (chunk) => {
       } else {
         const latest = command.message.split('用户最新消息：').at(-1);
         let values = {}; try { values = JSON.parse(latest); } catch {}
-        answer = {kind:latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
+        answer = {kind:latest.startsWith('开始工作')?'work':latest.includes('进度')?'progress':'clarification',question:'请检查这些需求，是否还有需要调整的约束？',updates:Object.entries(values).map(([field,value])=>({field,value,evidence:value})),conflicts:latest.includes('conflict')?['范围与交付物存在冲突']:[]};
         if (latest === 'fixture-long-reply') answer.question = '这是较长的自然回复。\n'.repeat(160) + '结束。';
         if (latest === 'fixture-context') {
           const history = JSON.parse(command.message.split('\n历史：')[1].split('\n真实进度：')[0]);
@@ -53,8 +53,10 @@ process.stdin.on("data", (chunk) => {
         parts.forEach((part,index)=>setTimeout(()=>process.stdout.write(JSON.stringify({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:part}})+'\n'),delay*index));
         setTimeout(()=>{process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:command.message.endsWith('用户最新消息：fixture-runtime-error')?'error':'stop',content:[{type:'text',text:raw}]}})+'\n');process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');},delay*3);
       } else {
+        setTimeout(()=>{
         process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');
         process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
+        },command.message.startsWith('APIX_PLAN_JSON\n')?Number(process.env.APIX_FIXTURE_PLAN_DELAY_MS??0):0);
       }
       continue;
     }

@@ -9,6 +9,7 @@ import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinat
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
 import { readLocalModels } from './dist/src/local-models.js';
+import {workflowSettings,saveWorkflow,stopCoordinationSession} from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -63,6 +64,7 @@ createServer(async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname) && request.method === 'GET') {send(200,workflowSettings(pathname.split('/')[3]));return;}
       if (pathname === '/api/manager/providers' && request.method === 'GET') { send(200, {providers: BUILTIN_PROVIDERS}); return; }
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
       if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
@@ -128,6 +130,8 @@ createServer(async (request, response) => {
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname)) result=saveWorkflow(pathname.split('/')[3],input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/stop$/.test(pathname)) result=stopCoordinationSession(pathname.split('/')[4],input);
       else if (pathname === '/api/scheduling/accounts') result=schedulingAccount(input);
       else if (pathname === '/api/scheduling/accounts/resume') result=resumeSchedulingAccount(input);
       else if (/^\/api\/employees\/[^/]+\/capabilities$/.test(pathname)) result=saveEmployeeCapability(pathname.split('/')[3],input);
@@ -198,7 +202,7 @@ createServer(async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css']);
+  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css']);
   if (!publicFiles.has(relativePath) && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
   const filePath = normalize(join(root, relativePath));
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {

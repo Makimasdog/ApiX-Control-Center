@@ -63,6 +63,59 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('project workflow turns one work message into an approved run and keeps questions and acceptance separate',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'自动工作区',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'工作员工',runtime:'pi',role:'开发'})).id;
+  let w=await h.request(`/api/projects/${projectId}/workflow`);
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,employees:[{id:employeeId,version:0}],managerVersion:0},400);
+  assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).manager.mode,'ask_approval');
+  w=await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,employees:[{id:employeeId,version:0}],managerVersion:0});
+  let question=await h.request('/api/coordination/sessions',{projectId,goal:'解释项目'});
+  question=await h.request(`/api/coordination/sessions/${question.id}/messages`,{revision:question.revision,content:'这个项目是做什么的？'});
+  assert.equal(question.plan_id,null);assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request(`/api/coordination/sessions/${question.id}/stop`,{revision:question.revision},400);
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
+  assert.equal(s.status,'running');assert.equal(s.assessment.ready,true);assert.match(s.requirements.scope,/自动工作区/);
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  assert.equal(s.derivedStatus,'awaiting_acceptance');assert.notEqual(s.tasks[0].status,'accepted');
+  await h.restart();assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).enabled,true);
+  await h.request(`/api/projects/${projectId}/workflow`,{version:w.version,enabled:false});
+  const another=await h.request('/api/coordination/sessions',{projectId,goal:'新的任务'});
+  const blocked=await h.request(`/api/coordination/sessions/${another.id}/messages`,{revision:another.revision,content:'开始工作：检查项目'});
+  assert.equal(blocked.plan_id,null);
+},{APIX_FIXTURE_MODERN_PI:'1'}));
+test('automatic work respects strict fee approval and stop cancels queued work before releasing slots',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'预算与停止',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,employees:[{id:employeeId,version:0}],managerVersion:0});
+  await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
+  assert.equal(s.tasks[0].status,'queued');
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:true,approved:true,employees:[{id:employeeId,version:1}],managerVersion:1},400);
+  s=await h.request(`/api/coordination/sessions/${s.id}/stop`,{revision:s.revision});assert.equal(s.status,'cancelled');assert.equal(s.tasks[0].status,'cancelled');
+  await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request('/api/scheduling/accounts',{id:'api',alias:'收费账户',type:'api',currency:'USD',version:0});
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,accountId:'api'});
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,limitMinor:100,currency:'USD',managerAccountId:'api',managerEstimateMinor:1});
+  s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
+  assert.equal(s.status,'plan_review');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion},400);
+  await h.request('/api/permissions',{projectId,subject:employeeId,version:1,mode:'read_only'});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion},400);
+}));
+test('revoking automatic work while a plan is being generated prevents dispatch',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'撤回授权',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,employees:[{id:employeeId,version:0}],managerVersion:0});
+  const s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  const pending=h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.busy && state.status==='ready';});
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:false});
+  const result=await pending;assert.equal(result.plan_id,null);assert.equal((await h.request('/api/snapshot')).runs.length,0);assert(result.turns.some(t=>t.kind==='workflow_blocked'));
+},{APIX_FIXTURE_PLAN_DELAY_MS:'1500'}));
 test('custom manager uses an environment key reference and accepts Pi agent_end',async()=>harness(async h=>{
   await h.request('/api/manager/settings',{baseUrl:'https://example.invalid/v1',model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
   const {s}=await setup(h);

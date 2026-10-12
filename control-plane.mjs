@@ -539,7 +539,7 @@ function handleNative(runId, runtime, item) {
     if (type === "message_end" && item.message?.role === "assistant") { const value = textFromMessage(item.message); if (value) active.output = value; active.lastStopReason = item.message.stopReason; }
     if (type === "tool_execution_start") event(runId, "pi-rpc", type, { toolName: item.toolName, args: item.args });
     else if (type === "tool_execution_end") event(runId, "pi-rpc", type, { toolName: item.toolName, isError: item.isError });
-    else if (type === "agent_settled") { active.settled = true; active.aborted = item.aborted === true; event(runId, "pi-rpc", type, { aborted: item.aborted }); active.child.stdin.end(); }
+    else if (type === "agent_settled" || type === "agent_end") { active.settled = true; active.aborted = item.aborted === true; event(runId, "pi-rpc", type, { aborted: item.aborted }); active.child.stdin.end(); }
     else if (["agent_start", "message_end", "response"].includes(type)) event(runId, "pi-rpc", type, type === "message_end" ? { role: item.message?.role, text: textFromMessage(item.message).slice(0, 5000) } : item);
   } else if (runtime === "claude") {
     if (type === 'assistant') active.output = textFromMessage(item.message) || active.output;
@@ -1255,6 +1255,9 @@ export const setCoordinationInteractionMode = coordinator.setInteractionMode;
 export const editCoordinationPlan = coordinator.editPlan;
 export const runPlanningMeeting=coordinator.runPlanningMeeting;
 export const applyPlanningMeeting=coordinator.applyPlanningMeeting;
+export const workflowSettings=projectId=>({...coordinator.workflowSettings(projectId),manager:permissions.get(projectId),employees:rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL').filter(e=>runtimes().some(r=>r.id===e.runtime && r.available && r.managed)).map(e=>({id:e.id,name:e.name,runtime:e.runtime,...permissions.get(projectId,e.id)}))});
+export const saveWorkflow=coordinator.saveWorkflow;
+export const stopCoordinationSession=coordinator.stopSession;
 export const changePermission = coordinator.changePolicy;
 export const managerSettings = coordinator.getSettings;
 export const saveManagerSettings = coordinator.saveSettings;

@@ -16,7 +16,7 @@ let profileLoadedProjectId = null;
 let memoryResults = null;
 let renderedProposalKey = null;
 let directorSending = false;
-let currentPage = "workspace";
+let currentPage = "coordinator";
 let editing = null;
 let toastTimer;
 let messageStream = null;
@@ -263,7 +263,7 @@ document.addEventListener("click", async (event) => {
     const report = review && JSON.parse(review.report);
     if (review && await confirmAction("应用集成结果", `目标仓库：${review.repository_path}\n变更文件：${report.changedFiles.join(", ")}\n\n确认后会把已审查的差异写入该仓库工作区。`)) await mutate(`/api/integrations/${review.id}/apply`, {});
   }
-  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("overview"); }
+  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("coordinator"); }
   else if (d.editProject) openEditor("project", d.editProject);
   else if (d.registerRuntime) openEditor("employee", d.registerRuntime);
   else if (d.openEmployee) { go('employee'); document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:d.openEmployee})); }
@@ -362,7 +362,7 @@ $("#brand-home").addEventListener("click", () => go("overview"));
 $("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
-$("#new-conversation").addEventListener("click", async () => { if (!selectedProjectId) { go("projects"); toast("请先选择项目"); return; } try { const created = await api("/api/conversations", { projectId: selectedProjectId }); selectedConversationId = created.id; selectedTaskId = null; await refresh(); go("workspace"); $("#chat-input").focus(); } catch (error) { toast(error.message); } });
+$("#new-conversation").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:new-chat")); });
 $("#open-about").addEventListener("click", () => toast("ApiX Agent OS · 本地任务与运行数据保存在 SQLite"));
 $("#director-chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -465,7 +465,7 @@ document.addEventListener("click", async (event) => {
   const released = event.target.closest("[data-release-lock]");
   if (released && await confirmAction("释放资源锁", "先确认持有该锁的 Agent 不再使用该资源。")) await mutate(`/api/locks/${released.dataset.releaseLock}/release`, { agentId: "apix-director" });
 });
-go("overview");
+go("coordinator");
 refresh();
 setInterval(refresh, 1500);
 

@@ -48,14 +48,14 @@ export function createApiXAgent(backend: ModelBackend) {
   async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void): Promise<CoordinatorDecision> {
     try {
       let streamed = ''; let emitted = '';
-      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n交互模式：${interactionMode === 'structured' ? '约束模式：按目标、范围、约束、交付物、验收标准逐项检查；优先追问下一个缺失或冲突字段，措辞明确。' : '对话模式：自然地回应用户本轮问题，结合历史持续沟通、解释和整理需求；必要时追问最关键的不确定点，不强迫用户按表单顺序回答。'}\n已明确的信息不要重复问。用户询问进度时 kind=progress，只依据提供的真实状态解释，不猜测完成情况。question 是本轮完整可见回复，可以包含段落和列表，最多 10000 字符；澄清时只问最有价值的一个问题。已经确认的需求不能通过聊天修改，变更需使用调整需求并重新确认。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。JSON 中首先输出 kind 和 question，再输出 updates 与 conflicts。只输出 JSON：{"kind":"clarification|requirement_review|progress","question":"自然回复、澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`, delta => {
+      const raw = await backend.infer(`APIX_COORDINATOR_JSON\n${identity}\n交互模式：${interactionMode === 'structured' ? '约束模式：按目标、范围、约束、交付物、验收标准逐项检查；优先追问下一个缺失或冲突字段，措辞明确。' : '对话模式：自然地回应用户本轮问题，结合历史持续沟通、解释和整理需求；必要时追问最关键的不确定点，不强迫用户按表单顺序回答。'}\n如果真实进度 automaticWork=true，用户明确要求实施、检查、修复等工作时 kind=work；一般问题、讨论、解释或信息不足时仍为 clarification。work 仅表达工作意图，不能授予权限；使用后台已有项目默认范围和验收，缺少关键功能信息才追问。已明确的信息不要重复问。用户询问进度时 kind=progress，只依据提供的真实状态解释，不猜测完成情况。question 是本轮完整可见回复，可以包含段落和列表，最多 10000 字符；澄清时只问最有价值的一个问题。已经确认的需求不能通过聊天修改，变更需使用调整需求并重新确认。提取用户这次明确给出的字段，不能凭空填值；每个更新 evidence 必须是最新消息的原文。检查冲突。JSON 中首先输出 kind 和 question，再输出 updates 与 conflicts。只输出 JSON：{"kind":"clarification|requirement_review|progress|work","question":"自然回复、澄清问题或确认提示","updates":[{"field":"goal|scope|constraints|deliverable|acceptance","value":"信息","evidence":"原文"}],"conflicts":["尚未解决的冲突"]}。不要输出 answer 或执行结果。\n已知需求：${JSON.stringify(requirements)}\n历史：${JSON.stringify(history)}\n真实进度：${JSON.stringify(progress)}\n用户最新消息：${content}`, delta => {
         if (!onQuestion) return;
         streamed += delta;
         const visible = visibleReply(streamed);
         if (visible.length > emitted.length && visible.startsWith(emitted)) { onQuestion(visible.slice(emitted.length)); emitted = visible; }
       });
       const parsed = parse(raw);
-      if (!['clarification', 'requirement_review', 'progress'].includes(String(parsed.kind))) throw new Error('ApiX 推理返回了不支持的行为');
+      if (!['clarification', 'requirement_review', 'progress','work'].includes(String(parsed.kind))) throw new Error('ApiX 推理返回了不支持的行为');
       const updates: Partial<Requirements> = {};
       for (const value of Array.isArray(parsed.updates) ? parsed.updates : []) {
         const item = object(value);

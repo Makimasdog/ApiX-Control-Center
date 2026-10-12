@@ -9,6 +9,7 @@ type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
 type Step = { prompt: string; employeeId: string; dependsOn: number[]; scheduling?:TaskProfile };
 interface Session {
+  workflow?:{enabled:boolean;version:number;employeeIds:string[]};
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
   tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string;queue_reason?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
@@ -25,11 +26,15 @@ interface ExecutionPolicy {projectLimit:number;employeeLimit:number;paused:boole
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
 const esc = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-const $ = <T extends HTMLElement = HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+const $ = <T extends HTMLElement = HTMLElement>(selector: string) => (root.querySelector<T>(selector) ?? document.querySelector<T>(selector))!;
 let snapshot: Snapshot = {projects:[],employees:[],artifacts:[],runs:[]};
 let projectId = ''; let sessionId = ''; let current: Session | null = null; let loading = false; let reloading = false; let editingBrief = false; let planKey = ''; let draft: Step[] = []; let reloadVersion = 0;
 let streaming = false; let isComposing = false;
+let newChat=false;
+type Workflow={enabled:boolean;version:number;employeeIds:string[];manager:Policy;employees:{id:string;name:string;runtime:string;version:number}[]};
+let workflow:Workflow|null=null;
 const messageDrafts = new Map<string,string>();
+const newMessageDrafts=new Map<string,string>();
 const failedReplies = new Map<string,{text:string;error:string}>();
 const unsynced = new Set<string>();
 const deliveryFingerprints = new Map<string,string>();
@@ -57,11 +62,13 @@ function updateStreamingControls() {
   const disabled=streaming || loading || !current || current.id!==sessionId || !!current.busy || unsynced.has(sessionId);
   $<HTMLTextAreaElement>('#coord-message textarea').disabled=disabled;
   $<HTMLButtonElement>('#coord-message button').disabled=disabled;
+  const startButton=root.querySelector<HTMLButtonElement>('#desktop-start button');if(startButton)startButton.disabled=loading || streaming || !projectId;
 }
 function selectSession(id:string) {
   const input=$<HTMLTextAreaElement>('#coord-message textarea');
   if(sessionId)messageDrafts.set(sessionId,input.value);
   sessionId=id;current=null;reloadVersion++;editingBrief=false;planKey='';
+  if(id)localStorage.setItem('apix.chat.'+projectId,id);
   input.value=messageDrafts.get(id) ?? '';
   $('#coord-turns').querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());
   $('#coord-turns').dataset.session='';$('#coord-turns').dataset.rendered='';
@@ -142,10 +149,59 @@ executionSection.addEventListener('click',event=>{const button=(event.target as 
 const schedulingSection=document.createElement('section');schedulingSection.className='surface-card coord-section';executionSection.after(schedulingSection);
 const schedulingUI=schedulingView(schedulingSection,(path,body)=>void action(async()=>{const originalProject=projectId;const originalSession=sessionId;const focus=document.activeElement;await api(path,body);if(originalProject===projectId && originalSession===sessionId && document.activeElement===focus)(focus as HTMLElement)?.blur();}));
 const meetingSection=document.createElement('section');meetingSection.className='surface-card coord-section';schedulingSection.after(meetingSection);
+// Reuse the existing controls in a chat-first desktop layout.
+const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coord-empty');const rail=$('.coord-rail');
+const inspector=document.createElement('aside');inspector.className='desktop-inspector';inspector.id='desktop-inspector';
+const main=document.createElement('div');main.className='desktop-main';main.append(empty,body);
+const chats=$('#coord-sessions');const chatSection=document.createElement('div');chatSection.className='sidebar-section desktop-chats';chatSection.innerHTML='<div class="section-heading"><span class="section-caption">对话</span><button class="icon-button" id="desktop-new-chat" aria-label="新建对话">＋</button></div>';chatSection.append(chats);document.querySelector('.project-section')!.after(chatSection);
+chats.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-session]');if(button){newChat=false;selectSession(button.dataset.session!);void reload();}});
+inspector.innerHTML='<div class="desktop-inspector-head"><strong>工作详情</strong><span>ApiX 协调</span></div><section id="desktop-workflow" class="surface-card"></section>';
+for(const section of [...body.children])if(section.classList.contains('coord-section') || section.id==='coord-execution'){
+  if(section.querySelector('#coord-tasks')){
+    section.querySelector('h3')!.textContent='Agent 活动';
+    const plan=document.createElement('details');plan.className='desktop-plan';plan.innerHTML='<summary>任务安排与审查</summary>';
+    plan.append(section.querySelector('#coord-plan')!,section.querySelector('.coord-actions')!,section.querySelector('#coord-add-step')!);
+    section.querySelector('#coord-tasks')!.before(plan);inspector.append(section);continue;
+  }
+  const details=document.createElement('details');details.className='desktop-detail';const summary=document.createElement('summary');summary.textContent=section.querySelector('h3')?.textContent??'工作记录';details.append(summary,section);inspector.append(details);
+}
+const requirements=body.querySelector<HTMLElement>('#coord-requirements')!;const briefDetails=document.createElement('details');briefDetails.className='desktop-detail';briefDetails.innerHTML='<summary>需求与验收</summary>';briefDetails.append(requirements);inspector.append(briefDetails,rail.querySelector('.coord-settings')!);
+layout.replaceChildren(main,inspector);
+rail.hidden=true;root.append(rail);
+layout.classList.toggle('inspector-closed',matchMedia('(max-width:850px)').matches);
+$('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-mobile-new" class="outline-button desktop-mobile-new">新建对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
+$('.coord-header h1').textContent='对话工作区';
+$('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
+$('#desktop-project-settings').addEventListener('click',()=>layout.classList.toggle('inspector-closed'));
+for(const details of inspector.querySelectorAll<HTMLDetailsElement>('.desktop-detail')){const section=details.querySelector('section');if(section===executionSection)details.querySelector('summary')!.textContent='执行与暂停';if(section===schedulingSection)details.querySelector('summary')!.textContent='能力与预算';if(section===meetingSection)details.querySelector('summary')!.textContent='规划会议';}
+empty.innerHTML='<div class="desktop-welcome"><span class="desktop-orbit">A</span><h2>今天想完成什么？</h2><p>选择项目，直接告诉 ApiX。它会规划工作、安排 Agent，并带回可检查的结果。</p><div class="desktop-suggestions"><button type="button" data-prompt="检查这个项目，找出最值得修复的问题">检查项目</button><button type="button" data-prompt="帮助我实现一个新功能">开发功能</button><button type="button" data-prompt="检查测试和代码质量，提出改进建议">验证质量</button></div><form id="desktop-start" class="coord-composer"><label><span class="sr-only">给 ApiX 发消息</span><textarea name="content" rows="3" maxlength="4000" required placeholder="描述任务，或直接问一个问题…"></textarea></label><div class="desktop-composer-bar"><span>ApiX · 项目上下文</span><button class="primary-button" type="submit" aria-label="发送并开始对话">↑</button></div></form><button class="text-action" data-page-target="projects">添加或管理项目</button></div>';
+const newConversation=()=>{newChat=true;selectSession('');empty.hidden=false;body.hidden=true;void reload();$<HTMLTextAreaElement>('#desktop-start textarea').focus();};
+document.querySelector('#desktop-new-chat')!.addEventListener('click',newConversation);
+document.addEventListener('apix:new-chat',newConversation);
+$('#desktop-mobile-new').addEventListener('click',newConversation);
+empty.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-prompt]');if(button){const input=$<HTMLTextAreaElement>('#desktop-start textarea');input.value=button.dataset.prompt!;input.focus();}});
+$('#desktop-start').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const originProject=projectId;const input=$<HTMLTextAreaElement>('#desktop-start textarea');const content=input.value.trim();const created=await api<Session>('/api/coordination/sessions',{projectId:originProject,goal:content,interactionMode:'conversational'});if(projectId!==originProject)return;newChat=false;selectSession(created.id);render(created);input.value='';await streamMessage(created.id,{revision:created.revision,content},content);});});
+$('#coord-message button').textContent='↑';$('#coord-message button').setAttribute('aria-label','发送消息');
+$('#coord-message').insertAdjacentHTML('beforebegin','<div id="desktop-activity" class="desktop-activity" hidden></div>');
+root.addEventListener('click',event=>{if((event.target as Element).closest('[data-review-plan]')){layout.classList.remove('inspector-closed');$<HTMLDetailsElement>('.desktop-plan').open=true;}});
+$('.coord-goal-head').insertAdjacentHTML('beforeend','<div class="desktop-work-actions"><button id="desktop-stop" class="outline-button">停止工作</button><button id="desktop-details" class="outline-button" aria-expanded="true">工作详情</button></div>');
+$('#desktop-stop').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/stop`,{revision:current!.revision});}));
+$('#desktop-details').addEventListener('click',()=>{const closed=layout.classList.toggle('inspector-closed');$('#desktop-details').setAttribute('aria-expanded',String(!closed));});
+function renderWorkflow(){
+  if(!workflow || $('#desktop-workflow').contains(document.activeElement))return;
+  $('#desktop-workflow').innerHTML=`<h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发，完成后等待你验收。':'开启后无需填写需求表或逐项批准。'}</p><form id="desktop-automation">${workflow.enabled?'':`<p>授权 ApiX 与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>${workflow.employees.map(e=>`<label><input type="checkbox" name="employee" value="${esc(e.id)}" checked>${esc(e.name)} · ${esc(e.runtime)}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>'}`}<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form>`;
+}
+$('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});});});
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
 meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 function render(s: Session) {
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
+  $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型连接需要处理：${s.agent.error}`:'';
+  const planPanel=$<HTMLDetailsElement>('.desktop-plan');if(planPanel.dataset.status!==s.status){planPanel.open=s.status==='plan_review';planPanel.dataset.status=s.status;}
+  const activity=$('#desktop-activity');activity.hidden=!s.tasks.length;
+  const finished=s.tasks.find(t=>t.status==='completed');
+  activity.innerHTML=`<div><strong>${esc(statuses[s.derivedStatus]??s.derivedStatus)}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${s.tasks.filter(t=>t.status==='queued').length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个待验收</span></div>${s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?`<button class="outline-button" data-delivery="${esc(finished.id)}">查看变更并验收</button>`:''}`;
+  $('#desktop-stop').hidden=!s.tasks.some(t=>['running','queued','awaiting_approval','stopping'].includes(t.status));
   if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
   if(!meetingSection.contains(document.activeElement)){
     const expanded=[...meetingSection.querySelectorAll<HTMLDetailsElement>('details[open]')].map(d=>d.querySelector('summary')?.textContent);
@@ -161,7 +217,8 @@ function render(s: Session) {
   $<HTMLSelectElement>('#coord-interaction-mode').disabled=!['clarifying','ready'].includes(s.status);
   $('#coord-score').textContent=`${Math.round(s.assessment.score*100)}% · v${s.revision}`;
   $('#coord-backend').textContent=s.agent.mode==='pi' ? 'ApiX 正在使用 Pi 推理底座' : `规则引导${s.agent.error ? ` · ${s.agent.error}` : ' · 发送消息后使用 Pi 深度澄清'}`;
-  const turns=s.turns.map(t=>`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${esc(t.content)}</p></article>`).join('');
+  const hasMessages=s.turns.some(t=>t.kind==='message');
+  const turns=s.turns.filter((t,i)=>!(hasMessages && (t.kind==='goal'||i===1&&t.kind==='clarification'))).map(t=>`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${esc(t.content)}</p></article>`).join('');
   const history=$('#coord-turns');
 
   if (!streaming || history.dataset.session!==s.id || !history.querySelector('[data-temp-id]')) {
@@ -222,9 +279,10 @@ async function reload() {
   let version = ++reloadVersion; const selectedProject = projectId; reloading=true;
   try {
     if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
-    const [list,policy]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`)]);
+    const [list,policy,automatic]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`),api<Workflow>(`/api/projects/${encodeURIComponent(projectId)}/workflow`)]);
     if(version!==reloadVersion || selectedProject!==projectId) return;
-    if(!list.some(s=>s.id===sessionId)) {selectSession(list[0]?.id ?? '');version=reloadVersion;}
+    if(!newChat && !list.some(s=>s.id===sessionId)) {const remembered=localStorage.getItem('apix.chat.'+projectId);selectSession(list.find(s=>s.id===remembered)?.id ?? list[0]?.id ?? '');version=reloadVersion;}
+    workflow=automatic;renderWorkflow();
     $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
     executionPolicy=policy;renderExecutionPolicy();
     const selected=list.find(s=>s.id===sessionId);
@@ -234,7 +292,8 @@ async function reload() {
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   const changed=projectId!==event.detail.projectId;
-  if(changed) {selectSession('');projectId=event.detail.projectId;}
+  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';}
+  updateStreamingControls();
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
   if(root.classList.contains('active-page') && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
 }) as EventListener);

@@ -8,6 +8,7 @@ import { coordinationStatus, progressSummary } from './task-tracker.js';
 import { validateModelConfig } from './model-providers.js';
 import { taskProfile, type Scheduling } from './scheduling.js';
 import { createPlanningMeetings } from './planning-meetings.js';
+import {createWorkflow} from './workflow.js';
 
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
@@ -23,6 +24,7 @@ interface Dependencies extends Store {
 export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
   const busy = new Set<string>();
+  const workflow=createWorkflow(deps,permissions,deps.employees);
   const planningMeetings=createPlanningMeetings(deps,deps.scheduling,deps.consult);
   async function metered<T>(projectId:string,infer:()=>Promise<T>):Promise<T> {
     const id='apix:'+randomUUID();const reserved=deps.scheduling.reserveManager(id,projectId);
@@ -55,7 +57,7 @@ export function createCoordinator(deps: Dependencies) {
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
       capabilities: deps.capabilities(),
-      scheduling: deps.scheduling.view(s.project_id), schedulingTasks:s.plan_id?deps.scheduling.reports(s.plan_id):[],
+      workflow:workflow.get(s.project_id),scheduling: deps.scheduling.view(s.project_id), schedulingTasks:s.plan_id?deps.scheduling.reports(s.plan_id):[],
       planningMeetings:planningMeetings.details(id),consultationRuntimes:['pi','claude'],
       handoffs: s.plan_id ? rows<Record<string,unknown>>('SELECT h.* FROM code_handoffs h JOIN tasks t ON t.id=h.task_id WHERE t.plan_id=?',s.plan_id).map(h=>({...h,report:JSON.parse(String(h.report))})) : [],
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
@@ -104,6 +106,21 @@ export function createCoordinator(deps: Dependencies) {
     return details(id);
   }
   function parseInteractionMode(value: unknown): InteractionMode { if (value !== 'structured' && value !== 'conversational') throw new Error('交互模式无效'); return value; }
+  function stopSession(id:string,input:Record<string,unknown>) {
+    const s=editable(id,input.revision);const tasks=tasksOf(s);
+    if(!['plan_review','running','attention','awaiting_acceptance'].includes(s.status) || tasks.some(t=>t.status==='unknown'))throw new Error('当前没有可停止的已知工作；状态未知的运行请先通过恢复检查确认停止');
+    transaction(()=>{
+      for(const task of tasks){
+        if(['queued','awaiting_approval'].includes(task.status))db.prepare("UPDATE tasks SET status='cancelled',updated_at=? WHERE id=?").run(now(),task.id);
+        db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id=? AND status IN ('pending','approved')").run(now(),task.id);
+        db.prepare('DELETE FROM apix_grants WHERE task_id=?').run(task.id);
+      }
+      db.prepare("UPDATE coordination_sessions SET status='cancelled',updated_at=? WHERE id=?").run(now(),id);
+      turn(s,'user','stop_requested','停止当前工作；取消未启动任务并请求停止正在执行的员工。');
+    });
+    for(const task of tasks)for(const run of rows<{id:string}>("SELECT id FROM runs WHERE task_id=? AND status IN ('starting','running','stopping')",task.id))deps.stopRun(run.id);
+    return details(id);
+  }
   function setInteractionMode(id: string, input: Record<string, unknown>) {
     const s = editable(id,input.revision); const mode = parseInteractionMode(input.mode);
     if (!['clarifying','ready'].includes(s.status)) throw new Error('已确认计划不能直接切换交互模式，请先调整需求');
@@ -113,6 +130,7 @@ export function createCoordinator(deps: Dependencies) {
   }
   async function discuss(id: string, input: Record<string, unknown>, onQuestion?: (delta: string) => void) {
     const s = editable(id, input.revision); const content = text(input.content);
+    const automation=workflow.get(s.project_id);let continueWork=false;
     busy.add(id);
     try {
       transaction(() => { turn(s, 'user', 'message', content); checkpoint(id); });
@@ -121,10 +139,12 @@ export function createCoordinator(deps: Dependencies) {
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
       const progress = details(id);
-      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion));
+      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion));
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
+      continueWork=mutable && automation.enabled && decision.mode==='pi' && decision.kind==='work' && !decision.conflicts.length;
+      if(continueWork){if(workflow.get(s.project_id).version!==automation.version)throw new Error('自动协作授权已变化，请重新发送');for(const [key,value] of Object.entries(workflow.defaults(s.project_id)))if(!requirements[key as keyof Requirements])requirements[key as keyof Requirements]=value;}
       const conflicts = decision.mode === 'rules' ? details(id).assessment.conflicts : decision.conflicts;
       transaction(() => {
         db.prepare('INSERT INTO coordination_checks(session_id,conflicts,model_mode,model_error) VALUES (?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET conflicts=excluded.conflicts,model_mode=excluded.model_mode,model_error=excluded.model_error').run(id, JSON.stringify(conflicts), decision.mode, decision.error ?? null);
@@ -137,6 +157,13 @@ export function createCoordinator(deps: Dependencies) {
         turn(session(id), 'apix', mutable ? decision.kind : 'progress', output); checkpoint(id);
       });
     } finally { busy.delete(id); }
+    if(continueWork){
+      const latest=session(id);
+      if(workflow.get(s.project_id).enabled && workflow.get(s.project_id).version===automation.version && assess(requirementsOf(latest),details(id).assessment.conflicts).ready){
+        try{return await confirmSession(id,{revision:latest.revision,workflowVersion:automation.version});}
+        catch(error){turn(latest,'apix','workflow_blocked',`自动安排需要处理：${String(error instanceof Error?error.message:error).slice(0,500)}`);}
+      }
+    }
     return details(id);
   }
   function validateSteps(steps: PlanStep[]) {
@@ -173,6 +200,7 @@ export function createCoordinator(deps: Dependencies) {
     busy.add(id); let mode = 'rules';
     try {
       const generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),deps.employees().map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)})))); mode = generated.mode;
+      if(input.workflowVersion!==undefined){const currentWorkflow=workflow.get(s.project_id);if(!currentWorkflow.enabled || currentWorkflow.version!==input.workflowVersion)throw new Error('自动协作授权已变化，未派发任务');}
       const steps = deps.scheduling.assign(s.project_id,validateSteps(generated.steps).map(step=>({...step,scheduling:{...taskProfile(step.scheduling),estimateMinor:null,fixedEmployeeId:null,estimates:[]}})),true);
       transaction(() => {
         writePlan(s,steps);
@@ -182,7 +210,8 @@ export function createCoordinator(deps: Dependencies) {
       });
     } finally { busy.delete(id); }
     const ready = details(id);
-    if (mode === 'pi' && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null)) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
+    const automation=workflow.get(s.project_id);
+    if (mode === 'pi' && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null)) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
     return details(id);
   }
   function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {
@@ -398,7 +427,7 @@ export function createCoordinator(deps: Dependencies) {
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }
-  return { createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
+  return { workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
     listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:coordinationStatus(s.status,tasksOf(s))} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }
