@@ -1,3 +1,4 @@
+import {loadEnvironment} from './src/environment.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
@@ -23,6 +24,7 @@ import { workerPrompt } from "./dist/src/worker-context.js";
 import { createScheduling } from './dist/src/scheduling.js';
 import { consultClaude } from './src/consultation.mjs';
 
+loadEnvironment();
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
 mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(join(dataDir, "apix.sqlite"));
@@ -962,7 +964,7 @@ async function askPiDirector(prompt, onDelta, consultation) {
     if (!settings.apiKeyEnv && !isLoopbackModelUrl(settings.baseUrl)) throw new Error('远程自定义模型必须指定 API Key 环境变量');
     const managerDir = join(dataDir, 'manager-pi');
     mkdirSync(managerDir, { recursive: true });
-    writeFileSync(join(managerDir, 'models.json'), JSON.stringify({providers:{'apix-custom':{baseUrl:settings.baseUrl,api:settings.apiType,apiKey:settings.apiKeyEnv ? `$${settings.apiKeyEnv}` : 'apix-local',models:[{id:settings.model}]}}}));
+    writeFileSync(join(managerDir, 'models.json'), JSON.stringify({providers:{'apix-custom':{baseUrl:settings.baseUrl,api:settings.apiType,apiKey:settings.apiKeyEnv || 'apix-local',models:[{id:settings.model}]}}}));
     managerEnv = {...process.env,PI_CODING_AGENT_DIR:managerDir};
   }
   return new Promise((resolve, reject) => {
@@ -983,7 +985,7 @@ async function askPiDirector(prompt, onDelta, consultation) {
             answer = textFromMessage(item.message);
             runtimeFailed = ['error', 'aborted'].includes(item.message.stopReason);
           }
-          if (item.type === "agent_settled") { settled = true; child.stdin.end(); }
+          if (item.type === "agent_settled" || item.type === "agent_end") { settled = true; child.stdin.end(); }
         } catch { /* Ignore non-JSON diagnostics from the runtime. */ }
       }
     });

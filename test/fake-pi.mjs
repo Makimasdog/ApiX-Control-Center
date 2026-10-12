@@ -22,7 +22,7 @@ process.stdin.on("data", (chunk) => {
       const safe=args.includes('--no-tools') && args.includes('--no-extensions') && args.includes('--no-skills') && args.includes('--no-context-files') && !process.env.APIX_AGENT_TOKEN && /consultations/.test(process.cwd());
       if(!safe)throw new Error('Consultation isolation flags missing');
       const answer={claims:tasks.map((_,step)=>({step,reason:'fixture: no project tools, isolated identity and cwd',risk:'declared capability only',minutes:5})),decline:''};
-      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write('{"type":"agent_settled","aborted":false}\n');continue;
+      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');continue;
     }
     if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n') || command.message.startsWith('APIX_GUIDE_JSON\n')) {
       let answer;
@@ -51,10 +51,10 @@ process.stdin.on("data", (chunk) => {
         const delay = Number(process.env.APIX_FIXTURE_STREAM_DELAY_MS ?? 10);
         const parts = [raw.slice(0,20),raw.slice(20,48),raw.slice(48)];
         parts.forEach((part,index)=>setTimeout(()=>process.stdout.write(JSON.stringify({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:part}})+'\n'),delay*index));
-        setTimeout(()=>{process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:command.message.endsWith('用户最新消息：fixture-runtime-error')?'error':'stop',content:[{type:'text',text:raw}]}})+'\n');process.stdout.write('{"type":"agent_settled","aborted":false}\n');},delay*3);
+        setTimeout(()=>{process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:command.message.endsWith('用户最新消息：fixture-runtime-error')?'error':'stop',content:[{type:'text',text:raw}]}})+'\n');process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');},delay*3);
       } else {
         process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');
-        process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+        process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
       }
       continue;
     }
@@ -63,7 +63,7 @@ process.stdin.on("data", (chunk) => {
       const employees = JSON.parse(command.message.match(/可用员工：(.*?)\n当前计划与任务状态：/)?.[1] ?? "[]");
       const answer = latest.includes("进度") ? { reply: "这是当前计划的状态摘要。", goal: "", steps: [], memoryCandidates: [] } : { reply: "我已整理目标和执行顺序，请检查员工与依赖。", goal: latest, steps: [{ prompt: `设计：${latest}`, employeeId: employees[0]?.id, dependsOn: [] }, { prompt: `实现并验证：${latest}`, employeeId: employees[1]?.id ?? employees[0]?.id, dependsOn: [0] }], memoryCandidates: [{ category: "需求", title: "多语言目标", content: "用户要求多语言支持", evidence: "多语言" }] };
       process.stdout.write(JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: JSON.stringify(answer) }] } }) + "\n");
-      process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+      process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
       continue;
     }
     if (command.message === "hold" || process.env.APIX_FIXTURE_HOLD === '1') continue;
@@ -74,6 +74,6 @@ process.stdin.on("data", (chunk) => {
     }
     if (command.message === "many-events") for (let number = 0; number < 350; number++) process.stdout.write(JSON.stringify({ type: "tool_execution_start", toolName: "read", args: { number } }) + "\n");
     process.stdout.write(JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: command.message.startsWith("provider-error") ? "error" : "stop", content: [{ type: "text", text: `Pi result: ${command.message}` }] } }) + "\n");
-    process.stdout.write('{"type":"agent_settled","aborted":false}\n');
+    process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
   }
 });

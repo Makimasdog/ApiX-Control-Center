@@ -63,6 +63,16 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('custom manager uses an environment key reference and accepts Pi agent_end',async()=>harness(async h=>{
+  await h.request('/api/manager/settings',{baseUrl:'https://example.invalid/v1',model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
+  const {s}=await setup(h);
+  assert.equal(s.agent.mode,'pi');assert.equal(s.agent.error,null);
+  const models=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
+  assert.equal(models.providers['apix-custom'].apiKey,'APIX_TEST_MANAGER_KEY');
+  assert(!JSON.stringify(models).includes('fixture-secret-value'));
+  const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(plan.agent.mode,'pi');assert.equal(plan.status,'plan_review');
+},{APIX_FIXTURE_MODERN_PI:'1',APIX_TEST_MANAGER_KEY:'fixture-secret-value'}));
 test('planning meetings isolate participants, record disagreements and require a new plan approval',async()=>harness(async h=>{
   const {projectId,employeeId,s}=await setup(h);const second=(await h.request('/api/employees',{name:'第二参与者',runtime:'claude',role:'验证'})).id;
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
