@@ -4,12 +4,16 @@ import { type Store, type Employee, type PlanStep, object, text } from './contra
 export interface CapabilityProfile {
   model: string; tags: string[]; tools: string[]; languages: string[]; projectIds: string[];
   accountId: string | null; contextTokens: number | null; version: number; updatedAt: string | null;
+  reasoningLevel?: number | null;
+  pricing?: {model:string;version:string;currency:string;inputMinorPerMillion:number;outputMinorPerMillion:number} | null;
 }
 export interface TaskProfile {
   kind: 'implementation' | 'testing' | 'review' | 'analysis' | 'docs';
   tags: string[]; tools: string[]; writePaths: string[]; contextTokens: number | null;
   fixedEmployeeId: string | null; estimateMinor: number | null; minutes: number | null;
   estimates: {employeeId:string;estimateMinor:number|null;minutes:number|null}[];
+  difficulty?: number | null;
+  workload?: {inputTokens:number;outputTokens:number;calls:number} | null;
 }
 interface Account {
   id: string; alias: string; type: 'subscription' | 'api'; currency: string | null;
@@ -46,16 +50,21 @@ export function taskProfile(value: unknown): TaskProfile {
   if(v.estimates!==undefined && (!Array.isArray(v.estimates) || v.estimates.length>30))throw new Error('员工费用估计应为最多 30 项的数组');
   const estimates=(v.estimates as unknown[]|undefined ?? []).map(value=>{const e=object(value);return {employeeId:text(e.employeeId,100),estimateMinor:integer(e.estimateMinor,'员工费用上界'),minutes:integer(e.minutes,'员工预计分钟',10080)};});
   if(new Set(estimates.map(e=>e.employeeId)).size!==estimates.length)throw new Error('员工费用估计不能重复');
-  return {kind:kind as TaskProfile['kind'],tags:list(v.tags ?? [],'能力要求'),tools:list(v.tools ?? [],'工具要求'),writePaths,
+  const difficulty=integer(v.difficulty,'推理难度',5);if(difficulty===0)throw new Error('推理难度应为 1–5');
+  let workload:TaskProfile['workload']=null;
+  if(v.workload!=null){const w=object(v.workload);const inputTokens=integer(w.inputTokens,'输入 Token'),outputTokens=integer(w.outputTokens,'输出 Token'),calls=integer(w.calls,'调用次数',1000);if(inputTokens===null || outputTokens===null || !calls)throw new Error('工作量需要输入、输出 Token 及至少一次调用');workload={inputTokens,outputTokens,calls};}
+  return {difficulty,workload,kind:kind as TaskProfile['kind'],tags:list(v.tags ?? [],'能力要求'),tools:list(v.tools ?? [],'工具要求'),writePaths,
     contextTokens:integer(v.contextTokens,'上下文量'),fixedEmployeeId:v.fixedEmployeeId==null?null:text(v.fixedEmployeeId,100),
     estimateMinor:integer(v.estimateMinor,'预计费用上界'),minutes:integer(v.minutes,'预计分钟',10080),estimates};
 }
 function forEmployee(spec:TaskProfile,employeeId:string):TaskProfile {const estimate=spec.estimates.find(e=>e.employeeId===employeeId);return estimate?{...spec,estimateMinor:estimate.estimateMinor,minutes:estimate.minutes}:spec;}
+function forecast(profile:CapabilityProfile,spec:TaskProfile){const rate=profile.pricing?.model===profile.model?profile.pricing:null;const w=spec.workload;if(!rate||!w)return null;const amount=((BigInt(w.inputTokens)*BigInt(rate.inputMinorPerMillion)+BigInt(w.outputTokens)*BigInt(rate.outputMinorPerMillion))*BigInt(w.calls)+999999n)/1000000n;return amount<=BigInt(Number.MAX_SAFE_INTEGER)?Number(amount):null;}
 export function overlaps(a: string[], b: string[]) { if(process.platform==='win32'){a=a.map(p=>p.toLowerCase());b=b.map(p=>p.toLowerCase());}return a.some(x=>b.some(y=>x===y || x.startsWith(y+'/') || y.startsWith(x+'/'))); }
 
 export function createScheduling(store: Store, dependencies: {
   employees(): Employee[]; available(runtime: string): boolean; denied(projectId: string, employeeId: string, drafting?:boolean): boolean;
   waiting(task: {id:string;project_id:string;employee_id:string;runtime:string}): string | null;
+  supportsModel?(runtime:string):boolean;
 }) {
   const {db,row,rows,now}=store;
   const activeManagers=new Set<string>();
@@ -80,8 +89,12 @@ export function createScheduling(store: Store, dependencies: {
     const accountId=input.accountId==null || input.accountId===''?null:text(input.accountId,100);
     if(accountId && !accounts().some(a=>a.id===accountId))throw new Error('账户不存在');
     const model=input.model==null?'':String(input.model).trim();if(model.length>200)throw new Error('模型名称过长');
+    const reasoningLevel=integer(input.reasoningLevel,'推理能力',5);if(reasoningLevel===0)throw new Error('推理能力应为 1–5');
+    let pricing:CapabilityProfile['pricing']=null;
+    if(input.pricing!=null){const rate=object(input.pricing);const rateModel=text(rate.model,200);const rateCurrency=currency(rate.currency);const inputRate=integer(rate.inputMinorPerMillion,'输入费率'),outputRate=integer(rate.outputMinorPerMillion,'输出费率');if(!model || rateModel!==model || !rateCurrency || inputRate===null || outputRate===null)throw new Error('费率必须对应声明的模型并包含币种与输入/输出价格');pricing={model:rateModel,version:text(rate.version,100),currency:rateCurrency,inputMinorPerMillion:inputRate,outputMinorPerMillion:outputRate};}
+    if(pricing && accountId){const account=accounts().find(a=>a.id===accountId)!;if(account.type!=='api'||account.currency!==pricing.currency)throw new Error('预测费率需要同币种 API 账户，订阅额度不能换算费用');}
     const projectIds=list(input.projectIds ?? [],'熟悉项目');if(projectIds.some(p=>!row('SELECT id FROM projects WHERE id=?',p)))throw new Error('熟悉项目不存在');
-    const result:CapabilityProfile={model,tags:list(input.tags ?? [],'能力标签'),tools:list(input.tools ?? [],'工具'),languages:list(input.languages ?? [],'语言'),projectIds,
+    const result:CapabilityProfile={reasoningLevel,pricing,model,tags:list(input.tags ?? [],'能力标签'),tools:list(input.tools ?? [],'工具'),languages:list(input.languages ?? [],'语言'),projectIds,
       contextTokens:integer(input.contextTokens,'上下文容量'),accountId,version:previous.version+1,updatedAt:now()};
     db.prepare('INSERT INTO scheduling_profiles VALUES (?,?) ON CONFLICT(employee_id) DO UPDATE SET body=excluded.body').run(id,JSON.stringify(result));return result;
   }
@@ -133,6 +146,9 @@ export function createScheduling(store: Store, dependencies: {
     if(spec.tags.some(t=>!profileValue.tags.includes(t)))reasons.push('缺少用户声明的必要能力标签');
     if(spec.tools.some(t=>!profileValue.tools.includes(t)))reasons.push('缺少必要工具声明');
     if(spec.contextTokens!==null && (profileValue.contextTokens===null || profileValue.contextTokens<spec.contextTokens))reasons.push('上下文容量不足或未知');
+    if(spec.difficulty!=null && (profileValue.reasoningLevel==null || profileValue.reasoningLevel<spec.difficulty))reasons.push('声明的推理能力不足或未知');
+    if(spec.difficulty!=null && profileValue.model && e && dependencies.supportsModel?.(e.runtime)===false)reasons.push('适配器尚未验证显式模型选择，不能依据该档案路由');
+    const predicted=forecast(profileValue,spec);if(predicted!==null && spec.estimateMinor!==null && predicted>spec.estimateMinor)reasons.push('预测费用超过用户批准的执行上界');
     const q=quota(account,p);
     if(q==='insufficient')reasons.push('剩余额度已触及保留线');
     else if(q!=='known'){warnings.push(q==='stale'?'额度快照已过期':'额度未知');if(p.requireFreshQuota)reasons.push('严格策略需要新鲜额度快照');}
@@ -157,10 +173,16 @@ export function createScheduling(store: Store, dependencies: {
       const wait=dependencies.waiting({id:'',project_id:projectId,employee_id:e.id,runtime:e.runtime});
       const tasks=row<{count:number}>("SELECT COUNT(*) AS count FROM tasks WHERE employee_id=? AND status IN ('running','stopping','queued','unknown')",e.id)!.count;
       const estimate=forEmployee(spec,e.id);
-      return {employeeId:e.id,name:e.name,eligible:gate.reasons.length===0,reasons:gate.reasons,warnings:gate.warnings,waiting:wait,model:p.model || null,profileVersion:p.version,capabilitySource:'user_declared',history:stats,projectFamiliar:p.projectIds.includes(projectId),queuedTasks:tasks,preferred:e.id===preferred,estimateMinor:estimate.estimateMinor,minutes:estimate.minutes ?? (stats.samples>=3 && stats.averageMs!==null?Math.ceil(stats.averageMs/60000):null),timeSource:estimate.minutes!==null?'user_estimate':stats.samples>=3?'accepted_history':'unknown',currency:gate.account?.currency ?? null};
+      const rate=p.pricing?.model===p.model?p.pricing:null;
+      const forecastMinor=forecast(p,spec);
+      return {employeeId:e.id,name:e.name,eligible:gate.reasons.length===0,reasons:gate.reasons,warnings:gate.warnings,waiting:wait,model:p.model || null,reasoningLevel:p.reasoningLevel??null,forecastMinor,forecastCurrency:rate?.currency??null,forecastSource:forecastMinor===null?'unknown':'declared_rates_and_estimated_workload',rateVersion:rate?.version??null,profileVersion:p.version,capabilitySource:'user_declared',history:stats,projectFamiliar:p.projectIds.includes(projectId),queuedTasks:tasks,preferred:e.id===preferred,estimateMinor:estimate.estimateMinor,minutes:estimate.minutes ?? (stats.samples>=3 && stats.averageMs!==null?Math.ceil(stats.averageMs/60000):null),timeSource:estimate.minutes!==null?'user_estimate':stats.samples>=3?'accepted_history':'unknown',currency:gate.account?.currency ?? null};
     });
     const measured=items.filter(i=>i.eligible && i.estimateMinor!==null);
     const comparable=measured.length>0 && measured.every(i=>i.currency && i.currency===measured[0]!.currency);
+    if(spec.difficulty!=null){
+      const forecasts=items.filter(i=>i.eligible && i.forecastMinor!==null);const comparableForecast=forecasts.length>0 && forecasts.every(i=>i.forecastCurrency===forecasts[0]!.forecastCurrency);
+      return items.sort((a,b)=>Number(b.eligible)-Number(a.eligible) || (comparableForecast?(Number(a.forecastMinor===null)-Number(b.forecastMinor===null) || (a.forecastMinor??0)-(b.forecastMinor??0)):0) || Number(!!a.waiting)-Number(!!b.waiting) || b.history.accepted/Math.max(1,b.history.samples)-a.history.accepted/Math.max(1,a.history.samples) || a.queuedTasks-b.queuedTasks || Number(b.preferred)-Number(a.preferred) || a.employeeId.localeCompare(b.employeeId));
+    }
     // Missing fees are never zero, and different currencies are never converted implicitly.
     return items.sort((a,b)=>Number(b.eligible)-Number(a.eligible) || Number(!!a.waiting)-Number(!!b.waiting) || Number(b.history.samples>=3 && b.history.accepted===b.history.samples)-Number(a.history.samples>=3 && a.history.accepted===a.history.samples) || Number(b.projectFamiliar)-Number(a.projectFamiliar) || (comparable?(Number(a.estimateMinor===null)-Number(b.estimateMinor===null) || (a.estimateMinor ?? 0)-(b.estimateMinor ?? 0)):0) || Number(a.minutes===null)-Number(b.minutes===null) || (a.minutes ?? 0)-(b.minutes ?? 0) || a.queuedTasks-b.queuedTasks || Number(b.preferred)-Number(a.preferred) || a.employeeId.localeCompare(b.employeeId));
   }
@@ -185,6 +207,7 @@ export function createScheduling(store: Store, dependencies: {
     if(saved)db.prepare('UPDATE scheduling_tasks SET decision=? WHERE task_id=?').run(JSON.stringify({...JSON.parse(saved.decision),selectedEmployeeId:employeeId,configuration:fingerprint(projectId,[employeeId])}),taskId);
   }
   function taskSpec(taskId:string):TaskProfile {const saved=row<{body:string}>('SELECT body FROM scheduling_tasks WHERE task_id=?',taskId);return taskProfile(saved?JSON.parse(saved.body):undefined);}
+  function assertBinding(taskId:string,projectId:string,employeeId:string){const saved=row<{decision:string}>('SELECT decision FROM scheduling_tasks WHERE task_id=?',taskId);const binding=saved?JSON.parse(saved.decision).configuration as string|null:null;if(binding && binding!==fingerprint(projectId,[employeeId]))throw new Error('能力、账户或调度配置已变化，请检查后重新批准任务');}
   function admission(task:{id:string;project_id:string;employee_id:string}) {
     const saved=row<{decision:string}>('SELECT decision FROM scheduling_tasks WHERE task_id=?',task.id);const binding=saved?JSON.parse(saved.decision).configuration as string|null:null;
     if(binding && binding!==fingerprint(task.project_id,[task.employee_id]))return '能力、账户或调度配置已变化，请检查后重新批准任务';
@@ -247,6 +270,6 @@ export function createScheduling(store: Store, dependencies: {
   function view(projectId:string) {const p=policy(projectId);const currencies=rows<{currency:string}>("SELECT DISTINCT currency FROM scheduling_reservations WHERE project_id=? AND amount IS NOT NULL AND state!='released'",projectId);return {strategy:'balanced',policy:p,accounts:accounts().map(a=>({...a,source:'manual',confidence:'user_reported',quotaState:quota(a,p),pause:row('SELECT * FROM scheduling_account_pauses WHERE account_id=?',a.id)??null,committedMinor:usage(projectId,a.id)})),profiles:dependencies.employees().map(e=>({employeeId:e.id,...profile(e.id)})),committedMinor:currencies.length>1?null:usage(projectId,null),ledger:rows('SELECT * FROM scheduling_reservations WHERE project_id=? ORDER BY rowid DESC LIMIT 100',projectId)};}
   function reports(planId:string) {return rows<{task_id:string;body:string;decision:string}>('SELECT s.* FROM scheduling_tasks s JOIN tasks t ON t.id=s.task_id WHERE t.plan_id=?',planId).map(r=>({taskId:r.task_id,profile:JSON.parse(r.body),decision:JSON.parse(r.decision)}));}
   function fingerprint(projectId:string,employeeIds?:string[]) {const p=policy(projectId);const employees=dependencies.employees().filter(e=>!employeeIds || employeeIds.includes(e.id)).map(e=>({id:e.id,enabled:e.enabled,runtime:e.runtime,denied:dependencies.denied(projectId,e.id),available:dependencies.available(e.runtime),profile:profile(e.id)}));const accountIds=employees.map(e=>e.profile.accountId).concat(p.managerAccountId);return createHash('sha256').update(JSON.stringify({policy:p,accounts:accounts().filter(a=>accountIds.includes(a.id)),employees})).digest('hex');}
-  return {profile,saveProfile,accounts,saveAccount,pauseAccount,pauseAccountId,resumeAccount,policy,savePolicy,candidates,assign,bind,approveBinding,taskSpec,admission,reserve,reserveManager,settle,settleReported,attempt,observeModel,view,reports,fingerprint};
+  return {profile,saveProfile,accounts,saveAccount,pauseAccount,pauseAccountId,resumeAccount,policy,savePolicy,candidates,assign,bind,approveBinding,taskSpec,assertBinding,admission,reserve,reserveManager,settle,settleReported,attempt,observeModel,view,reports,fingerprint};
 }
 export type Scheduling = ReturnType<typeof createScheduling>;

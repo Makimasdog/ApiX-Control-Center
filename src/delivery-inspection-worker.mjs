@@ -8,6 +8,7 @@ try{
   if(deliveryVersion(row,workerData.id)!==workerData.version)throw new Error('检查期间任务状态已变化，请重新检查');
   const codeHandoffs=createCodeHandoffs({db,row,rows,dataDir:workerData.dataDir,persistWorkspace:false});
   const result=createTaskDelivery({row,codeHandoffs})(workerData.id);
+  if(workerData.quality && result.inspection)result.inspection.context=codeHandoffs.qualityContext(row('SELECT * FROM tasks WHERE id=?',workerData.id));
   if(deliveryVersion(row,workerData.id)!==workerData.version)throw new Error('检查期间任务状态已变化，请重新检查');
   parentPort.postMessage({result});
 }catch(error){parentPort.postMessage({error:String(error.message)});}finally{db.close();}

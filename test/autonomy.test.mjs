@@ -1,0 +1,50 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {createAutonomy} from '../dist/src/autonomy.js';
+import {parseArchitecture,autonomyDefaults} from '../dist/src/architecture.js';
+import {taskProfile} from '../dist/src/scheduling.js';
+async function fixture(work){
+  const dir=await mkdtemp(join(tmpdir(),'apix-autonomy-unit-'));const db=new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);CREATE TABLE plans(id TEXT PRIMARY KEY,project_id TEXT);CREATE TABLE coordination_sessions(id TEXT PRIMARY KEY,plan_id TEXT,revision INTEGER,confirmed_revision INTEGER,status TEXT);CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,plan_id TEXT,employee_id TEXT,runtime TEXT,prompt TEXT,status TEXT,workspace_path TEXT,result TEXT,updated_at TEXT);CREATE TABLE runs(id TEXT PRIMARY KEY,task_id TEXT,status TEXT,started_at TEXT,ended_at TEXT);CREATE TABLE agent_messages(id TEXT PRIMARY KEY,task_id TEXT,target_task_id TEXT,target_run_id TEXT,from_agent TEXT,to_agent TEXT,type TEXT,payload TEXT,status TEXT,created_at TEXT);
+    INSERT INTO projects VALUES ('p');INSERT INTO plans VALUES ('plan','p');INSERT INTO coordination_sessions VALUES ('s','plan',1,1,'running');`);
+  const store={db,row:(sql,...params)=>db.prepare(sql).get(...params),rows:(sql,...params)=>db.prepare(sql).all(...params),now:()=>new Date().toISOString()};
+  db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)').run('t','p','plan','a','codex','approved task','awaiting_approval',dir,'',store.now());db.prepare('INSERT INTO runs VALUES (?,?,?,?,?)').run('run','t','running',new Date(Date.now()-40000).toISOString(),null);
+  await writeFile(join(dir,'verify.mjs'),"console.log('host check passed');");
+  let workflow={enabled:true,version:1,employeeIds:['a','b']};let permission='full_access';let reviews=0,accepts=0,retries=0;const events=[];
+  const deps={...store,permissions:{get:()=>({mode:permission,version:1}),decision:()=>permission==='full_access'?'allow':'deny',assertGranted:()=>{if(permission!=='full_access')throw new Error('revoked');}},scheduling:{assertBinding:()=>{},taskSpec:()=>taskProfile({difficulty:2}),candidates:()=>[{employeeId:'a',eligible:true,waiting:null},{employeeId:'b',eligible:true,waiting:null}]},employees:()=>[],workflow:()=>workflow,inspect:async()=>({fingerprint:'stable',files:['a.txt'],conflicts:[],preview:'real diff',previewTruncated:false}),workspace:()=>dir,accept:()=>{accepts++;db.prepare("UPDATE tasks SET status='accepted' WHERE id='t'").run();},review:async()=>{reviews++;return {passed:true,findings:[],reviewMode:'apix_self_review'};},retry:async(task,employeeId,prompt)=>{retries++;db.prepare("UPDATE tasks SET status='running',employee_id=?,prompt=? WHERE id='t'").run(employeeId,prompt);},reassignPending:()=>{},stop:()=>{db.exec("UPDATE tasks SET status='cancelled';UPDATE runs SET status='cancelled'");},sendMessage:input=>{const id='m'+Math.random();db.prepare('INSERT INTO agent_messages VALUES (?,?,?,?,?,?,?,?,?,?)').run(id,'t','t','run','apix-director','a','event',JSON.stringify(input.payload),'queued',store.now());return {id,status:'queued'};},record:(taskId,kind,payload)=>events.push({taskId,kind,payload})};
+  let service=createAutonomy(deps);const policy={...autonomyDefaults,enabled:true,approved:true,checkpointMinutes:1,maxRunMinutes:10,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:1000}]};
+  service.save('p',policy);const architecture=parseArchitecture({summary:'scope',modules:[{id:'core',name:'core',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:100,calls:1},interfaces:[],dataStructures:[],acceptance:['host verification'],checkIds:['tests']}]},policy.checks);service.bindPlan('plan','s',1,architecture,[{taskId:'t',moduleId:'core',prompt:'approved task'}]);
+  db.exec("UPDATE tasks SET status='running'");try{await work({db,store,service,deps,events,counts:()=>({reviews,accepts,retries}),revoke:()=>permission='read_only',restart:()=>service=createAutonomy(deps)});}finally{db.close();const path=resolve(dir);assert(path.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(path,{recursive:true,force:true});}
+}
+test('high risk checkpoints repeat and two unanswered checkpoints stop the known run before reassignment',()=>fixture(async({db,service,events,counts})=>{
+  await service.tick();assert.equal(events.filter(e=>e.kind==='autonomy.checkpoint').length,1);
+  const stale=new Date(Date.now()-35000).toISOString();db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
+  await service.tick();assert.equal(events.filter(e=>e.kind==='autonomy.checkpoint').length,2);
+  db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
+  await service.tick();assert(events.some(e=>e.kind==='autonomy.unresponsive_stop'));assert.equal(counts().retries,0);
+  await service.tick();assert.equal(counts().retries,1);assert.equal(service.details('plan').repairs[0].employee_id,'b');assert.equal(service.details('plan').repairs[0].status,'dispatched');
+}));
+test('unknown workers require explicit recovery and are never automatically retried',()=>fixture(async({db,service,counts})=>{
+  db.exec("UPDATE tasks SET status='unknown';UPDATE runs SET status='unknown'");await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(counts().retries,0);assert.throws(()=>service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')}),/原员工/);
+}));
+test('permission revoked while reviewing actual checks prevents acceptance and repair',()=>fixture(async({db,service,deps,revoke,counts})=>{
+  db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");deps.review=async()=>{revoke();return {passed:true,findings:[],reviewMode:'apix_self_review'};};await service.tick();assert.equal(counts().accepts,0);assert.equal(counts().retries,0);assert.equal(service.details('plan').state,'attention');
+}));
+test('restart preserves interrupted verification and requires a fresh explicit stop confirmation',()=>fixture(async({db,service,restart})=>{
+  db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed';INSERT INTO autonomy_checks VALUES ('check','t','run','running','stable','{}','now')");const restored=restart();assert.equal(restored.details('plan').checks[0].status,'interrupted');assert.equal(restored.details('plan').state,'attention');
+  const input={reviewed:true,fingerprint:restored.resumeFingerprint('plan')};assert.throws(()=>restored.resume('plan',input),/确认已停止/);restored.resume('plan',{...input,confirmedStopped:true});await restored.tick();assert.equal(restored.details('plan').state,'completed');assert(restored.details('plan').checks.some(c=>c.status==='passed'));assert.equal(restart().details('plan').state,'completed','resolved interrupted history must not reopen a delivered plan');
+}));
+test('manual recovery resume activates an already authorized pending retry and preserves fingerprint checks',()=>fixture(async({db,service,deps})=>{
+  db.exec("UPDATE tasks SET status='awaiting_approval';UPDATE runs SET status='cancelled';UPDATE autonomy_plans SET state='attention',reason='worker recovery'");let activated=0;deps.activatePending=()=>activated++;
+  assert.throws(()=>service.resume('plan',{reviewed:true,fingerprint:'stale'}),/检查/);service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')});assert.equal(activated,1);assert.equal(service.details('plan').state,'running');
+}));
+test('a changed model or budget binding during quality review cannot be silently approved',()=>fixture(async({db,service,deps,counts})=>{
+  db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");deps.review=async()=>{deps.scheduling.assertBinding=()=>{throw new Error('档案版本已变化');};return {passed:true,findings:[],reviewMode:'apix_self_review'};};await service.tick();assert.equal(counts().accepts,0);assert.match(service.details('plan').reason,/档案版本/);
+}));
+test('never-run queued work is reassigned within the same module when its original runtime becomes unavailable',()=>fixture(async({db,service,deps})=>{
+  db.exec("UPDATE tasks SET status='queued';DELETE FROM runs");let assigned=null;deps.scheduling.candidates=()=>[{employeeId:'a',eligible:false,waiting:'unavailable'},{employeeId:'b',eligible:true,waiting:null}];deps.scheduling.assertBinding=()=>{throw new Error('runtime availability changed');};deps.reassignPending=(taskId,employeeId)=>assigned={taskId,employeeId};await service.tick();assert.deepEqual(assigned,{taskId:'t',employeeId:'b'});assert.equal(service.details('plan').state,'running');
+}));

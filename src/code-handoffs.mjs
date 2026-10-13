@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, unlinkSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, realpathSync, unlinkSync, readFileSync,statSync } from 'node:fs';
+import { join, resolve,relative,isAbsolute } from 'node:path';
 
 const git = (cwd,args,options={}) => execFileSync('git',args,{cwd,encoding:'utf8',timeout:20000,maxBuffer:10000000,windowsHide:true,stdio:['pipe','pipe','pipe'],...options});
 const parts = value => value.split('\0').filter(Boolean);
@@ -121,5 +121,13 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWo
     recordTask(task.id,'handoff.resolved',{inputCommit:input,files:preview.files});
     return {tree:preview.tree,inputCommit:input};
   }
-  return {workspace,inspect,freeze,patch,populate,ancestors,approveResolution};
+  function qualityContext(task){
+    const binding=row('SELECT a.module_id,p.body FROM autonomy_tasks a JOIN autonomy_plans p ON p.plan_id=? WHERE a.task_id=?',task.plan_id,task.id);if(!binding)throw new Error('任务没有冻结架构');
+    const architecture=JSON.parse(binding.body);const selected=binding.module_id==='integration'?architecture.modules:architecture.modules.filter(m=>m.id===binding.module_id);const paths=selected.flatMap(m=>m.paths);
+    const w=workspace(task);const normalize=value=>process.platform==='win32'?value.toLowerCase():value;const all=[...new Set(parts(git(w.path,['ls-files','--cached','--others','--exclude-standard','-z'])))].filter(file=>paths.some(path=>normalize(file)===normalize(path)||normalize(file).startsWith(normalize(path)+'/')));
+    const files=[];let size=0;let truncated=false;
+    for(const file of all){const path=resolve(w.path,file);if(!existsSync(path))continue;const rel=relative(w.path,realpathSync.native(path));if(rel.startsWith('..')||isAbsolute(rel))throw new Error('审查文件通过链接越过工作区');const bytes=statSync(path).size;if(size+bytes>70000 || files.length>=100){truncated=true;continue;}const body=readFileSync(path,'utf8');if(body.includes('\0')){truncated=true;continue;}size+=bytes;files.push({path:file,content:body});}
+    return {files,truncated};
+  }
+  return {workspace,inspect,freeze,patch,populate,ancestors,approveResolution,qualityContext};
 }

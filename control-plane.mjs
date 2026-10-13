@@ -26,6 +26,7 @@ import { consultClaude } from './src/consultation.mjs';
 import {projectReadiness} from './src/readiness.mjs';
 import {createTaskDelivery} from './src/task-delivery.mjs';
 import {createDeliveryInspection} from './src/delivery-inspection.mjs';
+import {createAutonomy} from './dist/src/autonomy.js';
 
 loadEnvironment();
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
@@ -333,7 +334,19 @@ const codeHandoffs = createCodeHandoffs({...store,dataDir,recordTask:(...args)=>
 const executionControl=createExecutionControl({...store,recordEvent:(projectId,kind,payload)=>memory.append(projectId,projectId,kind,payload)});
 const scheduling=createScheduling(store,{
   employees:()=>rows('SELECT * FROM employees WHERE deleted_at IS NULL'),available:id=>runtimes().some(r=>r.id===id && r.available && r.managed),
-  denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task)
+  denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task),supportsModel:runtimeAdapters.supportsModel
+});
+const autonomy=createAutonomy({...store,permissions,scheduling,
+  employees:()=>rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL'),
+  workflow:projectId=>coordinator.workflowSettings(projectId),
+  inspect:async task=>{const result=await inspectTaskDelivery(task.id,true);if(result.error || !result.inspection)throw new Error(result.error??'交付无法检查');return result.inspection;},workspace:task=>codeHandoffs.workspace(task).path,
+  accept:(id,fingerprint)=>acceptTask(id,true,fingerprint,'apix'),
+  review:(...args)=>coordinator.qualityReview(...args),
+  retry:async(task,employeeId,prompt)=>{const checked=await inspectTaskDelivery(task.id);const bound=row('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id);const session=coordinator.sessionDetails(bound.session_id);const result=await recoverTask(task.id,{revision:session.revision,employeeId,runId:checked.latestRun?.id??null,fingerprint:checked.recoveryFingerprint,reviewed:true},'policy',prompt);if(result.failure)throw new Error(result.failure);},
+  stop:id=>stopRun(id),sendMessage:input=>sendMessage(input),record:(...args)=>coordinator.recordTask(...args),
+  reassignPending:(taskId,employeeId)=>{coordinator.reassignPending(taskId,employeeId);pumpTasks();},
+  activatePending:planId=>{for(const approval of rows("SELECT a.id FROM approvals a JOIN tasks t ON t.id=a.task_id WHERE t.plan_id=? AND t.status='awaiting_approval' AND a.status='pending'",planId))resolveApproval(approval.id,true);pumpTasks();},
+  delivered:(sessionId,planId)=>coordinator.delivered(sessionId,planId)
 });
 
 const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
@@ -452,8 +465,10 @@ function launch(task) {
   const inputs = rows("SELECT s.id,s.task_id,s.content FROM shared_artifacts s JOIN task_dependencies d ON d.depends_on_id=s.task_id WHERE d.task_id=? ORDER BY s.created_at", task.id).map((item) => `前置交付物 ${item.id}（来源任务 ${item.task_id}，须自行验证）：\n${item.content}`);
   context.unshift(...inputs);
   const coordinated = task.plan_id ? row("SELECT requirements_json,revision FROM coordination_plan_briefs WHERE plan_id=?", task.plan_id) : null;
+  const architectureContext=autonomy.context(task.id);
   if (coordinated) context.unshift(`ApiX 已确认的需求（版本 ${coordinated.revision}，执行依据）：\n${requirementBrief(JSON.parse(coordinated.requirements_json))}\n你是执行员工，ApiX 是管理者。可通过环境变量 APIX_MAILBOX_URL 指定的 HTTP 接口与团队协作，用 APIX_AGENT_TOKEN 作为 Bearer 凭据（不要输出凭据）。GET /messages 领取消息，POST /messages 发送 {to,type,payload,idempotencyKey,replyTo?}，POST /messages/:id/ack 或 /complete 确认。GET /team 查看同项目员工。推进到关键节点或遇到阻塞时，向 apix-director 发送 type=event、payload={kind:'progress_update',summary:'真实进度',blocked:true|false}；随后轮询 GET /messages，处理 ApiX 的 guidance 消息并确认。仅转交必要上下文，交付物使用引用。`);
-  const { prompt, truncated } = workerPrompt(task.prompt, coordinated ? context.shift() : '', context);
+  const approvedContext=[coordinated ? context.shift() : '',architectureContext].filter(Boolean).join('\n\n');
+  const { prompt, truncated } = workerPrompt(task.prompt, approvedContext, context);
   const runId = randomUUID();
   db.exec('SAVEPOINT start_run');
   try{
@@ -470,6 +485,7 @@ function launch(task) {
   const skipGitRepoCheck = task.runtime === "codex" && !gitRoot(cwd);
   const fullAccess = permissions.decision(task.project_id, task.employee_id) === "allow";
   const args = runtimeAdapters.args(task.runtime, fullAccess, skipGitRepoCheck);
+  if(task.employee_id && scheduling.taskSpec(task.id).difficulty!=null){const selectedModel=scheduling.profile(task.employee_id).model;args.push(...runtimeAdapters.modelArgs(task.runtime,selectedModel));}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
     env: { ...(task.runtime==='pi'?piShellEnvironment(process.env):process.env), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
@@ -808,13 +824,13 @@ export function stopRun(id) {
   else active.child.kill();
   setTimeout(() => { if (running.has(id)) active.child.kill(); }, 3000).unref();
 }
-export function acceptTask(id, accepted, fingerprint) {
+export function acceptTask(id, accepted, fingerprint, source='user') {
   const task = row("SELECT * FROM tasks WHERE id=?", id);
   if (!task || task.status !== "completed") throw new Error("只有已完成的任务可以验收");
   if(accepted && task.plan_id)codeHandoffs.freeze(task,fingerprint);
   db.prepare("UPDATE tasks SET status=?,updated_at=? WHERE id=?").run(accepted ? "accepted" : "needs_revision", now(), id);
   const run = row("SELECT id FROM runs WHERE task_id=? ORDER BY started_at DESC LIMIT 1", id);
-  if (run) event(run.id, "user", "task_reviewed", { accepted });
+  if (run) event(run.id, source, "task_reviewed", { accepted, ...(source==='apix'?{type:'autonomous_quality',reviewMode:'apix_self_review'}:{}) });
   scheduleDependents(id);
 }
 
@@ -1273,7 +1289,7 @@ export function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
-const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, autonomy, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await askPiDirector(prompt,onDelta,undefined,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查 Pi 入口、模型服务、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,
@@ -1283,6 +1299,7 @@ const coordinator = createCoordinator({ ...store, memory, permissions, schedulin
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
 setInterval(() => coordinator.superviseActiveRuns(supervisionAfterMs), supervisionTickMs).unref();
+setInterval(() => {void autonomy.tick().catch(()=>process.stderr.write('自主交付监督发生错误，请检查当前目标状态。\n'));},supervisionTickMs).unref();
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
@@ -1299,6 +1316,9 @@ export const runPlanningMeeting=coordinator.runPlanningMeeting;
 export const applyPlanningMeeting=coordinator.applyPlanningMeeting;
 export const workflowSettings=projectId=>({...coordinator.workflowSettings(projectId),manager:permissions.get(projectId),employees:rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL').filter(e=>runtimes().some(r=>r.id===e.runtime && r.available && r.managed)).map(e=>({id:e.id,name:e.name,runtime:e.runtime,...permissions.get(projectId,e.id)}))});
 export const saveWorkflow=coordinator.saveWorkflow;
+export const autonomySettings=autonomy.settings;
+export const saveAutonomySettings=autonomy.save;
+export function resumeAutonomySession(id,input){const session=coordinator.sessionDetails(id);if(input.revision!==session.revision || !session.plan_id)throw new Error('会话已变化');autonomy.resume(session.plan_id,input);return coordinator.sessionDetails(id);}
 export const stopCoordinationSession=coordinator.stopSession;
 export const changePermission = coordinator.changePolicy;
 export const managerSettings = coordinator.getSettings;
@@ -1323,21 +1343,23 @@ export const saveEmployeeCapability=scheduling.saveProfile;
 export const schedulingView=scheduling.view;
 export function saveSchedulingPolicy(projectId,input){const result=scheduling.savePolicy(projectId,input);pumpTasks();return result;}
 export function settleSchedulingCost(projectId,input){const result=scheduling.settleReported(projectId,input);memory.append(projectId,projectId,'budget.manually_settled',{id:input.id,actualMinor:input.actualMinor,source:'user_reported'});pumpTasks();return result;}
-export function recoverTask(id,input) {
+export async function recoverTask(id,input,source='user',repairPrompt) {
   const {task}=coordinator.assertRetry(id,input);
   if(rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',id).some(t=>t.status!=='accepted'))throw new Error('请先恢复并验收前置任务');
-  const checked=taskDelivery(id);
+  const checked=await inspectTaskDelivery(id);
+  coordinator.assertRetry(id,input);
   if(input.reviewed!==true || !checked.recoveryFingerprint || input.fingerprint!==checked.recoveryFingerprint || input.runId!== (checked.latestRun?.id ?? null))throw new Error('请先检查最新进程、代码与交付记录，再重新批准');
   if(checked.managedActive)throw new Error('原进程仍由本服务运行，请先停止并等待结束');
   if(task.status==='unknown' && input.confirmedStopped!==true)throw new Error('原进程状态未知，须人工确认已停止；PID 可能已被复用');
   const resolution=checked.handoff?.status==='conflict'?codeHandoffs.approveResolution(task,checked.inspection.fingerprint):null;
   const fresh=row('SELECT * FROM tasks WHERE id=?',id);
-  const currentInspection=fresh.workspace_path?codeHandoffs.inspect(fresh):null;
+  const currentInspection=fresh.workspace_path?(await inspectTaskDelivery(id)).inspection:null;
+  coordinator.assertRetry(id,input);
   if(currentInspection && (resolution ? currentInspection.tree!==resolution.tree : currentInspection.fingerprint!==checked.inspection.fingerprint))throw new Error('恢复检查后工作区已变化，请重新检查');
   const workspaceFingerprint=currentInspection?.fingerprint ?? 'head:'+checked.sourceHead;
   if(checked.latestRun?.status==='unknown'){db.prepare("UPDATE runs SET status='cancelled',status_source='user-recovery-confirmed',ended_at=? WHERE id=?").run(now(),checked.latestRun.id);scheduling.settle(checked.latestRun.id,null);}
   db.prepare("UPDATE agent_messages SET status='rejected',error='旧运行已结束，恢复时不重放旧指导',completed_at=? WHERE target_task_id=? AND status IN ('queued','delivered','processing')").run(now(),id);
-  const approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint});
+  const approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint},source,repairPrompt);
   for(let pass=0;pass<8;pass++)for(const blocked of rows("SELECT id FROM tasks WHERE plan_id=? AND status='blocked'",task.plan_id)) {
     if(row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",blocked.id))continue;
     const bad=row("SELECT t.id FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=? AND t.status IN ('failed','cancelled','blocked','unknown','rejected','needs_revision') LIMIT 1",blocked.id);

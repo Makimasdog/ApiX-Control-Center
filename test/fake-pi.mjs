@@ -12,6 +12,11 @@ process.stdin.on("data", (chunk) => {
       process.exit(0);
     }
     if (command.type !== "prompt") continue;
+    if(command.message.startsWith('APIX_ARCHITECTURE_JSON\n') || command.message.startsWith('APIX_QUALITY_JSON\n')){
+      if(!process.argv.includes('--no-tools'))throw new Error('Architecture/quality inference must not execute project tools');
+      const answer=command.message.startsWith('APIX_ARCHITECTURE_JSON\n')?{summary:'fixture frozen architecture',modules:[{id:'core',name:'核心',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:500,calls:1},interfaces:[{name:'text',consumer:'external',protocol:'file',request:{type:'null'},response:{type:'string',const:'good'}}],dataStructures:[{name:'content',schema:{type:'string',const:'good'}}],acceptance:['a.txt 内容必须为 good'],checkIds:['tests']}]}:{passed:process.env.APIX_FIXTURE_QUALITY_FAIL!=='1',findings:process.env.APIX_FIXTURE_QUALITY_FAIL==='1'?['实际测试不足以证明交付符合内容接口，补齐实现与证据']:[]};
+      process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write(JSON.stringify({type:'agent_end'})+'\n');continue;
+    }
     if(process.argv.includes('fixture-manager-quota')){process.stderr.write('insufficient_quota',()=>process.exit(1));return;}
     process.stdout.write(JSON.stringify({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }) + "\n");
     process.stdout.write('{"type":"agent_start"}\n');
@@ -39,8 +44,8 @@ process.stdin.on("data", (chunk) => {
       if (command.message.startsWith('APIX_GUIDE_JSON\n')) {
         answer = {action:'guide',focus:'verification'};
       } else if (command.message.startsWith('APIX_PLAN_JSON\n')) {
-        const employees = JSON.parse(command.message.split('\n员工：').at(-1));
-        answer = {steps:[{prompt:'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
+        const employees = JSON.parse(command.message.split('\n员工：').at(-1).split('\n冻结架构：')[0]);
+        answer = {steps:[{...(command.message.includes('冻结架构：')?{moduleId:'core'}:{}),prompt:command.message.includes('冻结架构：')?'fixture-autonomy: 实现 core 模块 a.txt 内容接口':'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
       } else {
         const latest = command.message.split('用户最新消息：').at(-1).split('\n本次工具阶段的答复')[0];
         if(process.env.APIX_FIXTURE_NON_JSON_AFTER_TOOLS==='1' && process.argv.includes('--tools')){

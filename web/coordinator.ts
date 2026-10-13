@@ -3,13 +3,16 @@ import {readinessView,type Readiness} from './readiness.js';
 import { saveBrief } from './requirements-form.js';
 import { instructionState, recoveryForm } from './execution-view.js';
 import { schedulingView } from './scheduling-view.js';
+import {autonomyView,type AutonomyState} from './autonomy-view.js';
+import type {AutonomyPolicy} from '../src/architecture.js';
 import type { TaskProfile } from '../src/scheduling.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
-type Step = { prompt: string; employeeId: string; dependsOn: number[]; scheduling?:TaskProfile };
+type Step = { prompt: string; employeeId: string; dependsOn: number[]; moduleId?:string;scheduling?:TaskProfile };
 interface Session {
+  autonomy?:AutonomyState|null;autonomyPolicy?:AutonomyPolicy;autonomyRecoveryFingerprint?:string|null;
   workflow?:{enabled:boolean;version:number;employeeIds:string[]};
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
   requirements: Record<string,string>; assessment: {score:number;ready:boolean;conflicts:string[]}; policy: Policy; workerPolicies: Record<string,Policy>;
@@ -20,7 +23,7 @@ interface Session {
   capabilities?: {id:string;mailbox?:boolean}[];
   handoffs?: {task_id:string;status:string;input_commit:string;report:{files:string[];sources:{taskId:string;commit:string}[];error?:string}}[];
   scheduling?:Parameters<ReturnType<typeof schedulingView>['render']>[1];
-  schedulingTasks?:{taskId:string;profile:TaskProfile;decision:{reviewMode?:string;candidates:{name:string;eligible:boolean;reasons:string[];warnings:string[];waiting:string|null;estimateMinor:number|null;currency:string|null;minutes:number|null;history:{samples:number;accepted:number}}[]}}[];
+  schedulingTasks?:{taskId:string;profile:TaskProfile;decision:{reviewMode?:string;candidates:{name:string;eligible:boolean;reasons:string[];warnings:string[];waiting:string|null;forecastMinor?:number|null;forecastCurrency?:string|null;forecastSource?:string;estimateMinor:number|null;currency:string|null;minutes:number|null;history:{samples:number;accepted:number}}[]}}[];
   planningMeetings?:{id:string;plan_id:string;round:number;status:string;body:{minutes:string;disagreements:string[];proposals:{employeeId:string;status:string;claims:unknown[];decline?:string;error?:string}[]}}[];
 }
 interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null;sourceHead?:string|null}
@@ -35,6 +38,7 @@ let streaming = false; let isComposing = false;
 let newChat=false;
 type Workflow={enabled:boolean;version:number;employeeIds:string[];manager:Policy;employees:{id:string;name:string;runtime:string;version:number}[]};
 let workflow:Workflow|null=null;
+let autonomyPolicy:AutonomyPolicy|null=null;
 const messageDrafts = new Map<string,string>();
 const newMessageDrafts=new Map<string,string>();
 const failedReplies = new Map<string,{text:string;error:string}>();
@@ -154,6 +158,8 @@ executionSection.addEventListener('submit',event=>{event.preventDefault();void a
 executionSection.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-resume-runtime]');if(button)void action(async()=>{await api(`/api/projects/${projectId}/execution/runtime`,{version:executionPolicy!.version,runtime:button.dataset.resumeRuntime,paused:false});});});
 const schedulingSection=document.createElement('section');schedulingSection.className='surface-card coord-section';executionSection.after(schedulingSection);
 const schedulingUI=schedulingView(schedulingSection,(path,body)=>void action(async()=>{const originalProject=projectId;const originalSession=sessionId;const focus=document.activeElement;await api(path,body);if(originalProject===projectId && originalSession===sessionId && document.activeElement===focus)(focus as HTMLElement)?.blur();}));
+const autonomySection=document.createElement('section');autonomySection.className='surface-card coord-section';autonomySection.id='coord-autonomy';autonomySection.innerHTML='<h3>自主交付</h3>';executionSection.after(autonomySection);
+const autonomyUI=autonomyView(autonomySection,(path,body)=>void action(async()=>{await api(path,body);}));
 const meetingSection=document.createElement('section');meetingSection.className='surface-card coord-section';schedulingSection.after(meetingSection);
 // Reuse the existing controls in a chat-first desktop layout.
 const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coord-empty');const rail=$('.coord-rail');
@@ -219,7 +225,7 @@ $('#desktop-capabilities').addEventListener('click',()=>{toggleInspector(true);$
 function renderWorkflow(){
   if(!workflow || $('#desktop-workflow').contains(document.activeElement))return;
   $('#desktop-capabilities').textContent=`${workflow.manager.mode==='full_access'?'工具已开启':workflow.manager.mode==='read_only'?'只读工具':'工具待授权'} · ${workflow.enabled?'自动协作':'计划待审'}`;
-  $('#desktop-workflow').innerHTML=`<h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发，完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">${workflow.enabled?'':`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>${workflow.employees.map(e=>`<label><input type="checkbox" name="employee" value="${esc(e.id)}" checked>${esc(e.name)} · ${esc(e.runtime)}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>'}`}<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form>`;
+  $('#desktop-workflow').innerHTML=`<h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发；自主交付开启时按授权实测、自审及返工，其他目标完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">${workflow.enabled?'':`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>${workflow.employees.map(e=>`<label><input type="checkbox" name="employee" value="${esc(e.id)}" checked>${esc(e.name)} · ${esc(e.runtime)}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>'}`}<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form>`;
 }
 $('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});});});
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
@@ -275,13 +281,14 @@ function render(s: Session) {
   const actors=[{id:'apix',name:'ApiX · 管理者'},...snapshot.employees.map(e=>({id:e.id,name:`${e.name} · ${e.runtime}`}))];
   if (!$('#coord-permissions').contains(document.activeElement)) $('#coord-permissions').innerHTML=actors.map(a=>`<label class="coord-permission">${esc(a.name)}<select data-permission="${esc(a.id)}">${modeOptions((a.id==='apix'?s.policy:s.workerPolicies[a.id])?.mode ?? 'ask_approval')}</select></label>`).join('');
   const key=JSON.stringify([s.plan_id,s.planVersion,s.status,s.tasks.map(t=>[t.id,t.employee_id,t.prompt])]);
-  if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id)),scheduling:s.schedulingTasks?.find(p=>p.taskId===t.id)?.profile})); renderPlan(); }
+  if (s.autonomyPolicy)autonomyUI.render(projectId,s.autonomyPolicy,{id:s.id,revision:s.revision,autonomy:s.autonomy??null,autonomyRecoveryFingerprint:s.autonomyRecoveryFingerprint});
+  if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({moduleId:s.autonomy?.tasks.find(a=>a.task_id===t.id)?.module_id,prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id)),scheduling:s.schedulingTasks?.find(p=>p.taskId===t.id)?.profile})); renderPlan(); }
   for(const id of ['coord-save-plan','coord-dispatch','coord-add-step']) $( '#'+id).hidden=s.status!=='plan_review';
   $('#coord-tasks').innerHTML=s.tasks.map((t,i)=>{
     const waiting=s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(task=>task.id===d.depends_on_id)).filter(index=>index>=0 && s.tasks[index]!.status!=='accepted');
     const hint=waiting.length ? `前置步骤 ${waiting.map(index=>index+1).join('、')} 尚未验收` : '无待验收的前置步骤';
     const handoff=s.handoffs?.find(h=>h.task_id===t.id);
-    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?'待验收':statuses[t.status] ?? t.status)}</span>${['queued','completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
+    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?(s.autonomy?'等待自动质量检查':'待验收'):statuses[t.status] ?? t.status)}</span>${['queued','completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
   }).join('');
   const active=s.tasks.filter(t=>t.status==='running');
   $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
@@ -303,17 +310,18 @@ function renderPlan() {
 function candidateReasons(index:number) {
   const task=current?.tasks[index];const report=current?.schedulingTasks?.find(p=>p.taskId===task?.id);
   const review=report?.decision.reviewMode;const reviewLabel=review==='self_review'?'此步骤为自审':review==='independent'?'此步骤由另一位员工审查':review?'未声明被审查步骤，独立性未验证':'';
-  return report?`<details><summary>选人与排除原因（计划生成时）</summary><p>${esc(reviewLabel)}</p><p>保存能力、账户、权限或任务约束后需要重新审查计划。可在 estimates 中为各 employeeId 填写人工估计的 estimateMinor 与 minutes；未知留空，不同币种不互相比价。</p>${report.decision.candidates.map(e=>`<p><strong>${esc(e.name)} · ${e.eligible?'满足当前草案约束':'已排除'}</strong><br>${esc([...e.reasons,...e.warnings,e.waiting??''].filter(Boolean).join('；')||'无已知阻塞')}<br>已验收 ${e.history.accepted}/${e.history.samples} 个可比样本 · 费用上界 ${e.estimateMinor??'未知'} ${esc(e.currency??'')} · 时间 ${e.minutes??'未知'} 分钟</p>`).join('')}</details>`:'';
+  return report?`<details><summary>选人与排除原因（计划生成时）</summary><p>${esc(reviewLabel)}</p><p>保存能力、账户、权限或任务约束后需要重新审查计划。可在 estimates 中为各 employeeId 填写人工估计的 estimateMinor 与 minutes；未知留空，不同币种不互相比价。</p>${report.decision.candidates.map(e=>`<p><strong>${esc(e.name)} · ${e.eligible?'满足当前草案约束':'已排除'}</strong><br>${esc([...e.reasons,...e.warnings,e.waiting??''].filter(Boolean).join('；')||'无已知阻塞')}<br>已验收 ${e.history.accepted}/${e.history.samples} 个可比样本 · 预测 ${e.forecastMinor??'未知'} ${esc(e.forecastCurrency??'')}（${esc(e.forecastSource??'unknown')}） · 费用上界 ${e.estimateMinor??'未知'} ${esc(e.currency??'')} · 时间 ${e.minutes??'未知'} 分钟</p>`).join('')}</details>`:'';
 }
-function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map(el=>({scheduling:JSON.parse(el.querySelector<HTMLTextAreaElement>('[data-scheduling]')!.value),prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
+function readDraft(): Step[] { return [...root.querySelectorAll<HTMLElement>('[data-step]')].map((el,index)=>({moduleId:draft[index]?.moduleId,scheduling:JSON.parse(el.querySelector<HTMLTextAreaElement>('[data-scheduling]')!.value),prompt:el.querySelector<HTMLTextAreaElement>('[data-prompt]')!.value,employeeId:el.querySelector<HTMLSelectElement>('[data-employee]')!.value,dependsOn:el.querySelector<HTMLInputElement>('[data-deps]')!.value.split(',').filter(v=>v.trim()).map(v=>Number(v.trim())-1)})); }
 async function reload() {
   let version = ++reloadVersion; const selectedProject = projectId; reloading=true;
   try {
     if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
-    const [list,policy,automatic]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`),api<Workflow>(`/api/projects/${encodeURIComponent(projectId)}/workflow`)]);
+    const [list,policy,automatic,autonomous]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`),api<Workflow>(`/api/projects/${encodeURIComponent(projectId)}/workflow`),api<AutonomyPolicy>(`/api/projects/${encodeURIComponent(projectId)}/autonomy`)]);
     if(version!==reloadVersion || selectedProject!==projectId) return;
     if(!newChat && !list.some(s=>s.id===sessionId)) {const remembered=localStorage.getItem('apix.chat.'+projectId);selectSession(list.find(s=>s.id===remembered)?.id ?? list[0]?.id ?? '');version=reloadVersion;}
     workflow=automatic;renderWorkflow();
+    autonomyPolicy=autonomous;if(!sessionId)autonomyUI.render(projectId,autonomous,null);
     $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
     executionPolicy=policy;renderExecutionPolicy();
     const selected=list.find(s=>s.id===sessionId);

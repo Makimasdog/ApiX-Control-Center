@@ -71,7 +71,7 @@ async function harness(work, extraEnv={}) {
   let server; let errors='';
   const env={...process.env,APIX_LEGACY_API:'0',APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_PI_ENTRY:join(root,'test/fake-pi.mjs'),APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-claude.mjs'),...extraEnv};
   const request=async(path,body,expected=200,headers={})=>{
-    const res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+    let res;try{res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});}catch(error){throw new Error(`${error.message} (server pid ${server?.pid}, exit ${server?.exitCode})\n${errors}`);}
     const json=await res.json();assert.equal(res.status,expected,JSON.stringify(json));return json;
   };
   const start=async()=>{
@@ -84,6 +84,41 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+async function autonomyFixture(h,overrides={},verifySource="import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');assert.equal(process.env.APIX_AGENT_TOKEN,undefined);console.log('actual content check passed');") {
+  await writeFile(join(h.project,'verify.mjs'),verifySource);execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','approved fixture checks'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'autonomous fixture',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'implementer',runtime:'codex',role:'实现'})).id;
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'fixture-model',reasoningLevel:3,tags:[],tools:[],languages:[],projectIds:[],contextTokens:32000});
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  await h.request(`/api/projects/${projectId}/autonomy`,{version:0,enabled:true,approved:true,maxRepairs:2,maxMinutes:10,maxRunMinutes:5,checkpointMinutes:1,autoReassign:true,taskCapMinor:null,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}],...overrides});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'实现 a.txt 内容接口'});
+  for(const [field,value] of Object.entries({...answers,scope:'仅实现 a.txt 并按已有 verify.mjs 验收'}))s=await h.request(`/api/coordination/sessions/${s.id}/answers`,{revision:s.revision,field,value});
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});return {s,projectId,employeeId};
+}
+async function waitAutonomy(h,id,predicate){for(let i=0;i<400;i++){const s=await h.request(`/api/coordination/sessions/${id}`);if(predicate(s))return s;if(s.autonomy.state==='attention')throw new Error(JSON.stringify(s.autonomy));await delay(100);}throw new Error('autonomy timed out');}
+test('autonomous contract runs actual checks, creates a repair and accepts final integrated code without user review',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h);assert.equal(s.autonomy.architecture.modules[0].id,'core');assert.equal(s.tasks.length,2);assert.equal(s.autonomy.tasks[1].module_id,'integration');
+  const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed'||s.autonomy.state==='attention');assert.equal(final.autonomy.state,'completed',JSON.stringify(final.autonomy));assert.equal(final.derivedStatus,'completed');assert(final.tasks.every(t=>t.status==='accepted'));
+  assert.equal(final.autonomy.repairs.length,1);assert.match(final.autonomy.repairs[0].instruction,/检查 tests 失败/);assert.equal(final.autonomy.repairs[0].status,'dispatched');
+  assert.equal(final.autonomy.checks.filter(c=>c.status==='passed').length,2);assert.equal(final.autonomy.checks.filter(c=>c.status==='failed').length,1);assert(final.autonomy.checks.some(c=>c.body.tests[0].output.includes('actual content check passed')));
+  assert(final.autonomy.checks.filter(c=>c.status==='passed').every(c=>c.body.review.reviewMode==='apix_self_review'));
+  assert.equal(final.status,'completed');assert.equal(final.turns.filter(t=>t.kind==='delivery_completed').length,1);assert(!final.turns.find(t=>t.kind==='retry_approved').content.includes('AssertionError'),'technical failure details belong in delivery evidence');
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.runs.filter(r=>final.tasks.some(t=>t.id===r.task_id)).length,3,'background ticks must not duplicate a repair or verification');
+  const auditDb=new DatabaseSync(join(h.dir,'data','apix.sqlite'),{readOnly:true});try{assert(auditDb.prepare('SELECT observed_model FROM scheduling_attempts').all().every(a=>a.observed_model==='fixture-model'),'selected model must reach the actual worker argv');}finally{auditDb.close();}
+  const delivery=await h.request(`/api/tasks/${final.tasks[1].id}/delivery`);assert.equal(await readFile(join(delivery.workspacePath,'a.txt'),'utf8'),'good');
+  await h.restart();const restored=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(restored.autonomy.state,'completed');assert.equal(restored.autonomy.repairs.length,1);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('autonomous repair cap stops failures instead of accepting a successful process exit',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h,{maxRepairs:0});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert.equal(final.tasks[0].status,'needs_revision',final.autonomy.reason);assert.equal(final.autonomy.repairs.length,0);assert.match(final.autonomy.reason,/修复上限/);assert(final.tasks[1].status!=='accepted');
+  await h.request(`/api/coordination/sessions/${s.id}/autonomy/resume`,{revision:final.revision,fingerprint:'stale',reviewed:true},400);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('passing actual checks cannot override failed ApiX review and repair evidence stays auditable',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h,{maxRepairs:1});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert(final.autonomy.checks.some(c=>c.body.review?.passed===false && c.body.tests.every(t=>t.exitCode===0)));assert.equal(final.autonomy.repairs.length,1);assert(final.tasks.every(t=>t.status!=='accepted'));
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_FIXTURE_QUALITY_FAIL:'1'}));
+test('revoking autonomous policy during a real verification prevents review, acceptance and retry',async()=>harness(async h=>{
+  const {s,projectId}=await autonomyFixture(h,{},"setTimeout(()=>{console.log('delayed actual check');},4000);");const checking=await waitAutonomy(h,s.id,s=>s.autonomy.checks.some(c=>c.status==='running'));
+  await h.request(`/api/projects/${projectId}/autonomy`,{version:checking.autonomyPolicy.version,enabled:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert(final.tasks.every(t=>t.status!=='accepted'));assert.equal(final.autonomy.repairs.length,0);assert.match(final.autonomy.reason,/授权|策略/);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
 test('slow Git inspection does not block HTTP and preserves the production delivery fingerprint',async()=>harness(async h=>{
   let {s,employeeId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});

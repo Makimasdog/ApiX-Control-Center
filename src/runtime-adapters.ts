@@ -73,5 +73,7 @@ export function createRuntimeAdapters(store: Store, findExecutable: (name: strin
     return [];
   }
   function format(id: string) { return row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id)?.format ?? 'jsonl'; }
-  return { command, catalog, register, args, format };
+  function supportsModel(id:string){return ['pi','codex','claude'].includes(id);}
+  function modelArgs(id:string,model:string){if(!model)return [];if(!supportsModel(id))throw new Error('当前适配器尚未验证显式模型选择，不能依据声明费率自动路由');return ['--model',model];}
+  return { command, catalog, register, args, modelArgs,supportsModel,format };
 }

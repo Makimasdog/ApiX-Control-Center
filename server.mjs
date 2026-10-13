@@ -10,6 +10,7 @@ import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
 import { readLocalModels } from './dist/src/local-models.js';
 import {workflowSettings,saveWorkflow,stopCoordinationSession,readiness,inspectTaskDelivery} from './control-plane.mjs';
+import {autonomySettings,saveAutonomySettings,resumeAutonomySession} from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -21,7 +22,8 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
 };
 
-createServer(async (request, response) => {
+// Freezing Git inputs can outlast the default idle timeout while a polling request is in transit.
+createServer({keepAliveTimeout:65000},async (request, response) => {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
@@ -66,6 +68,7 @@ createServer(async (request, response) => {
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
       if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname) && request.method === 'GET') {send(200,workflowSettings(pathname.split('/')[3]));return;}
+      if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname) && request.method === 'GET') {send(200,autonomySettings(pathname.split('/')[3]));return;}
       if (pathname === '/api/manager/providers' && request.method === 'GET') { send(200, {providers: BUILTIN_PROVIDERS}); return; }
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
       if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
@@ -133,6 +136,8 @@ createServer(async (request, response) => {
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
       else if (pathname === '/api/manager/test') result = await testManagerConnection(input);
       else if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname)) result=saveWorkflow(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname)) result=saveAutonomySettings(pathname.split('/')[3],input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/autonomy\/resume$/.test(pathname)) result=resumeAutonomySession(pathname.split('/')[4],input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/stop$/.test(pathname)) result=stopCoordinationSession(pathname.split('/')[4],input);
       else if (pathname === '/api/scheduling/accounts') result=schedulingAccount(input);
       else if (pathname === '/api/scheduling/accounts/resume') result=resumeSchedulingAccount(input);
@@ -195,7 +200,7 @@ createServer(async (request, response) => {
       else if (/^\/api\/runs\/[^/]+\/stop$/.test(pathname)) { stopRun(pathname.split("/")[3]); result = { requested: true }; }
       else if (/^\/api\/tasks\/[^/]+\/review$/.test(pathname)) { acceptTask(pathname.split("/")[3], input.accepted === true,input.fingerprint); result = { reviewed: true }; }
       else if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname)) result=freezeHistoricalDelivery(pathname.split('/')[3],input);
-      else if (/^\/api\/tasks\/[^/]+\/recovery$/.test(pathname)) result=recoverTask(pathname.split('/')[3],input);
+      else if (/^\/api\/tasks\/[^/]+\/recovery$/.test(pathname)) result=await recoverTask(pathname.split('/')[3],input);
       else if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname)) result=saveExecutionSettings(pathname.split('/')[3],input);
       else if (/^\/api\/projects\/[^/]+\/execution\/runtime$/.test(pathname)) result=changeRuntimePause(pathname.split('/')[3],input);
       else { send(404, { error: "Not found" }); return; }

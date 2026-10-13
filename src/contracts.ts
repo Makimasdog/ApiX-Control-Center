@@ -5,7 +5,7 @@ export type InteractionMode = 'structured' | 'conversational';
 export type RequirementField = 'goal' | 'scope' | 'constraints' | 'deliverable' | 'acceptance';
 export type Requirements = Record<RequirementField, string>;
 export interface RequirementAssessment { score: number; threshold: number; missing: RequirementField[]; conflicts: string[]; ready: boolean }
-export interface PlanStep { prompt: string; employeeId: string; dependsOn: number[]; scheduling?: import('./scheduling.js').TaskProfile }
+export interface PlanStep { prompt: string; employeeId: string; dependsOn: number[]; moduleId?:string; scheduling?: import('./scheduling.js').TaskProfile }
 export interface Employee { id: string; name: string; role: string; runtime: string; enabled: number; capabilityProfile?: import('./scheduling.js').CapabilityProfile }
 export interface Task { id: string; project_id: string; plan_id: string | null; employee_id: string; runtime: string; prompt: string; status: string }
 export interface Session {
@@ -21,7 +21,7 @@ export interface Store {
   now(): string;
 }
 export interface ManagerToolEvent { toolName:string; phase:'start'|'end'; isError?:boolean }
-export interface InferenceContext { projectId:string; purpose:'discussion'|'planning'|'formatting'|'connection_test'; onTool?:(event:ManagerToolEvent)=>void }
+export interface InferenceContext { projectId:string; purpose:'discussion'|'planning'|'formatting'|'connection_test'|'architecture'|'quality'; onTool?:(event:ManagerToolEvent)=>void }
 export interface ModelBackend { infer(prompt: string, onDelta?: (delta: string) => void, context?:InferenceContext): Promise<string> }
 export interface CoordinatorDecision {
   kind: 'clarification' | 'requirement_review' | 'progress' | 'work';
