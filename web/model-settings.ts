@@ -46,3 +46,11 @@ export function localLookupRequest(draft:ModelDraft, providers:ProviderConfig[])
 export function mergeLocalModels(models:{id:string;name:string}[], selected:string):{id:string;name:string}[] {
   return selected && !models.some(m=>m.id===selected)?[{id:selected,name:selected+'（当前填写）'},...models]:models;
 }
+
+export function connectionTestRequest(draft:ModelDraft,providers:ProviderConfig[],saved:ModelSettings|null,ready:boolean,projectId:string,approved:boolean) {
+  if(!projectId)throw new Error('请先选择项目，连接测试使用该项目的推理预算');
+  const settings=settingsPayload(draft,providers,saved,ready);
+  if(!saved || Object.entries(settings).some(([key,value])=>saved[key as keyof ModelSettings]!==value))throw new Error('请先保存当前模型配置再测试');
+  if(!approved)throw new Error('连接测试可能产生模型费用，请先勾选批准');
+  return {projectId,settings,approved:true};
+}

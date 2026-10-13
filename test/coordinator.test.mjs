@@ -84,6 +84,59 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('connection test uses saved settings without tools, work or approval bypass',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'连接测试',path:h.project})).id;
+  const settings=await h.request('/api/manager/settings');
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  assert.match((await h.request('/api/manager/test',{projectId,settings},400)).error,/费用/);
+  assert.match((await h.request('/api/manager/test',{projectId:'missing',settings,approved:true},400)).error,/不存在/);
+  assert.match((await h.request('/api/manager/test',{projectId,settings:{...settings,model:'stale'},approved:true},400)).error,/变化/);
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:true});
+  assert.match((await h.request('/api/manager/test',{projectId,settings,approved:true},400)).error,/账户/);
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:1,requireFreshQuota:false});
+  const result=await h.request('/api/manager/test',{projectId,settings,approved:true});
+  assert.equal(result.toolsEnabled,false);assert(result.durationMs>=0);assert.deepEqual(result.settings,settings);
+  assert.equal((await h.request('/api/snapshot')).tasks.length,0);
+  assert.deepEqual(await h.request(`/api/coordination/sessions?projectId=${projectId}`),[]);
+  assert.equal(await readFile(join(h.project,'README.md'),'utf8'),'fixture\n');
+  assert.deepEqual(await h.request('/api/manager/settings'),settings);
+},{APIX_AGENT_TOKEN:'fixture-worker-token'}));
+test('connection test reserves budget once and blocks duplicate calls and configuration changes',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'连接预算',path:h.project})).id;
+  const settings=await h.request('/api/manager/settings');
+  await h.request('/api/scheduling/accounts',{id:'connection-api',alias:'连接测试账户',type:'api',currency:'USD',limitMinor:10,version:0});
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,limitMinor:10,currency:'USD',managerAccountId:'connection-api',managerEstimateMinor:6});
+  const pending=h.request('/api/manager/test',{projectId,settings,approved:true});
+  await waitFor(async()=>{const view=await h.request(`/api/projects/${projectId}/scheduling`);return view.ledger.some(r=>r.state==='reserved');});
+  assert.match((await h.request('/api/manager/test',{projectId,settings,approved:true},400)).error,/进行中/);
+  assert.match((await h.request('/api/manager/settings',settings,400)).error,/进行中/);
+  await pending;
+  const budget=await h.request(`/api/projects/${projectId}/scheduling`);
+  assert.equal(budget.committedMinor,6);assert.equal(budget.ledger.length,1);assert.equal(budget.ledger[0].state,'unmeasured');
+  await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+  await h.request('/api/manager/settings',settings);
+},{APIX_FIXTURE_CONNECTION_DELAY_MS:'600'}));
+test('connection test rejects invalid replies and redacts native failures while releasing its busy guard',async()=>{
+  for(const mode of ['invalid','error','quota'])await harness(async h=>{
+    const projectId=(await h.request('/api/projects',{name:'连接失败',path:h.project})).id;
+    const settings=await h.request('/api/manager/settings');
+    if(mode==='quota'){
+      await h.request('/api/scheduling/accounts',{id:'quota-api',alias:'额度测试账户',type:'api',currency:'USD',version:0});
+      await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'quota-api',managerEstimateMinor:1});
+    }
+    const result=await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+    assert.match(result.error,mode==='invalid'?/有效连接测试/:mode==='quota'?/额度不足/:/连接测试失败/);
+    assert.doesNotMatch(JSON.stringify(result),/fixture-secret/);
+    await h.request('/api/manager/settings',settings);
+    const retry=await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+    assert.doesNotMatch(retry.error,/进行中/);
+    if(mode==='quota'){
+      const budget=await h.request(`/api/projects/${projectId}/scheduling`);
+      assert.equal(budget.ledger.length,1);assert.equal(budget.ledger[0].state,'unmeasured');assert(budget.accounts[0].pause);
+      assert.match(retry.error,/暂停/);
+    }
+  },{APIX_FIXTURE_CONNECTION_MODE:mode});
+});
 test('manager tools follow project permission, use project cwd and stream audited activity',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'工具验收',path:h.project})).id;
   for(const [mode,expected] of [['ask_approval',[]],['read_only',['read','grep','find','ls']],['full_access',['read','bash','edit','write','grep','find','ls']]]){

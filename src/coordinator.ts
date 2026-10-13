@@ -422,6 +422,7 @@ export function createCoordinator(deps: Dependencies) {
   function timeline(id: string, at?: number) { const s = session(id); return memory.stateAt(s.project_id,id,at); }
   function getSettings() { return row<{provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string}>("SELECT provider,model,base_url AS baseUrl,api_type AS apiType,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1") ?? { provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'' }; }
   function saveSettings(input: Record<string, unknown>) {
+    if(busy.has('manager-connection-test'))throw new Error('模型连接测试进行中，请完成后再保存配置');
     const provider = String(input.provider ?? '').trim(); const model = String(input.model ?? '').trim();
     const baseUrl = String(input.baseUrl ?? '').trim(); const apiType = String(input.apiType ?? 'openai-completions').trim(); const apiKeyEnv = String(input.apiKeyEnv ?? '').trim();
     const validation = validateModelConfig({provider, model, baseUrl, apiType, apiKeyEnv});
@@ -429,7 +430,22 @@ export function createCoordinator(deps: Dependencies) {
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }
-  return { workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
+  async function testModelConnection(input:Record<string,unknown>) {
+    if(input.approved!==true)throw new Error('测试会调用模型并可能产生费用，请先明确批准');
+    const projectId=text(input.projectId,100);
+    if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');
+    const settings=getSettings();const expected=object(input.settings);
+    if(Object.entries(settings).some(([key,value])=>expected[key]!==value))throw new Error('模型配置已变化，请先保存并刷新后测试');
+    const key='manager-connection-test';if(busy.has(key))throw new Error('模型连接测试进行中，请勿重复测试');
+    busy.add(key);const started=Date.now();
+    try{
+      await metered(projectId,()=>agent.testConnection(projectId,randomUUID()));
+      const result={projectId,settings,durationMs:Date.now()-started,toolsEnabled:false};
+      memory.append(projectId,projectId,'manager.connection_test',{durationMs:result.durationMs,provider:settings.provider,model:settings.model,toolsEnabled:false},'user');
+      return result;
+    }finally{busy.delete(key);}
+  }
+  return {testModelConnection, workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
     listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:coordinationStatus(s.status,tasksOf(s))} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

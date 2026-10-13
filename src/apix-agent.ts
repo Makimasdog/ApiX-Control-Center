@@ -96,6 +96,12 @@ export function createApiXAgent(backend: ModelBackend) {
       return { action: report.blocked ? 'escalate' : 'observe', focus: 'verification', mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0,300) };
     }
   }
-  return { discuss, plan, guide };
+  async function testConnection(projectId: string, nonce: string) {
+    const raw = await backend.infer('APIX_CONNECTION_TEST\n仅测试模型推理连接，不执行工具、不安排工作。只返回 JSON：'+JSON.stringify({nonce}), undefined, {projectId,purpose:'connection_test'});
+    let answer:unknown;
+    try { answer=JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g,'')); } catch { throw new Error('模型未返回有效连接测试结果'); }
+    if(object(answer).nonce!==nonce)throw new Error('模型未返回有效连接测试结果');
+  }
+  return { discuss, plan, guide, testConnection };
 }
 export type ApiXAgent = ReturnType<typeof createApiXAgent>;

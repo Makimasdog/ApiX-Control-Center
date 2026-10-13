@@ -15,6 +15,16 @@ process.stdin.on("data", (chunk) => {
     if(process.argv.includes('fixture-manager-quota')){process.stderr.write('insufficient_quota',()=>process.exit(1));return;}
     process.stdout.write(JSON.stringify({ id: command.id, type: "response", command: "prompt", success: true, data: { disposition: "started" } }) + "\n");
     process.stdout.write('{"type":"agent_start"}\n');
+    if(command.message.startsWith('APIX_CONNECTION_TEST\n')){
+      if(!process.argv.includes('--no-tools') || !process.argv.includes('--no-context-files') || process.argv.includes('--tools') || process.env.APIX_AGENT_TOKEN)throw new Error('Connection test exposed tools, context files or worker credentials');
+      const result=JSON.parse(command.message.split('只返回 JSON：')[1]);
+      const mode=process.env.APIX_FIXTURE_CONNECTION_MODE;
+      setTimeout(()=>{
+        if(mode==='error' || mode==='quota'){process.stderr.write((mode==='quota'?'insufficient_quota ':'')+'fixture-secret-should-not-leak');process.exit(1);return;}
+        process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(mode==='invalid'?{nonce:'wrong'}:result)}]}})+'\n');
+        process.stdout.write(JSON.stringify({type:'agent_end'})+'\n');
+      },Number(process.env.APIX_FIXTURE_CONNECTION_DELAY_MS ?? 0));continue;
+    }
     if(command.message.startsWith('APIX_PLANNING_CLAIM_JSON\n')){
       const args=process.argv;
       if(args.includes('fixture-meeting-fail')){process.stderr.write('fixture consultation unavailable');process.exit(1);}

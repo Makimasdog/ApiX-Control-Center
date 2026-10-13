@@ -3,7 +3,7 @@ import { saveBrief } from './requirements-form.js';
 import { instructionState, recoveryForm } from './execution-view.js';
 import { schedulingView } from './scheduling-view.js';
 import type { TaskProfile } from '../src/scheduling.js';
-import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
+import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
@@ -304,7 +304,7 @@ async function reload() {
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   const changed=projectId!==event.detail.projectId;
-  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';}
+  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';updateLocalLookup();}
   updateStreamingControls();
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
   if(root.classList.contains('active-page') && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
@@ -382,17 +382,23 @@ $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void
 // Model form uses the same state/payload functions as its regression tests.
 const modelForm=$<HTMLFormElement>('#coord-model');
 modelForm.insertAdjacentHTML('beforeend','<button type="button" id="model-discover" class="outline-button" hidden>读取本地模型</button><p id="model-discovery-status" class="coord-muted" role="status"></p><datalist id="local-model-options"></datalist>');
+modelForm.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="model-test-approved">批准一次连接测试，可能产生模型费用，使用当前项目的推理预算</label><button type="button" id="model-test" class="outline-button">测试已保存的模型连接</button><p class="coord-muted">无项目工具、不启动员工。90 秒后请求终止；离开页面不会取消调用，结果不证明工具或员工可用。</p><p id="model-test-status" role="status"></p>');
 for(const name of ['customModel','customModelName'])(modelForm.elements.namedItem(name) as HTMLInputElement).setAttribute('list','local-model-options');
 const providerSelect=$<HTMLSelectElement>('#model-provider-select');
 const modelSelect=$<HTMLSelectElement>('#model-select');
 let providers:ProviderConfig[]=[];let savedSettings:ModelSettings|null=null;let modelReady=false;
 let lookupVersion=0;let lookupSignature='';let lookupPending=false;
+let testPending=false;let testSignature='';
 function modelDraft(){return Object.fromEntries(new FormData(modelForm)) as ModelDraft;}
 function updateLocalLookup() {
   const request=modelReady?localLookupRequest(modelDraft(),providers):null;
   const signature=JSON.stringify([providerSelect.value,request]);
   if(signature!==lookupSignature){lookupSignature=signature;lookupVersion++;lookupPending=false;$('#model-discovery-status').textContent='';$('#local-model-options').innerHTML='';}
   const button=$<HTMLButtonElement>('#model-discover');button.hidden=!request;button.disabled=!request || lookupPending;
+  const signatureTest=JSON.stringify([projectId,modelDraft(),savedSettings]);
+  if(signatureTest!==testSignature){testSignature=signatureTest;$('#model-test-status').textContent='';$<HTMLInputElement>('#model-test-approved').checked=false;}
+  $<HTMLButtonElement>('#model-test').disabled=!modelReady || !projectId || testPending;
+  $<HTMLButtonElement>('#coord-model button').disabled=!modelReady || testPending;
 }
 function applyModelDraft(draft:ModelDraft) {
   const config=providers.find(p=>p.id===draft.provider);
@@ -423,10 +429,25 @@ $('#model-discover').addEventListener('click',async()=>{
   } catch(e){if(version===lookupVersion)status.textContent='读取失败：'+(e instanceof Error?e.message:String(e))+'。已保留当前配置，可继续手动输入。';}
   finally {if(version===lookupVersion){lookupPending=false;updateLocalLookup();}}
 });
+$('#model-test').addEventListener('click',async()=>{
+  if(testPending)return;
+  const status=$('#model-test-status');
+  try{
+    const request=connectionTestRequest(modelDraft(),providers,savedSettings,modelReady,projectId,$<HTMLInputElement>('#model-test-approved').checked);
+    testPending=true;updateLocalLookup();const signature=testSignature;
+    status.textContent='正在测试已保存的模型…';
+    try{
+      const result=await api<{projectId:string;durationMs:number}>('/api/manager/test',request);
+      if(signature===testSignature)status.textContent=`推理连接成功，用时 ${(result.durationMs/1000).toFixed(1)} 秒；未执行项目工具或员工任务。`;
+    }catch(e){if(signature===testSignature)status.textContent=e instanceof Error?e.message:String(e);}
+    finally{testPending=false;$<HTMLInputElement>('#model-test-approved').checked=false;updateLocalLookup();}
+  }catch(e){status.textContent=e instanceof Error?e.message:String(e);}
+});
 modelForm.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
   const draft=Object.fromEntries(new FormData(modelForm)) as ModelDraft;
   const payload=settingsPayload(draft,providers,savedSettings,modelReady);
   savedSettings=await api<ModelSettings>('/api/manager/settings',payload);
+  updateLocalLookup();
 });});
 modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=true);
 void Promise.all([api<{providers:ProviderConfig[]}>('/api/manager/providers'),api<ModelSettings>('/api/manager/settings')]).then(([catalog,settings])=>{

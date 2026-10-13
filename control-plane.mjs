@@ -966,7 +966,7 @@ async function askPiDirector(prompt, onDelta, consultation, context) {
   const project=context?row('SELECT path FROM projects WHERE id=?',context.projectId):null;
   if(context && !project)throw new Error('推理项目不存在');
   const policy=context?permissions.get(context.projectId):null;
-  const tools=policy?.mode==='full_access' && context.purpose==='discussion'?'read,bash,edit,write,grep,find,ls':policy && policy.mode!=='ask_approval' && context.purpose!=='formatting'?'read,grep,find,ls':null;
+  const tools=policy?.mode==='full_access' && context.purpose==='discussion'?'read,bash,edit,write,grep,find,ls':policy && policy.mode!=='ask_approval' && ['discussion','planning'].includes(context.purpose)?'read,grep,find,ls':null;
   const managerEntry = process.env.APIX_MANAGER_PI_ENTRY;
   const command = !consultation && managerEntry && existsSync(managerEntry) ? { executable: process.execPath, prefix: [resolve(managerEntry)] } : commandFor("pi");
   if (!command) throw new Error("Pi 未安装或不可用");
@@ -982,7 +982,7 @@ async function askPiDirector(prompt, onDelta, consultation, context) {
   }
   return new Promise((resolve, reject) => {
     managerEnv=piShellEnvironment(managerEnv);
-    if(consultation){managerEnv={...managerEnv};for(const key of ['APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_AGENT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL'])delete managerEnv[key];}
+    if(consultation || context?.purpose==='connection_test'){managerEnv={...managerEnv};for(const key of ['APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_AGENT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL'])delete managerEnv[key];}
     const structured=prompt.startsWith('APIX_');
     const protocol=prompt.startsWith('APIX_COORDINATOR_JSON')?'最终格式：{"kind":"work|clarification|progress|requirement_review","question":"本轮完整中文回复","updates":[],"conflicts":[]}。明确安排、分发或实施工作时 kind=work，员工派发由宿主处理。':prompt.startsWith('APIX_PLAN_JSON')?'最终格式：{"steps":[{"prompt":"具体范围、交付与验收","employeeId":"用户消息提供的真实员工 ID","dependsOn":[]}]}。':'最终格式严格遵守用户消息中的宿主 JSON 协议。';
     const system='你是 ApiX 管理宿主的 JSON 决策组件，不是普通终端编码助手。可先使用实际提供的工具，但最终 assistant 消息只能是完整 JSON 对象，必须以 { 开始，以 } 结束。不要 Markdown、前言或自然语言总结。操作总结只能放入 question/reply 字符串。工具完成或失败都不能解除 JSON 契约；遵守项目规则和本次权限，不自行启动其他 Agent。'+protocol;
@@ -1270,7 +1270,10 @@ export function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
-const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, agent: createApiXAgent({ infer:(prompt,onDelta,context)=>askPiDirector(prompt,onDelta,undefined,context) }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,
+const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+  try{return await askPiDirector(prompt,onDelta,undefined,context);}
+  catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查 Pi 入口、模型服务、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
+} }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,
   reportManagerFailure:(projectId,sourceId,error)=>{if(quotaFailure(error))scheduling.pauseAccountId(scheduling.policy(projectId).managerAccountId,sourceId);},
   consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model):askPiDirector(prompt,undefined,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
@@ -1297,6 +1300,7 @@ export const stopCoordinationSession=coordinator.stopSession;
 export const changePermission = coordinator.changePolicy;
 export const managerSettings = coordinator.getSettings;
 export const saveManagerSettings = coordinator.saveSettings;
+export const testManagerConnection = coordinator.testModelConnection;
 export const searchCoordinationMemory = memory.search;
 export function permissionPolicy(projectId, subject = "apix") { return permissions.get(projectId, subject); }
 export const registerRuntimeAdapter = runtimeAdapters.register;
