@@ -16,7 +16,7 @@ let profileLoadedProjectId = null;
 let memoryResults = null;
 let renderedProposalKey = null;
 let directorSending = false;
-let currentPage = "workspace";
+let currentPage = "coordinator";
 let editing = null;
 let toastTimer;
 let messageStream = null;
@@ -67,20 +67,25 @@ function project() { return data.projects.find((item) => item.id === selectedPro
 function task() { return data.tasks.find((item) => item.id === selectedTaskId); }
 function runFor(taskId) { return data.runs.find((item) => item.task_id === taskId); }
 function go(page) {
+  if (["workspace", "director"].includes(page)) page = "coordinator";
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
-  $("#breadcrumb-page").textContent = { workspace: "工作台", director: "Director", missions: "任务与员工", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
+let refreshing=false;let snapshotETag='';
 async function refresh() {
+  if(refreshing)return;refreshing=true;
   try {
-    data = await api("/api/snapshot");
+    const response=await fetch('/api/snapshot',{headers:snapshotETag?{'If-None-Match':snapshotETag}:{}});
+    if(response.status!==304){if(!response.ok)throw new Error(`HTTP ${response.status}`);data=await response.json();snapshotETag=response.headers.get('ETag') ?? '';}
     if (!data.projects.some((item) => item.id === selectedProjectId)) selectedProjectId = data.projects[0]?.id ?? null;
     if (!data.conversations.some((item) => item.id === selectedConversationId && item.project_id === selectedProjectId)) selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null;
     if (selectedConversationId) localStorage.setItem("apix.selectedConversation", selectedConversationId);
     else localStorage.removeItem("apix.selectedConversation");
     if (!data.tasks.some((item) => item.id === selectedTaskId && item.conversation_id === selectedConversationId)) selectedTaskId = data.tasks.find((item) => item.conversation_id === selectedConversationId)?.id ?? null;
-    selectedDetails = selectedTaskId ? await api(`/api/tasks/${selectedTaskId}/details`) : null;
+    selectedDetails = selectedTaskId && currentPage==='workspace' ? await api(`/api/tasks/${selectedTaskId}/details`) : null;
     if (selectedProjectId !== streamProjectId) {
       messageStream?.close();
       streamProjectId = selectedProjectId;
@@ -88,7 +93,9 @@ async function refresh() {
       if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => refresh());
     }
     render();
+    document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
+  finally{refreshing=false;}
 }
 function render() { renderProjects(); renderAgents(); renderTasks(); renderPlans(); renderDirector(); renderConversations(); renderWorkspace(); renderSettings(); renderCollaboration(); renderMemory(); renderMessageSupervision(); }
 function renderMessageSupervision() {
@@ -149,7 +156,7 @@ function renderAgents() {
     const runtime = data.runtimes.find((entry) => entry.id === item.runtime);
     const available = !!item.enabled && !!runtime?.available;
     const active = data.tasks.filter((task) => task.employee_id === item.id && ["running", "stopping"].includes(task.status)).length;
-    return `<article class="resource-card ${item.enabled ? "" : "off"}"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><span class="${available ? "selected-label" : "type-label"}">${!item.enabled ? "已停用" : !runtime?.available ? "Runtime 不可用" : active ? `${active} 个任务运行中` : "待命"}</span></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.role)} · ${escapeHtml(item.department || "未分组")} · ${escapeHtml(runtime?.name ?? item.runtime)}</p><div class="item-card-bottom"><span class="type-label">${escapeHtml(item.runtime)}</span><div><button class="text-action" data-edit-employee="${item.id}">编辑</button> <button class="text-action danger" data-delete-employee="${item.id}">删除</button></div></div></article>`;
+    return `<article class="resource-card ${item.enabled ? "" : "off"}"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><span class="${available ? "selected-label" : "type-label"}">${!item.enabled ? "已停用" : !runtime?.available ? "Runtime 不可用" : active ? `${active} 个任务运行中` : "待命"}</span></div><h3 class="item-card-title"><button class="employee-link" data-open-employee="${item.id}">${escapeHtml(item.name)}</button></h3><p class="item-card-description">${escapeHtml(item.role)} · ${escapeHtml(item.department || "未分组")} · ${escapeHtml(runtime?.name ?? item.runtime)}</p><div class="item-card-bottom"><button class="text-action" data-open-employee="${item.id}">查看详情</button><div><button class="text-action" data-edit-employee="${item.id}">编辑</button> <button class="text-action danger" data-delete-employee="${item.id}">删除</button></div></div></article>`;
   }).join("") || `<div class="empty-card">还没有员工。先从已发现的 Runtime 注册一个岗位。</div>`;
   const select = $("#employee-select"); const current = select.value;
   const availableEmployees = data.employees.filter((item) => item.enabled && data.runtimes.some((runtime) => runtime.id === item.runtime && runtime.available && runtime.managed));
@@ -213,7 +220,7 @@ function summary(event) {
 }
 function renderSettings() {
   const model = settings.models.find((item) => item.id === settings.selectedModelId);
-  $("#top-model-name").textContent = model?.name ?? "选择模型";
+  $("#top-model-name").textContent = "ApiX 推理模型";
   $("#active-model-title").textContent = model?.name ?? "尚未选择模型";
   $("#active-model-subtitle").textContent = model?.modelId ?? "仅保存偏好；具体运行模型由 Agent 自身配置决定";
   $("#active-provider").textContent = model?.provider ?? "—";
@@ -247,7 +254,7 @@ function openEditor(kind, id = null) {
 async function mutate(path, body) { try { await api(path, body); await refresh(); } catch (error) { toast(error.message); } }
 
 document.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-model],[data-remove-model],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
+  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-open-employee],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-model],[data-remove-model],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
   if (!target) return;
   const d = target.dataset;
   if (d.pageTarget) go(d.pageTarget);
@@ -256,9 +263,10 @@ document.addEventListener("click", async (event) => {
     const report = review && JSON.parse(review.report);
     if (review && await confirmAction("应用集成结果", `目标仓库：${review.repository_path}\n变更文件：${report.changedFiles.join(", ")}\n\n确认后会把已审查的差异写入该仓库工作区。`)) await mutate(`/api/integrations/${review.id}/apply`, {});
   }
-  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("workspace"); }
+  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("coordinator"); }
   else if (d.editProject) openEditor("project", d.editProject);
   else if (d.registerRuntime) openEditor("employee", d.registerRuntime);
+  else if (d.openEmployee) { go('employee'); document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:d.openEmployee})); }
   else if (d.editEmployee) openEditor("employee", d.editEmployee);
   else if (d.deleteEmployee) { const employee = data.employees.find((item) => item.id === d.deleteEmployee); if (employee && await confirmAction("删除员工", `删除 ${employee.name} 后，历史任务和运行审计仍保留姓名。若该员工是部门经理或有活动任务，请先处理。`)) { await mutate(`/api/employees/${employee.id}/delete`, {}); } }
   else if (d.selectConversation) { selectedConversationId = d.selectConversation; selectedTaskId = null; selectedDetails = null; await refresh(); go("workspace"); }
@@ -350,11 +358,11 @@ $("#scan-agents").addEventListener("click", async () => { try { await api("/api/
 $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
 $("#task-details-close").addEventListener("click", () => $("#task-details-dialog").close());
 $("#dialog-cancel").addEventListener("click", () => $("#editor-dialog").close());
-$("#brand-home").addEventListener("click", () => go("workspace"));
-$("#top-model-button").addEventListener("click", () => go("models"));
+$("#brand-home").addEventListener("click", () => go("overview"));
+$("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
-$("#new-conversation").addEventListener("click", async () => { if (!selectedProjectId) { go("projects"); toast("请先选择项目"); return; } try { const created = await api("/api/conversations", { projectId: selectedProjectId }); selectedConversationId = created.id; selectedTaskId = null; await refresh(); go("workspace"); $("#chat-input").focus(); } catch (error) { toast(error.message); } });
+$("#new-conversation").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:new-chat")); });
 $("#open-about").addEventListener("click", () => toast("ApiX Agent OS · 本地任务与运行数据保存在 SQLite"));
 $("#director-chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -450,13 +458,15 @@ $("#collab-plan-form").addEventListener("submit", async (event) => { event.preve
 $("#meeting-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const reviewerIds = $$("#meeting-reviewers input:checked").map((item) => item.value); await api("/api/meetings", { planId: $("#meeting-plan-select").value, sourceTaskId: $("#meeting-source-select").value, topic: event.currentTarget.elements.topic.value, reviewerIds }); event.currentTarget.elements.topic.value = ""; await refresh(); toast("评审任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
 $("#integration-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const result = await api("/api/integrations", { planId: $("#integration-plan-select").value, repositoryId: $("#integration-repository-select").value || null }); await refresh(); toast(result.status === "conflict" ? "发现冲突，请查看报告" : "集成预检已生成"); } catch (error) { toast(error.message); } });
 $("#manager-review-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await api("/api/manager-reviews", { planId: $("#manager-plan-select").value, departmentId: $("#manager-department-select").value }); await refresh(); toast("经理审查任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
-$("#page-director").insertAdjacentHTML("beforeend", `<section class="section-block"><div class="block-header"><div><h2>Agent 消息监督</h2><p>Director 可查看消息、关联交付物、超时重试与拦截记录。</p></div><span id="mailbox-summary" class="count-label"></span></div><div id="agent-message-list" class="collab-list"></div></section><section class="section-block"><div class="block-header"><div><h2>资源锁</h2><p>锁使用租约，到期后可重新获取；请核对仍在运行的 Agent。</p></div></div><div id="agent-lock-list" class="collab-list"></div></section>`);
+$("#page-missions").insertAdjacentHTML("beforeend", `<section class="section-block"><div class="block-header"><div><h2>Agent 消息监督</h2><p>Director 可查看消息、关联交付物、超时重试与拦截记录。</p></div><span id="mailbox-summary" class="count-label"></span></div><div id="agent-message-list" class="collab-list"></div></section><section class="section-block"><div class="block-header"><div><h2>资源锁</h2><p>锁使用租约，到期后可重新获取；请核对仍在运行的 Agent。</p></div></div><div id="agent-lock-list" class="collab-list"></div></section>`);
 document.addEventListener("click", async (event) => {
   const rejected = event.target.closest("[data-reject-message]");
   if (rejected) { if (await confirmAction("拦截 Agent 消息", "该消息将停止投递，并记录 Director 的拦截决定。")) await mutate(`/api/messages/${rejected.dataset.rejectMessage}/reject`, { agentId: "apix-director", reason: "Director 手动拦截" }); return; }
   const released = event.target.closest("[data-release-lock]");
   if (released && await confirmAction("释放资源锁", "先确认持有该锁的 Agent 不再使用该资源。")) await mutate(`/api/locks/${released.dataset.releaseLock}/release`, { agentId: "apix-director" });
 });
-go("director");
+go("coordinator");
 refresh();
 setInterval(refresh, 1500);
+
+document.addEventListener("apix:select-project", async (event) => { selectedProjectId = event.detail; localStorage.setItem("apix.selectedProject", selectedProjectId); await refresh(); });

@@ -49,7 +49,7 @@ ApiX Control Plane 是消息的唯一记录者。Director 和员工通过项目 
 
 消息只能在当前项目的 mailbox 之间发送，关联任务和对话也必须属于该项目。员工只可领取自己的 mailbox，并读取自己收发的消息；只有原请求的收件人能回复。Director 可查看、拦截项目消息，也可释放项目资源锁。确定性策略会拦截员工请求直接启动 Agent、执行高风险文件操作，以及向 Director 发送包含敏感执行意图的请求。拦截原因写入消息和事件日志。
 
-这些是 Control Plane 业务权限。当前本地 HTTP 服务没有为每个外部 Agent 发放独立认证凭据，因此不应把 `agentId` 参数当作强身份验证；部署到多用户或非本机网络之前必须加入身份认证。Director 的规则拦截也不是操作系统级隔离。
+新协调流程为每个托管 Run 发放短期凭据，员工使用 `Authorization: Bearer <APIX_AGENT_TOKEN>` 调用 `/api/agent/team`、`/api/agent/messages` 和 `/api/agent/messages/:id/ack|complete|nack`。项目、发送者和任务从凭据推导；确认消息时额外检查项目。数据库只存 token 哈希，Run 结束后凭据失效。旧管理 HTTP API 仍采用可信本机模式，不能把其中自报的 `agentId` 当作强身份验证；部署到多用户或非本机网络前还需要管理端认证。Director 的规则拦截也不是操作系统级隔离。
 
 ## 上下文预算与交付物
 
@@ -58,6 +58,8 @@ ApiX Control Plane 是消息的唯一记录者。Director 和员工通过项目 
 Agent 运行结束会保存 `agent-response` artifact，并自动向 Director 发送包含交付物引用的回复。引用记录 artifact ID、SHA-256 摘要、摘要片段和来源任务。`POST /api/messages/:id/attachments` 可附加同项目 artifact；Control Plane 校验项目和可选 digest。消息不会复制完整 artifact 内容。
 
 经用户批准的任务启动时，Director 自动写入一条关联该任务的 `request`，交给执行员工的 mailbox 并记录确认处理。实际完整指令仍通过 Pi/Codex 运行适配器发送。运行结束时员工结果以 `response` 回复该请求；有输出时附加 artifact 引用，从而在同一 `correlation_id` 下查看派发与交付。
+
+执行中员工可发送 `type=event`、`payload={"kind":"progress_update","summary":"真实进度","blocked":false}` 到 `apix-director`。ApiX 核对该 Run 的任务、权限及已确认需求，决定是否发出 `payload.kind="guidance"` 的指导或向用户报告阻塞。长期没有进度报告时，ApiX 发送一次 `payload.kind="progress_request"`。用户在目标工作台发出的补充说明以 `source="user"` 标注。员工须调用 `/api/agent/messages` 读取并确认；消息发送成功只证明进入 mailbox，不代表外部 CLI 已采纳。
 
 ## 文件与资源锁
 

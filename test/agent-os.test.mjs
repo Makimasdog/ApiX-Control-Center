@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,15 @@ import { DatabaseSync } from "node:sqlite";
 import { createServer } from "node:net";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+async function isolatedProject(dataDir) {
+  const project = join(dataDir, 'project');
+  await mkdir(project);
+  execFileSync('git', ['init', '-q', project]);
+  await writeFile(join(project, 'README.md'), 'Isolated ApiX test project\n');
+  execFileSync('git', ['add', 'README.md'], {cwd: project});
+  execFileSync('git', ['-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
+  return project;
+}
 const serverErrors = new Map();
 const post = async (port, path, body) => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -18,7 +27,7 @@ const post = async (port, path, body) => {
 };
 const snapshot = async (port) => {
   try { return await (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).json(); }
-  catch (error) { throw new Error(`ApiX snapshot failed: ${error.message}; server stderr: ${serverErrors.get(port) ?? ""}`); }
+  catch (error) { throw new Error(`ApiX snapshot failed: ${error.message}; cause: ${error.cause?.code ?? error.cause ?? "unknown"}; server stderr: ${serverErrors.get(port) ?? ""}`); }
 };
 async function waitFor(predicate, timeout = 10000) {
   const started = Date.now();
@@ -40,7 +49,7 @@ async function freePort() {
   });
 }
 async function startServer(port, dataDir) {
-  const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
+  const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); serverErrors.set(port, stderr); });
   try { await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok; } catch { return false; } }); }
@@ -55,7 +64,7 @@ test("P0 task lifecycle, both adapters, stop, review, and restart history", asyn
   try {
     server = await startServer(port, dataDir);
     const initial = await snapshot(port);
-    assert(initial.runtimes.filter((item) => item.managed).every((item) => item.available));
+    assert(["pi", "codex", "claude"].every((id) => initial.runtimes.some((item) => item.id === id && item.available && item.managed)));
     const { id: projectId } = await post(port, "/api/projects", { name: "Test project", path: root });
     const employees = {};
     for (const runtime of ["pi", "codex"]) {
@@ -161,9 +170,9 @@ test("Director creates a matched dependency plan and advances the DAG", async ()
   const port = await freePort();
   let server;
   try {
-    execFileSync("git", ["worktree", "prune"], { cwd: root });
+    const project = await isolatedProject(dataDir);
     server = await startServer(port, dataDir);
-    const { id: projectId } = await post(port, "/api/projects", { name: "Plan project", path: root });
+    const { id: projectId } = await post(port, "/api/projects", { name: "Plan project", path: project });
     const developer = (await post(port, "/api/employees", { name: "Developer", runtime: "pi", role: "开发工程师", department: "研发" })).id;
     const reviewer = (await post(port, "/api/employees", { name: "Reviewer", runtime: "codex", role: "代码审查", department: "质量" })).id;
     const plan = await post(port, "/api/director/plans", { projectId, goal: "实现登录功能；代码审查" });
@@ -192,7 +201,6 @@ test("Director creates a matched dependency plan and advances the DAG", async ()
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
-    execFileSync("git", ["worktree", "prune"], { cwd: root });
   }
 });
 
@@ -232,7 +240,10 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
     assert.equal((await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2]).status, "queued");
     for (const id of plan.taskIds.slice(0, 2)) await post(port, `/api/tasks/${id}/review`, { accepted: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2])?.status === "completed");
-    assert.match((await snapshot(port)).tasks.find((item) => item.id === plan.taskIds[2]).result, /前置任务的共享交付物/);
+    const handoff = await snapshot(port);
+    const reviewInput = handoff.tasks.find((item) => item.id === plan.taskIds[2]).result;
+    assert.match(reviewInput, /前置交付物/);
+    for (const artifact of handoff.sharedArtifacts.filter(item => plan.taskIds.slice(0,2).includes(item.task_id))) assert(reviewInput.includes(artifact.id), 'dependency artifacts must retain their source references');
     await post(port, `/api/tasks/${plan.taskIds[2]}/review`, { accepted: true });
     const managerReview = await post(port, "/api/manager-reviews", { planId: plan.id, departmentId });
     await post(port, `/api/approvals/${managerReview.approvalId}`, { approved: true });
@@ -408,8 +419,9 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
   const port = await freePort();
   let server;
   try {
+    const project = await isolatedProject(dataDir);
     server = await startServer(port, dataDir);
-    const projectId = (await post(port, "/api/projects", { name: "Director project", path: root })).id;
+    const projectId = (await post(port, "/api/projects", { name: "Director project", path: project })).id;
     const designer = (await post(port, "/api/employees", { name: "Designer", runtime: "pi", role: "Designer" })).id;
     const developer = (await post(port, "/api/employees", { name: "Developer", runtime: "codex", role: "Developer" })).id;
     const unavailable = await fetch(`http://127.0.0.1:${port}/api/employees`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Qoder role", runtime: "qoder", role: "Developer" }) });
