@@ -271,7 +271,8 @@ npm test
 ```powershell
 # 仅在需要指定管理者入口时设置；使用本机已安装的真实 Pi cli.js
 $env:APIX_MANAGER_PI_ENTRY = '你的真实 Pi cli.js 绝对路径'
-npm run test:real -- --approve-cost
+npm run build
+node scripts/verify-real-collaboration.mjs --approve-cost
 ```
 
 验收记录保存在 `.tmp-real-collaboration/run-*/result.json` 和隔离工作区，不纳入 Git。失败不会算作闭环通过；如果记录中 `workersStopped` 为 false，应检查保留的运行状态及进程。
@@ -285,7 +286,7 @@ npm run test:real -- --approve-cost
 | 本轮 P0–P2 代码 | 静态检查及 113/113 完整回归通过，包含慢 Git 检查、重连、就绪及历史分页；[自审与限制](协作/就绪改进P0到P2开发与审查.md) |
 | 管理者真实模型 | Pi 0.74.2 + 阿里 `qwen3.7-flash` 验证 `read`、`bash`、`write` 与真实文件变化；工作请求进入实际任务派发，执行员工为假 CLI |
 | 既有界面基线 | 1360×900 与 390×844 对话、详情开合和窄屏布局已验收；本轮新界面因浏览器工具不可用，视觉验收待补 |
-| 真实多员工编码 | 本轮真实 Pi 规划、Codex 文件写入与冻结验收通过；Claude 的本机网关返回 HTTP 400，消息确认及最终双员工验收尚未通过，见 [本轮记录](协作/就绪改进P0到P2开发与审查.md) |
+| 真实多员工编码 | 真实 Pi 规划、Codex 写入与冻结、Claude 接收代码及指导确认、Node 验证和最终双员工验收通过；Claude 使用用户指定的 `claude-sonnet-5-5` 与临时兼容参数，见 [补验记录](协作/就绪改进P0到P2开发与审查.md) |
 | 其他原生 CLI | Gemini/OpenCode/Kimi 真实 CLI 联调待补齐 |
 
 证据见 [工具与任务派发修复审查](协作/ApiX工具与任务派发修复审查.md)。CI、模拟员工测试与真实模型工具测试分别表述，不能据此宣称所有 Agent 已完成端到端验收。
