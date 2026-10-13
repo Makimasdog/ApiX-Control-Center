@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 
 const git = (cwd,args,options={}) => execFileSync('git',args,{cwd,encoding:'utf8',timeout:20000,maxBuffer:10000000,windowsHide:true,stdio:['pipe','pipe','pipe'],...options});
 const parts = value => value.split('\0').filter(Boolean);
-export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
+export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWorkspace=true}) {
   const indexDir=resolve(dataDir,'inspection-indexes'); mkdirSync(indexDir,{recursive:true});
   function workspace(task) {
     const w=row('SELECT * FROM workspaces WHERE task_id=?',task.id);
@@ -23,7 +23,7 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
     if(common!==realpathSync.native(expectedCommon)) throw new Error('工作区 Git 目录已变化，请重新审查');
     const gitDir=git(path,['rev-parse','--absolute-git-dir']).trim();
     if(!existsSync(join(gitDir,'gitdir')) || realpathSync.native(resolve(readFileSync(join(gitDir,'gitdir'),'utf8').trim()))!==realpathSync.native(join(path,'.git'))) throw new Error('Git worktree 登记与任务目录不一致');
-    if(!w.common_dir)db.prepare('UPDATE workspaces SET common_dir=? WHERE task_id=?').run(common,task.id);
+    if(!w.common_dir && persistWorkspace)db.prepare('UPDATE workspaces SET common_dir=? WHERE task_id=?').run(common,task.id);
     return {path,common,base:w.base_sha,input:task.input_commit ?? w.base_sha};
   }
   function inspect(task) {

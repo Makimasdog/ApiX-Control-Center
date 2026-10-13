@@ -16,11 +16,12 @@ function contentText(value: unknown): string {
 }
 
 export function normalizeWorkerEvent(runtime: string, item: Record<string,unknown>): WorkerEvent | null {
-  if (!['gemini','opencode','kimi'].includes(runtime)) return null;
+  if (!['codex','gemini','opencode','kimi'].includes(runtime)) return null;
   const type = typeof item.type === 'string' ? item.type : 'unknown';
   const message = object(item.message);
   const part = object(item.part);
   const role = item.role ?? message.role;
+  if(runtime==='codex')return {kind:type,failed:type==='turn.failed' || type==='error' && !(typeof item.message==='string' && /^Reconnecting\.\.\.\s*\d+\/\d+\b/.test(item.message))};
   if (runtime === 'gemini') {
     if (type === 'message' && role === 'assistant') return {kind:type,text:contentText(item.content ?? message.content),textMode:item.delta === true ? 'append' : 'replace'};
     if (type === 'result') return {kind:type,text:contentText(item.response),textMode:'replace',failed:item.is_error === true || item.status === 'error'};

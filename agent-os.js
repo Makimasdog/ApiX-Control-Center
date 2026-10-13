@@ -465,6 +465,17 @@ document.addEventListener("click", async (event) => {
   const released = event.target.closest("[data-release-lock]");
   if (released && await confirmAction("释放资源锁", "先确认持有该锁的 Agent 不再使用该资源。")) await mutate(`/api/locks/${released.dataset.releaseLock}/release`, { agentId: "apix-director" });
 });
+// Keep saved browser preferences, but make the actual manager configuration the primary entry.
+const modelPage=$("#page-models");
+modelPage.querySelector('.page-intro h1').textContent='模型设置';
+modelPage.querySelector('.page-intro p').textContent='配置 ApiX 管理者的真实推理连接；员工模型和登录仍由各自 CLI 配置。';
+const modelArchive=document.createElement('details');modelArchive.className='preferences-archive';modelArchive.innerHTML='<summary>浏览器模型收藏（不影响执行）</summary>';
+for(const child of [...modelPage.children])if(!child.classList.contains('page-intro'))modelArchive.append(child);
+const modelEntry=document.createElement('section');modelEntry.className='surface-card model-runtime-entry';modelEntry.innerHTML='<h2>ApiX 推理模型</h2><p>在项目工作区配置模型、保存连接并进行显式费用批准的连接测试。模型收藏不会切换管理者或员工模型。</p><button class="primary-button" id="open-real-model-settings">配置真实模型连接</button>';
+modelPage.append(modelEntry,modelArchive);
+$('#open-real-model-settings').addEventListener('click',()=>{go('coordinator');document.dispatchEvent(new Event('apix:manager-settings'));});
+const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
+$('#page-resources .page-intro p').textContent='本页仅保存浏览器草稿，尚未连接或注入 Agent 运行时，开关不会启用真实能力。';
 go("coordinator");
 refresh();
 setInterval(refresh, 1500);

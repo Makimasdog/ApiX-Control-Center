@@ -79,7 +79,9 @@ export function createApiXAgent(backend: ModelBackend) {
         const employeeId = text(step.employeeId, 100);
         if (!employees.some(e => e.id === employeeId)) throw new Error('计划引用了不可用的员工');
         if (!Array.isArray(step.dependsOn) || step.dependsOn.some(i => !Number.isInteger(i) || i < 0 || i >= index)) throw new Error('计划依赖无效');
-        return { prompt: text(step.prompt, 10000), employeeId, dependsOn: [...new Set(step.dependsOn as number[])], scheduling: taskProfile(step.scheduling) };
+        const scheduling=step.scheduling===undefined?{}:object(step.scheduling);
+        // Model suggestions never grant money or a fixed assignment; discard before validation.
+        return { prompt: text(step.prompt, 10000), employeeId, dependsOn: [...new Set(step.dependsOn as number[])], scheduling: taskProfile({...scheduling,estimateMinor:null,fixedEmployeeId:null,estimates:[]}) };
       });
       return { steps, mode: 'pi' };
     } catch (error) {

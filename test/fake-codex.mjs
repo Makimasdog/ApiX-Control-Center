@@ -4,6 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 let prompt = "";
 process.stdin.on("data", (chunk) => { prompt += chunk.toString(); });
 process.stdin.on("end", async () => {
+  if(prompt.includes('fixture-codex-reconnect'))process.stdout.write(JSON.stringify({type:'error',message:'Reconnecting... 2/5 (request timed out)'})+'\n');
   if (prompt.trim() === "cli-error") { process.stderr.write("Codex fixture failed before a response.\n"); process.exitCode = 1; return; }
   if (!process.argv.includes("--skip-git-repo-check")) {
     try { execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: process.cwd(), stdio: "ignore" }); }

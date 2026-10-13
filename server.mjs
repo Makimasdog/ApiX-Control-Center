@@ -9,7 +9,7 @@ import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinat
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
 import { readLocalModels } from './dist/src/local-models.js';
-import {workflowSettings,saveWorkflow,stopCoordinationSession} from './control-plane.mjs';
+import {workflowSettings,saveWorkflow,stopCoordinationSession,readiness,inspectTaskDelivery} from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -64,6 +64,7 @@ createServer(async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname) && request.method === 'GET') {send(200,workflowSettings(pathname.split('/')[3]));return;}
       if (pathname === '/api/manager/providers' && request.method === 'GET') { send(200, {providers: BUILTIN_PROVIDERS}); return; }
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
@@ -106,7 +107,7 @@ createServer(async (request, response) => {
         return;
       }
       if (/^\/api\/tasks\/[^/]+\/details$/.test(pathname) && request.method === "GET") { send(200, taskDetails(pathname.split("/")[3])); return; }
-      if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,taskDelivery(pathname.split('/')[3]));return; }
+      if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,await inspectTaskDelivery(pathname.split('/')[3]));return; }
       if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname) && request.method === 'GET') {send(200,executionSettings(pathname.split('/')[3]));return;}
       if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
       if (/^\/api\/employees\/[^/]+\/capabilities$/.test(pathname) && request.method === 'GET') { send(200,employeeCapability(pathname.split('/')[3])); return; }

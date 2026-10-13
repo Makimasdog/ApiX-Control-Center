@@ -45,3 +45,8 @@ test('manager receives trusted project context and requests host scheduling even
   assert.equal(result.kind,'work');assert.equal(received,context);
   assert.match(prompt,/无论 automaticWork 是否开启/);assert.match(prompt,/不依赖文件写入/);
 });
+test('model-proposed fees are discarded before profile validation without granting a budget',async()=>{
+  const agent=createApiXAgent({infer:async()=>JSON.stringify({steps:[{prompt:'创建并验证文件',employeeId:'worker',dependsOn:[],scheduling:{estimateMinor:0.02,fixedEmployeeId:'invented',estimates:'unapproved',writePaths:['sum.mjs']}}]})});
+  const result=await agent.plan({goal:'测试',scope:'当前项目',constraints:'不批准费用',deliverable:'文件',acceptance:'验证'},[{id:'worker',name:'worker',runtime:'codex',enabled:1}]);
+  assert.equal(result.mode,'pi');assert.equal(result.steps[0].scheduling.estimateMinor,null);assert.equal(result.steps[0].scheduling.fixedEmployeeId,null);assert.deepEqual(result.steps[0].scheduling.estimates,[]);assert.deepEqual(result.steps[0].scheduling.writePaths,['sum.mjs']);
+});

@@ -1,4 +1,5 @@
 import { readConversation } from './conversation-stream.js';
+import {readinessView,type Readiness} from './readiness.js';
 import { saveBrief } from './requirements-form.js';
 import { instructionState, recoveryForm } from './execution-view.js';
 import { schedulingView } from './scheduling-view.js';
@@ -76,6 +77,8 @@ function selectSession(id:string) {
   $('#coord-body').hidden=true;updateStreamingControls();
   root.querySelector('#coord-delivery-panel')?.remove();
   inspectedDelivery=null;
+  $('#coord-history-output').textContent='';
+  $<HTMLButtonElement>('#coord-history-earlier').hidden=true;
   const tools=root.querySelector<HTMLElement>('#desktop-tools');if(tools){tools.textContent='本次对话尚无工具调用。';delete tools.dataset.key;}
 }
 async function streamMessage(id:string,body:unknown,userContent:string) {
@@ -176,6 +179,22 @@ layout.classList.add('inspector-closed');
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-mobile-new" class="outline-button desktop-mobile-new">新建对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
 $('.coord-header h1').textContent='对话工作区';
 $('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
+$('.coord-header').insertAdjacentHTML('afterend','<section id="desktop-readiness" aria-label="首次使用与配置检查"></section>');
+let setupUpdated=0;let setupRequest=0;
+async function refreshReadiness(force=false){
+  if(!force && Date.now()-setupUpdated<15000)return;
+  setupUpdated=Date.now();const version=++setupRequest;const selected=projectId;
+  try{const result=await api<Readiness>('/api/readiness?projectId='+encodeURIComponent(selected));if(version===setupRequest && selected===projectId && !$('#desktop-readiness').contains(document.activeElement))$('#desktop-readiness').innerHTML=readinessView(result);}
+  catch{if(version===setupRequest)$('#desktop-readiness').textContent='配置检查暂不可用，请确认本地服务状态。';}
+}
+$('#desktop-readiness').addEventListener('click',event=>{
+  const el=(event.target as Element).closest<HTMLElement>('[data-setup-action],[data-setup-refresh]');if(!el)return;
+  if(el.hasAttribute('data-setup-refresh')){void refreshReadiness(true);return;}
+  const target=el.dataset.setupAction;
+  if(target==='model'){toggleInspector(true);document.dispatchEvent(new Event('apix:manager-settings'));}
+  else if(target==='budget' || target==='permissions'){toggleInspector(true);const section=target==='budget'?schedulingSection:$('#desktop-workflow');section.closest('details')?.setAttribute('open','');section.scrollIntoView({block:'nearest'});}
+  else document.querySelector<HTMLButtonElement>(`[data-page-target="${target}"]`)?.click();
+});
 function toggleInspector(open:boolean){layout.classList.toggle('inspector-closed',!open);$('#desktop-details').setAttribute('aria-expanded',String(open));$('#desktop-project-settings').setAttribute('aria-expanded',String(open));}
 $('#desktop-project-settings').addEventListener('click',()=>toggleInspector(layout.classList.contains('inspector-closed')));
 $('#desktop-close-details').addEventListener('click',()=>toggleInspector(false));
@@ -304,7 +323,8 @@ async function reload() {
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   const changed=projectId!==event.detail.projectId;
-  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';updateLocalLookup();}
+  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';updateLocalLookup();setupUpdated=0;}
+  void refreshReadiness();
   updateStreamingControls();
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
   if(root.classList.contains('active-page') && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
@@ -376,7 +396,9 @@ root.addEventListener('click',event=>{const el=(event.target as Element).closest
   if(el.dataset.freezeDelivery)void action(async()=>{const id=el.dataset.freezeDelivery!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/delivery`,{fingerprint:deliveryFingerprints.get(id)});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();});
   if(el.dataset.coordAccept || el.dataset.coordReject)void action(async()=>{const id=el.dataset.coordAccept ?? el.dataset.coordReject!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/review`,{accepted:!!el.dataset.coordAccept,fingerprint:el.dataset.coordAccept?deliveryFingerprints.get(id):undefined});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();deliveryFingerprints.delete(id);});
 });
-$('#coord-history').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const at=new FormData(event.target as HTMLFormElement).get('at');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/sessions/${sessionId}/timeline${at?`?at=${at}`:''}`),null,2);});});
+$('#coord-history').insertAdjacentHTML('beforeend','<button type="button" id="coord-history-earlier" class="outline-button" hidden>查看更早的 200 条记录</button>');
+$('#coord-history').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const at=new FormData(event.target as HTMLFormElement).get('at');const id=sessionId;const result=await api<{previousAt:number|null}>(`/api/coordination/sessions/${id}/timeline${at?`?at=${encodeURIComponent(String(at))}`:''}`);if(id!==sessionId)return;$('#coord-history-output').textContent=JSON.stringify(result,null,2);const button=$<HTMLButtonElement>('#coord-history-earlier');button.hidden=!Number.isSafeInteger(result.previousAt);button.dataset.at=String(result.previousAt);});});
+$('#coord-history-earlier').addEventListener('click',()=>{($<HTMLFormElement>('#coord-history').elements.namedItem('at') as HTMLInputElement).value=$('#coord-history-earlier').dataset.at??'';$<HTMLFormElement>('#coord-history').requestSubmit();});
 $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const q=new FormData(event.target as HTMLFormElement).get('q');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent(String(q))}`),null,2);});});
 
 // Model form uses the same state/payload functions as its regression tests.

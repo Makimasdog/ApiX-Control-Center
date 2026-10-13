@@ -84,6 +84,29 @@ async function harness(work, extraEnv={}) {
   finally {await stop();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
+test('slow Git inspection does not block HTTP and preserves the production delivery fingerprint',async()=>harness(async h=>{
+  let {s,employeeId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  const task=s.tasks[0];const started=join(h.dir,'clean-started');const filter=join(h.dir,'slow-clean.mjs');
+  await writeFile(filter,`import {writeFileSync} from 'node:fs';let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(started)},'started');setTimeout(()=>process.stdout.write(text),2000);});`);
+  const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+  execFileSync('git',['config','filter.apixdelay.clean',quote(process.execPath.replaceAll('\\','/'))+' '+quote(filter.replaceAll('\\','/'))],{cwd:h.project});
+  await writeFile(join(task.workspace_path,'.gitattributes'),'slow.txt filter=apixdelay\n');await writeFile(join(task.workspace_path,'slow.txt'),'real delayed filter\n');
+  const pending=h.request(`/api/tasks/${task.id}/delivery`);
+  await waitFor(async()=>{try{return await readFile(started);}catch{return false;}});
+  const start=Date.now();await h.request('/api/manager/settings');assert(Date.now()-start<1500,'HTTP blocked by Git filter');
+  const delivery=await pending;assert(delivery.inspection.fingerprint);assert(delivery.inspection.files.includes('slow.txt'));
+  await h.request(`/api/tasks/${task.id}/review`,{accepted:true,fingerprint:delivery.inspection.fingerprint});
+}));
+test('Codex reconnect diagnostics do not fail a later successful turn',async()=>harness(async h=>{
+  let {s,employeeId}=await setup(h);
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,dependsOn:[],prompt:'fixture-codex-reconnect'}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  const done=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return ['completed','failed'].includes(d.tasks[0].status)&&d;});
+  assert.equal(done.tasks[0].status,'completed');
+}));
 test('connection test uses saved settings without tools, work or approval bypass',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'连接测试',path:h.project})).id;
   const settings=await h.request('/api/manager/settings');

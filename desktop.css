@@ -112,6 +112,28 @@ body:has(#page-coordinator.active-page) .main-shell { min-height:0; }
 #page-coordinator .desktop-suggestions button { transition:background-color 140ms ease,border-color 140ms ease; }
 #page-coordinator #coord-scroll-bottom { background:#dedede;color:#222;box-shadow:0 3px 14px #0003; width:32px;height:32px;bottom:160px;right:24px; }
 @keyframes desktop-arrive { from {opacity:0;transform:translateY(5px)} to {opacity:1;transform:translateY(0)} }
+:root { --ui-surface:#242424; --ui-line:#414141; --ui-text:#ececec; --ui-muted:#b2b2b2; --ui-accent:#c1d8c4; }
+.surface-card,.mission-card,.resource-card,.model-card,.project-card { background:var(--ui-surface);border-color:var(--ui-line);box-shadow:none; }
+.page-intro p,.overview-header p,.overview-placeholder { color:var(--ui-muted); }
+.primary-button { background:var(--ui-accent);color:#17231a;box-shadow:none; }
+.primary-button:hover { background:#d4e7d6; }
+.setup-check { font-size:13px;background:#222;border:1px solid var(--ui-line);border-radius:10px;padding:10px 14px;margin-bottom:12px;max-height:180px;overflow:auto; }
+.setup-check summary { cursor:pointer;color:var(--ui-text); }
+.setup-check p { color:var(--ui-muted);font-size:12px; }
+.setup-row { display:flex;align-items:center;gap:10px;margin:9px 0;flex-wrap:wrap; }
+.setup-row>span:nth-child(2) { flex:1;min-width:160px; }
+.setup-state { font-size:12px;color:#f2c77a; }.setup-state.ready {color:var(--ui-accent)}
+#desktop-readiness {flex:none;min-height:0}
+.preferences-archive {margin-top:24px}.preferences-archive>summary {cursor:pointer;padding:14px;color:var(--ui-muted)}
+.model-runtime-entry {padding:24px}.model-runtime-entry p {line-height:1.7;color:var(--ui-muted)}
+#page-coordinator .desktop-inspector p,#page-coordinator .coord-task p,#page-coordinator .outline-button,#coord-notice {font-size:13px}
+#page-coordinator .desktop-inspector h3 {font-size:14px}
+.coord-layout input[type="checkbox"],.stacked-form input[type="checkbox"] {width:16px!important;height:16px;padding:0;flex:none;accent-color:var(--ui-accent);vertical-align:middle}
+.coord-layout label:has(input[type="checkbox"]),.stacked-form label:has(input[type="checkbox"]) {display:flex;align-items:flex-start;gap:8px;line-height:1.6}
+.coord-layout label input[type="checkbox"] {margin-top:3px}
+.coord-layout input:not([type="checkbox"]),.coord-layout select,.coord-layout textarea {font-size:13px}
+@media(min-width:1200px){#page-coordinator .coord-layout:not(.inspector-closed){grid-template-columns:minmax(0,1fr) 380px}}
+@media(max-width:650px){.setup-check{max-height:130px;font-size:12px}.setup-row>span:nth-child(2){min-width:130px}.setup-row .text-action{font-size:12px}}
 @media(max-width:1100px){#page-coordinator{padding:12px 16px}.sidebar{width:205px}}
 @media(max-width:1000px){
   #page-coordinator .coord-layout { display:block; }
