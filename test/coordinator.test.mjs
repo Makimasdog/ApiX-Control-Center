@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir, symlink } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,8 +12,28 @@ import { DatabaseSync } from 'node:sqlite';
 import { createTaskScheduler } from '../src/task-scheduler.mjs';
 import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
 import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
+import { createCodeHandoffs } from '../src/code-handoffs.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+test('workspace verifies native paths and legacy repository aliases without accepting a different repository',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-path-alias-'));
+  try{
+    const project=join(dir,'project');execFileSync('git',['init',project],{stdio:'ignore'});
+    await writeFile(join(project,'README.md'),'fixture');execFileSync('git',['add','README.md'],{cwd:project});
+    execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
+    const data=join(dir,'data');await mkdir(join(data,'workspaces'),{recursive:true});
+    const alias=join(dir,'data-alias');const repoAlias=join(dir,'repo-alias');
+    await symlink(data,alias,process.platform==='win32'?'junction':'dir');await symlink(project,repoAlias,process.platform==='win32'?'junction':'dir');
+    const task={id:'task-1',workspace_path:join(alias,'workspaces','task-1')};
+    execFileSync('git',['worktree','add','--detach',task.workspace_path,'HEAD'],{cwd:project,stdio:'ignore'});
+    const saved={kind:'git-worktree',path:task.workspace_path,common_dir:join(repoAlias,'.git'),base_sha:'fixture'};
+    const handoffs=createCodeHandoffs({dataDir:alias,row:()=>saved,rows:()=>[],db:{},now:()=>'',recordTask(){}});
+    assert.equal(handoffs.workspace(task).path,realpathSync.native(task.workspace_path));
+    const other=join(dir,'other');execFileSync('git',['init',other],{stdio:'ignore'});saved.common_dir=join(other,'.git');
+    assert.throws(()=>handoffs.workspace(task),/Git 目录已变化/);
+    saved.path=other;assert.throws(()=>handoffs.workspace(task),/可验证的托管工作区/);
+  }finally{const absolute=resolve(dir);assert(absolute.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(absolute,{recursive:true,force:true});}
+});
 test('Windows npm shims resolve package bin entries without a shell', {skip:process.platform!=='win32'}, async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-shims-'));
   const db=new DatabaseSync(':memory:');

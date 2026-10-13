@@ -11,18 +11,18 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
     const w=row('SELECT * FROM workspaces WHERE task_id=?',task.id);
     const expected=resolve(dataDir,'workspaces',task.id);
     if(!w || w.kind!=='git-worktree' || resolve(w.path)!==expected || resolve(task.workspace_path ?? '')!==expected || !existsSync(expected)) throw new Error('任务没有可验证的托管工作区');
-    const path=realpathSync(expected);
-    if(path!==join(realpathSync(resolve(dataDir,'workspaces')),task.id) || realpathSync(git(path,['rev-parse','--show-toplevel']).trim())!==path) throw new Error('工作区路径已变化');
-    const common=realpathSync(resolve(path,git(path,['rev-parse','--git-common-dir']).trim()));
+    const path=realpathSync.native(expected);
+    if(path!==join(realpathSync.native(resolve(dataDir,'workspaces')),task.id) || realpathSync.native(git(path,['rev-parse','--show-toplevel']).trim())!==path) throw new Error('工作区路径已变化');
+    const common=realpathSync.native(resolve(path,git(path,['rev-parse','--git-common-dir']).trim()));
     let expectedCommon=w.common_dir;
     if(!expectedCommon) {
       const source=task.repository_id ? row('SELECT path FROM project_repositories WHERE id=? AND project_id=?',task.repository_id,task.project_id) : row('SELECT path FROM projects WHERE id=?',task.project_id);
       if(!source)throw new Error('工作区源项目不存在');
-      expectedCommon=realpathSync(resolve(source.path,git(source.path,['rev-parse','--git-common-dir']).trim()));
+      expectedCommon=realpathSync.native(resolve(source.path,git(source.path,['rev-parse','--git-common-dir']).trim()));
     }
-    if(common!==expectedCommon) throw new Error('工作区 Git 目录已变化，请重新审查');
+    if(common!==realpathSync.native(expectedCommon)) throw new Error('工作区 Git 目录已变化，请重新审查');
     const gitDir=git(path,['rev-parse','--absolute-git-dir']).trim();
-    if(!existsSync(join(gitDir,'gitdir')) || resolve(readFileSync(join(gitDir,'gitdir'),'utf8').trim())!==join(path,'.git')) throw new Error('Git worktree 登记与任务目录不一致');
+    if(!existsSync(join(gitDir,'gitdir')) || realpathSync.native(resolve(readFileSync(join(gitDir,'gitdir'),'utf8').trim()))!==realpathSync.native(join(path,'.git'))) throw new Error('Git worktree 登记与任务目录不一致');
     if(!w.common_dir)db.prepare('UPDATE workspaces SET common_dir=? WHERE task_id=?').run(common,task.id);
     return {path,common,base:w.base_sha,input:task.input_commit ?? w.base_sha};
   }

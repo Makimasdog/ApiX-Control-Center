@@ -395,7 +395,7 @@ function workspaceFor(task, project) {
   if (!task.plan_id) return sourcePath;
   if (task.workspace_path) {
     const workspace=codeHandoffs.workspace(task);
-    const currentCommon=realpathSync(resolve(sourcePath,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:sourcePath,encoding:'utf8'}).trim()));
+    const currentCommon=realpathSync.native(resolve(sourcePath,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:sourcePath,encoding:'utf8'}).trim()));
     if(workspace.common!==currentCommon)throw new Error('项目或仓库路径已变化，请重新安排任务');
     if(row('SELECT status FROM code_handoffs WHERE task_id=?',task.id)?.status==='conflict'){const error=new Error('工作区仍有未审查的代码交接，请检查后恢复');error.code='HANDOFF_CONFLICT';throw error;}
     return task.workspace_path;
@@ -406,7 +406,7 @@ function workspaceFor(task, project) {
   mkdirSync(dirname(workspaceRoot), { recursive: true });
   try {
     const baseSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-    const commonDir=realpathSync(resolve(root,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim()));
+    const commonDir=realpathSync.native(resolve(root,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:root,encoding:'utf8'}).trim()));
     execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, baseSha], { cwd: root, encoding: "utf8", timeout: 20000 });
     db.prepare("INSERT INTO workspaces(id,task_id,path,kind,status,created_at,base_sha,common_dir) VALUES (?,?,?,?,?,?,?,?)").run(randomUUID(), task.id, workspaceRoot, "git-worktree", "ready", now(), baseSha,commonDir);
     db.prepare("UPDATE tasks SET workspace_path=?,input_commit=? WHERE id=?").run(workspaceRoot,baseSha, task.id);
