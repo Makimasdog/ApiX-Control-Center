@@ -236,8 +236,9 @@ function render(s: Session) {
   $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型连接需要处理：${s.agent.error}`:'';
   const planPanel=$<HTMLDetailsElement>('.desktop-plan');if(planPanel.dataset.status!==s.status){planPanel.open=s.status==='plan_review';planPanel.dataset.status=s.status;}
   const activity=$('#desktop-activity');activity.hidden=!s.tasks.length;
-  const finished=s.tasks.find(t=>t.status==='completed');
-  activity.innerHTML=`<div><strong>${esc(statuses[s.derivedStatus]??s.derivedStatus)}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${s.tasks.filter(t=>t.status==='queued').length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个待验收</span></div>${s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?`<button class="outline-button" data-delivery="${esc(finished.id)}">查看变更并验收</button>`:''}`;
+  const automaticQuality=s.autonomy?.state==='running'&&s.autonomyPolicy?.enabled===true;
+  const finished=automaticQuality?undefined:s.tasks.find(t=>t.status==='completed');
+  activity.innerHTML=`<div><strong>${esc(statuses[s.derivedStatus]??s.derivedStatus)}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${s.tasks.filter(t=>t.status==='queued').length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span></div>${s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?`<button class="outline-button" data-delivery="${esc(finished.id)}">查看变更并验收</button>`:''}`;
   $('#desktop-stop').hidden=!s.tasks.some(t=>['running','queued','awaiting_approval','stopping'].includes(t.status));
   if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
   if(!meetingSection.contains(document.activeElement)){

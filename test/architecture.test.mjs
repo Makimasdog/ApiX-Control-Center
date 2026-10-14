@@ -32,3 +32,14 @@ test('autonomy UI escapes model contracts, findings and repair instructions',()=
   const html=autonomySummary({state:'attention',reason:'<script>bad</script>',architecture,tasks:[],checks:[{id:'c',task_id:'t',status:'failed',fingerprint:'f',body:{output:'<script>x</script>'}}],repairs:[{id:'r',task_id:'t',attempt:1,employee_id:'a',instruction:'<svg onload=x>',status:'prepared'}]});
   assert(!html.includes('<script>'));assert(!html.includes('<img'));assert(!html.includes('<svg'));assert(html.includes('&lt;img'));assert(html.includes('实际验收证据'));
 });
+
+test('schemas reject malformed keywords, unresolved references and unknown dialects before freezing',()=>{
+  for(const invalid of [{type:'wrong'},{type:'object',required:'x'},{type:'object',properties:{x:{type:123}}},{type:'object',requred:['x']},{$ref:'#/$defs/Missing'},{type:'string',format:'unknown-format'},{$schema:'__proto__',type:'string'},{$schema:'https://example.invalid/schema',type:'string'}]){
+    assert.throws(()=>parseArchitecture({summary:'contract',modules:[{...module(),dataStructures:[{name:'bad',schema:invalid}]}]},checks),/schema/);
+  }
+});
+test('schemas accept nested contracts and local references without leaking identifiers across contracts',()=>{
+  const valid={$id:'https://example.invalid/reused',type:'object',properties:{email:{type:'string',format:'email'},item:{$ref:'#/$defs/Item'}},required:['item'],$defs:{Item:{type:'object',properties:{id:{type:'integer'}},required:['id'],additionalProperties:false}}};
+  for(const schema of [valid,valid,{$schema:'http://json-schema.org/draft-07/schema#',type:'array',items:[{type:'string'}]}])assert(parseArchitecture({summary:'contract',modules:[{...module(),dataStructures:[{name:'value',schema}]}]},checks).digest);
+  assert.throws(()=>parseArchitecture({summary:'contract',modules:[{...module(),dataStructures:[{name:'bad',schema:{$ref:'https://example.invalid/reused'}}]}]},checks),/schema/);
+});

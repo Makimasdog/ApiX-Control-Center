@@ -1,6 +1,9 @@
 import {createHash} from 'node:crypto';
 import {object,text,type PlanStep} from './contracts.js';
 import {taskProfile,overlaps} from './scheduling.js';
+import {Ajv} from 'ajv';
+import {Ajv2020} from 'ajv/dist/2020.js';
+import formatsModule from 'ajv-formats';
 
 export interface CheckCommand {id:string;args:string[];timeoutMs:number}
 export interface AutonomyPolicy {
@@ -28,7 +31,20 @@ export function parseAutonomyPolicy(input:Record<string,unknown>,version:number)
   if(input.enabled && !checks.length)throw new Error('自主交付至少需要一项实际验收命令');
   return {enabled:input.enabled,version,maxRepairs:bounded(input.maxRepairs,'最多修复轮次',0,10),maxMinutes:bounded(input.maxMinutes,'目标最长分钟',1,1440),maxRunMinutes:bounded(input.maxRunMinutes,'员工最长运行分钟',1,240),checkpointMinutes:bounded(input.checkpointMinutes,'检查点分钟',1,60),autoReassign:input.autoReassign,taskCapMinor:input.taskCapMinor==null?null:bounded(input.taskCapMinor,'每次员工执行批准费用上界',0,1000000000),checks};
 }
-function schema(value:unknown){const result=object(value);if(!Object.keys(result).length || JSON.stringify(result).length>6000)throw new Error('接口/数据结构需要具体且有限的 schema');return result;}
+const schemaValidators={
+  'http://json-schema.org/draft-07/schema#':new Ajv({strictTypes:false,strictTuples:false,strictRequired:false,allowUnionTypes:true,addUsedSchema:false}),
+  'https://json-schema.org/draft/2020-12/schema':new Ajv2020({strictTypes:false,strictTuples:false,strictRequired:false,allowUnionTypes:true,addUsedSchema:false})
+};
+for(const validator of Object.values(schemaValidators))formatsModule.default(validator);
+function schema(value:unknown){
+  const result=object(value);if(!Object.keys(result).length || JSON.stringify(result).length>6000)throw new Error('接口/数据结构需要具体且有限的 schema');
+  const dialect=result.$schema??'https://json-schema.org/draft/2020-12/schema';
+  if(typeof dialect!=='string'||!Object.hasOwn(schemaValidators,dialect))throw new Error('schema 仅支持 JSON Schema draft-07 或 2020-12');const validator=schemaValidators[dialect as keyof typeof schemaValidators];
+  try{validator.compile(result);}catch(error){throw new Error(`接口/数据结构 schema 无效：${String(error instanceof Error?error.message:error).slice(0,1500)}`);}
+  // Do not accumulate model-generated schemas or resolve references against another module's cache.
+  finally{validator.removeSchema(result);}
+  return result;
+}
 function canonical(value:unknown):string {if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';if(value&&typeof value==='object')return '{'+Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>JSON.stringify(key)+':'+canonical(v)).join(',')+'}';return JSON.stringify(value);}
 export function parseArchitecture(value:unknown,checks:CheckCommand[]):Architecture {
   const a=object(value);if(!Array.isArray(a.modules) || !a.modules.length || a.modules.length>24)throw new Error('架构需要 1–24 个模块');

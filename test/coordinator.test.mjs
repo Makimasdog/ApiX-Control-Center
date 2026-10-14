@@ -119,6 +119,13 @@ test('revoking autonomous policy during a real verification prevents review, acc
   const {s,projectId}=await autonomyFixture(h,{},"setTimeout(()=>{console.log('delayed actual check');},4000);");const checking=await waitAutonomy(h,s.id,s=>s.autonomy.checks.some(c=>c.status==='running'));
   await h.request(`/api/projects/${projectId}/autonomy`,{version:checking.autonomyPolicy.version,enabled:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert(final.tasks.every(t=>t.status!=='accepted'));assert.equal(final.autonomy.repairs.length,0);assert.match(final.autonomy.reason,/授权|策略/);
 },{APIX_SUPERVISION_TICK_MS:'100'}));
+test('autonomous repair waits through a project pause and resumes its dependency chain without user recovery',async()=>harness(async h=>{
+  const {s,projectId}=await autonomyFixture(h,{},"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';await new Promise(r=>setTimeout(r,2000));assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual delayed content check passed');");
+  const checking=await waitAutonomy(h,s.id,s=>s.autonomy.checks.some(c=>c.status==='running'));assert.equal(checking.derivedStatus,'running');const paused=await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  const waiting=await waitAutonomy(h,s.id,s=>s.autonomy.repairs.some(r=>r.status==='waiting'));assert.equal(waiting.autonomy.state,'running');assert.equal(waiting.derivedStatus,'queued');assert(waiting.tasks.every(t=>t.status!=='accepted'));assert.equal(waiting.autonomy.repairs.length,1);
+  await h.restart();const restored=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(restored.autonomy.repairs[0].status,'waiting');assert.equal(restored.autonomy.state,'running');
+  await h.request(`/api/projects/${projectId}/execution`,{version:paused.version,paused:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed');assert(final.tasks.every(t=>t.status==='accepted'));assert.equal(final.autonomy.repairs.length,1);assert.equal(final.autonomy.repairs[0].status,'dispatched');
+},{APIX_SUPERVISION_TICK_MS:'100'}));
 test('slow Git inspection does not block HTTP and preserves the production delivery fingerprint',async()=>harness(async h=>{
   let {s,employeeId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});

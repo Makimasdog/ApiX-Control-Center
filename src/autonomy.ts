@@ -3,7 +3,7 @@ import {spawn,execFile} from 'node:child_process';
 import {realpathSync,existsSync} from 'node:fs';
 import {resolve,relative,isAbsolute} from 'node:path';
 import {type Store,type Task,type Employee,object,text} from './contracts.js';
-import {autonomyDefaults,parseAutonomyPolicy,type AutonomyPolicy,type Architecture,type CheckCommand} from './architecture.js';
+import {autonomyDefaults,parseAutonomyPolicy,parseArchitecture,type AutonomyPolicy,type Architecture,type CheckCommand} from './architecture.js';
 import type {Permissions} from './permissions.js';
 import type {Scheduling} from './scheduling.js';
 
@@ -26,12 +26,13 @@ interface Dependencies extends Store {
   record(taskId:string,kind:string,payload:unknown):void;
 }
 export function createAutonomy(deps:Dependencies) {
-  const {db,row,rows,now}=deps;const busy=new Set<string>();const stopping=new Set<string>();
+  const {db,row,rows,now}=deps;const busy=new Set<string>();const stopping=new Set<string>();const validatedContracts=new Map<string,string>();
   db.exec(`CREATE TABLE IF NOT EXISTS autonomy_policies(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS autonomy_plans(plan_id TEXT PRIMARY KEY REFERENCES plans(id),session_id TEXT NOT NULL,revision INTEGER NOT NULL,policy_version INTEGER NOT NULL,workflow_version INTEGER NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL,started_at TEXT,reason TEXT);
     CREATE TABLE IF NOT EXISTS autonomy_tasks(task_id TEXT PRIMARY KEY REFERENCES tasks(id),module_id TEXT NOT NULL,original_prompt TEXT NOT NULL,repairs INTEGER NOT NULL DEFAULT 0,last_checkpoint TEXT);
     CREATE TABLE IF NOT EXISTS autonomy_checks(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,run_id TEXT,status TEXT NOT NULL,fingerprint TEXT,body TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS autonomy_repairs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,attempt INTEGER NOT NULL,employee_id TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS autonomy_repairs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,attempt INTEGER NOT NULL,employee_id TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,run_id TEXT);`);
+  if(!rows<{name:string}>('PRAGMA table_info(autonomy_repairs)').some(c=>c.name==='run_id'))db.exec('ALTER TABLE autonomy_repairs ADD COLUMN run_id TEXT');
   // An interrupted verification may have left an external test process. Never silently replay it.
   db.prepare("UPDATE autonomy_checks SET status='interrupted' WHERE status='running'").run();
   db.prepare("UPDATE autonomy_plans SET state='attention',reason='服务重启中断了验证；请确认验收进程已停止并重新检查后恢复' WHERE plan_id IN (SELECT t.plan_id FROM autonomy_tasks a JOIN tasks t ON t.id=a.task_id JOIN autonomy_checks c ON c.task_id=t.id WHERE c.status='interrupted')").run();
@@ -59,11 +60,12 @@ export function createAutonomy(deps:Dependencies) {
   function current(plan:PlanRecord,projectId:string) {
     const policy=settings(projectId);const workflow=deps.workflow(projectId);const session=row<{plan_id:string;revision:number;confirmed_revision:number|null;status:string}>('SELECT * FROM coordination_sessions WHERE id=?',plan.session_id);
     if(!policy.enabled || policy.version!==plan.policy_version || !workflow.enabled || workflow.version!==plan.workflow_version || !session || session.plan_id!==plan.plan_id || session.revision!==plan.revision || session.confirmed_revision!==plan.revision || !['running','plan_review'].includes(session.status))throw new Error('自主交付的策略、需求或自动协作授权已变化');
-    if(deps.permissions.get(projectId).mode!=='full_access')throw new Error('ApiX 自主交付权限已撤销');return policy;
+    if(deps.permissions.get(projectId).mode!=='full_access')throw new Error('ApiX 自主交付权限已撤销');
+    if(validatedContracts.get(plan.plan_id)!==plan.body){const saved=object(JSON.parse(plan.body));const checked=parseArchitecture(saved,policy.checks);if(saved.digest!==checked.digest)throw new Error('冻结契约摘要不一致，请重新规划');validatedContracts.set(plan.plan_id,plan.body);}return policy;
   }
   function assertPlan(planId:string,projectId:string){const plan=row<PlanRecord>('SELECT * FROM autonomy_plans WHERE plan_id=?',planId);if(!plan)return;current(plan,projectId);if(plan.state==='attention')throw new Error(plan.reason??'自主交付需要处理');}
   function context(taskId:string){const saved=row<{module_id:string;body:string}>('SELECT a.module_id,p.body FROM autonomy_tasks a JOIN tasks t ON t.id=a.task_id JOIN autonomy_plans p ON p.plan_id=t.plan_id WHERE a.task_id=?',taskId);return saved?`统一架构契约（所有员工必须遵守，禁止自行扩大模块边界；变更接口须 ApiX 重新规划）：\n${saved.body}\n当前模块：${saved.module_id}`:'';}
-  function halt(plan:PlanRecord,reason:string){if(row<{state:string;reason:string}>('SELECT state,reason FROM autonomy_plans WHERE plan_id=?',plan.plan_id)?.reason===reason)return;db.prepare("UPDATE autonomy_plans SET state='attention',reason=? WHERE plan_id=?").run(reason,plan.plan_id);for(const t of rows<{id:string}>('SELECT id FROM tasks WHERE plan_id=?',plan.plan_id))deps.record(t.id,'autonomy.attention',{reason});for(const run of rows<{id:string;task_id:string}>("SELECT r.id,r.task_id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.plan_id=? AND r.status='running'",plan.plan_id)){try{deps.stop(run.id);}catch(error){deps.record(run.task_id,'autonomy.stop_failed',{runId:run.id,error:String(error)});}}}
+  function halt(plan:PlanRecord,reason:string){validatedContracts.delete(plan.plan_id);if(row<{state:string;reason:string}>('SELECT state,reason FROM autonomy_plans WHERE plan_id=?',plan.plan_id)?.reason===reason)return;db.prepare("UPDATE autonomy_plans SET state='attention',reason=? WHERE plan_id=?").run(reason,plan.plan_id);for(const t of rows<{id:string}>('SELECT id FROM tasks WHERE plan_id=?',plan.plan_id))deps.record(t.id,'autonomy.attention',{reason});for(const run of rows<{id:string;task_id:string}>("SELECT r.id,r.task_id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.plan_id=? AND r.status='running'",plan.plan_id)){try{deps.stop(run.id);}catch(error){deps.record(run.task_id,'autonomy.stop_failed',{runId:run.id,error:String(error)});}}}
   function taskCurrent(plan:PlanRecord,task:ManagedTask,policy:AutonomyPolicy){current(plan,task.project_id);const fresh=row<ManagedTask>('SELECT * FROM tasks WHERE id=?',task.id);if(!fresh || fresh.employee_id!==task.employee_id || fresh.status!==task.status || fresh.prompt!==task.prompt)throw new Error('检查期间任务已变化');if(!deps.workflow(task.project_id).employeeIds.includes(task.employee_id) || deps.permissions.decision(task.project_id,task.employee_id)!=='allow')throw new Error('员工不在自主交付授权范围');deps.permissions.assertGranted(task.id,task.project_id,task.employee_id);if(task.status!=='queued')deps.scheduling.assertBinding(task.id,task.project_id,task.employee_id);if(plan.started_at && Date.now()-Date.parse(plan.started_at)>policy.maxMinutes*60000)throw new Error('自主交付已达到目标时间上限');}
   function redact(value:string){let result=value;for(const [key,secret] of Object.entries(process.env))if(/(?:KEY|TOKEN|SECRET|PASSWORD)/i.test(key)&&secret&&secret.length>=6)result=result.split(secret).join('<redacted>');return result;}
   async function execute(check:CheckCommand,cwd:string,guard:()=>void,onSpawn:(pid:number|undefined)=>void) {
@@ -80,17 +82,28 @@ export function createAutonomy(deps:Dependencies) {
       child.once('close',(exitCode,signal)=>{clearTimeout(timer);clearInterval(watch);clearTimeout(uncertainTimer);if(settled)return;settled=true;if(failure){reject(failure);return;}done({id:check.id,args:check.args,exitCode,signal,output:redact(output),timedOut,durationMs:Date.now()-start});});
     });
   }
+  function waitingRepair(taskId:string){return row<{id:string;instruction:string}>("SELECT id,instruction FROM autonomy_repairs WHERE task_id=? AND status='waiting' AND run_id IS (SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1) ORDER BY rowid DESC LIMIT 1",taskId,taskId);}
+  function waitingDependency(task:ManagedTask){
+    const ancestors=rows<{id:string;status:string}>("WITH RECURSIVE ancestors(id) AS (SELECT depends_on_id FROM task_dependencies WHERE task_id=? UNION SELECT d.depends_on_id FROM task_dependencies d JOIN ancestors a ON d.task_id=a.id) SELECT t.id,t.status FROM tasks t JOIN ancestors a ON a.id=t.id",task.id);
+    const blocked=[task,...ancestors.filter(t=>t.status==='blocked')];if(blocked.some(t=>row('SELECT id FROM runs WHERE task_id=? LIMIT 1',t.id)||row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",t.id)))return false;
+    const failures=ancestors.filter(t=>['failed','cancelled','unknown','rejected','needs_revision'].includes(t.status));return failures.length>0&&failures.every(t=>t.status==='needs_revision'&&waitingRepair(t.id));
+  }
   async function repair(plan:PlanRecord,task:ManagedTask,findings:string[],policy:AutonomyPolicy) {
     taskCurrent(plan,task,policy);const binding=row<{module_id:string;original_prompt:string;repairs:number}>('SELECT * FROM autonomy_tasks WHERE task_id=?',task.id)!;
     if(binding.repairs>=policy.maxRepairs){halt(plan,`任务 ${task.id} 已达到 ${policy.maxRepairs} 次修复上限：${findings.join('；')}`);return;}
     const architecture=JSON.parse(plan.body) as Architecture;const module=architecture.modules.find(m=>m.id===binding.module_id);
     const spec=deps.scheduling.taskSpec(task.id);const next=deps.scheduling.candidates(task.project_id,spec,task.employee_id).filter(c=>c.eligible && deps.workflow(task.project_id).employeeIds.includes(c.employeeId) && deps.permissions.decision(task.project_id,c.employeeId)==='allow');
     const replace=task.status==='failed'||task.status==='cancelled'||binding.repairs>0;
-    const chosen=policy.autoReassign?(replace?next.find(c=>!c.waiting&&c.employeeId!==task.employee_id):undefined)??next.find(c=>!c.waiting):next.find(c=>c.employeeId===task.employee_id&&!c.waiting);
-    if(!chosen){halt(plan,'没有满足能力、额度、权限与并发条件的员工可接手修复');return;}
-    const prompt=`${binding.original_prompt}\n\nApiX 修复任务 ${binding.repairs+1}（保持原需求、模块 ${module?.id??'integration'} 和契约 ${architecture.digest}）：\n${findings.map((f,i)=>`${i+1}. ${f}`).join('\n')}\n保留已完成工作，只修复上述问题并补充实际验证证据。禁止扩大需求、修改授权或自行启动其他 Agent。`;
+    const pool=policy.autoReassign?next:next.filter(c=>c.employeeId===task.employee_id);
+    const chosen=(replace&&policy.autoReassign?pool.find(c=>!c.waiting&&c.employeeId!==task.employee_id):undefined)??pool.find(c=>!c.waiting);
+    if(!pool.length){halt(plan,'没有满足能力、额度和权限条件的员工可接手修复');return;}
+    const pending=waitingRepair(task.id);
+    const prompt=pending?.instruction??`${binding.original_prompt}\n\nApiX 修复任务 ${binding.repairs+1}（保持原需求、模块 ${module?.id??'integration'} 和契约 ${architecture.digest}）：\n${findings.map((f,i)=>`${i+1}. ${f}`).join('\n')}\n保留已完成工作，只修复上述问题并补充实际验证证据。禁止扩大需求、修改授权或自行启动其他 Agent。`;
     if(prompt.length>10000){halt(plan,'修复说明超过任务上下文上限，请精简后重新安排');return;}
-    const repairId=randomUUID();db.prepare('INSERT INTO autonomy_repairs VALUES (?,?,?,?,?,?,?)').run(repairId,task.id,binding.repairs+1,chosen.employeeId,prompt,'prepared',now());
+    const repairId=pending?.id??randomUUID();
+    if(!pending)db.prepare('INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at,run_id) VALUES (?,?,?,?,?,?,?,?)').run(repairId,task.id,binding.repairs+1,chosen?.employeeId??pool[0]!.employeeId,prompt,chosen?'prepared':'waiting',now(),row<{id:string}>('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id)?.id??null);
+    if(!chosen){db.prepare("UPDATE tasks SET status='needs_revision',updated_at=? WHERE id=?").run(now(),task.id);if(!pending)deps.record(task.id,'autonomy.repair_waiting',{repairId,reasons:pool.map(c=>({employeeId:c.employeeId,waiting:c.waiting}))});return;}
+    db.prepare("UPDATE autonomy_repairs SET status='prepared',employee_id=? WHERE id=?").run(chosen.employeeId,repairId);
     try{await deps.retry(task,chosen.employeeId,prompt);db.prepare("UPDATE autonomy_repairs SET status='dispatched' WHERE id=?").run(repairId);db.prepare('UPDATE autonomy_tasks SET repairs=repairs+1,last_checkpoint=NULL WHERE task_id=?').run(task.id);deps.record(task.id,'autonomy.repair_dispatched',{repairId,employeeId:chosen.employeeId,findings});}
     catch(error){db.prepare("UPDATE autonomy_repairs SET status='blocked' WHERE id=?").run(repairId);halt(plan,String(error instanceof Error?error.message:error));}
   }
@@ -132,6 +145,8 @@ export function createAutonomy(deps:Dependencies) {
           const binding=row<{module_id:string;last_checkpoint:string|null}>('SELECT * FROM autonomy_tasks WHERE task_id=?',task.id);if(!binding)throw new Error('计划包含未绑定架构契约的任务');
           if(task.status==='completed'){taskCurrent(plan,task,policy);await verify(plan,task,policy);}
           else if(task.status==='failed' || task.status==='cancelled')await repair(plan,task,[`员工运行 ${task.status}：${redact(task.result??'无输出，请检查错误并补齐证据')}`],policy);
+          else if(task.status==='needs_revision' && waitingRepair(task.id))await repair(plan,task,[],policy);
+          else if(task.status==='blocked' && waitingDependency(task))continue;
           else if(task.status==='unknown' || task.status==='needs_revision' || task.status==='blocked')throw new Error(`任务 ${task.id} 为 ${task.status}，需要检查进程、代码交接或人工拒绝原因`);
           else if(task.status==='queued' && policy.autoReassign && !row('SELECT id FROM runs WHERE task_id=? LIMIT 1',task.id)){
             taskCurrent(plan,task,policy);const options=deps.scheduling.candidates(projectId,deps.scheduling.taskSpec(task.id),task.employee_id);const assigned=options.find(c=>c.employeeId===task.employee_id);
@@ -151,10 +166,10 @@ export function createAutonomy(deps:Dependencies) {
             }
           }
         }
-        if(rows<{status:string}>('SELECT status FROM tasks WHERE plan_id=?',plan.plan_id).every(t=>t.status==='accepted')){db.prepare("UPDATE autonomy_plans SET state='completed',reason=NULL WHERE plan_id=?").run(plan.plan_id);deps.delivered?.(plan.session_id,plan.plan_id);}
+        if(rows<{status:string}>('SELECT status FROM tasks WHERE plan_id=?',plan.plan_id).every(t=>t.status==='accepted')){db.prepare("UPDATE autonomy_plans SET state='completed',reason=NULL WHERE plan_id=?").run(plan.plan_id);validatedContracts.delete(plan.plan_id);deps.delivered?.(plan.session_id,plan.plan_id);}
       }catch(error){halt(plan,redact(String(error instanceof Error?error.message:error)));}finally{busy.delete(plan.plan_id);}
     }
   }
-  return {settings,save,bindPlan,details,resumeFingerprint,resume,assertPlan,context,tick};
+  return {settings,save,bindPlan,details,resumeFingerprint,resume,assertPlan,context,tick,waiting:(planId:string)=>rows<{id:string}>("SELECT id FROM tasks WHERE plan_id=? AND status='needs_revision'",planId).some(t=>waitingRepair(t.id))};
 }
 export type Autonomy=ReturnType<typeof createAutonomy>;

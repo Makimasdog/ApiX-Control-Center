@@ -49,7 +49,7 @@ export function createCoordinator(deps: Dependencies) {
   const session = (id: string) => { const s = row<Session>('SELECT * FROM coordination_sessions WHERE id=?', id); if (!s) throw new Error('目标不存在'); return s; };
   const requirementsOf = (s: Session): Requirements => JSON.parse(s.requirements_json) as Requirements;
   const tasksOf = (s: Session) => s.plan_id ? rows<Task>('SELECT * FROM tasks WHERE plan_id=? ORDER BY rowid', s.plan_id) : [];
-  const derivedStatus=(s:Session,tasks:Task[])=>s.plan_id && row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state==='attention'?'attention':coordinationStatus(s.status,tasks);
+  const derivedStatus=(s:Session,tasks:Task[])=>{const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;if(state==='attention')return 'attention';if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';return coordinationStatus(s.status,tasks);};
   function details(id: string) {
     const s = session(id); const requirements = requirementsOf(s); const tasks = tasksOf(s);
     const check = row<{conflicts: string; model_mode: string; model_error: string | null}>('SELECT * FROM coordination_checks WHERE session_id=?', id);

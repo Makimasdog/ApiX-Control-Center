@@ -9,7 +9,7 @@ import {parseArchitecture,autonomyDefaults} from '../dist/src/architecture.js';
 import {taskProfile} from '../dist/src/scheduling.js';
 async function fixture(work){
   const dir=await mkdtemp(join(tmpdir(),'apix-autonomy-unit-'));const db=new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);CREATE TABLE plans(id TEXT PRIMARY KEY,project_id TEXT);CREATE TABLE coordination_sessions(id TEXT PRIMARY KEY,plan_id TEXT,revision INTEGER,confirmed_revision INTEGER,status TEXT);CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,plan_id TEXT,employee_id TEXT,runtime TEXT,prompt TEXT,status TEXT,workspace_path TEXT,result TEXT,updated_at TEXT);CREATE TABLE runs(id TEXT PRIMARY KEY,task_id TEXT,status TEXT,started_at TEXT,ended_at TEXT);CREATE TABLE agent_messages(id TEXT PRIMARY KEY,task_id TEXT,target_task_id TEXT,target_run_id TEXT,from_agent TEXT,to_agent TEXT,type TEXT,payload TEXT,status TEXT,created_at TEXT);
+  db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);CREATE TABLE plans(id TEXT PRIMARY KEY,project_id TEXT);CREATE TABLE coordination_sessions(id TEXT PRIMARY KEY,plan_id TEXT,revision INTEGER,confirmed_revision INTEGER,status TEXT);CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,plan_id TEXT,employee_id TEXT,runtime TEXT,prompt TEXT,status TEXT,workspace_path TEXT,result TEXT,updated_at TEXT);CREATE TABLE runs(id TEXT PRIMARY KEY,task_id TEXT,status TEXT,started_at TEXT,ended_at TEXT);CREATE TABLE agent_messages(id TEXT PRIMARY KEY,task_id TEXT,target_task_id TEXT,target_run_id TEXT,from_agent TEXT,to_agent TEXT,type TEXT,payload TEXT,status TEXT,created_at TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE code_handoffs(task_id TEXT,status TEXT);
     INSERT INTO projects VALUES ('p');INSERT INTO plans VALUES ('plan','p');INSERT INTO coordination_sessions VALUES ('s','plan',1,1,'running');`);
   const store={db,row:(sql,...params)=>db.prepare(sql).get(...params),rows:(sql,...params)=>db.prepare(sql).all(...params),now:()=>new Date().toISOString()};
   db.prepare('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?,?,?)').run('t','p','plan','a','codex','approved task','awaiting_approval',dir,'',store.now());db.prepare('INSERT INTO runs VALUES (?,?,?,?,?)').run('run','t','running',new Date(Date.now()-40000).toISOString(),null);
@@ -85,4 +85,30 @@ test('S02 blocked reports and runtime deadlines stop before the next repair',asy
 });
 test('S03 the total goal deadline stops the run without creating a repair',()=>fixture(async({db,service,counts})=>{
   db.prepare('UPDATE autonomy_plans SET started_at=?').run(new Date(Date.now()-121*60000).toISOString());await service.tick();assert.equal(service.details('plan').state,'attention');assert.match(service.details('plan').reason,/时间上限/);assert.equal(db.prepare("SELECT status FROM runs WHERE id='run'").get().status,'cancelled');assert.equal(counts().retries,0);
+}));
+test('resource contention defers one repair and resumes automatically without spending the repair count',()=>fixture(async({dir,db,service,deps,counts,events})=>{
+  await writeFile(join(dir,'verify.mjs'),"process.exitCode=1;console.log('repair this failure');");db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");let waiting=true;const eligible=deps.scheduling.candidates;deps.scheduling.candidates=()=>eligible().map(c=>({...c,waiting:waiting?'concurrency occupied':null}));
+  await service.tick();assert.equal(service.details('plan').state,'running');assert.equal(service.details('plan').repairs[0].status,'waiting');assert.equal(service.details('plan').tasks[0].repairs,0);assert.equal(counts().retries,0);
+  await service.tick();assert.equal(service.details('plan').repairs.length,1);assert.equal(events.filter(e=>e.kind==='autonomy.repair_waiting').length,1);
+  waiting=false;await Promise.all([service.tick(),service.tick()]);assert.equal(counts().retries,1);assert.equal(service.details('plan').repairs.length,1);assert.equal(service.details('plan').repairs[0].status,'dispatched');assert.match(service.details('plan').repairs[0].instruction,/repair this failure/);
+}));
+test('waiting repair cannot override manual rejection of a later run or revoked permissions',async()=>{
+  for(const change of ['new-run','revoke'])await fixture(async({db,service,deps,revoke,counts})=>{
+    db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed'");deps.scheduling.candidates=()=>[{employeeId:'a',eligible:true,waiting:'busy'}];await service.tick();assert.equal(service.details('plan').repairs[0].status,'waiting');
+    if(change==='new-run')db.prepare('INSERT INTO runs VALUES (?,?,?,?,?)').run('later','t','completed',new Date(Date.now()-60000).toISOString(),new Date().toISOString());else revoke();
+    deps.scheduling.candidates=()=>[{employeeId:'a',eligible:true,waiting:null}];await service.tick();assert.equal(counts().retries,0);assert.equal(service.details('plan').state,'attention');
+  });
+});
+test('persisted invalid or tampered contracts are rejected on restart before any quality approval',async()=>{
+  for(const change of ['schema','digest'])await fixture(async({db,restart,counts})=>{
+    const saved=JSON.parse(db.prepare('SELECT body FROM autonomy_plans').get().body);if(change==='schema')saved.modules[0].dataStructures=[{name:'bad',schema:{type:'invalid'}}];else saved.digest='tampered';db.prepare('UPDATE autonomy_plans SET body=?').run(JSON.stringify(saved));db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");const service=restart();await service.tick();assert.equal(service.details('plan').state,'attention');assert.deepEqual(counts(),{reviews:0,accepts:0,retries:0});
+  });
+});
+test('waiting for repair resources keeps only clean never-run dependencies waiting',async()=>{
+  for(const conflict of [false,true])await fixture(async({db,service,deps,counts})=>{
+    db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed';INSERT INTO tasks SELECT 'child',project_id,plan_id,employee_id,runtime,'integration','blocked',NULL,'',updated_at FROM tasks WHERE id='t';INSERT INTO task_dependencies VALUES ('child','t');INSERT INTO autonomy_tasks(task_id,module_id,original_prompt) VALUES ('child','integration','integration')");deps.scheduling.candidates=()=>[{employeeId:'a',eligible:true,waiting:'busy'}];if(conflict)db.exec("INSERT INTO code_handoffs VALUES ('child','conflict')");await service.tick();assert.equal(service.details('plan').state,conflict?'attention':'running');assert.equal(counts().retries,0);
+  });
+});
+test('repair migration preserves old evidence without binding unconfirmed waiting work to a run',()=>fixture(async({db,restart,counts})=>{
+  db.exec("INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at) VALUES ('old','t',1,'a','old evidence','waiting','2026-10-14');ALTER TABLE autonomy_repairs DROP COLUMN run_id;UPDATE tasks SET status='needs_revision';UPDATE runs SET status='completed'");const restored=restart();assert.equal(restored.details('plan').repairs[0].instruction,'old evidence');assert.equal(restored.details('plan').repairs[0].run_id,null);await restored.tick();assert.equal(counts().retries,0);assert.equal(restored.details('plan').state,'attention');
 }));

@@ -2,7 +2,7 @@
 
 > 本文是项目的完整知识库，随开发进展持续更新。  
 > 当前对应分支：`codex/readiness-p0-p2`，基线提交 `93595d9` 已通过 PR #6 合入 `main`。  
-> 最后更新：2026-10-13
+> 最后更新：2026-10-14。自主交付的最新范围见 [模块契约](自主交付与模块契约.md)和[稳定交付修复与自审](../协作/稳定交付修复与自审.md)。
 
 ---
 
@@ -105,6 +105,7 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 | 代码交付 | Git detached worktree + `commit-tree` 冻结 |
 | 类型检查 | TypeScript 5.9，`tsconfig.json` 严格模式 |
 | 测试 | Node.js Test Runner，隔离数据库，假 CLI |
+| 契约校验 | Ajv 8.20.0、ajv-formats 3.0.1；默认 JSON Schema 2020-12，支持显式 draft-07 |
 | CI | Windows GitHub Actions，Node.js 22.19.0 |
 | 许可证 | MIT |
 
@@ -618,7 +619,7 @@ npm run test:real  # 真实协作验收（需配置真实 CLI 和模型，可能
 | `test/execution-ui.test.mjs` | 执行设置 UI |
 | `test/environment.test.mjs` | 环境变量加载 |
 
-当前测试计数：113/113（含慢 Git 检查、重连、就绪及历史分页）。
+P0–P2 阶段历史回归为 113/113。当前测试包含自主质量闭环、契约校验、资源等待、恢复与原有完整回归，最新数量和结果以 [稳定交付修复与自审](../协作/稳定交付修复与自审.md)为准；独立能力探测与真实模型测试分别记录。
 
 ### 真实协作验收
 
