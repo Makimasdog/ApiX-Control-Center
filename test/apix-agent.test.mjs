@@ -50,3 +50,13 @@ test('model-proposed fees are discarded before profile validation without granti
   const result=await agent.plan({goal:'测试',scope:'当前项目',constraints:'不批准费用',deliverable:'文件',acceptance:'验证'},[{id:'worker',name:'worker',runtime:'codex',enabled:1}]);
   assert.equal(result.mode,'pi');assert.equal(result.steps[0].scheduling.estimateMinor,null);assert.equal(result.steps[0].scheduling.fixedEmployeeId,null);assert.deepEqual(result.steps[0].scheduling.estimates,[]);assert.deepEqual(result.steps[0].scheduling.writePaths,['sum.mjs']);
 });
+test('A03 malformed architecture and contradictory quality replies cannot approve delivery',async()=>{
+  const requirements={goal:'测试已确认目标',scope:'隔离项目',constraints:'不扩大范围',deliverable:'实现',acceptance:'实际检查'};
+  for(const raw of ['{"modules":',JSON.stringify({summary:'missing modules',modules:[]})]){
+    const agent=createApiXAgent({infer:async()=>raw});await assert.rejects(()=>agent.architect(requirements,[],{projectId:'p',purpose:'architecture'}),/JSON|架构|Unexpected|Expected/);
+  }
+  const architecture={version:1,summary:'frozen',modules:[],digest:'fixture'};
+  for(const reply of [{passed:true,findings:['still broken']},{passed:false,findings:[]},{passed:'true',findings:[]},{passed:false,findings:['']},{passed:true,findings:'none'}]){
+    const agent=createApiXAgent({infer:async()=>JSON.stringify(reply)});await assert.rejects(()=>agent.review(requirements,architecture,'core',{}, {projectId:'p',purpose:'quality'}),/无效|问题/);
+  }
+});

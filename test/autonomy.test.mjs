@@ -18,7 +18,7 @@ async function fixture(work){
   const deps={...store,permissions:{get:()=>({mode:permission,version:1}),decision:()=>permission==='full_access'?'allow':'deny',assertGranted:()=>{if(permission!=='full_access')throw new Error('revoked');}},scheduling:{assertBinding:()=>{},taskSpec:()=>taskProfile({difficulty:2}),candidates:()=>[{employeeId:'a',eligible:true,waiting:null},{employeeId:'b',eligible:true,waiting:null}]},employees:()=>[],workflow:()=>workflow,inspect:async()=>({fingerprint:'stable',files:['a.txt'],conflicts:[],preview:'real diff',previewTruncated:false}),workspace:()=>dir,accept:()=>{accepts++;db.prepare("UPDATE tasks SET status='accepted' WHERE id='t'").run();},review:async()=>{reviews++;return {passed:true,findings:[],reviewMode:'apix_self_review'};},retry:async(task,employeeId,prompt)=>{retries++;db.prepare("UPDATE tasks SET status='running',employee_id=?,prompt=? WHERE id='t'").run(employeeId,prompt);},reassignPending:()=>{},stop:()=>{db.exec("UPDATE tasks SET status='cancelled';UPDATE runs SET status='cancelled'");},sendMessage:input=>{const id='m'+Math.random();db.prepare('INSERT INTO agent_messages VALUES (?,?,?,?,?,?,?,?,?,?)').run(id,'t','t','run','apix-director','a','event',JSON.stringify(input.payload),'queued',store.now());return {id,status:'queued'};},record:(taskId,kind,payload)=>events.push({taskId,kind,payload})};
   let service=createAutonomy(deps);const policy={...autonomyDefaults,enabled:true,approved:true,checkpointMinutes:1,maxRunMinutes:10,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:1000}]};
   service.save('p',policy);const architecture=parseArchitecture({summary:'scope',modules:[{id:'core',name:'core',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:100,calls:1},interfaces:[],dataStructures:[],acceptance:['host verification'],checkIds:['tests']}]},policy.checks);service.bindPlan('plan','s',1,architecture,[{taskId:'t',moduleId:'core',prompt:'approved task'}]);
-  db.exec("UPDATE tasks SET status='running'");try{await work({db,store,service,deps,events,counts:()=>({reviews,accepts,retries}),revoke:()=>permission='read_only',restart:()=>service=createAutonomy(deps)});}finally{db.close();const path=resolve(dir);assert(path.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(path,{recursive:true,force:true});}
+  db.exec("UPDATE tasks SET status='running'");try{await work({dir,db,store,service,deps,events,counts:()=>({reviews,accepts,retries}),revoke:()=>permission='read_only',restart:()=>service=createAutonomy(deps)});}finally{db.close();const path=resolve(dir);assert(path.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(path,{recursive:true,force:true});}
 }
 test('high risk checkpoints repeat and two unanswered checkpoints stop the known run before reassignment',()=>fixture(async({db,service,events,counts})=>{
   await service.tick();assert.equal(events.filter(e=>e.kind==='autonomy.checkpoint').length,1);
@@ -47,4 +47,42 @@ test('a changed model or budget binding during quality review cannot be silently
 }));
 test('never-run queued work is reassigned within the same module when its original runtime becomes unavailable',()=>fixture(async({db,service,deps})=>{
   db.exec("UPDATE tasks SET status='queued';DELETE FROM runs");let assigned=null;deps.scheduling.candidates=()=>[{employeeId:'a',eligible:false,waiting:'unavailable'},{employeeId:'b',eligible:true,waiting:null}];deps.scheduling.assertBinding=()=>{throw new Error('runtime availability changed');};deps.reassignPending=(taskId,employeeId)=>assigned={taskId,employeeId};await service.tick();assert.deepEqual(assigned,{taskId:'t',employeeId:'b'});assert.equal(service.details('plan').state,'running');
+}));
+
+test('Q03 truncated evidence and conflicts pause without invoking review or repair',async()=>{
+  for(const change of [{previewTruncated:true},{context:{files:[],truncated:true}},{conflicts:['a.txt']}])await fixture(async({db,service,deps,counts})=>{
+    db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");const inspect=deps.inspect;deps.inspect=async()=>({...await inspect(),...change});await service.tick();
+    assert.equal(service.details('plan').state,'attention');assert.deepEqual(counts(),{reviews:0,accepts:0,retries:0});
+  });
+});
+test('Q04 scope violations produce specific repairs instead of acceptance',()=>fixture(async({db,service,deps,counts})=>{
+  db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");const inspect=deps.inspect;deps.inspect=async()=>({...await inspect(),files:['a.txt','outside.txt']});await service.tick();
+  assert.equal(counts().accepts,0);assert.equal(counts().reviews,0);assert.equal(counts().retries,1);assert.match(service.details('plan').repairs[0].instruction,/outside.txt/);
+}));
+test('Q05 changing code during actual checks or model review invalidates acceptance',async()=>{
+  for(const phase of ['checks','review'])await fixture(async({db,service,deps,counts})=>{
+    db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");let inspections=0;const inspect=deps.inspect;deps.inspect=async()=>({...await inspect(),fingerprint:++inspections> (phase==='checks'?1:2)?'changed':'stable'});await service.tick();
+    assert.equal(counts().accepts,0);assert.equal(counts().retries,0);assert.equal(counts().reviews,phase==='checks'?0:1);assert.equal(service.details('plan').state,'attention');assert.match(service.details('plan').checks[0].body.error,/变化|修改/);
+  });
+});
+test('Q06 a missing verification script remains an error and is never accepted',()=>fixture(async({dir,db,service,counts})=>{
+  await rm(join(dir,'verify.mjs'));db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(service.details('plan').checks[0].status,'error');assert.deepEqual(counts(),{reviews:0,accepts:0,retries:0});
+}));
+test('Q07 an actual hung check is terminated and creates a bounded repair',()=>fixture(async({dir,db,service,counts})=>{
+  await writeFile(join(dir,'verify.mjs'),"console.log('entered actual hanging check');setInterval(()=>{},100);");db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");await service.tick();const check=service.details('plan').checks[0];
+  assert.equal(check.status,'failed');assert.equal(check.body.tests[0].timedOut,true);assert.match(check.body.tests[0].output,/entered actual/);assert.equal(counts().reviews,0);assert.equal(counts().accepts,0);assert.equal(counts().retries,1);
+}));
+test('Q08 concurrent ticks perform one actual check and one acceptance',()=>fixture(async({dir,db,service,deps,counts})=>{
+  await writeFile(join(dir,'verify.mjs'),"setTimeout(()=>console.log('actual delayed check'),100);");db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");let reviews=0;deps.review=async()=>{reviews++;return {passed:true,findings:[],reviewMode:'apix_self_review'};};await Promise.all([service.tick(),service.tick()]);
+  assert.equal(service.details('plan').checks.length,1);assert.equal(counts().accepts,1);assert.equal(reviews,1);assert.equal(service.details('plan').state,'completed');
+}));
+test('S02 blocked reports and runtime deadlines stop before the next repair',async()=>{
+  for(const reason of ['blocked','timeout'])await fixture(async({db,service,events,counts})=>{
+    if(reason==='blocked')db.prepare('INSERT INTO agent_messages VALUES (?,?,?,?,?,?,?,?,?,?)').run('blocked','t','t','run','a','apix-director','event',JSON.stringify({blocked:true}),'completed',new Date().toISOString());
+    else db.prepare('UPDATE runs SET started_at=?').run(new Date(Date.now()-11*60000).toISOString());
+    await service.tick();assert(events.some(e=>e.kind===(reason==='blocked'?'autonomy.blocked_stop':'autonomy.timeout')));assert.equal(counts().retries,0);await service.tick();assert.equal(counts().retries,1);
+  });
+});
+test('S03 the total goal deadline stops the run without creating a repair',()=>fixture(async({db,service,counts})=>{
+  db.prepare('UPDATE autonomy_plans SET started_at=?').run(new Date(Date.now()-121*60000).toISOString());await service.tick();assert.equal(service.details('plan').state,'attention');assert.match(service.details('plan').reason,/时间上限/);assert.equal(db.prepare("SELECT status FROM runs WHERE id='run'").get().status,'cancelled');assert.equal(counts().retries,0);
 }));
