@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import {createApiXAgent} from '../dist/src/apix-agent.js';
 import {emptyRequirements} from '../dist/src/requirement-engine.js';
 
+test('planning distinguishes inference failure from invalid dependencies and accepts whitespace around JSON fences',async()=>{
+  const requirements={goal:'实现',scope:'现有模块',constraints:'保留功能',deliverable:'代码',acceptance:'测试通过'},employees=[{id:'one'}];
+  const failed=await createApiXAgent({infer:async()=>{throw new Error('connection timeout');}}).plan(requirements,employees);
+  assert.equal(failed.failureKind,'inference');assert.equal(failed.mode,'rules');
+  const invalid=await createApiXAgent({infer:async()=>JSON.stringify({steps:[{prompt:'implement',employeeId:'one',dependsOn:[0]}]})}).plan(requirements,employees);
+  assert.equal(invalid.failureKind,'response');assert.match(invalid.error,/计划依赖无效/);assert.equal(invalid.mode,'rules');
+  const valid=await createApiXAgent({infer:async()=> ' \n```json\n'+JSON.stringify({steps:[{prompt:'implement',employeeId:'one',dependsOn:[]}]})+'\n```\n '}).plan(requirements,employees);
+  assert.equal(valid.mode,'pi');
+});
+
 test('ApiX streams only the top-level reply across escapes and Unicode splits', async()=>{
   const reply = '中文\n引号"与反斜杠\\，火箭🚀';
   const raw = JSON.stringify({kind:'clarification',updates:[{question:'不应展示'}],question:reply,conflicts:[]}).replace('🚀','\\uD83D\\uDE80');

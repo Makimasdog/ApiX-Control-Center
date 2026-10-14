@@ -3,7 +3,7 @@ import { nextQuestion, requirementFields, requirementBrief } from './requirement
 import { taskProfile } from './scheduling.js';
 import {parseArchitecture,type Architecture,type CheckCommand} from './architecture.js';
 
-function parse(raw: string) { return object(JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ''))); }
+function parse(raw: string) { return object(JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))); }
 
 // Only expose the top-level reply string, never the surrounding model JSON.
 function visibleReply(raw: string): string {
@@ -78,11 +78,14 @@ export function createApiXAgent(backend: ModelBackend) {
     const result=parse(raw);if(typeof result.passed!=='boolean' || !Array.isArray(result.findings) || result.findings.length>30 || result.findings.some(f=>typeof f!=='string'||!f.trim()||f.length>2000) || result.passed && result.findings.length || !result.passed && !result.findings.length)throw new Error('质量审查返回无效或缺少具体问题');
     return {passed:result.passed,findings:result.findings as string[],reviewMode:'apix_self_review'};
   }
-  async function plan(requirements: Requirements, employees: Employee[], context?:InferenceContext,architecture?:Architecture): Promise<{ steps: PlanStep[]; mode: string; error?: string }> {
+  async function plan(requirements: Requirements, employees: Employee[], context?:InferenceContext,architecture?:Architecture,validationError?:string): Promise<{ steps: PlanStep[]; mode: string; error?: string; failureKind?: 'inference' | 'response' }> {
     if (!employees.length) throw new Error('请先注册一个可用员工');
     const brief = requirementBrief(requirements);
+    let failureKind: 'inference' | 'response' = 'inference';
     try {
-      const parsed = parse(await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，参考用户声明的 capabilityProfile 匹配实际能力，不按品牌固定分工。每步可提供 scheduling={kind:implementation|testing|review|analysis|docs,tags:[],tools:[],writePaths:[],contextTokens:null,fixedEmployeeId:null,estimateMinor:null,minutes:null}；未知填写 null 或空数组，费用上界及指定员工只能来自用户明确批准的信息，不能编造金额或工具能力。按任务实际范围填写项目内相对 writePaths，并行步骤不能重叠。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}${architecture?'\n冻结架构：'+JSON.stringify(architecture)+'\n自主架构模式：每个模块恰好一个实现步骤，按模块依赖拓扑排序；每步必须提供 moduleId，全部模块必须覆盖。最多31步，不另建最终集成步骤（宿主统一添加）。':''}`, undefined, context));
+      const raw = await backend.infer(`APIX_PLAN_JSON\n${identity}\n生成有具体验收条件的执行计划，参考用户声明的 capabilityProfile 匹配实际能力，不按品牌固定分工。每步可提供 scheduling={kind:implementation|testing|review|analysis|docs,tags:[],tools:[],writePaths:[],contextTokens:null,fixedEmployeeId:null,estimateMinor:null,minutes:null}；未知填写 null 或空数组，费用上界及指定员工只能来自用户明确批准的信息，不能编造金额或工具能力。按任务实际范围填写项目内相对 writePaths，并行步骤不能重叠。每项任务说明范围、输入、交付物和可验证的验收证据。没有数据依赖且文件范围不重叠的任务可以并行；有代码依赖的任务必须标明前置步骤，并说明独立工作区需要集成后才能验证代码，不能把前置文字报告当作代码已同步。审查步骤优先交给另一位合适员工；只有一位员工时明确为自审。不添加用户未要求的功能，不把所有任务无理由串行。步骤1至8项；dependsOn 只能引用前序步骤的零基索引。${validationError?'上次计划未通过宿主校验：'+validationError.slice(0,300)+'。重新生成完整计划；第一个步骤的 dependsOn 必须为 []，第 i 个步骤只能依赖 0 至 i-1，不能引用自己或后续步骤，也不能使用员工 ID 或步骤编号字符串。':''}只输出 JSON：{"steps":[{"prompt":"具体任务与验收要求","employeeId":"可用员工 ID","dependsOn":[]}]}\n已确认需求：${brief}\n员工：${JSON.stringify(employees)}${architecture?'\n冻结架构：'+JSON.stringify(architecture)+'\n自主架构模式：每个模块恰好一个实现步骤，按模块依赖拓扑排序；每步必须提供 moduleId，全部模块必须覆盖。最多31步，不另建最终集成步骤（宿主统一添加）。':''}`, undefined, context);
+      failureKind = 'response';
+      const parsed = parse(raw);
       if (!Array.isArray(parsed.steps) || !parsed.steps.length || parsed.steps.length > (architecture?31:8)) throw new Error('计划步骤无效');
       const steps = parsed.steps.map((value, index) => {
         const step = object(value);
@@ -95,7 +98,7 @@ export function createApiXAgent(backend: ModelBackend) {
       });
       return { steps, mode: 'pi' };
     } catch (error) {
-      return { steps: [{ prompt: `按照已确认需求执行并提交验收证据：\n${brief}`, employeeId: employees[0]!.id, dependsOn: [] }], mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0, 300) };
+      return { steps: [{ prompt: `按照已确认需求执行并提交验收证据：\n${brief}`, employeeId: employees[0]!.id, dependsOn: [] }], mode: 'rules', failureKind, error: String(error instanceof Error ? error.message : error).slice(0, 300) };
     }
   }
   async function guide(requirements: Requirements, taskPrompt: string, report: { summary: string; blocked: boolean }): Promise<{ action: 'guide' | 'escalate' | 'observe'; focus: 'scope' | 'verification' | 'dependencies' | 'delivery'; mode: 'pi' | 'rules'; error?: string }> {

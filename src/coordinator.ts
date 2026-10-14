@@ -209,14 +209,19 @@ export function createCoordinator(deps: Dependencies) {
       const authorized=workflow.get(s.project_id);
       const autonomyPolicy=deps.autonomy.settings(s.project_id);
       const architecture=autonomyPolicy.enabled?await metered(s.project_id,()=>agent.architect(requirementsOf(s),autonomyPolicy.checks,{projectId:s.project_id,purpose:'architecture'})):undefined;
-      const generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)})),{projectId:s.project_id,purpose:'planning'},architecture)); mode = generated.mode;
-      if(architecture && (generated.mode!=='pi' || deps.autonomy.settings(s.project_id).version!==autonomyPolicy.version || workflow.get(s.project_id).version!==authorized.version || session(id).revision!==s.revision))throw new Error('架构规划失败或授权/需求已变化，未派发任务');
+      const candidates=deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)}));
+      let generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture));
+      // Correct a malformed response once, with a separate budget reservation; never replay unavailable inference.
+      if(generated.failureKind==='response')generated=await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture,generated.error));
+      mode = generated.mode;
+      if(architecture && generated.mode!=='pi')throw new Error(`架构执行计划校验失败，未派发任务：${generated.error ?? '模型未生成有效计划'}`);
+      if(architecture && (deps.autonomy.settings(s.project_id).version!==autonomyPolicy.version || workflow.get(s.project_id).version!==authorized.version || session(id).revision!==s.revision))throw new Error('架构规划失败或授权/需求已变化，未派发任务');
       if(input.workflowVersion!==undefined){const currentWorkflow=workflow.get(s.project_id);if(currentWorkflow.version!==input.workflowVersion)throw new Error('自动协作授权已变化，未派发任务');}
       const proposed=architecture?bindArchitecture(architecture,generated.steps,autonomyPolicy.taskCapMinor):generated.steps.map(step=>({...step,scheduling:{...taskProfile(step.scheduling),estimateMinor:null,fixedEmployeeId:null,estimates:[]}}));
       const steps = deps.scheduling.assign(s.project_id,validateSteps(proposed),true);
       transaction(() => {
         writePlan(s,steps,architecture);
-        turn(session(id),'apix','plan_review',mode === 'pi' ? '需求已确认，执行计划已生成。请查看任务安排和依赖。' : '推理后端不可用，已生成规则草案，需要你检查后批准。');
+        turn(session(id),'apix','plan_review',mode === 'pi' ? '需求已确认，执行计划已生成。请查看任务安排和依赖。' : `${generated.failureKind==='response'?'模型已响应，但执行计划的格式或内容校验未通过。':'模型推理请求失败。'}已保留规则草案，尚未派发；请检查模型配置和错误详情，或审查草案后批准。`);
         db.prepare('INSERT INTO coordination_checks(session_id,conflicts,model_mode,model_error) VALUES (?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET model_mode=excluded.model_mode,model_error=excluded.model_error').run(id,'[]',mode,generated.error ?? null);
         checkpoint(id);
       });

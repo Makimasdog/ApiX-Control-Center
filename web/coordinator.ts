@@ -166,7 +166,7 @@ const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coor
 const inspector=document.createElement('aside');inspector.className='desktop-inspector';inspector.id='desktop-inspector';
 const main=document.createElement('div');main.className='desktop-main';main.append(empty,body);
 const chats=$('#coord-sessions');const chatSection=document.createElement('div');chatSection.className='sidebar-section desktop-chats';chatSection.innerHTML='<div class="section-heading"><span class="section-caption">对话</span><button class="icon-button" id="desktop-new-chat" aria-label="新建对话">＋</button></div>';chatSection.append(chats);document.querySelector('.project-section')!.after(chatSection);
-chats.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-session]');if(button){newChat=false;selectSession(button.dataset.session!);void reload();}});
+chats.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLButtonElement>('button[data-session]');if(button && chats.contains(button) && button.dataset.session!==sessionId){newChat=false;selectSession(button.dataset.session!);void reload().catch(e=>notice(String(e),true));}});
 inspector.innerHTML='<div class="desktop-inspector-head"><strong>工作详情</strong><button class="outline-button" id="desktop-close-details" aria-label="关闭工作详情">关闭</button></div><section id="desktop-workflow" class="surface-card"></section><details class="desktop-detail"><summary>ApiX 工具活动</summary><div id="desktop-tools"></div></details>';
 for(const section of [...body.children])if(section.classList.contains('coord-section') || section.id==='coord-execution'){
   if(section.querySelector('#coord-tasks')){
@@ -233,7 +233,7 @@ meetingSection.addEventListener('click',event=>{const el=(event.target as Elemen
 function render(s: Session) {
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
   const tools=$('#desktop-tools');const toolKey=JSON.stringify(s.managerTools??[]);if(tools.dataset.key!==toolKey){tools.dataset.key=toolKey;tools.innerHTML=(s.managerTools??[]).map(e=>`<p>${esc(e.toolName)} · ${e.phase==='start'?'开始':e.isError?'失败':'完成'}</p>`).join('')||'<p>本次对话尚无工具调用。</p>';}
-  $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型连接需要处理：${s.agent.error}`:'';
+  $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型规划或连接需要处理：${s.agent.error}`:'';
   const planPanel=$<HTMLDetailsElement>('.desktop-plan');if(planPanel.dataset.status!==s.status){planPanel.open=s.status==='plan_review';planPanel.dataset.status=s.status;}
   const activity=$('#desktop-activity');activity.hidden=!s.tasks.length;
   const automaticQuality=s.autonomy?.state==='running'&&s.autonomyPolicy?.enabled===true;
@@ -398,8 +398,7 @@ function renderDelivery(d:Delivery) {
   }
 }
 root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
-root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-session],[data-remove],[data-coord-accept],[data-coord-reject],[data-delivery],[data-freeze-delivery]');if(!el)return;
-  if(el.dataset.session){selectSession(el.dataset.session);void reload().catch(e=>notice(String(e),true));}
+root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('button[data-remove],button[data-coord-accept],button[data-coord-reject],button[data-delivery],button[data-freeze-delivery]');if(!el || !root.contains(el))return;
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}
   if(el.dataset.delivery)void action(async()=>{const id=el.dataset.delivery!;const originProject=projectId;const originSession=sessionId;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(projectId===originProject && sessionId===originSession)renderDelivery(d);});
   if(el.dataset.freezeDelivery)void action(async()=>{const id=el.dataset.freezeDelivery!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/delivery`,{fingerprint:deliveryFingerprints.get(id)});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();});

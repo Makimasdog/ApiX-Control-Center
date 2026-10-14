@@ -46,6 +46,7 @@ process.stdin.on("data", (chunk) => {
       } else if (command.message.startsWith('APIX_PLAN_JSON\n')) {
         const employees = JSON.parse(command.message.split('\n员工：').at(-1).split('\n冻结架构：')[0]);
         answer = {steps:[{...(command.message.includes('冻结架构：')?{moduleId:'core'}:{}),prompt:command.message.includes('冻结架构：')?'fixture-autonomy: 实现 core 模块 a.txt 内容接口':'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
+        if(process.env.APIX_FIXTURE_PLAN_INVALID==='always' || process.env.APIX_FIXTURE_PLAN_INVALID==='once' && !command.message.includes('上次计划未通过宿主校验：'))answer.steps[0].dependsOn=[0];
       } else {
         const latest = command.message.split('用户最新消息：').at(-1).split('\n本次工具阶段的答复')[0];
         if(process.env.APIX_FIXTURE_NON_JSON_AFTER_TOOLS==='1' && process.argv.includes('--tools')){

@@ -9,6 +9,7 @@ import { externalAgents, scanExternalAgents } from "./agent-discovery.mjs";
 import { createMailboxService } from "./src/mailbox.mjs";
 import { createTaskScheduler } from "./src/task-scheduler.mjs";
 import { createCodeHandoffs } from "./src/code-handoffs.mjs";
+import {projectBaseline,projectSourceVersion} from './src/project-baseline.mjs';
 import { createExecutionControl, quotaFailure } from './src/execution-control.mjs';
 import { createCoordinator } from "./dist/src/coordinator.js";
 import { requirementBrief } from "./dist/src/requirement-engine.js";
@@ -411,13 +412,13 @@ function workspaceFor(task, project) {
   if (!task.plan_id) return sourcePath;
   if (task.workspace_path) {
     const workspace=codeHandoffs.workspace(task);
-    const currentCommon=realpathSync.native(resolve(sourcePath,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:sourcePath,encoding:'utf8'}).trim()));
+    const baseline=projectBaseline(sourcePath,task.plan_id,dataDir,{create:false});
+    const currentCommon=realpathSync.native(resolve(baseline,execFileSync('git',['rev-parse','--git-common-dir'],{cwd:baseline,encoding:'utf8'}).trim()));
     if(workspace.common!==currentCommon)throw new Error('项目或仓库路径已变化，请重新安排任务');
     if(row('SELECT status FROM code_handoffs WHERE task_id=?',task.id)?.status==='conflict'){const error=new Error('工作区仍有未审查的代码交接，请检查后恢复');error.code='HANDOFF_CONFLICT';throw error;}
     return task.workspace_path;
   }
-  const root = gitRoot(sourcePath);
-  if (!root) throw new Error("计划任务要求 Git 项目以创建独立 worktree");
+  const root = projectBaseline(sourcePath,task.plan_id,dataDir);
   const workspaceRoot = join(dataDir, "workspaces", task.id);
   mkdirSync(dirname(workspaceRoot), { recursive: true });
   try {
@@ -448,7 +449,7 @@ function launch(task) {
   const sourcePath = repository?.path ?? project.path;
   if (!existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) throw new Error("项目目录已不存在");
   if(task.recovery_fingerprint) {
-    const actual=task.workspace_path ? codeHandoffs.inspect(task).fingerprint : 'head:'+execFileSync('git',['rev-parse','HEAD'],{cwd:sourcePath,encoding:'utf8'}).trim();
+    const actual=task.workspace_path ? codeHandoffs.inspect(task).fingerprint : 'head:'+projectSourceVersion(sourcePath,dataDir);
     if(actual!==task.recovery_fingerprint)throw new Error('恢复检查后工作区或源仓库已变化，请重新检查并批准');
   }
   const context = [];
@@ -1238,8 +1239,7 @@ export function prepareIntegration(input) {
   const repository = input.repositoryId ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", input.repositoryId, project.id) : null;
   if (input.repositoryId && !repository) throw new Error("仓库不属于该项目");
   const sourcePath = repository?.path ?? project.path;
-  const root = gitRoot(sourcePath);
-  if (!root) throw new Error("集成需要 Git 仓库");
+  const root = projectBaseline(sourcePath,plan.id,dataDir,{create:false});
   const tasks = rows("SELECT t.*,w.base_sha FROM tasks t LEFT JOIN workspaces w ON w.task_id=t.id WHERE t.plan_id=? AND t.repository_id IS ? ORDER BY t.created_at", plan.id, repository?.id ?? null);
   if (!tasks.length || tasks.some((task) => task.status !== "accepted" || !task.workspace_path || !task.base_sha)) throw new Error("该仓库中的所有计划任务必须先运行并验收");
   const baseSha = tasks[0].base_sha;
@@ -1249,7 +1249,8 @@ export function prepareIntegration(input) {
   const integrationPath = join(dataDir, "integrations", id);
   mkdirSync(dirname(integrationPath), { recursive: true });
   execFileSync("git", ["worktree", "add", "--detach", integrationPath, baseSha], { cwd: root, encoding: "utf8", timeout: 20000 });
-  const report = { taskIds: tasks.map((task) => task.id), applied: [], conflicts: [], changedFiles: [] };
+  const sourceRoot=gitRoot(sourcePath);
+  const report = { taskIds: tasks.map((task) => task.id), applied: [], conflicts: [], changedFiles: [], sourcePath, sourceKind: sourceRoot && realpathSync.native(sourceRoot)===realpathSync.native(root)?'git':'snapshot' };
   for (const task of tasks) {
     const untracked = task.delivery_commit ? '' : execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { cwd: task.workspace_path, encoding: "utf8" }).trim();
     if (untracked) { report.conflicts.push({ taskId: task.id, reason: `未跟踪文件：${untracked.slice(0, 500)}` }); continue; }
@@ -1273,6 +1274,7 @@ export function prepareIntegration(input) {
 export function applyIntegration(id) {
   const review = row("SELECT * FROM integration_reviews WHERE id=?", id);
   if (!review || review.status !== "ready") throw new Error("只有无冲突的集成结果可以批准应用");
+  if(JSON.parse(review.report).sourceKind==='snapshot')throw new Error('非 Git 项目的成果保存在集成工作区，请检查后导出；不能将变更应用到托管输入基线');
   const plan = row('SELECT project_id FROM plans WHERE id=?', review.plan_id);
   if (plan && permissions.get(plan.project_id).mode === 'read_only') throw new Error('只读模式不能应用集成变更');
   if (!existsSync(review.workspace_path)) throw new Error("集成工作区已不存在");
@@ -1331,7 +1333,7 @@ export const registerRuntimeAdapter = runtimeAdapters.register;
 export const instructCoordinationEmployee = coordinator.instructEmployee;
 export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
-export const taskDelivery=createTaskDelivery({row,codeHandoffs,isActive:id=>running.get(id)?.child.exitCode===null});
+export const taskDelivery=createTaskDelivery({row,codeHandoffs,dataDir,isActive:id=>running.get(id)?.child.exitCode===null});
 export const inspectTaskDelivery=createDeliveryInspection({database:join(dataDir,'apix.sqlite'),dataDir,row,isActive:id=>running.get(id)?.child.exitCode===null});
 export function executionSettings(projectId){return executionControl.get(projectId);}
 export function saveExecutionSettings(projectId,input){const result=executionControl.save(projectId,input);pumpTasks();return result;}

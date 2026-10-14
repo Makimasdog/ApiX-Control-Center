@@ -1,12 +1,14 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {stat} from 'node:fs/promises';
 const exec=promisify(execFile);
 export async function projectReadiness({project,employees,runtimes,settings,managerAvailable,policy,budget,inspect=async path=>{
-  await exec('git',['rev-parse','--verify','HEAD'],{cwd:path,timeout:5000,windowsHide:true});
+  if(!(await stat(path)).isDirectory())throw new Error('项目不是目录');
+  try{await exec('git',['rev-parse','--verify','HEAD'],{cwd:path,timeout:5000,windowsHide:true});return 'git';}catch(error){if(['ENOENT','EACCES','EPERM'].includes(error.code) || error.killed)throw error;return 'snapshot';}
 }}) {
   const checks=[];const add=(id,state,message,action)=>checks.push({id,state,message,action});
-  if(!project)add('project','missing','先添加或选择一个本机 Git 项目','projects');
-  else{try{await inspect(project.path);add('project','ready','项目 Git 提交可用','projects');}catch{add('project','missing','项目路径不可用或尚无 Git 提交，请检查路径并创建首次提交','projects');}}
+  if(!project)add('project','missing','先添加或选择一个本机项目','projects');
+  else{try{const kind=await inspect(project.path);add('project','ready',kind==='snapshot'?'项目目录可用；执行时建立托管 Git 快照，原目录保持不变':'项目 Git 提交可用','projects');}catch{add('project','missing','项目目录或 Git 入口不可用，请检查路径及 Git 安装','projects');}}
   add('manager',managerAvailable?'ready':'missing',managerAvailable?'Pi 入口可用，认证与模型仍需连接测试':'未找到管理者 Pi，请安装或设置 APIX_MANAGER_PI_ENTRY / APIX_PI_ENTRY','model');
   const keyMissing=settings.apiKeyEnv&&!process.env[settings.apiKeyEnv];
   add('model',keyMissing?'missing':'check',keyMissing?'模型密钥环境变量未设置，请设置后重启服务':settings.model?'已保存模型 '+settings.model+'，请进行连接测试':'使用 Pi 默认配置，请进行连接测试','model');

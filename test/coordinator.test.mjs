@@ -406,6 +406,42 @@ async function setup(h,runtime='pi') {
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:JSON.stringify(answers)});
   return {projectId,employeeId,s};
 }
+
+test('non-Git projects run isolated tasks, freeze delivery, hand off code and prepare integration across restart',async()=>harness(async h=>{
+  const project=join(h.dir,'non-git');await mkdir(project);await writeFile(join(project,'README.md'),'original');await writeFile(join(project,'.env'),'never copy');
+  const projectId=(await h.request('/api/projects',{name:'non Git',path:project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'worker',runtime:'pi',role:'开发'})).id;
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:JSON.stringify(answers)});
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first',dependsOn:[]},{employeeId,prompt:'second',dependsOn:[0]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  await writeFile(join(s.tasks[0].workspace_path,'handoff.txt'),'accepted code');
+  const first=await h.request(`/api/tasks/${s.tasks[0].id}/delivery`);assert(first.inspection.fingerprint);
+  await h.request(`/api/tasks/${s.tasks[0].id}/review`,{accepted:true,fingerprint:first.inspection.fingerprint});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[1].status==='completed'&&d;});
+  assert.equal(await readFile(join(s.tasks[1].workspace_path,'handoff.txt'),'utf8'),'accepted code');
+  await h.restart();const second=await h.request(`/api/tasks/${s.tasks[1].id}/delivery`);assert(second.inspection.fingerprint);
+  await h.request(`/api/tasks/${s.tasks[1].id}/review`,{accepted:true,fingerprint:second.inspection.fingerprint});
+  const integration=await h.request('/api/integrations',{planId:s.plan_id});assert.equal(integration.report.sourceKind,'snapshot');assert.equal(integration.status,'ready');
+  assert.equal(await readFile(join(integration.workspacePath,'handoff.txt'),'utf8'),'accepted code');
+  await h.request(`/api/integrations/${integration.id}/apply`,{},400);
+  assert.equal(await readFile(join(project,'README.md'),'utf8'),'original');await assert.rejects(readFile(join(project,'.git')));await assert.rejects(readFile(join(s.tasks[0].workspace_path,'.env')));
+}));
+
+test('invalid planning dependencies are corrected once before dispatch',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(s.agent.mode,'pi');assert.equal(s.agent.error,null);assert.deepEqual(s.dependencies,[]);
+  assert(s.tasks.every(t=>t.status==='awaiting_approval'));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_PLAN_INVALID:'once'}));
+
+test('repeated invalid dependencies stay a review draft and are not mislabeled as unavailable backend',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/计划依赖无效/);
+  assert.match(s.turns.at(-1).content,/模型已响应/);assert(!s.turns.at(-1).content.includes('推理后端不可用'));
+  assert(s.tasks.every(t=>t.status==='awaiting_approval'));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_PLAN_INVALID:'always'}));
 test('ApiX requires complete confirmed requirements; approvals, independent memory and replay survive restart',async()=>harness(async h=>{
   const {projectId,s}=await setup(h);
   assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'Pi');assert.equal(s.assessment.ready,true);
