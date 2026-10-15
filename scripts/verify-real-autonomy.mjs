@@ -9,6 +9,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {loadEnvironment} from '../src/environment.mjs';
 
 const selfCheck=process.argv.includes('--self-check');
+const testModel='qwen3.8-27b';
 if(!selfCheck&&!process.argv.includes('--approve-cost'))throw new Error('真实模型测试可能产生费用；获准后传入 --approve-cost');
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');loadEnvironment(join(root,'.env'));
 const parent=join(root,'.tmp-real-autonomy');mkdirSync(parent,{recursive:true});
@@ -16,7 +17,7 @@ const dir=mkdtempSync(join(parent,'run-'));const end=Date.now()+20*60000;
 const env={...process.env,APIX_DATA_DIR:join(dir,'data'),APIX_LEGACY_API:'0',APIX_SUPERVISION_TICK_MS:'1000'};
 // Never silently run this test using a fake entry inherited from another fixture.
 for(const name of ['APIX_PI_ENTRY','APIX_MANAGER_PI_ENTRY','APIX_CODEX_ENTRY','APIX_CLAUDE_ENTRY'])if(env[name]&&/fake-|autonomy-ui/i.test(env[name]))throw new Error('真实验收拒绝测试替身入口');
-const report={kind:'real autonomous acceptance',startedAt:new Date().toISOString(),dir,cases:[],pass:false,actualCost:'unknown',humanPlanEdits:0};
+const report={kind:'real autonomous acceptance',managerModel:testModel,startedAt:new Date().toISOString(),dir,cases:[],pass:false,actualCost:'unknown',humanPlanEdits:0};
 const redact=value=>{let output=String(value);for(const [name,secret] of Object.entries(env))if(/KEY|TOKEN|SECRET|PASSWORD/i.test(name)&&secret&&secret.length>=6)output=output.replaceAll(secret,'<redacted>');return output;};
 const port=await new Promise(done=>{const listener=createServer();listener.listen(0,'127.0.0.1',()=>{const port=listener.address().port;listener.close(()=>done(port));});});env.PORT=String(port);
 let server;let cleaning=false;
@@ -39,7 +40,7 @@ if(selfCheck){
   for(const [name,body] of Object.entries({'verify-core.mjs':coreCheck,'verify-http.mjs':apiCheck,'verify-repair.mjs':repairCheck}))writeFileSync(join(project,name),body);
   for(const script of ['verify-core.mjs','verify-http.mjs'])execFileSync(process.execPath,[script],{cwd:project,stdio:'ignore',timeout:10000});
   assert.throws(()=>execFileSync(process.execPath,['verify-repair.mjs'],{cwd:project,stdio:'pipe',timeout:10000,env:{...process.env,APIX_RUN_ID:''}}),error=>error.status===1&&String(error.stderr).includes('APIX_TRANSIENT_FAULT_ONCE'));
-  execFileSync(process.execPath,['verify-repair.mjs'],{cwd:project,stdio:'ignore',timeout:10000});console.log(JSON.stringify({kind:'test harness self-check, no models',pass:true,dir}));process.exit(0);
+  execFileSync(process.execPath,['verify-repair.mjs'],{cwd:project,stdio:'ignore',timeout:10000});console.log(JSON.stringify({kind:'test harness self-check, no models',managerModel:testModel,pass:true,dir}));process.exit(0);
 }
 async function scenario(id,goal,files,checks,acceptance,seed={}){
   const result={id,startedAt:new Date().toISOString(),pass:false,stage:'prepare'};report.cases.push(result);
@@ -66,10 +67,10 @@ async function scenario(id,goal,files,checks,acceptance,seed={}){
   result.workspace=final.workspacePath;result.pass=true;result.stage='complete';result.endedAt=new Date().toISOString();
 }
 try{
-  if(!env.ali_url||!env.ali_model_name||!env.APIX_ALI_API_KEY)throw new Error('现有阿里管理者配置未就绪');
+  if(!env.ali_url||!env.APIX_ALI_API_KEY)throw new Error('现有阿里管理者配置未就绪');
   server=spawn(process.execPath,[join(root,'server.mjs')],{cwd:root,env,stdio:'ignore',windowsHide:true});await wait(async()=>{try{return await api('/api/snapshot');}catch{return null;}},Boolean,Date.now()+30000);
   const catalog=(await api('/api/snapshot')).runtimes;assert(catalog.some(r=>r.id==='codex'&&r.available&&r.managed),'real Codex unavailable');
-  await api('/api/manager/settings',{baseUrl:env.ali_url,model:env.ali_model_name,apiType:'openai-completions',apiKeyEnv:'APIX_ALI_API_KEY'});
+  await api('/api/manager/settings',{baseUrl:env.ali_url,model:testModel,apiType:'openai-completions',apiKeyEnv:'APIX_ALI_API_KEY'});
   await scenario('T01','开发两个模块的订单金额计算 HTTP 系统',{'verify-core.mjs':coreCheck,'verify-http.mjs':apiCheck},[{id:'core',args:['verify-core.mjs'],timeoutMs:10000},{id:'http',args:['verify-http.mjs'],timeoutMs:10000}],'纯函数模块引用 core 检查，HTTP 模块引用 http 检查；不得在纯函数阶段引用尚未存在的 HTTP 检查。所有模块及最终集成均实测和自审通过，最终接口符合约定。');
   await scenario('T02','修复 domain.mjs 对非法数量的校验并完成自动返工',{'verify-repair.mjs':repairCheck},[{id:'repair',args:['verify-repair.mjs'],timeoutMs:10000}],'检查正常计算与非法输入；第一次宿主检查会注入一次临时故障，自动生成修复指令，不修改脚本，重验和集成通过。',{ 'domain.mjs':'export const total=items=>items.reduce((n,item)=>n+item.price*item.quantity,0);\n'});
   report.pass=true;

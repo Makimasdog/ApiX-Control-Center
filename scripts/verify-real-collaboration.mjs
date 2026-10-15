@@ -8,13 +8,14 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {loadEnvironment} from '../src/environment.mjs';
 
 if(!process.argv.includes('--approve-cost'))throw new Error('真实验收可能产生模型费用；明确批准后传入 --approve-cost');
+const testModel='qwen3.8-27b';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 loadEnvironment(join(root,'.env'));
 const parent=join(root,'.tmp-real-collaboration');mkdirSync(parent,{recursive:true});
 const dir=mkdtempSync(join(parent,'run-'));const project=join(dir,'project');mkdirSync(project);
 const port=await new Promise(done=>{const server=createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>done(port));});});
 const env={...process.env,APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_LEGACY_API:'0'};
-const report={kind:'real Pi manager and real Codex/Claude workers',startedAt:new Date().toISOString(),dir,pass:false,stage:'prepare',checks:[]};
+const report={kind:'real Pi manager and real Codex/Claude workers',managerModel:testModel,startedAt:new Date().toISOString(),dir,pass:false,stage:'prepare',checks:[]};
 const git=args=>execFileSync('git',args,{cwd:project,stdio:'ignore'});
 git(['init']);writeFileSync(join(project,'README.md'),'ApiX real collaboration fixture\n');git(['add','README.md']);git(['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture']);
 let server;
@@ -25,8 +26,8 @@ try{
   await wait(async()=>{try{return await request('/api/snapshot');}catch{return null;}},Boolean,30000);
   const catalog=(await request('/api/snapshot')).runtimes;
   if(!['codex','claude'].every(id=>catalog.some(r=>r.id===id&&r.available&&r.managed)))throw new Error('真实 Codex/Claude 运行时不可用，请安装并配置入口');
-  if(!env.ali_url || !env.ali_model_name || !env.APIX_ALI_API_KEY)throw new Error('验收需配置阿里模型 URL、模型名称与环境变量密钥');
-  await request('/api/manager/settings',{baseUrl:env.ali_url,model:env.ali_model_name,apiType:'openai-completions',apiKeyEnv:'APIX_ALI_API_KEY'});
+  if(!env.ali_url || !env.APIX_ALI_API_KEY)throw new Error('验收需配置阿里模型 URL 与环境变量密钥');
+  await request('/api/manager/settings',{baseUrl:env.ali_url,model:testModel,apiType:'openai-completions',apiKeyEnv:'APIX_ALI_API_KEY'});
   const projectId=(await request('/api/projects',{name:'真实协作隔离验收',path:project})).id;
   const first=(await request('/api/employees',{name:'真实 Codex',runtime:'codex',role:'实现'})).id;
   const second=(await request('/api/employees',{name:'真实 Claude',runtime:'claude',role:'验证'})).id;
