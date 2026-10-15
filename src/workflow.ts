@@ -15,12 +15,21 @@ export function createWorkflow(store:Store,permissions:Permissions,employees:()=
     db.exec('SAVEPOINT workflow');
     try{
       if(input.enabled){
-        if(row("SELECT id FROM tasks WHERE project_id=? AND status IN ('running','starting','stopping','queued','unknown') LIMIT 1",projectId))throw new Error('请先停止或处理本项目当前工作，再更改自动协作授权');
         if(input.approved!==true || !Array.isArray(input.employees) || !input.employees.length || input.employees.length>30)throw new Error('开启自动协作需要明确授权 ApiX 和至少一位可用员工');
         const selected=input.employees.map(value=>object(value));employeeIds=selected.map(e=>text(e.id,100));
         if(new Set(employeeIds).size!==employeeIds.length || employeeIds.some(id=>!employees().some(e=>e.id===id)))throw new Error('授权员工不可用或重复');
-        permissions.save(projectId,'apix','full_access',Number(input.managerVersion));
-        for(const e of selected)permissions.save(projectId,String(e.id),'full_access',Number(e.version));
+        const subjects=[{id:'apix',version:Number(input.managerVersion)},...selected.map(e=>({id:String(e.id),version:Number(e.version)}))];
+        const changes=subjects.filter(subject=>{
+          const policy=permissions.get(projectId,subject.id);
+          if(policy.version!==subject.version)throw new Error('权限已更新，请刷新后重试');
+          return policy.mode!=='full_access';
+        });
+        // Reusing current permissions must not revoke existing queued/running task grants.
+        if(changes.length){
+          const active=row<{id:string;status:string}>("SELECT id,status FROM tasks WHERE project_id=? AND status IN ('running','starting','stopping','queued','unknown') LIMIT 1",projectId);
+          if(active)throw new Error(`本项目任务 ${active.id}（${active.status}）尚未处理，不能提升执行权限；请在原对话的工作详情中检查并停止或恢复任务后重试。已有完全访问权限时可直接开启自动协作。`);
+          for(const subject of changes)permissions.save(projectId,subject.id,'full_access',subject.version);
+        }
       }
       const result={enabled:input.enabled,version:previous.version+1,employeeIds};
       db.prepare('INSERT INTO apix_workflows VALUES (?,?) ON CONFLICT(project_id) DO UPDATE SET body=excluded.body').run(projectId,JSON.stringify(result));

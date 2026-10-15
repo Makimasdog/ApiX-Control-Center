@@ -282,7 +282,9 @@ test('automatic work respects strict fee approval and stop cancels queued work b
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
   assert.equal(s.tasks[0].status,'queued');
-  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:true,approved:true,employees:[{id:employeeId,version:1}],managerVersion:1},400);
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:true,approved:true,employees:[{id:employeeId,version:1}],managerVersion:1});
+  const unchanged=await h.request(`/api/projects/${projectId}/workflow`);
+  assert.equal(unchanged.manager.version,1);assert.equal(unchanged.employees.find(e=>e.id===employeeId).version,1);
   s=await h.request(`/api/coordination/sessions/${s.id}/stop`,{revision:s.revision});assert.equal(s.status,'cancelled');assert.equal(s.tasks[0].status,'cancelled');
   await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});assert.equal((await h.request('/api/snapshot')).runs.length,0);
   await h.request('/api/scheduling/accounts',{id:'api',alias:'收费账户',type:'api',currency:'USD',version:0});
@@ -294,6 +296,25 @@ test('automatic work respects strict fee approval and stop cancels queued work b
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion},400);
   await h.request('/api/permissions',{projectId,subject:employeeId,version:1,mode:'read_only'});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion},400);
+}));
+
+test('reenabling automation with existing permissions preserves queued grants and unknown tasks',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'resume automation',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'worker',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});assert.equal(s.tasks[0].status,'queued');
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:false});
+  const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));
+  try{db.prepare('UPDATE tasks SET status=? WHERE id=?').run('unknown',s.tasks[0].id);}finally{db.close();}
+  await h.request(`/api/projects/${projectId}/workflow`,{version:2,enabled:true,approved:true,managerVersion:1,employees:[{id:employeeId,version:1}]});
+  const enabled=await h.request(`/api/projects/${projectId}/workflow`);
+  assert.equal(enabled.enabled,true);assert.equal(enabled.manager.version,1);assert.equal(enabled.employees.find(e=>e.id===employeeId).version,1);
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'unknown');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  const restore=new DatabaseSync(join(h.dir,'data','apix.sqlite'));try{restore.prepare('UPDATE tasks SET status=? WHERE id=?').run('queued',s.tasks[0].id);}finally{restore.close();}
+  await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return ['completed','failed'].includes(d.tasks[0].status)&&d;});assert.equal(s.tasks[0].status,'completed');
 }));
 test('revoking automatic work while a plan is being generated prevents dispatch',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'撤回授权',path:h.project})).id;
