@@ -1,0 +1,29 @@
+{
+  "name": "apix-control-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local control center for coordinating Pi, Codex and other agents",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prestart": "npm run build",
+    "start": "node server.mjs",
+    "pretest": "npm run build",
+    "check": "tsc --noEmit && node --check server.mjs && node --check control-plane.mjs && node --check src/mailbox.mjs && node --check src/task-scheduler.mjs && node --check src/code-handoffs.mjs && node --check src/project-baseline.mjs && node --check src/execution-control.mjs && node --check agent-discovery.mjs && node --check agent-os.js",
+    "test": "node --test --test-concurrency=1 test/agent-os.test.mjs test/messaging.test.mjs test/coordinator.test.mjs test/apix-agent.test.mjs test/model-settings-ui.test.mjs test/conversation-ui.test.mjs test/local-models.test.mjs test/collaboration.test.mjs test/execution-control.test.mjs test/execution-ui.test.mjs test/scheduling.test.mjs test/environment.test.mjs test/readiness.test.mjs test/memory.test.mjs test/architecture.test.mjs test/autonomy.test.mjs test/project-baseline.test.mjs",
+    "pretest:real": "npm run build",
+    "test:real": "node scripts/verify-real-collaboration.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}
