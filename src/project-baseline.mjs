@@ -38,7 +38,7 @@ export function projectBaseline(sourcePath,planId,dataDir,{create=true}={}){
     if(manifest.source!==source || manifest.planId!==planId || git(repo,['rev-parse','HEAD'])!==manifest.head || realpathSync.native(git(repo,['rev-parse','--show-toplevel']))!==realpathSync.native(repo))throw new Error('托管项目基线已变化');
     return repo;
   }
-  try{const root=git(source,['rev-parse','--show-toplevel']);git(root,['rev-parse','HEAD']);return realpathSync.native(root);}catch{}
+  try{const root=git(source,['rev-parse','--show-toplevel']);git(root,['rev-parse','HEAD']);return realpathSync.native(root)===source ? resolve(sourcePath) : root;}catch{}
   if(!create)throw new Error('非 Git 项目尚未建立托管基线');
   mkdirSync(storage,{recursive:true});
   const staging=join(storage,key+'-'+randomUUID()),target=join(staging,'repo');

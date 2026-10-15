@@ -317,6 +317,17 @@ function piShellEnvironment(env) {
   return {...env,[key]:dirname(bash)+';'+(env[key] ?? '')};
 }
 
+function workerEnvironment(task, token) {
+  const environment = {...process.env};
+  // A worker gets its own CLI credentials. Do not expose ApiX's model keys,
+  // entry points or data directory through inherited APIX_* variables.
+  const blocked = /^(?:APIX_(?:ALI_API_KEY|DATA_DIR|PI_ENTRY|MANAGER_PI_ENTRY|CODEX_ENTRY|CLAUDE_ENTRY|GEMINI_ENTRY|OPENCODE_ENTRY|KIMI_ENTRY)|APIX_MANAGER_)/i;
+  for (const key of Object.keys(environment)) if (blocked.test(key)) delete environment[key];
+  const managerKey = row('SELECT api_key_env FROM apix_manager_settings WHERE id=1')?.api_key_env;
+  if (managerKey && Object.prototype.hasOwnProperty.call(environment, managerKey)) delete environment[managerKey];
+  return {...environment, APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID: task.id, APIX_RUN_ID: '', APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent`};
+}
+
 export function runtimes() {
   const managed = runtimeAdapters.catalog();
   return [...managed, ...externalAgents().filter(a => !managed.some(m => m.id === a.id))];
@@ -489,7 +500,7 @@ function launch(task) {
   if(task.employee_id && scheduling.taskSpec(task.id).difficulty!=null){const selectedModel=scheduling.profile(task.employee_id).model;args.push(...runtimeAdapters.modelArgs(task.runtime,selectedModel));}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-    env: { ...(task.runtime==='pi'?piShellEnvironment(process.env):process.env), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
+    env: {...(task.runtime==='pi'?piShellEnvironment(workerEnvironment(task,token)):workerEnvironment(task,token)), APIX_RUN_ID:runId} }); }
   catch (error) { setRun(runId, "failed", "spawn"); event(runId, "apix", "spawn_error", { message: error.message }); throw error; }
   running.set(runId, { child, runtime: task.runtime, output: "", stderr: "", stopped: false, settled: false });
   if (task.employee_id) {
@@ -878,6 +889,7 @@ export function updateMemory(id, input) {
   const title = String(input.title ?? "").trim().slice(0, 120);
   const content = String(input.content ?? "").trim().slice(0, 10000);
   if (!existing || Number(input.version) !== existing.version || !title || !content) throw new Error("记忆不存在、版本已变化或内容为空");
+  if (row("SELECT id FROM memories WHERE project_id=? AND scope=? AND category=? AND title=? AND id<>?", existing.project_id, existing.scope, existing.category, title, id)) throw new Error("同范围已有同名记忆，请更换标题或编辑现有记录");
   const version = existing.version + 1;
   db.exec("BEGIN");
   try {

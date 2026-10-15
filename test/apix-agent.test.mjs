@@ -37,6 +37,15 @@ test('ApiX keeps a long reply, history and fact-based progress in the prompt',as
   assert.match(prompt,/running/);
 });
 
+test('ApiX bounds untrusted history before sending it to the model', async()=>{
+  let prompt='';
+  const agent=createApiXAgent({infer:async input=>{prompt=input;return JSON.stringify({kind:'clarification',question:'已收到',updates:[],conflicts:[]});}});
+  await agent.discuss(emptyRequirements(),'当前问题',Array.from({length:30},(_,i)=>({role:'user',content:`历史 ${i} ${'x'.repeat(4000)}`})),{events:'y'.repeat(30000)});
+  assert(prompt.length<55000);
+  assert.match(prompt,/中间上下文已截断/);
+  assert.match(prompt,/历史 29/);
+});
+
 test('malformed and over-limit model replies fall back without applying unvalidated updates',async()=>{
   for(const raw of ['{"question":"半截', JSON.stringify({kind:'clarification',question:'x'.repeat(10001),updates:[],conflicts:[]})]) {
     const agent=createApiXAgent({infer:async()=>raw});

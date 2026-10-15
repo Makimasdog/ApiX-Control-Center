@@ -5,6 +5,10 @@ import { join, resolve,relative,isAbsolute } from 'node:path';
 
 const git = (cwd,args,options={}) => execFileSync('git',args,{cwd,encoding:'utf8',timeout:20000,maxBuffer:10000000,windowsHide:true,stdio:['pipe','pipe','pipe'],...options});
 const parts = value => value.split('\0').filter(Boolean);
+// UUID-based task and run IDs make refs too deep for Windows when the data
+// directory itself is nested. A stable digest keeps the ref auditable while
+// avoiding MAX_PATH failures when Git creates the lock file.
+const deliveryRef = (taskId, runId) => createHash('sha256').update(`${taskId}:${runId}`).digest('hex').slice(0, 32);
 export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWorkspace=true}) {
   const indexDir=resolve(dataDir,'inspection-indexes'); mkdirSync(indexDir,{recursive:true});
   function workspace(task) {
@@ -54,7 +58,7 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWo
     const w=workspace(task);
     const commit=commitTree(w.path,preview.tree,w.input,`ApiX reviewed delivery ${task.id}`);
     const run=row('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id);
-    git(w.path,['update-ref',`refs/apix/deliveries/${task.id}/${run?.id ?? randomUUID()}`,commit]);
+    git(w.path,['update-ref',`refs/apix/deliveries/${deliveryRef(task.id, run?.id ?? randomUUID())}`,commit]);
     db.prepare('UPDATE tasks SET delivery_commit=?,delivery_fingerprint=?,updated_at=? WHERE id=?').run(commit,preview.fingerprint,now(),task.id);
     recordTask(task.id,'delivery.frozen',{commit,inputCommit:w.input,files:preview.files,fingerprint:preview.fingerprint});
     return {commit,...preview};
