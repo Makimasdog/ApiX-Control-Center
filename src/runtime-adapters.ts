@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { Store, AgentCapabilities } from './contracts.js';
 import { object, text } from './contracts.js';
@@ -13,24 +13,32 @@ const builtins = [
   {id:'opencode',name:'OpenCode',stateSource:'OpenCode JSON'},
   {id:'kimi',name:'Kimi Code',stateSource:'Kimi stream-json'},
 ];
-const npmPackages: Record<string,string> = {pi:'@earendil-works/pi-coding-agent',codex:'@openai/codex',claude:'@anthropic-ai/claude-code',gemini:'@google/gemini-cli',opencode:'opencode-ai'};
+const npmPackages: Record<string,string[]> = {pi:['@earendil-works/pi-coding-agent','@mariozechner/pi-coding-agent'],codex:['@openai/codex'],claude:['@anthropic-ai/claude-code'],gemini:['@google/gemini-cli'],opencode:['opencode-ai']};
 
 function executableCommand(path: string): Command {
   return /\.[cm]?js$/i.test(path) ? {executable:process.execPath,prefix:[path]} : {executable:path,prefix:[]};
 }
 
+function entryCommand(path: string): Command | null {
+  try { return isAbsolute(path) && !/\.(cmd|bat|ps1)$/i.test(path) && statSync(path).isFile() ? executableCommand(path) : null; }
+  catch { return null; }
+}
+
+export const piUnavailableMessage='Pi 未安装或不可用：ApiX 的管理者依赖独立的 Pi CLI，npm ci 不会安装它。请执行 npm install -g --ignore-scripts @earendil-works/pi-coding-agent，在启动 ApiX 的同一终端确认 pi --version 成功后重启服务。已安装但未加入 PATH 时，在 .env 设置 APIX_MANAGER_PI_ENTRY 或 APIX_PI_ENTRY 为真实 cli.js 或可执行文件的绝对路径；不要填写 .cmd/.bat/.ps1。配置模型 URL 或 API Key 不能代替 Pi CLI。';
+
 function npmShimCommand(id: string, shim: string): Command | null {
-  const packageName = npmPackages[id];
-  if (!packageName) return null;
-  const packageDir = join(dirname(shim),'node_modules',packageName);
-  try {
-    const manifest = JSON.parse(readFileSync(join(packageDir,'package.json'),'utf8')) as {bin?:string|Record<string,string>};
-    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.[id];
-    if (!bin || isAbsolute(bin)) return null;
-    const entry = resolve(packageDir,bin);
-    if (!entry.startsWith(resolve(packageDir) + sep) || !existsSync(entry) || !['.exe','.js','.mjs','.cjs'].includes(extname(entry).toLowerCase())) return null;
-    return executableCommand(entry);
-  } catch { return null; }
+  for (const packageName of npmPackages[id] ?? []) {
+    const packageDir = join(dirname(shim),'node_modules',packageName);
+    try {
+      const manifest = JSON.parse(readFileSync(join(packageDir,'package.json'),'utf8')) as {bin?:string|Record<string,string>};
+      const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.[id];
+      if (!bin || isAbsolute(bin)) continue;
+      const entry = resolve(packageDir,bin);
+      if (!entry.startsWith(resolve(packageDir) + sep) || !['.exe','.js','.mjs','.cjs'].includes(extname(entry).toLowerCase())) continue;
+      const command=entryCommand(entry);if(command)return command;
+    } catch { /* Try the other official package name. */ }
+  }
+  return null;
 }
 export function createRuntimeAdapters(store: Store, findExecutable: (name: string) => string | null) {
   const { db, row, rows } = store;
@@ -38,7 +46,7 @@ export function createRuntimeAdapters(store: Store, findExecutable: (name: strin
   if(!rows<{name:string}>('PRAGMA table_info(apix_adapters)').some(c=>c.name==='mailbox')) db.exec('ALTER TABLE apix_adapters ADD COLUMN mailbox INTEGER NOT NULL DEFAULT 0');
   function command(id: string): Command | null {
     const env = process.env[`APIX_${id.toUpperCase()}_ENTRY`];
-    if (env && isAbsolute(env) && existsSync(env) && !/\.(cmd|bat|ps1)$/i.test(env)) return executableCommand(env);
+    if (env) return entryCommand(env);
     const custom = row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id);
     if (custom) return existsSync(custom.executable) ? { executable: custom.executable, prefix: JSON.parse(custom.args_json) as string[] } : null;
     const name = id === 'claude' ? 'claude' : id;
@@ -75,5 +83,6 @@ export function createRuntimeAdapters(store: Store, findExecutable: (name: strin
   function format(id: string) { return row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id)?.format ?? 'jsonl'; }
   function supportsModel(id:string){return ['pi','codex','claude'].includes(id);}
   function modelArgs(id:string,model:string){if(!model)return [];if(!supportsModel(id))throw new Error('当前适配器尚未验证显式模型选择，不能依据声明费率自动路由');return ['--model',model];}
-  return { command, catalog, register, args, modelArgs,supportsModel,format };
+  function managerCommand(){const entry=process.env.APIX_MANAGER_PI_ENTRY;return entry?entryCommand(entry):command('pi');}
+  return { command, managerCommand, catalog, register, args, modelArgs,supportsModel,format };
 }

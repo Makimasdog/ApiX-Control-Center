@@ -112,6 +112,15 @@ Pi 提供管理者的推理与工具底座，执行员工使用独立身份和�
 
 ### 2. 安装并启动
 
+Pi CLI 是管理者的独立运行时，`npm ci` 只安装 ApiX 依赖，不会安装 Pi。先在将用于启动 ApiX 的终端安装并检查（[Pi 官方安装说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md)）：
+
+```powershell
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi --version
+```
+
+已安装 Pi 且版本命令成功可跳过安装。若终端找不到 `pi`，重新打开终端后重试；仍不可用时检查 npm 全局安装目录是否在 PATH 中，或按下方入口配置指定真实 CLI 文件。PowerShell 若提示 `pi.ps1` 无法运行，可用 `pi.cmd --version` 检查。配置 API URL、模型 ID 与 Key 不会安装 Pi。入口检测通过也不代表已登录或模型连接成功。
+
 ```powershell
 git clone https://github.com/Makimasdog/ApiX-Control-Center.git
 cd ApiX-Control-Center
@@ -165,7 +174,7 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 | Kimi Code | `APIX_KIMI_ENTRY` | `--print --output-format=stream-json` |
 | 自定义 CLI | 在“任务与员工”登记 | 显式可执行文件、参数数组及输出格式 |
 
-未加入 PATH 时，可填写 JavaScript 入口或原生可执行文件的**绝对路径**；不接受 `.cmd`、`.bat`、`.ps1`。Windows 全局 npm 命令会按包清单定位实际入口。`APIX_MANAGER_PI_ENTRY` 可单独覆盖管理者的 Pi 入口；Pi 子进程会优先使用已安装 Git 的 Bash，不修改全局 PATH。
+未加入 PATH 时，可在项目根目录 `.env` 填写 JavaScript 入口或原生可执行文件的**绝对路径**；不接受目录、命令名、`.cmd`、`.bat`、`.ps1`。例如 `APIX_MANAGER_PI_ENTRY=C:/Users/你的用户名/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`，实际路径应以 `npm root -g` 和已安装包的 `package.json` 中 `bin.pi` 为准，不照抄示例。Windows 全局 npm 命令会按包清单定位实际入口，Pi 兼容新包名与旧的 `@mariozechner/pi-coding-agent`。`APIX_MANAGER_PI_ENTRY` 可单独覆盖管理者入口；显式配置无效时会报告不可用，不会静默切换到另一个 Pi。修改后重启服务。Pi 子进程会优先使用已安装 Git 的 Bash，不修改全局 PATH。
 
 每种 CLI 都须在终端单独完成安装和认证，再用小任务检查版本、权限与工作目录行为。Trae、Qoder、WorkBuddy 的桌面应用发现不代表可托管执行；需要可用的非交互 CLI 或包装器。
 

@@ -144,6 +144,46 @@ test('Windows npm shims resolve package bin entries without a shell', {skip:proc
   } finally {db.close();await rm(dir,{recursive:true,force:true});}
 });
 const delay = ms => new Promise(r=>setTimeout(r,ms));
+test('manager and worker Pi entries share validation without silently ignoring an invalid override',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-pi-entry-')),db=new DatabaseSync(':memory:');
+  const saved={APIX_MANAGER_PI_ENTRY:process.env.APIX_MANAGER_PI_ENTRY,APIX_PI_ENTRY:process.env.APIX_PI_ENTRY};
+  try{
+    const worker=join(root,'test/fake-pi.mjs'),manager=join(dir,'manager.mjs');await writeFile(manager,"console.log('fixture manager');");
+    const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
+    process.env.APIX_PI_ENTRY=worker;delete process.env.APIX_MANAGER_PI_ENTRY;
+    assert.deepEqual(adapters.managerCommand(),adapters.command('pi'));
+    for(const bad of [dir,'pi',join(dir,'missing.js'),join(dir,'pi.cmd'),join(dir,'pi.bat'),join(dir,'pi.ps1')]){
+      if(/\.(cmd|bat|ps1)$/.test(bad))await writeFile(bad,'fixture');
+      process.env.APIX_MANAGER_PI_ENTRY=bad;assert.equal(adapters.managerCommand(),null);assert.equal(adapters.command('pi').prefix[0],worker);
+    }
+    process.env.APIX_MANAGER_PI_ENTRY=manager;assert.deepEqual(adapters.managerCommand(),{executable:process.execPath,prefix:[manager]});
+    process.env.APIX_MANAGER_PI_ENTRY=process.execPath;assert.deepEqual(adapters.managerCommand(),{executable:process.execPath,prefix:[]});
+    process.env.APIX_PI_ENTRY=dir;assert.equal(adapters.command('pi'),null);
+  }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
+});
+
+test('Windows Pi npm shims accept both official package scopes and reject invalid bin entries',{skip:process.platform!=='win32'},async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-pi-shims-')),db=new DatabaseSync(':memory:');const saved=process.env.APIX_PI_ENTRY;delete process.env.APIX_PI_ENTRY;
+  try{
+    for(const scope of ['@earendil-works','@mariozechner']){
+      const prefix=join(dir,scope),packageDir=join(prefix,'node_modules',scope,'pi-coding-agent'),entry=join(packageDir,'dist/cli.js');
+      await mkdir(dirname(entry),{recursive:true});await writeFile(entry,"console.log('fixture Pi');");await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'dist/cli.js'}}));await writeFile(join(prefix,'pi.cmd'),'fixture');
+      const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},name=>name==='pi'?join(prefix,'pi.cmd'):null);
+      assert.deepEqual(adapters.command('pi'),{executable:process.execPath,prefix:[entry]});
+      await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'../outside.js'}}));assert.equal(adapters.command('pi'),null);
+      await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'dist'}}));assert.equal(adapters.command('pi'),null);
+    }
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true,force:true});}
+});
+
+test('invalid manager Pi override is missing in readiness and gives actionable loop diagnostics',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'Pi setup diagnostics',path:h.project})).id;
+  const ready=await h.request('/api/readiness?projectId='+projectId);assert.equal(ready.checks.find(c=>c.id==='manager').state,'missing');assert.equal(ready.canPlan,false);
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'检查 Pi 连接'});
+  const blocked=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);return state.status==='attention'?state:null;});
+  const diagnostic=blocked.events.find(e=>e.kind==='error').body.error;assert.match(diagnostic,/npm install -g --ignore-scripts @earendil-works\/pi-coding-agent/);assert.match(diagnostic,/pi --version/);assert.match(diagnostic,/APIX_MANAGER_PI_ENTRY/);assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_MANAGER_PI_ENTRY:'pi.cmd'}));
+
 async function waitFor(predicate) {
   for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
   throw new Error('Timed out');

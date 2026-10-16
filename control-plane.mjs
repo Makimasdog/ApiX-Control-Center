@@ -17,7 +17,7 @@ import { createMemory as createEventMemory } from "./dist/src/memory.js";
 import { createPermissions } from "./dist/src/permissions.js";
 import { createApiXAgent } from "./dist/src/apix-agent.js";
 import { isLoopbackModelUrl } from "./dist/src/model-providers.js";
-import { createRuntimeAdapters } from "./dist/src/runtime-adapters.js";
+import { createRuntimeAdapters, piUnavailableMessage } from "./dist/src/runtime-adapters.js";
 import { normalizeWorkerEvent } from "./dist/src/worker-events.js";
 import { createAgentMailbox } from "./dist/src/agent-mailbox.js";
 import { createEmployeeInsights } from "./dist/src/employee-insights.js";
@@ -991,9 +991,8 @@ async function askPiDirector(prompt, onDelta, consultation, context) {
   if(context && !project)throw new Error('推理项目不存在');
   const policy=context?permissions.get(context.projectId):null;
   const tools=policy?.mode==='full_access' && context.purpose==='discussion'?'read,bash,edit,write,grep,find,ls':policy && policy.mode!=='ask_approval' && ['discussion','planning'].includes(context.purpose)?'read,grep,find,ls':null;
-  const managerEntry = process.env.APIX_MANAGER_PI_ENTRY;
-  const command = !consultation && managerEntry && existsSync(managerEntry) ? { executable: process.execPath, prefix: [resolve(managerEntry)] } : commandFor("pi");
-  if (!command) throw new Error("Pi 未安装或不可用");
+  const command = consultation ? commandFor('pi') : runtimeAdapters.managerCommand();
+  if (!command) throw new Error(piUnavailableMessage);
   const settings = consultation ? {provider:'',model:consultation.model,baseUrl:''} : coordinator.getSettings();
   let managerEnv = consultation ? workerEnvironment(process.env,'pi',coordinator.getSettings().apiKeyEnv) : process.env;
   if (settings.baseUrl) {
@@ -1392,7 +1391,7 @@ export const stopCoordinationSession=coordinator.stopSession;
 export const changePermission = coordinator.changePolicy;
 export const managerSettings = coordinator.getSettings;
 export const saveManagerSettings = coordinator.saveSettings;
-export function readiness(projectId){return projectReadiness({project:row('SELECT * FROM projects WHERE id=?',projectId),employees:rows('SELECT * FROM employees'),runtimes:runtimes(),settings:managerSettings(),managerAvailable:!!(process.env.APIX_MANAGER_PI_ENTRY&&existsSync(process.env.APIX_MANAGER_PI_ENTRY)||commandFor('pi')),policy:projectId?permissions.get(projectId):null,budget:projectId&&row('SELECT id FROM projects WHERE id=?',projectId)?scheduling.view(projectId):null});}
+export function readiness(projectId){return projectReadiness({project:row('SELECT * FROM projects WHERE id=?',projectId),employees:rows('SELECT * FROM employees'),runtimes:runtimes(),settings:managerSettings(),managerAvailable:!!runtimeAdapters.managerCommand(),policy:projectId?permissions.get(projectId):null,budget:projectId&&row('SELECT id FROM projects WHERE id=?',projectId)?scheduling.view(projectId):null});}
 export const testManagerConnection = coordinator.testModelConnection;
 export const searchCoordinationMemory = memory.search;
 export function permissionPolicy(projectId, subject = "apix") { return permissions.get(projectId, subject); }

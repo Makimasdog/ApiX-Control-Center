@@ -9,7 +9,7 @@ export async function projectReadiness({project,employees,runtimes,settings,mana
   const checks=[];const add=(id,state,message,action)=>checks.push({id,state,message,action});
   if(!project)add('project','missing','先添加或选择一个本机项目','projects');
   else{try{const kind=await inspect(project.path);add('project','ready',kind==='snapshot'?'项目目录可用；执行时建立托管 Git 快照，原目录保持不变':'项目 Git 提交可用','projects');}catch{add('project','missing','项目目录或 Git 入口不可用，请检查路径及 Git 安装','projects');}}
-  add('manager',managerAvailable?'ready':'missing',managerAvailable?'Pi 入口可用，认证与模型仍需连接测试':'未找到管理者 Pi，请安装或设置 APIX_MANAGER_PI_ENTRY / APIX_PI_ENTRY','model');
+  add('manager',managerAvailable?'ready':'missing',managerAvailable?'Pi 入口可用，认证与模型仍需连接测试':'未找到可启动的管理者 Pi：执行 npm install -g --ignore-scripts @earendil-works/pi-coding-agent，在同一终端确认 pi --version 后重启 ApiX；或设置 APIX_MANAGER_PI_ENTRY / APIX_PI_ENTRY 为真实入口的绝对路径（不是 .cmd/.bat/.ps1）','model');
   const keyMissing=settings.apiKeyEnv&&!process.env[settings.apiKeyEnv];
   add('model',keyMissing?'missing':'check',keyMissing?'模型密钥环境变量未设置，请设置后重启服务':settings.model?'已保存模型 '+settings.model+'，请进行连接测试':'使用 Pi 默认配置，请进行连接测试','model');
   const usable=employees.filter(e=>e.enabled && !e.deleted_at && runtimes.some(r=>r.id===e.runtime && r.available && r.managed));

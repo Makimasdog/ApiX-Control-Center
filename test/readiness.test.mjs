@@ -18,6 +18,7 @@ test('readiness never treats entry discovery as verified auth, and provides prec
   const missing=await projectReadiness({...defaults,project:null});
   assert.equal(missing.canPlan,false);assert.equal(missing.canExecute,false);assert.equal(missing.authenticationVerified,false);
   assert.deepEqual(missing.checks.filter(c=>c.state==='missing').map(c=>c.id),['project','manager','employees']);
+  assert.match(missing.checks.find(c=>c.id==='manager').message,/npm install -g --ignore-scripts @earendil-works\/pi-coding-agent/);
   const ready=await projectReadiness({...defaults,managerAvailable:true,employees:[{runtime:'codex',enabled:1}],runtimes:[{id:'codex',available:true,managed:true}]});
   assert.equal(ready.canExecute,true);assert.equal(ready.checks.find(c=>c.id==='model').state,'check');
   assert.equal((await projectReadiness({...defaults,inspect:async()=>{throw new Error('failure')}})).checks[0].state,'missing');
