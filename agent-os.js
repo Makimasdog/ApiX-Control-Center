@@ -16,7 +16,7 @@ let profileLoadedProjectId = null;
 let memoryResults = null;
 let renderedProposalKey = null;
 let directorSending = false;
-let currentPage = "coordinator";
+let currentPage = "assistant";
 let editing = null;
 let toastTimer;
 let messageStream = null;
@@ -71,7 +71,7 @@ function go(page) {
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
-  $("#breadcrumb-page").textContent = { overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { assistant: "对话", overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 let refreshing=false;let snapshotETag='';
@@ -263,7 +263,7 @@ document.addEventListener("click", async (event) => {
     const report = review && JSON.parse(review.report);
     if (review && await confirmAction("应用集成结果", `目标仓库：${review.repository_path}\n变更文件：${report.changedFiles.join(", ")}\n\n确认后会把已审查的差异写入该仓库工作区。`)) await mutate(`/api/integrations/${review.id}/apply`, {});
   }
-  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("coordinator"); }
+  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("assistant"); }
   else if (d.editProject) openEditor("project", d.editProject);
   else if (d.registerRuntime) openEditor("employee", d.registerRuntime);
   else if (d.openEmployee) { go('employee'); document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:d.openEmployee})); }
@@ -358,7 +358,7 @@ $("#scan-agents").addEventListener("click", async () => { try { await api("/api/
 $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
 $("#task-details-close").addEventListener("click", () => $("#task-details-dialog").close());
 $("#dialog-cancel").addEventListener("click", () => $("#editor-dialog").close());
-$("#brand-home").addEventListener("click", () => go("overview"));
+$("#brand-home").addEventListener("click", () => go("assistant"));
 $("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
@@ -475,8 +475,8 @@ const modelEntry=document.createElement('section');modelEntry.className='surface
 modelPage.append(modelEntry,modelArchive);
 $('#open-real-model-settings').addEventListener('click',()=>{go('coordinator');document.dispatchEvent(new Event('apix:manager-settings'));});
 const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
-$('#page-resources .page-intro p').textContent='本页仅保存浏览器草稿，尚未连接或注入 Agent 运行时，开关不会启用真实能力。';
-go("coordinator");
+$('#page-resources .page-intro p').textContent='下方仅保存浏览器草稿。默认对话循环会发现项目 .apix/skills、.claude/skills、.agents/skills 和用户 ~/.apix/skills 并按需加载；MCP 开关尚不连接运行时。';
+go("assistant");
 refresh();
 setInterval(refresh, 1500);
 

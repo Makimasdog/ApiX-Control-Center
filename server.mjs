@@ -11,6 +11,7 @@ import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmploy
 import { readLocalModels } from './dist/src/local-models.js';
 import {workflowSettings,saveWorkflow,stopCoordinationSession,readiness,inspectTaskDelivery} from './control-plane.mjs';
 import {autonomySettings,saveAutonomySettings,resumeAutonomySession} from './control-plane.mjs';
+import {createAssistantSession,assistantSession,assistantSessions,assistantMessage,assistantReply,assistantStop,assistantResume,assistantEditMemory,assistantEvents} from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -66,6 +67,9 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
+      if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}
       if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname) && request.method === 'GET') {send(200,workflowSettings(pathname.split('/')[3]));return;}
       if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname) && request.method === 'GET') {send(200,autonomySettings(pathname.split('/')[3]));return;}
@@ -130,7 +134,13 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       }
       if (process.env.APIX_LEGACY_API !== '1' && (['/api/tasks','/api/director/plans','/api/director/messages','/api/collaboration/plans','/api/meetings','/api/manager-reviews'].includes(pathname) || /^\/api\/tasks\/[^/]+\/(resume|revise)$/.test(pathname) || pathname.startsWith('/api/director/'))) { send(409, { error: '请在 ApiX 目标工作台澄清并确认需求后安排任务' }); return; }
       let result;
-      if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
+      if(pathname==='/api/assistant/sessions')result=createAssistantSession(input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/messages$/.test(pathname))result=assistantMessage(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/reply$/.test(pathname))result=await assistantReply(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/stop$/.test(pathname))result=assistantStop(pathname.split('/')[4]);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/resume$/.test(pathname))result=assistantResume(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/memory$/.test(pathname))result=assistantEditMemory(pathname.split('/')[4],input);
+      else if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
@@ -209,7 +219,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css']);
+  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css','assistant.css']);
   if (!publicFiles.has(relativePath) && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
   const filePath = normalize(join(root, relativePath));
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {

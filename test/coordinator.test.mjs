@@ -15,6 +15,94 @@ import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
 import { createCodeHandoffs } from '../src/code-handoffs.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+test('Assistant can start a general conversation without selecting a project or registering employees',async()=>harness(async h=>{
+  const s=await h.request('/api/assistant/sessions',{});assert(s.project_id);
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(h.dir));
+  await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'解释如何协作，不执行命令'});await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+}));
+
+test('Assistant refuses to expose its internal state directory as a workspace',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'invalid private workspace',path:join(h.dir,'data')})).id;
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'读取当前目录'});
+  const stopped=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);return state.status==='attention'?state:null;});
+  assert(stopped.events.some(e=>String(e.body.error??'').includes('内部状态目录')));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
+test('Assistant HTTP defaults to a general loop and repairs real file checks without employees',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'general assistant',path:h.project})).id;
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  let s=await h.request('/api/assistant/sessions',{projectId});s=await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
+  const done=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);if(state.status==='attention')throw new Error(JSON.stringify(state.events));return state.status==='completed'?state:null;});
+  assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode!==0));
+  assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode===0));assert.equal((await h.request('/api/snapshot')).employees.length,0);
+  await h.restart();assert.equal((await h.request(`/api/assistant/sessions/${s.id}`)).status,'completed');
+}));
+
+test('Assistant HTTP choice survives refresh and default permission asks before a side effect',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'assistant approval',path:h.project})).id;
+  let s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-choice'});
+  s=await waitFor(async()=>{const current=await h.request(`/api/assistant/sessions/${s.id}`);return current.status==='waiting_user'?current:null;});
+  await h.restart();s=await h.request(`/api/assistant/sessions/${s.id}`);assert.equal(s.pending.multiple,true);
+  await h.request(`/api/assistant/sessions/${s.id}/reply`,{version:s.version,requestId:s.pending.id,selected:['后端','文档'],content:'保持兼容'});
+  await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');
+  let write=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${write.id}/messages`,{content:'fixture-loop-write'});
+  write=await waitFor(async()=>{const current=await h.request(`/api/assistant/sessions/${write.id}`);return current.status==='waiting_user'?current:null;});
+  assert.equal(write.pending.tool,'write_file');await assert.rejects(()=>readFile(join(h.project,'a.txt')));
+  await h.request(`/api/assistant/sessions/${write.id}/stop`,{});
+}));
+
+test('Assistant loop approves setup, delegates through frozen contracts and resumes after repair and integrated acceptance',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual child check passed');");
+  execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture checks'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'loop delegation',path:h.project})).id;
+  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  let pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  assert.equal(pending.pending.tool,'configure_agents');assert.equal((await h.request('/api/snapshot')).employees.length,0);
+  pending=await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  let final;for(let i=0;i<1800;i++){
+    const s=await h.request(`/api/assistant/sessions/${parent.id}`);if(s.status==='attention')throw new Error(JSON.stringify(s.events));if(s.status==='completed'){final=s;break;}await delay(100);
+  }
+  assert(final,'delegated loop timed out');assert(final.events.some(e=>e.kind==='delegation_result'));assert.equal(final.child_session_id,null);
+  const delegated=final.events.find(e=>e.kind==='delegation_result').body;
+  assert(delegated.tasks.every(t=>t.status==='accepted'));assert.equal(delegated.autonomy.repairs.length,1);assert(delegated.autonomy.checks.some(c=>c.status==='failed'));assert(delegated.autonomy.checks.some(c=>c.status==='passed'));
+  assert.equal((await h.request('/api/snapshot')).employees.length,1);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+
+test('Assistant project setup cannot overwrite an existing global employee profile',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"console.log('actual fixture script');");
+  const projectId=(await h.request('/api/projects',{name:'profile isolation',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'existing worker',runtime:'codex',role:'实现'})).id;
+  const original=await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'user-model',reasoningLevel:5,contextTokens:64000});
+  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.events.some(e=>e.kind==='tool_result'&&e.body.tool==='configure_agents'&&e.body.ok===false&&e.body.error.includes('全局能力档案'));});
+  assert.deepEqual(await h.request(`/api/employees/${employeeId}/capabilities`),original);assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).enabled,false);assert.equal((await h.request('/api/snapshot')).employees.length,1);
+  await h.request(`/api/assistant/sessions/${parent.id}/stop`,{});
+}));
+
+test('stopping Assistant during architecture inference prevents every later worker dispatch',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"console.log('fixture check');");
+  const projectId=(await h.request('/api/projects',{name:'stop during planning',path:h.project})).id;
+  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.child_session_id&&s.busy?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/stop`,{});
+  const stopped=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return !s.busy?s:null;});
+  assert.equal(stopped.status,'stopped');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_ARCH_DELAY_MS:'1000'}));
+
+test('Assistant loads real project Skill content and shares editable memory across conversations',async()=>harness(async h=>{
+  await mkdir(join(h.project,'.apix/skills/evidence'),{recursive:true});await writeFile(join(h.project,'.apix/skills/evidence/SKILL.md'),'Use actual assertions. Skills do not grant execution permissions.');
+  const projectId=(await h.request('/api/projects',{name:'skills memory',path:h.project})).id;
+  const first=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${first.id}/messages`,{content:'fixture-loop-skill'});
+  const done=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${first.id}`);return s.status==='completed'?s:null;});
+  assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='load_skill'&&e.body.result.content.includes('actual assertions')));assert.equal(done.notes[0].source,'agent');
+  const second=await h.request('/api/assistant/sessions',{projectId});assert.equal(second.notes[0].title,'项目验证约定');
+  const updated=await h.request(`/api/assistant/sessions/${second.id}/memory`,{title:second.notes[0].title,version:1,content:'用户补充：保持兼容'});assert.equal(updated.notes[0].source,'user');assert.equal(updated.notes[0].version,2);
+}));
+
 test('workspace verifies native paths and legacy repository aliases without accepting a different repository',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-path-alias-'));
   try{

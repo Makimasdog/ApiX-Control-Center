@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f7" />
-    <title>ApiX · Agent 协调工作台</title>
+    <title>ApiX · 智能工作区</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./phase4.css" />
     <link rel="stylesheet" href="./director.css" />
@@ -13,6 +13,8 @@
     <script type="module" src="./dist/web/overview.js"></script>
     <script type="module" src="./dist/web/coordinator.js"></script>
     <script type="module" src="./dist/web/employee.js"></script>
+    <link rel="stylesheet" href="./assistant.css" />
+    <script type="module" src="./dist/web/assistant.js"></script>
     <script type="module" src="./agent-os.js"></script>
   </head>
   <body>
@@ -47,13 +49,14 @@
         <div class="sidebar-section nav-section">
           <div class="section-caption">工作空间</div>
           <nav class="nav-list" aria-label="主导航">
+            <button class="nav-item" data-page-target="assistant" aria-label="与 ApiX 对话"><svg class="icon"><use href="#icon-spark"/></svg><span>与 ApiX 对话</span></button>
             <button class="nav-item active" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
-            <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>对话工作区</span></button>
-            <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
+            <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
+            <details class="assistant-more"><summary>更多设置</summary><button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
             <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
             <button class="nav-item" data-page-target="models" aria-label="模型偏好"><svg class="icon"><use href="#icon-cube"/></svg><span>模型偏好</span></button>
             <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
-            <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button>
+            <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button></details>
           </nav>
         </div>
 
@@ -62,6 +65,7 @@
           <div id="sidebar-projects" class="sidebar-projects"></div>
         </div>
 
+        <div class="sidebar-section"><div class="section-caption">对话</div><div id="assistant-thread-list"></div></div>
         <div class="sidebar-bottom">
           <div class="local-badge"><span class="status-pulse"></span><span>本地工作台</span><span class="badge-meta">真实运行</span></div>
           <button class="profile-card" id="open-about">
@@ -79,6 +83,7 @@
         </header>
 
         <main id="page-overview" class="page settings-page"></main>
+        <main id="page-assistant" class="page"></main>
         <main id="page-coordinator" class="page settings-page"></main>
         <main id="page-workspace" class="page workspace-page active-page">
           <section class="conversation-area">

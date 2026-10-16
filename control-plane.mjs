@@ -2,7 +2,7 @@ import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, relative, isAbsolute, sep } from "node:path";
 import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { externalAgents, scanExternalAgents } from "./agent-discovery.mjs";
@@ -28,6 +28,8 @@ import {projectReadiness} from './src/readiness.mjs';
 import {createTaskDelivery} from './src/task-delivery.mjs';
 import {createDeliveryInspection} from './src/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/autonomy.js';
+import {createAssistantLoop} from './dist/src/assistant-loop.js';
+import {fileTool,commandTool,projectFingerprint,projectInstructions,skillsFor} from './dist/src/assistant-tools.js';
 
 loadEnvironment();
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
@@ -1007,7 +1009,7 @@ async function askPiDirector(prompt, onDelta, consultation, context) {
     if(consultation || context?.purpose==='connection_test'){managerEnv={...managerEnv};for(const key of ['APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_AGENT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL'])delete managerEnv[key];}
     const structured=prompt.startsWith('APIX_');
     const protocol=prompt.startsWith('APIX_COORDINATOR_JSON')?'最终格式：{"kind":"work|clarification|progress|requirement_review","question":"本轮完整中文回复","updates":[],"conflicts":[]}。明确安排、分发或实施工作时 kind=work，员工派发由宿主处理。':prompt.startsWith('APIX_PLAN_JSON')?'最终格式：{"steps":[{"prompt":"具体范围、交付与验收","employeeId":"用户消息提供的真实员工 ID","dependsOn":[]}]}。':'最终格式严格遵守用户消息中的宿主 JSON 协议。';
-    const system='你是 ApiX 管理宿主的 JSON 决策组件，不是普通终端编码助手。可先使用实际提供的工具，但最终 assistant 消息只能是完整 JSON 对象，必须以 { 开始，以 } 结束。不要 Markdown、前言或自然语言总结。操作总结只能放入 question/reply 字符串。工具完成或失败都不能解除 JSON 契约；遵守项目规则和本次权限，不自行启动其他 Agent。'+protocol;
+    const system='你是 ApiX 管理宿主的 JSON 决策组件，不是普通终端编码助手。可先使用实际提供的工具，但最终 assistant 消息只能是完整 JSON 对象，必须以 { 开始，以 } 结束。不要 Markdown、前言或自然语言总结。操作总结只能放入宿主协议指定的可见回复字段，如 question、reply、message 或 summary。工具完成或失败都不能解除 JSON 契约；遵守项目规则和本次权限，不自行启动其他 Agent。'+protocol;
     const child = spawn(command.executable, [...command.prefix, "--mode", "rpc", "--no-session", "--no-extensions", ...(tools?['--tools',tools]:['--no-tools']), ...(structured?['--append-system-prompt',system]:[]), '--no-skills','--no-prompt-templates',...(consultation || !tools?['--no-context-files']:[]), ...(settings.provider ? ["--provider", settings.provider] : []), ...(settings.model ? ["--model", settings.model] : [])], { cwd:consultation?.cwd ?? project?.path,stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env:managerEnv });
     let stdout = ""; let stderr = ""; let answer = ""; let settled = false; let finished = false; let streamed = false; let runtimeFailed = false;
     const timer = setTimeout(() => { child.kill(); }, 90_000);
@@ -1307,6 +1309,69 @@ setInterval(() => {void autonomy.tick().catch(()=>process.stderr.write('自主�
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
+const assistantProject=id=>{const project=row('SELECT * FROM projects WHERE id=?',id);if(!project)throw new Error('项目不存在');const rel=relative(realpathSync.native(project.path),realpathSync.native(dataDir));if(!rel||rel!=='..'&&!rel.startsWith('..'+sep)&&!isAbsolute(rel))throw new Error('工作区不能包含 ApiX 的内部状态目录');return project;};
+const assistant=createAssistantLoop({...store,
+  defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return row('SELECT id FROM projects WHERE path=?',realpathSync.native(path))?.id??createProject({name:'通用工作区',path});},
+  policy:projectId=>permissions.get(projectId),
+  describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
+  infer:async(projectId,prompt)=>{const id='assistant:'+randomUUID(),accountId=scheduling.policy(projectId).managerAccountId,secret=process.env[coordinator.getSettings().apiKeyEnv];const reserved=scheduling.reserveManager(id,projectId);try{return await askPiDirector(prompt,undefined,undefined,{projectId,purpose:'assistant_loop'});}catch(error){if(quotaFailure(error.message))scheduling.pauseAccountId(accountId,id);throw new Error(secret?String(error.message).split(secret).join('<redacted>'):error.message);}finally{if(reserved)scheduling.settle(id,null);}},
+  fingerprint:projectId=>projectFingerprint(assistantProject(projectId).path),
+  execute:async(s,tool,args,signal,userApproved)=>{
+    const project=assistantProject(s.project_id);
+    if(['read_file','list_files','write_file','load_skill'].includes(tool))return fileTool(project.path,tool,args);
+    if(tool==='run_command'||tool==='verify'){
+      const before=tool==='verify'?projectFingerprint(project.path):null;
+      const result=await commandTool(project.path,args,workerEnvironment(process.env,'assistant-tool',coordinator.getSettings().apiKeyEnv),signal,pid=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','command_started',?,?)").run(s.id,JSON.stringify({pid,cwd:project.path,executable:args.executable}),now()),[process.env[coordinator.getSettings().apiKeyEnv]].filter(Boolean));
+      if(tool==='verify'){const after=projectFingerprint(project.path);if(before!==after)throw new Error('验证命令修改了项目文件，请重新检查并验证');return {...result,fingerprint:after};}return result;
+    }
+    if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
+    if(tool==='inspect_agents')return {employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),runtimes:runtimes(),child:s.child_session_id?coordinator.sessionDetails(s.child_session_id):null};
+    if(tool==='send_agent_message'){
+      if(!s.child_session_id)throw new Error('当前会话没有委派任务');const child=coordinator.sessionDetails(s.child_session_id);
+      if(!child.tasks.some(t=>t.id===args.taskId))throw new Error('员工任务不属于当前循环');
+      const task=child.tasks.find(t=>t.id===args.taskId);if(task.status!=='running')throw new Error('员工没有正在运行的任务');return sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:'loop-guidance:'+randomUUID(),payload:{kind:'guidance',source:'apix',content:String(args.content??'').slice(0,2000)}});
+    }
+    if(tool==='configure_agents'){
+      if(userApproved!==true)throw new Error('需要用户明确批准项目持续授权');
+      if(!Array.isArray(args.runtimes)||!args.runtimes.length||args.runtimes.length>6||new Set(args.runtimes).size!==args.runtimes.length)throw new Error('请选择 1–6 个不同的本机运行时');
+      if(!Array.isArray(args.checks)||!args.checks.length)throw new Error('必须指定实际验收脚本');
+      for(const check of args.checks){if(!check||!Array.isArray(check.args))throw new Error('验收脚本无效');fileTool(project.path,'read_file',{path:check.args[0]});}
+      db.exec('SAVEPOINT assistant_config');try{
+        const created=new Set();
+        const selected=args.runtimes.map(runtime=>{if(!runtimes().some(r=>r.id===runtime&&r.available&&r.managed))throw new Error('本机运行时不可用');const existing=rows('SELECT id FROM employees WHERE runtime=? AND enabled=1 AND deleted_at IS NULL ORDER BY rowid',runtime).find(e=>{const familiar=scheduling.profile(e.id).projectIds;return !familiar.length||familiar.includes(s.project_id);});if(existing)return existing.id;const id=registerEmployee({runtime,name:runtime+' Agent',role:'实现与验证'});created.add(id);return id;});
+        if(args.profiles!==undefined){if(!Array.isArray(args.profiles)||args.profiles.length>6)throw new Error('能力声明无效');for(const declaration of args.profiles){const index=args.runtimes.indexOf(declaration.runtime);if(index<0)throw new Error('能力声明不属于选中运行时');const id=selected[index],priorProfile=scheduling.profile(id),model=declaration.model??priorProfile.model,contextTokens=declaration.contextTokens??null;if(!created.has(id)){if(priorProfile.model!==model||priorProfile.reasoningLevel!==declaration.reasoningLevel||priorProfile.contextTokens!==contextTokens)throw new Error('已有员工的全局能力档案与声明不一致；请使用已有声明，或在员工设置中明确修改，项目授权不会覆盖其他项目的配置');continue;}scheduling.saveProfile(id,{...priorProfile,version:priorProfile.version,model,reasoningLevel:declaration.reasoningLevel,contextTokens});}}
+        const workflow=coordinator.workflowSettings(s.project_id);
+        coordinator.saveWorkflow(s.project_id,{version:workflow.version,enabled:true,approved:true,managerVersion:permissions.get(s.project_id).version,employees:selected.map(id=>({id,version:permissions.get(s.project_id,id).version}))});
+        const prior=autonomy.settings(s.project_id);const policy=autonomy.save(s.project_id,{...prior,version:prior.version,enabled:true,approved:true,maxRepairs:2,checks:args.checks});db.exec('RELEASE assistant_config');return {employeeIds:selected,checks:policy.checks,authorization:'persistent_project',maxRepairs:2};
+      }catch(error){db.exec('ROLLBACK TO assistant_config');db.exec('RELEASE assistant_config');throw error;}
+    }
+    if(tool==='delegate'){
+      if(s.child_session_id)throw new Error('已有委派，先检查或完成当前子流程');
+      const policy=autonomy.settings(s.project_id),workflow=coordinator.workflowSettings(s.project_id);
+      if(!policy.enabled||!policy.checks.length||!workflow.enabled)throw new Error('委派需要先在协作设置明确授权员工并配置实际验收命令；不自动提升权限或虚构检查。');
+      if(permissions.get(s.project_id).mode!=='full_access')throw new Error('委派闭环需要管理者的项目授权');
+      const requirements=args.requirements;if(!requirements||typeof requirements!=='object')throw new Error('委派需要明确范围、约束、交付物、验收标准');
+      let child=coordinator.createSession({projectId:s.project_id,goal:args.goal});
+      db.prepare('UPDATE assistant_sessions SET child_session_id=? WHERE id=?').run(child.id,s.id);
+      try{for(const field of ['scope','constraints','deliverable','acceptance'])child=coordinator.answerSession(child.id,{revision:child.revision,field,value:requirements[field]});child=await coordinator.confirmSession(child.id,{revision:child.revision},()=>!signal.aborted&&row('SELECT status FROM assistant_sessions WHERE id=?',s.id)?.status==='running');return {childSessionId:child.id,architecture:child.autonomy?.architecture,tasks:child.tasks};}
+      catch(error){return {childSessionId:child.id,error:error.message};}
+    }
+    throw new Error('工具不存在');
+  },
+  child:id=>{const child=coordinator.sessionDetails(id);const state=child.autonomy?.state;const status=['running','ready'].includes(state)?'running':state==='attention'?'attention':state==='completed'?'completed':child.derivedStatus;return {status,complete:status==='completed'&&child.tasks.length>0&&child.tasks.every(t=>t.status==='accepted'),details:{id:child.id,status,tasks:child.tasks.map(t=>({id:t.id,status:t.status,employee_id:t.employee_id,delivery_commit:t.delivery_commit})),autonomy:child.autonomy?{state:child.autonomy.state,reason:child.autonomy.reason,contractDigest:child.autonomy.architecture?.digest,checks:child.autonomy.checks.map(c=>({id:c.id,status:c.status,fingerprint:c.fingerprint})),repairs:child.autonomy.repairs.map(r=>({id:r.id,status:r.status,attempt:r.attempt}))}:null}};},
+  stopChild:id=>{const child=coordinator.sessionDetails(id);if(child.busy&&!child.tasks.length||child.derivedStatus==='completed')return;coordinator.stopSession(id,{revision:child.revision});}
+});
+setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
+export const createAssistantSession=assistant.create;
+export const assistantSession=assistant.details;
+export const assistantSessions=assistant.list;
+export const assistantMessage=assistant.message;
+export const assistantReply=assistant.reply;
+export const assistantStop=assistant.stop;
+export const assistantResume=assistant.resume;
+export const assistantEditMemory=assistant.editMemory;
+export const assistantEvents=assistant.eventPage;
+
 export const createCoordinationSession = coordinator.createSession;
 export const answerCoordinationSession = coordinator.answerSession;
 export const confirmCoordinationSession = coordinator.confirmSession;

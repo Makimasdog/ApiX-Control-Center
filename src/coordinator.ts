@@ -200,7 +200,7 @@ export function createCoordinator(deps: Dependencies) {
     memory.append(s.project_id,s.id,'plan.created',{planId,revision:s.revision,steps});
     return planId;
   }
-  async function confirmSession(id: string, input: Record<string, unknown>) {
+  async function confirmSession(id: string, input: Record<string, unknown>, shouldContinue:()=>boolean=()=>true) {
     const s = editable(id,input.revision);
     if (!['ready','clarifying'].includes(s.status) || !details(id).assessment.ready) throw new Error('需求尚不完整或有未解决的冲突');
     if (s.plan_id && tasksOf(s).some(t => ['running','stopping','unknown'].includes(t.status))) throw new Error('旧计划尚未确认停止，请先处理运行状态');
@@ -209,10 +209,12 @@ export function createCoordinator(deps: Dependencies) {
       const authorized=workflow.get(s.project_id);
       const autonomyPolicy=deps.autonomy.settings(s.project_id);
       const architecture=autonomyPolicy.enabled?await metered(s.project_id,()=>agent.architect(requirementsOf(s),autonomyPolicy.checks,{projectId:s.project_id,purpose:'architecture'})):undefined;
+      if(!shouldContinue())throw new Error('上层 Agent 已停止，未派发任务');
       const candidates=deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)}));
       let generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture));
       // Correct a malformed response once, with a separate budget reservation; never replay unavailable inference.
       if(generated.failureKind==='response')generated=await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture,generated.error));
+      if(!shouldContinue())throw new Error('上层 Agent 已停止，未派发任务');
       mode = generated.mode;
       if(architecture && generated.mode!=='pi')throw new Error(`架构执行计划校验失败，未派发任务：${generated.error ?? '模型未生成有效计划'}`);
       if(architecture && (deps.autonomy.settings(s.project_id).version!==autonomyPolicy.version || workflow.get(s.project_id).version!==authorized.version || session(id).revision!==s.revision))throw new Error('架构规划失败或授权/需求已变化，未派发任务');
