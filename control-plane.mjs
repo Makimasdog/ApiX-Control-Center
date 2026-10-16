@@ -1,4 +1,6 @@
 import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
+import {projectDirectory} from './src/project-folders.mjs';
+import {inspectCodex,executionArgs} from './dist/src/agent-settings.js';
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
@@ -449,6 +451,7 @@ function launch(task) {
   const command = commandFor(task.runtime);
   if (!project || !command) throw new Error("Agent 不可用或项目不存在");
   const environment=workerEnvironment(process.env,task.runtime,row('SELECT api_key_env FROM apix_manager_settings WHERE id=1')?.api_key_env);
+  environment.PYTHONUTF8='1';environment.PYTHONIOENCODING='utf-8';
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
   if (!existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) throw new Error("项目目录已不存在");
@@ -457,6 +460,7 @@ function launch(task) {
     if(actual!==task.recovery_fingerprint)throw new Error('恢复检查后工作区或源仓库已变化，请重新检查并批准');
   }
   const context = [];
+  if(process.platform==='win32' && task.runtime==='codex')context.push('Windows 编码约定：文件、标准输入输出与报告均使用 UTF-8。通过 PowerShell 执行含中文的命令前，设置 $OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)；读取和写入文件显式使用 UTF-8，避免中文经管道变为问号。');
   const profile = row("SELECT * FROM project_profiles WHERE project_id=?", task.project_id);
   if (profile) context.push(`项目档案（用户维护，仅供参考）：\n${[profile.summary, profile.goals, profile.constraints, profile.decisions].filter(Boolean).join("\n").slice(0, 5000)}`);
   const projectMemories = rows("SELECT title,content FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 5", task.project_id);
@@ -490,7 +494,8 @@ function launch(task) {
   const skipGitRepoCheck = task.runtime === "codex" && !gitRoot(cwd);
   const fullAccess = permissions.decision(task.project_id, task.employee_id) === "allow";
   const args = runtimeAdapters.args(task.runtime, fullAccess, skipGitRepoCheck);
-  if(task.employee_id && scheduling.taskSpec(task.id).difficulty!=null){const selectedModel=scheduling.profile(task.employee_id).model;args.push(...runtimeAdapters.modelArgs(task.runtime,selectedModel));}
+  try { if(task.employee_id)args.push(...executionArgs(task.runtime,scheduling.profile(task.employee_id),scheduling.taskSpec(task.id).difficulty,runtimeAdapters.modelArgs)); }
+  catch(error){setRun(runId,'failed','configuration');throw error;}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
     env: { ...(task.runtime==='pi'?piShellEnvironment(environment):environment), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
@@ -504,12 +509,14 @@ function launch(task) {
     } catch (error) { event(runId, "apix", "message_dispatch_failed", { error: error.message }); }
   }
   db.prepare("UPDATE runs SET status='running',status_source='process',pid=? WHERE id=?").run(child.pid ?? null, runId);
-  event(runId, "apix", "run_started", { pid: child.pid ?? null, runtime: task.runtime, cwd, gitRepoCheckSkipped: skipGitRepoCheck });
+  event(runId, "apix", "run_started", { pid: child.pid ?? null, runtime: task.runtime, cwd, gitRepoCheckSkipped: skipGitRepoCheck, executionArgs:args });
   appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: task.id, runId, status: "running", runtime: task.runtime });
   let buffer = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
-    if (runtimeAdapters.format(task.runtime) === "plain") { running.get(runId).output += chunk.toString('utf8'); return; }
-    buffer += chunk.toString("utf8");
+    if (runtimeAdapters.format(task.runtime) === "plain") { running.get(runId).output += chunk; return; }
+    buffer += chunk;
     let index;
     // One durable commit per received chunk keeps event bursts from issuing
     // hundreds of synchronous disk flushes while the HTTP loop is blocked.
@@ -524,7 +531,7 @@ function launch(task) {
     } finally { db.exec('RELEASE runtime_chunk'); }
   });
   child.stderr.on("data", (chunk) => {
-    const value = chunk.toString("utf8");
+    const value = chunk;
     const active = running.get(runId);
     if (active) active.stderr = (active.stderr + value).slice(-4000);
     event(runId, task.runtime, "stderr", { text: value.slice(0, 4000) });
@@ -534,7 +541,7 @@ function launch(task) {
   child.on("close", (code, signal) => {
     const active = running.get(runId);
     if (!active) return;
-    if (buffer.trim()) event(runId, task.runtime, "trailing_stdout", { text: buffer.slice(0, 3000) });
+    if (buffer.trim()) { try { handleNative(runId,task.runtime,JSON.parse(buffer)); } catch { event(runId, task.runtime, "trailing_stdout", { text: buffer.slice(0, 3000) }); } }
     const confirmedStop = active.aborted || (active.stopped && (signal !== null || code !== 0));
     const status = confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed";
     if(status==='failed' && (active.quotaBlocked || quotaFailure(active.stderr))){executionControl.pauseRuntime(task.project_id,task.runtime,'运行时报告额度或速率限制，请检查账户后明确恢复或重新分配',runId);if(task.employee_id)scheduling.pauseAccount(task.employee_id,runId);}
@@ -694,8 +701,9 @@ export function renameConversation(id, input) {
 
 export function createProject(input) {
   const name = String(input.name ?? "").trim().slice(0, 100);
-  const path = resolve(String(input.path ?? "").trim());
-  if (!name || !input.path || !existsSync(path) || !statSync(path).isDirectory()) throw new Error("请输入已有的项目目录和名称");
+  if (!name) throw new Error("请填写项目名称");
+  const path = projectDirectory(input.path,input.createDirectory===true);
+  if(row(`SELECT id FROM projects WHERE path=? ${process.platform==='win32'?'COLLATE NOCASE':''}`,path))throw new Error('该文件夹已添加为项目，请直接选择已有项目');
   const id = randomUUID();
   db.prepare("INSERT INTO projects(id,name,path,description,created_at) VALUES (?,?,?,?,?)").run(id, name, path, String(input.description ?? "").slice(0, 500), now());
   ensureMailbox(id, "apix-director", "director");
@@ -707,8 +715,9 @@ export function updateProject(id, input) {
   const existing = row("SELECT * FROM projects WHERE id=?", id);
   if (!existing) throw new Error("项目不存在");
   const name = String(input.name ?? "").trim().slice(0, 100);
-  const path = resolve(String(input.path ?? "").trim());
-  if (!name || !input.path || !existsSync(path) || !statSync(path).isDirectory()) throw new Error("请输入已有的项目目录和名称");
+  if (!name) throw new Error('请填写项目名称');
+  const path = projectDirectory(input.path);
+  if(row(`SELECT id FROM projects WHERE path=? ${process.platform==='win32'?'COLLATE NOCASE':''} AND id!=?`,path,id))throw new Error('该文件夹已添加为其他项目，请选择不同目录');
   if (path !== existing.path && row("SELECT id FROM tasks WHERE project_id=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1", id)) throw new Error("该项目有待处理或运行中的任务，暂不能修改目录");
   db.prepare("UPDATE projects SET name=?,path=?,description=? WHERE id=?").run(name, path, String(input.description ?? "").slice(0, 500), id);
 }
@@ -1004,10 +1013,11 @@ async function askPiEmployee(prompt,consultation) {
     const env=piShellEnvironment(workerEnvironment(process.env,'pi',coordinator.getSettings().apiKeyEnv));
     const child=spawn(command.executable,[...command.prefix,'--mode','rpc','--no-session','--no-extensions','--no-tools','--no-skills','--no-prompt-templates','--no-context-files',...(consultation.model?['--model',consultation.model]:[])],{cwd:consultation.cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
     let raw='',answer='',stderr='',settled=false,failed=false,finished=false;const decoder=new TextDecoder();
+    child.stderr.setEncoding('utf8');
     const timer=setTimeout(()=>{failed=true;child.kill();},90000);
     const finish=(error)=>{if(finished)return;finished=true;clearTimeout(timer);if(error)reject(error);else resolve(answer.trim());};
     child.stdout.on('data',chunk=>{raw+=decoder.decode(chunk,{stream:true});if(raw.length>100000){failed=true;child.kill();return;}let i;while((i=raw.indexOf('\n'))>=0){const line=raw.slice(0,i);raw=raw.slice(i+1);try{const event=JSON.parse(line);if(event.type==='message_end'&&event.message?.role==='assistant'){answer=textFromMessage(event.message);failed||=['error','aborted'].includes(event.message.stopReason);}if(['agent_end','agent_settled'].includes(event.type)){settled=true;child.stdin.end();}}catch{}}});
-    child.stderr.on('data',chunk=>{stderr=(stderr+chunk.toString('utf8')).slice(-3000);});child.on('error',()=>finish(new Error('Pi 员工进程无法启动')));child.on('close',code=>finish(code===0&&settled&&answer.trim()&&!failed?null:new Error(quotaFailure(stderr)?'Pi 员工额度不足 (insufficient_quota)':'Pi 员工未返回可用答复')));
+    child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-3000);});child.on('error',()=>finish(new Error('Pi 员工进程无法启动')));child.on('close',code=>finish(code===0&&settled&&answer.trim()&&!failed?null:new Error(quotaFailure(stderr)?'Pi 员工额度不足 (insufficient_quota)':'Pi 员工未返回可用答复')));
     child.stdin.on('error',()=>{});child.stdin.write(JSON.stringify({id:randomUUID(),type:'prompt',message:prompt})+'\n');
   });
 }
@@ -1422,7 +1432,23 @@ export function handleAgentMessage(actor, id, action, input) {
   if(message.project_id!==actor.project_id || message.to_agent!==actor.agent_id || message.target_task_id!==actor.task_id || message.target_run_id!==actor.run_id) throw new Error('消息不属于当前任务与运行');
   return ({ack:ackMessage,complete:completeMessage,nack:nackMessage})[action](id,{...input,agentId:actor.agent_id});
 }
-export const employeeDetails = employeeInsights.details;
+export function employeeDetails(id){
+  const details=employeeInsights.details(id);const capability=scheduling.profile(id);
+  const accounts=scheduling.accounts().map(a=>{
+    const usage=row("SELECT COALESCE(SUM(CASE WHEN state='settled' THEN actual WHEN state IN ('reserved','unmeasured') THEN amount ELSE 0 END),0) AS committed, COUNT(CASE WHEN state='settled' AND actual IS NULL OR state IN ('reserved','unmeasured') AND amount IS NULL THEN 1 END) AS unknownCount FROM scheduling_reservations WHERE account_id=?",a.id);
+    return {...a,source:'manual',committedMinor:usage.committed,unknownCount:usage.unknownCount,budgetRemainingMinor:a.limitMinor==null||usage.unknownCount?null:Math.max(0,a.limitMinor-usage.committed)};
+  });
+  return {...details,capability,accounts};
+}
+const runtimeInfoPending=new Map();
+export async function inspectEmployeeRuntime(id){
+  const employee=row('SELECT runtime FROM employees WHERE id=? AND deleted_at IS NULL',id);if(!employee)throw new Error('员工不存在');
+  if(employee.runtime!=='codex')return {source:'unsupported',observedAt:null,quota:{state:'unknown',windows:[],message:'此运行时尚无已接入的官方额度查询接口；请维护共享账户快照'},models:[]};
+  if(runtimeInfoPending.has('codex'))return runtimeInfoPending.get('codex');
+  const command=commandFor('codex');if(!command)throw new Error('Codex 未安装或不可用');
+  const env=workerEnvironment(process.env,'codex',coordinator.getSettings().apiKeyEnv);
+  const pending=inspectCodex(command,env).finally(()=>runtimeInfoPending.delete('codex'));runtimeInfoPending.set('codex',pending);return pending;
+}
 export function agentTeam(projectId, taskId) {
   const source=taskId ? row('SELECT plan_id FROM tasks WHERE id=? AND project_id=?',taskId,projectId) : null;
   return listMailboxes(projectId).map(m => ({id:m.agent_id,role:m.role,name:row('SELECT name FROM employees WHERE id=?',m.agent_id)?.name ?? m.agent_id,

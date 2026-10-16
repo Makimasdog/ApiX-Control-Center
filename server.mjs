@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import {browseFolders} from './src/project-folders.mjs';
+import {inspectEmployeeRuntime} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,7 +38,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
   if (pathname.startsWith("/api/")) {
     if (![ `127.0.0.1:${port}`, `localhost:${port}` ].includes(request.headers.host ?? '')) { response.writeHead(403); response.end('Forbidden host'); return; }
     const origin = request.headers.origin;
-    const expectedOrigin = `http://127.0.0.1:${port}`;
+    const expectedOrigin = `http://${request.headers.host}`;
     if (origin && origin !== expectedOrigin) { response.writeHead(403); response.end("Forbidden origin"); return; }
     const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
@@ -45,6 +47,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id,actor.task_id)); return; }
         if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveAgentMessages(actor)); return; }
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
+        request.setEncoding('utf8');
         let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
         const input = JSON.parse(body || '{}');
         actor = authenticateAgent(request.headers.authorization);
@@ -67,6 +70,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
       if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}
@@ -122,6 +126,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
       let raw = "";
+      request.setEncoding('utf8');
       for await (const chunk of request) { raw += chunk; if (raw.length > 30000) throw new Error("请求过大"); }
       const input = JSON.parse(raw || "{}");
       if (/^\/api\/coordination\/sessions\/[^/]+\/messages\/stream$/.test(pathname)) {
@@ -142,6 +147,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else if(/^\/api\/assistant\/sessions\/[^/]+\/memory$/.test(pathname))result=assistantEditMemory(pathname.split('/')[4],input);
       else if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
+      else if(/^\/api\/employees\/[^/]+\/runtime-info$/.test(pathname))result=await inspectEmployeeRuntime(pathname.split('/')[3]);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
       else if (pathname === '/api/manager/test') result = await testManagerConnection(input);

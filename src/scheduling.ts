@@ -5,6 +5,7 @@ export interface CapabilityProfile {
   model: string; tags: string[]; tools: string[]; languages: string[]; projectIds: string[];
   accountId: string | null; contextTokens: number | null; version: number; updatedAt: string | null;
   reasoningLevel?: number | null;
+  reasoningEffort?: string | null;
   pricing?: {model:string;version:string;currency:string;inputMinorPerMillion:number;outputMinorPerMillion:number} | null;
 }
 export interface TaskProfile {
@@ -90,11 +91,14 @@ export function createScheduling(store: Store, dependencies: {
     if(accountId && !accounts().some(a=>a.id===accountId))throw new Error('账户不存在');
     const model=input.model==null?'':String(input.model).trim();if(model.length>200)throw new Error('模型名称过长');
     const reasoningLevel=integer(input.reasoningLevel,'推理能力',5);if(reasoningLevel===0)throw new Error('推理能力应为 1–5');
+    const reasoningEffort=input.reasoningEffort===undefined?previous.reasoningEffort??null:input.reasoningEffort===''||input.reasoningEffort===null?null:String(input.reasoningEffort);
+    if(reasoningEffort && !['auto','low','medium','high','xhigh'].includes(reasoningEffort))throw new Error('推理强度应为 auto、low、medium、high 或 xhigh');
+    if(reasoningEffort && dependencies.employees().find(e=>e.id===id)?.runtime!=='codex')throw new Error('推理强度参数目前仅支持 Codex');
     let pricing:CapabilityProfile['pricing']=null;
     if(input.pricing!=null){const rate=object(input.pricing);const rateModel=text(rate.model,200);const rateCurrency=currency(rate.currency);const inputRate=integer(rate.inputMinorPerMillion,'输入费率'),outputRate=integer(rate.outputMinorPerMillion,'输出费率');if(!model || rateModel!==model || !rateCurrency || inputRate===null || outputRate===null)throw new Error('费率必须对应声明的模型并包含币种与输入/输出价格');pricing={model:rateModel,version:text(rate.version,100),currency:rateCurrency,inputMinorPerMillion:inputRate,outputMinorPerMillion:outputRate};}
     if(pricing && accountId){const account=accounts().find(a=>a.id===accountId)!;if(account.type!=='api'||account.currency!==pricing.currency)throw new Error('预测费率需要同币种 API 账户，订阅额度不能换算费用');}
     const projectIds=list(input.projectIds ?? [],'熟悉项目');if(projectIds.some(p=>!row('SELECT id FROM projects WHERE id=?',p)))throw new Error('熟悉项目不存在');
-    const result:CapabilityProfile={reasoningLevel,pricing,model,tags:list(input.tags ?? [],'能力标签'),tools:list(input.tools ?? [],'工具'),languages:list(input.languages ?? [],'语言'),projectIds,
+    const result:CapabilityProfile={reasoningEffort,reasoningLevel,pricing,model,tags:list(input.tags ?? [],'能力标签'),tools:list(input.tools ?? [],'工具'),languages:list(input.languages ?? [],'语言'),projectIds,
       contextTokens:integer(input.contextTokens,'上下文容量'),accountId,version:previous.version+1,updatedAt:now()};
     db.prepare('INSERT INTO scheduling_profiles VALUES (?,?) ON CONFLICT(employee_id) DO UPDATE SET body=excluded.body').run(id,JSON.stringify(result));return result;
   }
