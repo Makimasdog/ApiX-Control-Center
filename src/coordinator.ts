@@ -11,6 +11,7 @@ import { createPlanningMeetings } from './planning-meetings.js';
 import {createWorkflow} from './workflow.js';
 import {bindArchitecture,type Architecture} from './architecture.js';
 import type {Autonomy} from './autonomy.js';
+import {taskAcceptanceRequest} from './task-review.js';
 
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
@@ -23,6 +24,7 @@ interface Dependencies extends Store {
   sendMessage(input: Record<string, unknown>): { id: string; status: string };
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
+  reviewTask(id:string,accepted:boolean,fingerprint:string):void;
 }
 export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
@@ -136,6 +138,27 @@ export function createCoordinator(deps: Dependencies) {
   }
   async function discuss(id: string, input: Record<string, unknown>, onQuestion?: (delta: string) => void, onTool?:(event:ManagerToolEvent)=>void) {
     const s = editable(id, input.revision); const content = text(input.content);
+    const acceptance=taskAcceptanceRequest(content);
+    if(acceptance){
+      const state=details(id);const tasks=tasksOf(s);const completed=tasks.filter(t=>t.status==='completed');
+      const target=acceptance.taskNumber?tasks[acceptance.taskNumber-1]:completed.length===1?completed[0]:undefined;
+      let output:string;let reviewTaskId:string|undefined;
+      transaction(()=>{turn(s,'user','message',content);checkpoint(id);});
+      if(state.autonomy&&state.autonomy.state!=='completed')output='当前任务绑定自动质量检查与验收契约，不能通过聊天跳过实际测试和审查；本次未执行人工放行。请先完成或检查自主交付流程。';
+      else if(!target)output=completed.length>1?'有多个任务待验收，尚未改变状态。请明确说“确认验收任务 1”等任务编号，并先查看对应代码变更。':'没有可唯一确认的待验收任务，尚未改变状态。请检查任务编号和实际运行状态。';
+      else if(target.status!=='completed')output=`任务 ${tasks.indexOf(target)+1} 当前状态为 ${target.status}，本次未执行验收。`;
+      else {
+        const reviewed=Array.isArray(input.reviewedDeliveries)?input.reviewedDeliveries.slice(0,32).find(v=>v&&typeof v==='object'&&v.taskId===target.id):undefined;
+        if(reviewed&&typeof reviewed.fingerprint==='string'&&reviewed.fingerprint.length<=128){
+          deps.reviewTask(target.id,true,reviewed.fingerprint);
+          const actual=tasksOf(s);output=`任务 ${tasks.indexOf(target)+1} 已由宿主执行验收并冻结当前交付版本，实际状态为 accepted。当前 ${actual.filter(t=>t.status==='running').length} 个任务执行中、${actual.filter(t=>t.status==='queued').length} 个排队、${actual.filter(t=>t.status==='accepted').length} 个已验收。后续步骤仍按依赖、权限、额度与并发条件推进。`;
+        }else{
+          reviewTaskId=target.id;output=`任务 ${tasks.indexOf(target)+1} 尚未验收：需要先查看代码差异和实际验证证据，取得该版本的交付指纹。已请求打开验收面板；核对后点击“通过验收”，或再次发送“确认验收任务 ${tasks.indexOf(target)+1}”。只有宿主成功冻结后才会变为 accepted。`;
+        }
+      }
+      transaction(()=>{turn(session(id),'apix','task_review',output);checkpoint(id);});onQuestion?.(output);
+      return {...details(id),...(reviewTaskId?{reviewTaskId}:{})};
+    }
     const automation=workflow.get(s.project_id);let continueWork=false;
     busy.add(id);
     try {

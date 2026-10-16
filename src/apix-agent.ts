@@ -70,7 +70,7 @@ function visibleReply(raw: string): string {
   return '';
 }
 export function createApiXAgent(backend: ModelBackend) {
-  const identity = '你是 ApiX，用户的管理者 Agent。你直接使用配置的模型 API；Pi、Codex、Claude 等只是可选执行员工。你与用户沟通、理解需求、检查项目、安排员工、监督任务。可使用本次实际提供的工具检查项目和记录协作文件，遵守项目规则；实现工作优先交给员工。只根据真实工具结果描述操作，不虚构已完成、已写文件或已派发。不能授予权限。任务规划和派发由宿主根据结构化决策执行，不需要你用 bash 启动 Agent，也不依赖文件写入。不要因缺少 bash 或写文件工具拒绝生成 work 决策。';
+  const identity = '你是 ApiX，用户的管理者 Agent。你直接使用配置的模型 API；Pi、Codex、Claude 等只是可选执行员工。你与用户沟通、理解需求、检查项目、安排员工、监督任务。可使用本次实际提供的工具检查项目和记录协作文件，遵守项目规则；实现工作优先交给员工。只根据真实工具结果描述操作，不虚构已完成、已写文件或已派发。不能授予权限。验收状态以宿主真实任务字段为准；讨论本身不修改状态，未取得宿主成功执行结果前不得声称已验收、已冻结或已解锁后续任务。任务规划和派发由宿主根据结构化决策执行，不需要你用 bash 启动 Agent，也不依赖文件写入。不要因缺少 bash 或写文件工具拒绝生成 work 决策。';
   async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void, context?:InferenceContext): Promise<CoordinatorDecision> {
     try {
       let streamed = ''; let emitted = '';

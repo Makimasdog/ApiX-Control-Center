@@ -583,6 +583,49 @@ async function setup(h,runtime='pi') {
   return {projectId,employeeId,s};
 }
 
+test('conversation acceptance requires an inspected fingerprint and actually unblocks dependent tasks',async()=>harness(async h=>{
+  let {s}=await setup(h);
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  const employeeId=s.tasks[0].employee_id;
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first implementation',dependsOn:[]},{employeeId,prompt:'review frozen implementation',dependsOn:[0]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  const task=s.tasks[0];const next=s.tasks[1];assert.equal(next.status,'queued');
+  await writeFile(join(task.workspace_path,'reviewed.txt'),'original inspected delivery');
+  const calls=h.model.calls.length;
+  const open=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收'});
+  assert.equal(open.reviewTaskId,task.id);assert.equal(open.tasks[0].status,'completed');assert.equal(open.tasks[1].status,'queued');assert.match(open.turns.at(-1).content,/尚未验收/);assert.equal(h.model.calls.length,calls);
+  const first=await h.request(`/api/tasks/${task.id}/delivery`);
+  await writeFile(join(task.workspace_path,'reviewed.txt'),'changed after inspection');
+  await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:open.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:task.id,fingerprint:first.inspection.fingerprint}]},400);
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'completed');
+  const other=await h.request('/api/coordination/sessions',{projectId:s.project_id,goal:'unrelated session'});
+  const unrelated=await h.request(`/api/coordination/sessions/${other.id}/messages`,{revision:other.revision,content:'确认验收',reviewedDeliveries:[{taskId:task.id,fingerprint:first.inspection.fingerprint}]});
+  assert(!unrelated.reviewTaskId);assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'completed');
+  const checked=await h.request(`/api/tasks/${task.id}/delivery`);
+  const accepted=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:open.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:task.id,fingerprint:checked.inspection.fingerprint}]});
+  assert.equal(accepted.tasks[0].status,'accepted');assert(accepted.tasks[0].delivery_commit);assert.match(accepted.turns.at(-1).content,/已由宿主执行验收/);assert.equal(h.model.calls.length,calls);
+  const done=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[1].status==='completed'&&d;});
+  assert.equal(await readFile(join(done.tasks[1].workspace_path,'reviewed.txt'),'utf8'),'changed after inspection');
+  await h.restart();const persisted=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(persisted.tasks[0].status,'accepted');assert.equal(persisted.tasks[1].status,'completed');
+  const ambiguous=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:persisted.revision,content:'确认验收任务 1'});assert.equal(ambiguous.tasks[1].status,'completed');assert.match(ambiguous.turns.at(-1).content,/accepted/);
+}));
+
+test('conversation acceptance never guesses between multiple completed deliveries',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const employeeId=s.tasks[0].employee_id;
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first',dependsOn:[]},{employeeId,prompt:'second',dependsOn:[]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks.every(t=>t.status==='completed')&&d;});
+  const checked=await h.request(`/api/tasks/${s.tasks[0].id}/delivery`);
+  const result=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收',reviewedDeliveries:[{taskId:s.tasks[0].id,fingerprint:checked.inspection.fingerprint}]});
+  assert(result.tasks.every(t=>t.status==='completed'));assert.match(result.turns.at(-1).content,/多个任务待验收/);assert(!result.reviewTaskId);
+}));
+
+test('conversation acceptance cannot bypass a bound autonomous quality contract',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h);const calls=h.model.calls.length;
+  const reply=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:s.tasks[0].id,fingerprint:'unverified'}]});
+  assert.match(reply.turns.at(-1).content,/不能通过聊天跳过/);assert(!reply.reviewTaskId);assert(reply.tasks.every(t=>t.status!=='accepted'));assert.equal(h.model.calls.length,calls);
+}));
+
 test('non-Git projects run isolated tasks, freeze delivery, hand off code and prepare integration across restart',async()=>harness(async h=>{
   const project=join(h.dir,'non-git');await mkdir(project);await writeFile(join(project,'README.md'),'original');await writeFile(join(project,'.env'),'never copy');
   const projectId=(await h.request('/api/projects',{name:'non Git',path:project})).id;

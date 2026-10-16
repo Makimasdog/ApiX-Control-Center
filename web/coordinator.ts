@@ -12,6 +12,7 @@ type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
 type Step = { prompt: string; employeeId: string; dependsOn: number[]; moduleId?:string;scheduling?:TaskProfile };
 interface Session {
+  reviewTaskId?:string;
   autonomy?:AutonomyState|null;autonomyPolicy?:AutonomyPolicy;autonomyRecoveryFingerprint?:string|null;
   workflow?:{enabled:boolean;version:number;employeeIds:string[]};
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
@@ -111,7 +112,7 @@ async function streamMessage(id:string,body:unknown,userContent:string) {
     messageDrafts.delete(id);
     if(ownsView()){
       $<HTMLTextAreaElement>('#coord-message textarea').value='';
-      if(finalSession)render(finalSession);
+      if(finalSession){render(finalSession);if((finalSession as Session).reviewTaskId)await inspectDelivery((finalSession as Session).reviewTaskId!);}
     }
   } catch(error) {
     const detail=error instanceof Error?error.message:String(error);
@@ -231,6 +232,7 @@ $('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
 meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 function render(s: Session) {
+  if(inspectedDelivery&&s.tasks.find(t=>t.id===inspectedDelivery!.taskId)?.status!==inspectedDelivery.status){root.querySelector('#coord-delivery-panel')?.remove();inspectedDelivery=null;}
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
   const tools=$('#desktop-tools');const toolKey=JSON.stringify(s.managerTools??[]);if(tools.dataset.key!==toolKey){tools.dataset.key=toolKey;tools.innerHTML=(s.managerTools??[]).map(e=>`<p>${esc(e.toolName)} · ${e.phase==='start'?'开始':e.isError?'失败':'完成'}</p>`).join('')||'<p>本次对话尚无工具调用。</p>';}
   $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型规划或连接需要处理：${s.agent.error}`:'';
@@ -342,7 +344,7 @@ document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(event.de
 document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{selectSession(event.detail);void reload().catch(e=>notice(String(e),true));document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 $('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});selectSession(created.id);form.reset();});});
-$('#coord-message').addEventListener('submit',event=>{event.preventDefault();if(!current || $<HTMLButtonElement>('#coord-message button').disabled)return;void action(async()=>{const content=$<HTMLTextAreaElement>('#coord-message textarea').value.trim();if(!content)return;const id=sessionId;messageDrafts.set(id,content);await streamMessage(id,{revision:current!.revision,content},content);});});
+$('#coord-message').addEventListener('submit',event=>{event.preventDefault();if(!current || $<HTMLButtonElement>('#coord-message button').disabled)return;void action(async()=>{const content=$<HTMLTextAreaElement>('#coord-message textarea').value.trim();if(!content)return;const id=sessionId;messageDrafts.set(id,content);const reviewedDeliveries=current!.tasks.filter(t=>t.status==='completed'&&deliveryFingerprints.has(t.id)).map(t=>({taskId:t.id,fingerprint:deliveryFingerprints.get(t.id)!}));await streamMessage(id,{revision:current!.revision,content,reviewedDeliveries},content);});});
 // 支持 Enter 发送、Shift+Enter 换行、处理中文输入法
 const messageTextarea=$<HTMLTextAreaElement>('#coord-message textarea');
 messageTextarea.addEventListener('input',()=>messageDrafts.set(sessionId,messageTextarea.value));
@@ -396,11 +398,14 @@ function renderDelivery(d:Delivery) {
     const dependenciesAccepted=current!.dependencies.filter(dep=>dep.task_id===d.taskId).every(dep=>current!.tasks.some(t=>t.id===dep.depends_on_id && t.status==='accepted'));
     panel.insertAdjacentHTML('beforeend',recoveryForm(d,task,snapshot.employees,dependenciesAccepted));
   }
+  toggleInspector(true);
+  panel.tabIndex=-1;panel.scrollIntoView({block:'start',behavior:'smooth'});panel.focus({preventScroll:true});
 }
+async function inspectDelivery(id:string){const originProject=projectId,originSession=sessionId;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(projectId===originProject&&sessionId===originSession)renderDelivery(d);}
 root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
 root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('button[data-remove],button[data-coord-accept],button[data-coord-reject],button[data-delivery],button[data-freeze-delivery]');if(!el || !root.contains(el))return;
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}
-  if(el.dataset.delivery)void action(async()=>{const id=el.dataset.delivery!;const originProject=projectId;const originSession=sessionId;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(projectId===originProject && sessionId===originSession)renderDelivery(d);});
+  if(el.dataset.delivery)void action(()=>inspectDelivery(el.dataset.delivery!));
   if(el.dataset.freezeDelivery)void action(async()=>{const id=el.dataset.freezeDelivery!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/delivery`,{fingerprint:deliveryFingerprints.get(id)});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();});
   if(el.dataset.coordAccept || el.dataset.coordReject)void action(async()=>{const id=el.dataset.coordAccept ?? el.dataset.coordReject!;const originProject=projectId;const originSession=sessionId;await api(`/api/tasks/${id}/review`,{accepted:!!el.dataset.coordAccept,fingerprint:el.dataset.coordAccept?deliveryFingerprints.get(id):undefined});if(projectId===originProject && sessionId===originSession)root.querySelector('#coord-delivery-panel')?.remove();deliveryFingerprints.delete(id);});
 });
