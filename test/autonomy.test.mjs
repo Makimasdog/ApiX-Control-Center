@@ -7,6 +7,7 @@ import {join,resolve} from 'node:path';
 import {createAutonomy} from '../dist/src/autonomy.js';
 import {parseArchitecture,autonomyDefaults} from '../dist/src/architecture.js';
 import {taskProfile} from '../dist/src/scheduling.js';
+import {createApiXAgent} from '../dist/src/apix-agent.js';
 async function fixture(work){
   const dir=await mkdtemp(join(tmpdir(),'apix-autonomy-unit-'));const db=new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);CREATE TABLE plans(id TEXT PRIMARY KEY,project_id TEXT);CREATE TABLE coordination_sessions(id TEXT PRIMARY KEY,plan_id TEXT,revision INTEGER,confirmed_revision INTEGER,status TEXT);CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,plan_id TEXT,employee_id TEXT,runtime TEXT,prompt TEXT,status TEXT,workspace_path TEXT,result TEXT,updated_at TEXT);CREATE TABLE runs(id TEXT PRIMARY KEY,task_id TEXT,status TEXT,started_at TEXT,ended_at TEXT);CREATE TABLE agent_messages(id TEXT PRIMARY KEY,task_id TEXT,target_task_id TEXT,target_run_id TEXT,from_agent TEXT,to_agent TEXT,type TEXT,payload TEXT,status TEXT,created_at TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE code_handoffs(task_id TEXT,status TEXT);
@@ -20,6 +21,18 @@ async function fixture(work){
   service.save('p',policy);const architecture=parseArchitecture({summary:'scope',modules:[{id:'core',name:'core',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:100,calls:1},interfaces:[],dataStructures:[],acceptance:['host verification'],checkIds:['tests']}]},policy.checks);service.bindPlan('plan','s',1,architecture,[{taskId:'t',moduleId:'core',prompt:'approved task'}]);
   db.exec("UPDATE tasks SET status='running'");try{await work({dir,db,store,service,deps,events,counts:()=>({reviews,accepts,retries}),revoke:()=>permission='read_only',restart:()=>service=createAutonomy(deps)});}finally{db.close();const path=resolve(dir);assert(path.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(path,{recursive:true,force:true});}
 }
+test('oversized complete review evidence pauses delivery without accepting or spending repair attempts',()=>fixture(async({db,service,deps,counts})=>{
+  let calls=0;const agent=createApiXAgent({infer:async()=>{calls++;return '{"passed":true,"findings":[]}';}});
+  const inspect=deps.inspect;
+  deps.inspect=async()=>({...await inspect(),context:{files:[{path:'a.txt',content:'\n'.repeat(60000)}],truncated:false}});
+  deps.review=async(_project,_session,architecture,moduleId,evidence)=>agent.review({goal:'实现',scope:'a.txt',constraints:'安全',deliverable:'代码',acceptance:'完整检查'},architecture,moduleId,evidence,{projectId:'p',purpose:'quality'});
+  db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");
+  await service.tick();
+  assert.equal(service.details('plan').state,'attention');assert.match(service.details('plan').reason,/验收证据超出完整上下文预算/);
+  assert.equal(calls,0);assert.equal(counts().accepts,0);assert.equal(counts().retries,0);
+  assert.equal(service.details('plan').checks[0].status,'error');
+}));
+
 test('high risk checkpoints repeat and two unanswered checkpoints stop the known run before reassignment',()=>fixture(async({db,service,events,counts})=>{
   await service.tick();assert.equal(events.filter(e=>e.kind==='autonomy.checkpoint').length,1);
   const stale=new Date(Date.now()-35000).toISOString();db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
@@ -27,6 +40,12 @@ test('high risk checkpoints repeat and two unanswered checkpoints stop the known
   db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
   await service.tick();assert(events.some(e=>e.kind==='autonomy.unresponsive_stop'));assert.equal(counts().retries,0);
   await service.tick();assert.equal(counts().retries,1);assert.equal(service.details('plan').repairs[0].employee_id,'b');assert.equal(service.details('plan').repairs[0].status,'dispatched');
+}));
+
+test('credential configuration blockers pause autonomy without code repair attempts',()=>fixture(async({db,service,counts})=>{
+  db.prepare("UPDATE tasks SET status='blocked',result=?").run('员工认证与管理者凭据共用，请分离密钥');
+  db.exec("UPDATE runs SET status='cancelled'");await service.tick();
+  assert.equal(service.details('plan').state,'attention');assert.deepEqual(counts(),{reviews:0,accepts:0,retries:0});
 }));
 test('unknown workers require explicit recovery and are never automatically retried',()=>fixture(async({db,service,counts})=>{
   db.exec("UPDATE tasks SET status='unknown';UPDATE runs SET status='unknown'");await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(counts().retries,0);assert.throws(()=>service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')}),/原员工/);

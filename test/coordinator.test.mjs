@@ -799,14 +799,16 @@ test('SSE stale revisions, model fallback and client disconnect leave the sessio
 },{APIX_FIXTURE_STREAM:'1',APIX_FIXTURE_STREAM_DELAY_MS:'60'}));
 
 test('scheduler propagates launch failure through downstream dependencies',()=>{
+  for(const code of [undefined,'WORKER_CREDENTIAL_CONFLICT']) {
   const db=new DatabaseSync(':memory:');
   try {
     db.exec("CREATE TABLE tasks(id TEXT PRIMARY KEY,status TEXT,plan_id TEXT,updated_at TEXT,result TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE plans(id TEXT,mode TEXT);CREATE TABLE meeting_items(id TEXT,task_id TEXT);CREATE TABLE approvals(task_id TEXT,status TEXT,action TEXT,created_at TEXT);INSERT INTO tasks(id,status) VALUES ('a','completed'),('b','queued'),('c','queued');INSERT INTO task_dependencies VALUES ('b','a'),('c','b');INSERT INTO approvals VALUES ('b','approved','start-agent-in-project','now');");
     const row=(q,...p)=>db.prepare(q).get(...p);const rows=(q,...p)=>db.prepare(q).all(...p);
-    createTaskScheduler({db,row,rows,now:()=>new Date().toISOString(),launch:()=>{throw new Error('runtime gone');}}).scheduleDependents('a');
-    assert.equal(row('SELECT status FROM tasks WHERE id=?','b').status,'failed');
+    createTaskScheduler({db,row,rows,now:()=>new Date().toISOString(),launch:()=>{throw Object.assign(new Error('runtime gone'),{code});}}).scheduleDependents('a');
+    assert.equal(row('SELECT status FROM tasks WHERE id=?','b').status,code?'blocked':'failed');
     assert.equal(row('SELECT status FROM tasks WHERE id=?','c').status,'blocked');
   } finally {db.close();}
+  }
 });
 
 test('coordinator dependencies wait for acceptance and rejection blocks downstream work',async()=>harness(async h=>{
@@ -880,6 +882,31 @@ test('run credentials isolate concurrent employee inboxes, acknowledgements and 
   }
 }));
 
+test('shared manager authentication blocks before creating a run or workspace and records a clear diagnostic',async()=>harness(async h=>{
+  await h.request('/api/manager/settings',{provider:'fixture',model:'fixture',apiKeyEnv:'OPENAI_API_KEY'});
+  const {s,employeeId}=await setup(h,'codex');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'must not launch with shared credentials',employeeId,dependsOn:[]}]});
+  const result=await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  assert.equal(result.tasks[0].status,'blocked');assert.match(result.tasks[0].result,/凭据共用/);
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  assert(!result.tasks[0].workspace_path);
+},{OPENAI_API_KEY:'fixture-shared-manager-key'}));
+
+test('spawned employees receive fresh mailbox identity and independent credentials without manager secrets',async()=>harness(async h=>{
+  const worker=join(h.dir,'environment-worker.mjs');
+  await writeFile(worker,`process.stdin.resume();process.stdin.on('end',()=>{const keys=['APIX_ALI_API_KEY','ali_api_key','APIX_DATA_DIR','APIX_PI_ENTRY','APIX_CODEX_ENTRY','APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL','APIX_WORKER_FIXTURE_KEY'];process.stdout.write(JSON.stringify(Object.fromEntries(keys.map(k=>[k,!!process.env[k]]))));});`);
+  await h.request('/api/adapters',{id:'environment-worker',name:'Environment worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'environment-worker');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'inspect own environment presence only',employeeId,dependsOn:[]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  const task=await waitFor(async()=>{const t=(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0];return t.status==='completed'?t:null;});
+  const env=JSON.parse(task.result);
+  for(const key of ['APIX_ALI_API_KEY','ali_api_key','APIX_DATA_DIR','APIX_PI_ENTRY','APIX_CODEX_ENTRY'])assert.equal(env[key],false,key);
+  for(const key of ['APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL','APIX_WORKER_FIXTURE_KEY'])assert.equal(env[key],true,key);
+},{APIX_ALI_API_KEY:'fixture-manager-key',ali_api_key:'fixture-manager-key',APIX_WORKER_FIXTURE_KEY:'fixture-worker-key'}));
+
 test('accepted code including new files reaches chained workers from frozen Git deliveries',async()=>harness(async h=>{
   const worker=join(h.dir,'code-worker.mjs');
   await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
@@ -897,6 +924,10 @@ test('accepted code including new files reaches chained workers from frozen Git 
   await writeFile(join(source.workspace_path,'shared.txt'),'accepted input');
   const inspected=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
   await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true,fingerprint:inspected.inspection.fingerprint});
+  const refs=execFileSync('git',['for-each-ref','--format=%(refname)','refs/apix/deliveries/'],{cwd:h.project,encoding:'utf8'}).trim().split(/\r?\n/);
+  assert.equal(refs.length,1);assert.match(refs[0],/^refs\/apix\/deliveries\/[a-f0-9]{32}$/);
+  const frozen=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[0].id);
+  assert.equal(execFileSync('git',['rev-parse',refs[0]],{cwd:h.project,encoding:'utf8'}).trim(),frozen.delivery_commit);
   await writeFile(join(source.workspace_path,'shared.txt'),'unreviewed mutation');
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[1].status==='completed');
   let state=await h.request(`/api/coordination/sessions/${s.id}`);

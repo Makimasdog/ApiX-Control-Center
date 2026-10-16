@@ -1,4 +1,4 @@
-import {loadEnvironment} from './src/environment.mjs';
+import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
@@ -445,6 +445,7 @@ function launch(task) {
   const project = row("SELECT * FROM projects WHERE id=?", task.project_id);
   const command = commandFor(task.runtime);
   if (!project || !command) throw new Error("Agent 不可用或项目不存在");
+  const environment=workerEnvironment(process.env,task.runtime,row('SELECT api_key_env FROM apix_manager_settings WHERE id=1')?.api_key_env);
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
   if (!existsSync(sourcePath) || !statSync(sourcePath).isDirectory()) throw new Error("项目目录已不存在");
@@ -489,7 +490,7 @@ function launch(task) {
   if(task.employee_id && scheduling.taskSpec(task.id).difficulty!=null){const selectedModel=scheduling.profile(task.employee_id).model;args.push(...runtimeAdapters.modelArgs(task.runtime,selectedModel));}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-    env: { ...(task.runtime==='pi'?piShellEnvironment(process.env):process.env), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
+    env: { ...(task.runtime==='pi'?piShellEnvironment(environment):environment), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
   catch (error) { setRun(runId, "failed", "spawn"); event(runId, "apix", "spawn_error", { message: error.message }); throw error; }
   running.set(runId, { child, runtime: task.runtime, output: "", stderr: "", stopped: false, settled: false });
   if (task.employee_id) {
@@ -807,7 +808,7 @@ export function resolveApproval(id, approved) {
   if(queueReason){db.prepare("UPDATE tasks SET status='queued',queue_reason=?,updated_at=? WHERE id=?").run(queueReason,now(),task.id);return null;}
   try { return launch(task); }
   catch (error) {
-    db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(error.code==='HANDOFF_CONFLICT'?'blocked':'failed',error.message, now(), task.id);
+    db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed',error.message, now(), task.id);
     coordinator.recordTask(task.id, "task.launch_failed", { error: error.message });
     scheduleDependents(task.id);
     throw error;
@@ -878,6 +879,7 @@ export function updateMemory(id, input) {
   const title = String(input.title ?? "").trim().slice(0, 120);
   const content = String(input.content ?? "").trim().slice(0, 10000);
   if (!existing || Number(input.version) !== existing.version || !title || !content) throw new Error("记忆不存在、版本已变化或内容为空");
+  if (row("SELECT id FROM memories WHERE project_id=? AND scope=? AND category=? AND title=? AND id<>?", existing.project_id, existing.scope, existing.category, title, id)) throw new Error("同范围已有同名记忆，请更换标题或编辑现有记录");
   const version = existing.version + 1;
   db.exec("BEGIN");
   try {
@@ -991,7 +993,7 @@ async function askPiDirector(prompt, onDelta, consultation, context) {
   const command = !consultation && managerEntry && existsSync(managerEntry) ? { executable: process.execPath, prefix: [resolve(managerEntry)] } : commandFor("pi");
   if (!command) throw new Error("Pi 未安装或不可用");
   const settings = consultation ? {provider:'',model:consultation.model,baseUrl:''} : coordinator.getSettings();
-  let managerEnv = process.env;
+  let managerEnv = consultation ? workerEnvironment(process.env,'pi',coordinator.getSettings().apiKeyEnv) : process.env;
   if (settings.baseUrl) {
     if (settings.apiKeyEnv && !process.env[settings.apiKeyEnv]) throw new Error(`请先设置 ${settings.apiKeyEnv} 环境变量`);
     if (!settings.apiKeyEnv && !isLoopbackModelUrl(settings.baseUrl)) throw new Error('远程自定义模型必须指定 API Key 环境变量');
@@ -1296,7 +1298,7 @@ const coordinator = createCoordinator({ ...store, memory, permissions, schedulin
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查 Pi 入口、模型服务、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,
   reportManagerFailure:(projectId,sourceId,error)=>{if(quotaFailure(error))scheduling.pauseAccountId(scheduling.policy(projectId).managerAccountId,sourceId);},
-  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model):askPiDirector(prompt,undefined,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
+  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model,coordinator.getSettings().apiKeyEnv):askPiDirector(prompt,undefined,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;

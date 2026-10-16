@@ -47,6 +47,37 @@ test('malformed and over-limit model replies fall back without applying unvalida
   }
 });
 
+test('optional context keeps complete recent records and valid JSON without dropping confirmed requirements',async()=>{
+  let prompt='';
+  const agent=createApiXAgent({infer:async input=>{prompt=input;return JSON.stringify({kind:'progress',question:'已收到',updates:[],conflicts:[]});}});
+  const requirements={goal:'g'.repeat(4000),scope:'s'.repeat(4000),constraints:'完整约束必须保留',deliverable:'deliver',acceptance:'accept'};
+  await agent.discuss(requirements,'最新问题',Array.from({length:30},(_,i)=>({role:'user',content:`历史 ${i} ${'x'.repeat(4000)}`})),{events:'y'.repeat(30000)});
+  const history=JSON.parse(prompt.split('\n历史：')[1].split('\n真实进度：')[0]);
+  assert(history.omitted>0);assert(history.items.length>0);assert.match(history.items.at(-1).content,/历史 29/);
+  assert.equal(JSON.parse(prompt.split('\n真实进度：')[1].split('\n用户最新消息：')[0]).omitted,true);
+  assert(prompt.includes(JSON.stringify(requirements)));assert(prompt.endsWith('最新问题'));assert(prompt.length<55000);
+});
+
+test('quality review preserves the middle of complete evidence and refuses over-budget evidence before inference',async()=>{
+  let prompt='';let calls=0;
+  const agent=createApiXAgent({infer:async input=>{prompt=input;calls++;return JSON.stringify({passed:true,findings:[]});}});
+  const requirements={goal:'实现',scope:'core',constraints:'安全',deliverable:'代码',acceptance:'完整审查'};
+  const architecture={version:1,summary:'frozen',modules:[],digest:'fixture'};
+  const evidence={currentCode:{files:[{path:'a.txt',content:'a'.repeat(25000)+'MIDDLE_DEFECT_MUST_BE_REVIEWED'+'b'.repeat(25000)}],truncated:false},tests:[{exitCode:0}]};
+  await agent.review(requirements,architecture,'core',evidence,{projectId:'p',purpose:'quality'});
+  assert(prompt.includes(JSON.stringify(evidence)));assert(prompt.includes('MIDDLE_DEFECT_MUST_BE_REVIEWED'));
+  evidence.currentCode.files[0].content='x'.repeat(100001);
+  await assert.rejects(()=>agent.review(requirements,architecture,'core',evidence,{projectId:'p',purpose:'quality'}),/验收证据超出完整上下文预算/);
+  await assert.rejects(()=>agent.review(requirements,{...architecture,summary:'x'.repeat(24001)},'core',{}, {projectId:'p',purpose:'quality'}),/冻结契约超出完整上下文预算/);
+  assert.equal(calls,1);
+});
+
+test('oversized employee context blocks planning instead of being labeled as unavailable inference or creating a partial plan',async()=>{
+  let calls=0;const agent=createApiXAgent({infer:async()=>{calls++;return '{}';}});
+  await assert.rejects(()=>agent.plan({goal:'实现',scope:'项目',constraints:'安全',deliverable:'代码',acceptance:'测试'},[{id:'one',name:'x'.repeat(16001)}]),/员工列表超出完整上下文预算/);
+  assert.equal(calls,0);
+});
+
 test('manager receives trusted project context and requests host scheduling even without tool authorization',async()=>{
   let received;let prompt;
   const context={projectId:'project-1',purpose:'discussion'};

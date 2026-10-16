@@ -4,6 +4,7 @@ import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {workerEnvironment} from '../src/environment.mjs';
 
 test('.env loads quoted values, aliases the key and preserves process overrides',()=>{
   const dir=mkdtempSync(join(tmpdir(),'apix-env-'));
@@ -17,4 +18,25 @@ test('.env loads quoted values, aliases the key and preserves process overrides'
     result=spawnSync(process.execPath,['--input-type=module','-e',script,path],{env,encoding:'utf8'});
     assert.equal(result.status,0);assert.deepEqual(JSON.parse(result.stdout),['override','override-model']);
   }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+test('worker environment removes manager aliases and stale run identity while preserving independent CLI credentials',()=>{
+  const source={PATH:'fixture-path',HOME:'fixture-home',APIX_ALI_API_KEY:'manager-secret',ali_api_key:'manager-secret',
+    aPiX_mAnAgEr_KeY:'other-manager-secret',KEY_ALIAS:'other-manager-secret',ApiX_DATA_DIR:'private-data',APIX_CUSTOM_ENTRY:'private-entry',
+    APIX_AGENT_TOKEN:'old-token',APIX_PROJECT_ID:'old-project',APIX_RUN_ID:'old-run',APIX_MAILBOX_URL:'old-url',
+    OPENAI_API_KEY:'worker-secret',CUSTOM_SETTING:'keep',APIX_FIXTURE_HOLD:'1'};
+  const env=workerEnvironment(source,'codex','APIX_MANAGER_KEY');
+  assert.deepEqual(env,{PATH:'fixture-path',HOME:'fixture-home',OPENAI_API_KEY:'worker-secret',CUSTOM_SETTING:'keep',APIX_FIXTURE_HOLD:'1'});
+  assert.equal(source.APIX_AGENT_TOKEN,'old-token');
+  assert(!JSON.stringify(env).includes('manager-secret'));
+});
+
+test('shared manager and worker authentication fails explicitly, independent login credentials remain available',()=>{
+  for(const [runtime,key] of [['claude','ANTHROPIC_API_KEY'],['codex','OPENAI_API_KEY'],['gemini','GEMINI_API_KEY'],['pi','OPENAI_API_KEY']]) {
+    assert.throws(()=>workerEnvironment({[key]:'fixture-shared'},runtime,key),/凭据共用/);
+    assert.throws(()=>workerEnvironment({APIX_MANAGER_KEY:'fixture-shared',[key]:'fixture-shared'},runtime,'APIX_MANAGER_KEY'),/凭据共用/);
+  }
+  assert.deepEqual(workerEnvironment({ANTHROPIC_API_KEY:'manager-only',OPENAI_API_KEY:'independent-worker'},'codex','ANTHROPIC_API_KEY'),{OPENAI_API_KEY:'independent-worker'});
+  assert.deepEqual(workerEnvironment({APIX_MANAGER_KEY:'manager-only',anthropic_api_key:'worker-only'},'claude','APIX_MANAGER_KEY'),{anthropic_api_key:'worker-only'});
+  assert.deepEqual(workerEnvironment({PATH:'fixture'},'constructor',''),{PATH:'fixture'});
 });

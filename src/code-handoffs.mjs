@@ -54,7 +54,9 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWo
     const w=workspace(task);
     const commit=commitTree(w.path,preview.tree,w.input,`ApiX reviewed delivery ${task.id}`);
     const run=row('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id);
-    git(w.path,['update-ref',`refs/apix/deliveries/${task.id}/${run?.id ?? randomUUID()}`,commit]);
+    // Keep Git ref lock paths short on Windows; consumers use the stored commit.
+    const ref=createHash('sha256').update(`${task.id}:${run?.id ?? randomUUID()}`).digest('hex').slice(0,32);
+    git(w.path,['update-ref',`refs/apix/deliveries/${ref}`,commit]);
     db.prepare('UPDATE tasks SET delivery_commit=?,delivery_fingerprint=?,updated_at=? WHERE id=?').run(commit,preview.fingerprint,now(),task.id);
     recordTask(task.id,'delivery.frozen',{commit,inputCommit:w.input,files:preview.files,fingerprint:preview.fingerprint});
     return {commit,...preview};

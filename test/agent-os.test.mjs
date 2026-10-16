@@ -19,10 +19,10 @@ async function isolatedProject(dataDir) {
   return project;
 }
 const serverErrors = new Map();
-const post = async (port, path, body) => {
+const post = async (port, path, body, expected = 200) => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(data));
+  assert.equal(response.status, expected, JSON.stringify(data));
   return data;
 };
 const snapshot = async (port) => {
@@ -357,6 +357,7 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.doesNotMatch((await snapshot(port)).tasks.find((item) => item.id === second.taskId).result, /alpha secret context/);
     const taskMemory = (await post(port, "/api/memories", { projectId, taskId: first.taskId, scope: "task", category: "decision", title: "Private thread decision", content: "Use the alpha-only approach" })).id;
     const projectMemory = (await post(port, "/api/memories", { projectId, scope: "project", category: "architecture", title: "Architecture", content: "Use layered architecture" })).id;
+    const duplicateTarget = (await post(port, "/api/memories", { projectId, scope: "project", category: "architecture", title: "Alternative", content: "Keep separate" })).id;
     const profile = await post(port, `/api/projects/${projectId}/profile`, { version: 0, summary: "Project continuity", goals: "Ship safely", constraints: "No secrets", decisions: "Use SQLite" });
     assert.equal(profile.version, 1);
     const search = await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=architecture`)).json();
@@ -375,10 +376,15 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.doesNotMatch((await snapshot(port)).tasks.find((item) => item.id === crossProject.taskId).result, /layered architecture|Project continuity/);
     const changed = await post(port, `/api/memories/${projectMemory}`, { version: 1, title: "Architecture", content: "Use modular architecture" });
     assert.equal(changed.version, 2);
+    const duplicateEdit=await post(port, `/api/memories/${duplicateTarget}`, {version:1,title:'Architecture',content:'Must not replace original'},400);
+    assert.match(duplicateEdit.error,/同范围已有同名/);
+    const retained=(await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=Alternative`)).json()).find(m=>m.id===duplicateTarget);
+    assert.equal(retained.version,1);assert.equal(retained.content,'Keep separate');
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=layered`)).json()).length, 0);
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=modular`)).json()).length, 1);
     await post(port, `/api/memories/${projectMemory}/delete`, { version: 2 });
     await post(port, `/api/memories/${taskMemory}/delete`, { version: 1 });
+    await post(port, `/api/memories/${duplicateTarget}/delete`, {version:1});
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=modular`)).json()).length, 0);
     const departmentId = (await post(port, "/api/departments", { name: "Continuity department", managerId: firstEmployee })).id;
     const blockedDeletion = await fetch(`http://127.0.0.1:${port}/api/employees/${firstEmployee}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });

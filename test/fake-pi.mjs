@@ -34,7 +34,7 @@ process.stdin.on("data", (chunk) => {
       const args=process.argv;
       if(args.includes('fixture-meeting-fail')){process.stderr.write('fixture consultation unavailable');process.exit(1);}
       const tasks=JSON.parse(command.message.split('\n任务：')[1].split('\n需要澄清')[0]);
-      const safe=args.includes('--no-tools') && args.includes('--no-extensions') && args.includes('--no-skills') && args.includes('--no-context-files') && !process.env.APIX_AGENT_TOKEN && /consultations/.test(process.cwd());
+      const safe=args.includes('--no-tools') && args.includes('--no-extensions') && args.includes('--no-skills') && args.includes('--no-context-files') && !process.env.APIX_AGENT_TOKEN && !process.env.APIX_DATA_DIR && !process.env.APIX_ALI_API_KEY && !process.env.ali_api_key && /consultations/.test(process.cwd());
       if(!safe)throw new Error('Consultation isolation flags missing');
       const answer={claims:tasks.map((_,step)=>({step,reason:'fixture: no project tools, isolated identity and cwd',risk:'declared capability only',minutes:5})),decline:''};
       process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');continue;
