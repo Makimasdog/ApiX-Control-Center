@@ -15,7 +15,7 @@ const parent=join(root,'.tmp-real-collaboration');mkdirSync(parent,{recursive:tr
 const dir=mkdtempSync(join(parent,'run-'));const project=join(dir,'project');mkdirSync(project);
 const port=await new Promise(done=>{const server=createServer();server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>done(port));});});
 const env={...process.env,APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_LEGACY_API:'0'};
-const report={kind:'real Pi manager and real Codex/Claude workers',managerModel:testModel,startedAt:new Date().toISOString(),dir,pass:false,stage:'prepare',checks:[]};
+const report={kind:'independent ApiX API manager and real Codex/Claude workers',managerModel:testModel,startedAt:new Date().toISOString(),dir,pass:false,stage:'prepare',checks:[]};
 const git=args=>execFileSync('git',args,{cwd:project,stdio:'ignore'});
 git(['init']);writeFileSync(join(project,'README.md'),'ApiX real collaboration fixture\n');git(['add','README.md']);git(['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture']);
 let server;

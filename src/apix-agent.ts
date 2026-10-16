@@ -70,7 +70,7 @@ function visibleReply(raw: string): string {
   return '';
 }
 export function createApiXAgent(backend: ModelBackend) {
-  const identity = '你是 ApiX，用户的管理者 Agent。Pi 是你的推理技术底座。你与用户沟通、理解需求、检查项目、安排员工、监督任务。可使用本次实际提供的工具检查项目和记录协作文件，遵守项目规则；实现工作优先交给员工。只根据真实工具结果描述操作，不虚构已完成、已写文件或已派发。不能授予权限。任务规划和派发由宿主根据结构化决策执行，不需要你用 bash 启动 Agent，也不依赖文件写入。不要因缺少 bash 或写文件工具拒绝生成 work 决策。';
+  const identity = '你是 ApiX，用户的管理者 Agent。你直接使用配置的模型 API；Pi、Codex、Claude 等只是可选执行员工。你与用户沟通、理解需求、检查项目、安排员工、监督任务。可使用本次实际提供的工具检查项目和记录协作文件，遵守项目规则；实现工作优先交给员工。只根据真实工具结果描述操作，不虚构已完成、已写文件或已派发。不能授予权限。任务规划和派发由宿主根据结构化决策执行，不需要你用 bash 启动 Agent，也不依赖文件写入。不要因缺少 bash 或写文件工具拒绝生成 work 决策。';
   async function discuss(requirements: Requirements, content: string, history: unknown[], progress: unknown, interactionMode: InteractionMode = 'conversational', onQuestion?: (delta: string) => void, context?:InferenceContext): Promise<CoordinatorDecision> {
     try {
       let streamed = ''; let emitted = '';
@@ -89,7 +89,7 @@ export function createApiXAgent(backend: ModelBackend) {
         if (field && typeof item.evidence === 'string' && item.evidence.trim() && content.includes(item.evidence)) updates[field] = text(item.value, 4000);
       }
       const conflicts = (Array.isArray(parsed.conflicts) ? parsed.conflicts : []).filter((v): v is string => typeof v === 'string').slice(0, 8).map(v => v.slice(0, 500));
-      return { kind: parsed.kind as CoordinatorDecision['kind'], question: text(parsed.question, 10000), updates, conflicts, mode: 'pi' };
+      return { kind: parsed.kind as CoordinatorDecision['kind'], question: text(parsed.question, 10000), updates, conflicts, mode: 'api' };
     } catch (error) {
       return { kind: 'clarification', question: nextQuestion(requirements)?.question ?? '请检查需求摘要并确认；也可以补充需要调整的内容。', updates: {}, conflicts: [], mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0, 300) };
     }
@@ -121,18 +121,18 @@ export function createApiXAgent(backend: ModelBackend) {
         // Model suggestions never grant money or a fixed assignment; discard before validation.
         return { ...(architecture?{moduleId:text(step.moduleId,60)}:{}),prompt: text(step.prompt, 10000), employeeId, dependsOn: [...new Set(step.dependsOn as number[])], scheduling: taskProfile({...scheduling,estimateMinor:null,fixedEmployeeId:null,estimates:[]}) };
       });
-      return { steps, mode: 'pi' };
+      return { steps, mode: 'api' };
     } catch (error) {
       if((error as {code?:string})?.code==='CONTEXT_BUDGET_EXCEEDED')throw error;
       return { steps: [{ prompt: `按照已确认需求执行并提交验收证据：\n${brief}`, employeeId: employees[0]!.id, dependsOn: [] }], mode: 'rules', failureKind, error: String(error instanceof Error ? error.message : error).slice(0, 300) };
     }
   }
-  async function guide(requirements: Requirements, taskPrompt: string, report: { summary: string; blocked: boolean }): Promise<{ action: 'guide' | 'escalate' | 'observe'; focus: 'scope' | 'verification' | 'dependencies' | 'delivery'; mode: 'pi' | 'rules'; error?: string }> {
+  async function guide(requirements: Requirements, taskPrompt: string, report: { summary: string; blocked: boolean }): Promise<{ action: 'guide' | 'escalate' | 'observe'; focus: 'scope' | 'verification' | 'dependencies' | 'delivery'; mode: 'api' | 'rules'; error?: string }> {
     try {
       const raw = await backend.infer(`APIX_GUIDE_JSON\n${identity}\n员工正在执行已获批准的任务。根据真实进度决定是否应提醒员工继续、请用户处理阻塞，或仅记录进度。不得添加任务、扩大范围、修改授权或声称成果已完成。只输出 JSON：{"action":"guide|escalate|observe","focus":"scope|verification|dependencies|delivery"}。focus 仅用于选择已经确认的需求片段，不输出新指令。\n已确认需求：${requirementBrief(requirements)}\n已批准任务：${taskPrompt}\n员工报告（未验证）：${JSON.stringify(report)}`);
       const parsed = parse(raw);
       if (!['guide','escalate','observe'].includes(String(parsed.action)) || !['scope','verification','dependencies','delivery'].includes(String(parsed.focus))) throw new Error('ApiX 指导决策无效');
-      return { action: parsed.action as 'guide' | 'escalate' | 'observe', focus: parsed.focus as 'scope' | 'verification' | 'dependencies' | 'delivery', mode: 'pi' };
+      return { action: parsed.action as 'guide' | 'escalate' | 'observe', focus: parsed.focus as 'scope' | 'verification' | 'dependencies' | 'delivery', mode: 'api' };
     } catch (error) {
       return { action: report.blocked ? 'escalate' : 'observe', focus: 'verification', mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0,300) };
     }

@@ -13,6 +13,7 @@ import { createTaskScheduler } from '../src/task-scheduler.mjs';
 import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
 import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
 import { createCodeHandoffs } from '../src/code-handoffs.mjs';
+import {startModelFixture} from './fake-model-http.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -93,6 +94,15 @@ test('stopping Assistant during architecture inference prevents every later work
   assert.equal(stopped.status,'stopped');assert.equal((await h.request('/api/snapshot')).runs.length,0);
 },{APIX_FIXTURE_ARCH_DELAY_MS:'1000'}));
 
+test('stopping the independent loop aborts its in-flight model HTTP request',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'cancel model HTTP',path:h.project})).id;
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-http-hold'});
+  await waitFor(async()=>h.model.calls.length===1);
+  await h.request(`/api/assistant/sessions/${s.id}/stop`,{});
+  await waitFor(async()=>h.model.calls[0].aborted);
+  const stopped=await waitFor(async()=>{const d=await h.request(`/api/assistant/sessions/${s.id}`);return !d.busy?d:null;});assert.equal(stopped.status,'stopped');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
+
 test('Assistant loads real project Skill content and shares editable memory across conversations',async()=>harness(async h=>{
   await mkdir(join(h.project,'.apix/skills/evidence'),{recursive:true});await writeFile(join(h.project,'.apix/skills/evidence/SKILL.md'),'Use actual assertions. Skills do not grant execution permissions.');
   const projectId=(await h.request('/api/projects',{name:'skills memory',path:h.project})).id;
@@ -144,22 +154,13 @@ test('Windows npm shims resolve package bin entries without a shell', {skip:proc
   } finally {db.close();await rm(dir,{recursive:true,force:true});}
 });
 const delay = ms => new Promise(r=>setTimeout(r,ms));
-test('manager and worker Pi entries share validation without silently ignoring an invalid override',async()=>{
-  const dir=await mkdtemp(join(tmpdir(),'apix-pi-entry-')),db=new DatabaseSync(':memory:');
-  const saved={APIX_MANAGER_PI_ENTRY:process.env.APIX_MANAGER_PI_ENTRY,APIX_PI_ENTRY:process.env.APIX_PI_ENTRY};
-  try{
-    const worker=join(root,'test/fake-pi.mjs'),manager=join(dir,'manager.mjs');await writeFile(manager,"console.log('fixture manager');");
-    const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
-    process.env.APIX_PI_ENTRY=worker;delete process.env.APIX_MANAGER_PI_ENTRY;
-    assert.deepEqual(adapters.managerCommand(),adapters.command('pi'));
-    for(const bad of [dir,'pi',join(dir,'missing.js'),join(dir,'pi.cmd'),join(dir,'pi.bat'),join(dir,'pi.ps1')]){
-      if(/\.(cmd|bat|ps1)$/.test(bad))await writeFile(bad,'fixture');
-      process.env.APIX_MANAGER_PI_ENTRY=bad;assert.equal(adapters.managerCommand(),null);assert.equal(adapters.command('pi').prefix[0],worker);
-    }
-    process.env.APIX_MANAGER_PI_ENTRY=manager;assert.deepEqual(adapters.managerCommand(),{executable:process.execPath,prefix:[manager]});
-    process.env.APIX_MANAGER_PI_ENTRY=process.execPath;assert.deepEqual(adapters.managerCommand(),{executable:process.execPath,prefix:[]});
-    process.env.APIX_PI_ENTRY=dir;assert.equal(adapters.command('pi'),null);
-  }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
+test('Pi employee entries are independent of the obsolete manager override',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-pi-entry-')),db=new DatabaseSync(':memory:');const saved=process.env.APIX_PI_ENTRY;
+  try{const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
+    process.env.APIX_PI_ENTRY=join(root,'test/fake-pi.mjs');assert.equal(adapters.command('pi').executable,process.execPath);
+    for(const bad of [dir,'pi',join(dir,'missing.js'),join(dir,'pi.cmd')]){process.env.APIX_PI_ENTRY=bad;assert.equal(adapters.command('pi'),null);}
+    process.env.APIX_PI_ENTRY=process.execPath;assert.deepEqual(adapters.command('pi'),{executable:process.execPath,prefix:[]});
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
 });
 
 test('Windows Pi npm shims accept both official package scopes and reject invalid bin entries',{skip:process.platform!=='win32'},async()=>{
@@ -176,19 +177,24 @@ test('Windows Pi npm shims accept both official package scopes and reject invali
   }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true,force:true});}
 });
 
-test('invalid manager Pi override is missing in readiness and gives actionable loop diagnostics',async()=>harness(async h=>{
-  const projectId=(await h.request('/api/projects',{name:'Pi setup diagnostics',path:h.project})).id;
-  const ready=await h.request('/api/readiness?projectId='+projectId);assert.equal(ready.checks.find(c=>c.id==='manager').state,'missing');assert.equal(ready.canPlan,false);
-  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'检查 Pi 连接'});
-  const blocked=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);return state.status==='attention'?state:null;});
-  const diagnostic=blocked.events.find(e=>e.kind==='error').body.error;assert.match(diagnostic,/npm install -g --ignore-scripts @earendil-works\/pi-coding-agent/);assert.match(diagnostic,/pi --version/);assert.match(diagnostic,/APIX_MANAGER_PI_ENTRY/);assert.equal((await h.request('/api/snapshot')).runs.length,0);
-},{APIX_MANAGER_PI_ENTRY:'pi.cmd'}));
+test('ApiX operates without Pi and missing model configuration does not start a CLI',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'independent ApiX',path:h.project})).id;
+  const ready=await h.request('/api/readiness?projectId='+projectId);assert.equal(ready.checks.find(c=>c.id==='manager').state,'ready');assert.equal(ready.canPlan,true);
+  assert.equal((await h.request('/api/snapshot')).runtimes.find(r=>r.id==='pi').available,false);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
+  await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');
+  assert(h.model.calls.length>=5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request('/api/manager/settings',{});const empty=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${empty.id}/messages`,{content:'hello'});
+  const blocked=await waitFor(async()=>{const x=await h.request(`/api/assistant/sessions/${empty.id}`);return x.status==='attention'?x:null;});assert.match(blocked.events.find(e=>e.kind==='error').body.error,/配置 ApiX/);
+},{APIX_MANAGER_PI_ENTRY:'pi.cmd',APIX_PI_ENTRY:'not-installed'}));
 
 async function waitFor(predicate) {
   for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
   throw new Error('Timed out');
 }
 async function harness(work, extraEnv={}) {
+  const model=await startModelFixture(extraEnv);
   const dir=await mkdtemp(join(tmpdir(),'apix-coordinator-'));
   const project=join(dir,'project');
   execFileSync('git',['init',project],{stdio:'ignore'});
@@ -208,8 +214,8 @@ async function harness(work, extraEnv={}) {
     await waitFor(async()=>{if(server.exitCode!==null)throw new Error(errors);try{return(await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok;}catch{return false;}});
   };
   const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
-  try {await start(); await work({request,project,dir,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
-  finally {await stop();await rm(dir,{recursive:true,force:true});}
+  try {await start();await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''}); await work({request,project,dir,model,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
+  finally {await stop();await model.close();await rm(dir,{recursive:true,force:true});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
 async function autonomyFixture(h,overrides={},verifySource="import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');assert.equal(process.env.APIX_AGENT_TOKEN,undefined);console.log('actual content check passed');") {
@@ -330,9 +336,9 @@ test('connection test rejects invalid replies and redacts native failures while 
     }
   },{APIX_FIXTURE_CONNECTION_MODE:mode});
 });
-test('manager tools follow project permission, use project cwd and stream audited activity',async()=>harness(async h=>{
+test('legacy planning never executes native CLI tools outside the ApiX tool loop',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'工具验收',path:h.project})).id;
-  for(const [mode,expected] of [['ask_approval',[]],['read_only',['read','grep','find','ls']],['full_access',['read','bash','edit','write','grep','find','ls']]]){
+  for(const [mode,expected] of [['ask_approval',[]],['read_only',[]],['full_access',[]]]){
     const policy=(await h.request(`/api/projects/${projectId}/workflow`)).manager;
     await h.request('/api/permissions',{projectId,subject:'apix',mode,version:policy.version});
     const s=await h.request('/api/coordination/sessions',{projectId,goal:'测试工具'});
@@ -344,7 +350,7 @@ test('manager tools follow project permission, use project cwd and stream audite
     if(expected.length)assert.match(stream,/event: tool/);
     if(mode!=='full_access')await assert.rejects(readFile(join(h.project,'manager-tool-fixture.txt')));
   }
-  assert.equal(await readFile(join(h.project,'manager-tool-fixture.txt'),'utf8'),'manager write fixture');
+  await assert.rejects(readFile(join(h.project,'manager-tool-fixture.txt')));
 }));
 
 test('manager aborts tool-enabled inference when project permission is revoked',async()=>harness(async h=>{
@@ -368,14 +374,14 @@ test('explicit work creates a real review plan without automatic authorization',
   assert.equal(s.policy.mode,'ask_approval');assert.equal(s.workflow.enabled,false);
 }));
 
-test('natural language after manager tools is formatted without replaying tools before dispatch',async()=>harness(async h=>{
+test('API planning dispatches without invoking native CLI tools',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'工具后结构化',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
   await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：安排检查'});
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：安排检查'});
-  assert.equal(s.agent.mode,'pi');assert.equal(s.status,'running');assert.equal(s.tasks.length,1);
-  assert.deepEqual(s.managerTools,[{toolName:'read',phase:'start'},{toolName:'read',phase:'end',isError:false}]);
+  assert.equal(s.agent.mode,'api');assert.equal(s.status,'running');assert.equal(s.tasks.length,1);
+  assert.deepEqual(s.managerTools,[]);
   assert.equal((await h.request('/api/snapshot')).runs.length,1);
 },{APIX_FIXTURE_NON_JSON_AFTER_TOOLS:'1'}));
 
@@ -454,15 +460,14 @@ test('revoking automatic work while a plan is being generated prevents dispatch'
   await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:false});
   const result=await pending;assert.equal(result.plan_id,null);assert.equal((await h.request('/api/snapshot')).runs.length,0);assert(result.turns.some(t=>t.kind==='workflow_blocked'));
 },{APIX_FIXTURE_PLAN_DELAY_MS:'1500'}));
-test('custom manager uses an environment key reference and accepts Pi agent_end',async()=>harness(async h=>{
-  await h.request('/api/manager/settings',{baseUrl:'https://example.invalid/v1',model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
+test('direct manager uses its own API credentials and creates no Pi configuration',async()=>harness(async h=>{
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
   const {s}=await setup(h);
-  assert.equal(s.agent.mode,'pi');assert.equal(s.agent.error,null);
-  const models=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
-  assert.equal(models.providers['apix-custom'].apiKey,'APIX_TEST_MANAGER_KEY');
-  assert(!JSON.stringify(models).includes('fixture-secret-value'));
+  assert.equal(s.agent.mode,'api');assert.equal(s.agent.error,null);
+  assert.equal(h.model.calls.at(-1).headers.authorization,'Bearer fixture-secret-value');
+  await assert.rejects(readFile(join(h.dir,'data','manager-pi','models.json')));
   const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
-  assert.equal(plan.agent.mode,'pi');assert.equal(plan.status,'plan_review');
+  assert.equal(plan.agent.mode,'api');assert.equal(plan.status,'plan_review');
 },{APIX_FIXTURE_MODERN_PI:'1',APIX_TEST_MANAGER_KEY:'fixture-secret-value'}));
 test('planning meetings isolate participants, record disagreements and require a new plan approval',async()=>harness(async h=>{
   const {projectId,employeeId,s}=await setup(h);const second=(await h.request('/api/employees',{name:'第二参与者',runtime:'claude',role:'验证'})).id;
@@ -524,7 +529,7 @@ test('a manager quota failure pauses its shared account before any fallback work
   await h.request('/api/scheduling/accounts',{id:'shared',alias:'manager and workers',type:'api',currency:'USD',limitMinor:100,remainingPercent:90,observedAt:new Date().toISOString(),version:0});
   await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,accountId:'shared'});
   await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'shared',managerEstimateMinor:5});
-  await h.request('/api/manager/settings',{provider:'test-provider',model:'fixture-manager-quota'});
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture-manager-quota'});
   await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision},400);
   const budget=await h.request(`/api/projects/${projectId}/scheduling`);assert.ok(budget.accounts[0].pause);assert.equal(budget.committedMinor,5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
 }));
@@ -581,7 +586,7 @@ test('non-Git projects run isolated tasks, freeze delivery, hand off code and pr
 
 test('invalid planning dependencies are corrected once before dispatch',async()=>harness(async h=>{
   let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
-  assert.equal(s.agent.mode,'pi');assert.equal(s.agent.error,null);assert.deepEqual(s.dependencies,[]);
+  assert.equal(s.agent.mode,'api');assert.equal(s.agent.error,null);assert.deepEqual(s.dependencies,[]);
   assert(s.tasks.every(t=>t.status==='awaiting_approval'));assert.equal((await h.request('/api/snapshot')).runs.length,0);
 },{APIX_FIXTURE_PLAN_INVALID:'once'}));
 
@@ -593,7 +598,7 @@ test('repeated invalid dependencies stay a review draft and are not mislabeled a
 },{APIX_FIXTURE_PLAN_INVALID:'always'}));
 test('ApiX requires complete confirmed requirements; approvals, independent memory and replay survive restart',async()=>harness(async h=>{
   const {projectId,s}=await setup(h);
-  assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'Pi');assert.equal(s.assessment.ready,true);
+  assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'ApiX');assert.equal(s.assessment.ready,true);
   await h.request('/api/tasks',{projectId,prompt:'bypass'},409);
   const incomplete=await h.request('/api/coordination/sessions',{projectId,goal:'另一个目标'});
   await h.request(`/api/coordination/sessions/${incomplete.id}/confirm`,{revision:1},400);
@@ -649,7 +654,7 @@ test('full access requires explicit worker permission; automatic dispatch and pe
 },{APIX_FIXTURE_HOLD:'1'}));
 test('plan edits create a new immutable plan; model config is persisted; Claude adapter returns artifacts',async()=>harness(async h=>{
   const {s}=await setup(h,'claude');
-  await h.request('/api/manager/settings',{provider:'test-provider',model:'test-model'});
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'test-model'});
   assert.equal((await h.request('/api/manager/settings')).model,'test-model');
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const oldPlan=p.plan_id;
   p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'verify changed plan',employeeId:p.tasks[0].employee_id,dependsOn:[]}]});
@@ -658,7 +663,7 @@ test('plan edits create a new immutable plan; model config is persisted; Claude 
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
   assert((await h.request('/api/snapshot')).artifacts.some(a=>a.content.includes('Claude result')));
 }));
-test('interaction modes, conversation SSE and custom Pi endpoint persist across restart',async()=>harness(async h=>{
+test('interaction modes, conversation SSE and direct model endpoint persist across restart',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'模式测试',path:h.project})).id;
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'梳理新功能',interactionMode:'structured'});
   assert.equal(s.interaction_mode,'structured');
@@ -673,8 +678,8 @@ test('interaction modes, conversation SSE and custom Pi endpoint persist across 
   const changed=await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:s.revision,mode:'conversational'});
   assert.equal(changed.interaction_mode,'conversational');assert.equal(changed.revision,s.revision+1);
   await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:changed.revision,mode:'invalid'},400);
-  const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
-  assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,'http://127.0.0.1:11434/v1');
+  const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:h.model.baseUrl,apiType:'openai-completions',apiKeyEnv:''});
+  assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,h.model.baseUrl);
   const conversation=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:changed.revision,content:'继续澄清'})});
   const conversationFrames=(await conversation.text()).split('\n\n').filter(Boolean);
   assert.equal(conversation.status,200);
@@ -682,9 +687,8 @@ test('interaction modes, conversation SSE and custom Pi endpoint persist across 
   const conversationComplete=conversationFrames.find(frame=>frame.startsWith('event: complete\n'));
   assert(conversationComplete);
   assert.equal(JSON.parse(conversationComplete.split('data: ')[1]).interaction_mode,'conversational');
-  const generated=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
-  assert.equal(generated.providers['apix-custom'].baseUrl,settings.baseUrl);
-  assert.equal(generated.providers['apix-custom'].models[0].id,'qwen-test');
+  assert.equal(h.model.calls.at(-1).body.model,'qwen-test');
+  await assert.rejects(readFile(join(h.dir,'data','manager-pi','models.json')));
   await h.restart();
   assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).interaction_mode,'conversational');
   assert.equal((await h.request('/api/manager/settings')).baseUrl,settings.baseUrl);
@@ -914,7 +918,7 @@ test('SSE stale revisions, model fallback and client disconnect leave the sessio
   for await(const event of streamFrames(await streamRequest(h,s,'fixture-invalid-reply')))if(event.type==='complete')s=event.data;
   assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/不支持的行为/);assert.equal(s.busy,false);
   for await(const event of streamFrames(await streamRequest(h,s,'fixture-runtime-error')))if(event.type==='complete')s=event.data;
-  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/Pi 未返回可用答复/);assert.equal(s.busy,false);
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/模型流返回错误|模型未返回/);assert.equal(s.busy,false);
   const frames=streamFrames(await streamRequest(h,s,'fixture-context'));
   for await(const event of frames)if(event.type==='delta')break;
   // Stop reading without reissuing the request; the backend still owns this turn.
@@ -1011,7 +1015,7 @@ test('run credentials isolate concurrent employee inboxes, acknowledgements and 
 }));
 
 test('shared manager authentication blocks before creating a run or workspace and records a clear diagnostic',async()=>harness(async h=>{
-  await h.request('/api/manager/settings',{provider:'fixture',model:'fixture',apiKeyEnv:'OPENAI_API_KEY'});
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture',apiKeyEnv:'OPENAI_API_KEY'});
   const {s,employeeId}=await setup(h,'codex');
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'must not launch with shared credentials',employeeId,dependsOn:[]}]});

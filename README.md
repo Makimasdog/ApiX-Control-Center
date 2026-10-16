@@ -28,9 +28,11 @@
 
 ## ApiX 是什么？
 
+> 当前开发分支已改为独立 ApiX 模型 API 后端，Pi 不再是管理者依赖；详见[独立后端契约与验收](协作/独立ApiX推理后端架构与验收.md)。此前验收文档中的 Pi 底座描述仅代表历史版本。
+
 ApiX 是你的管理者 Agent。你提出目标，ApiX 理解需求、检查项目、拆分任务，再协调不同 CLI 员工执行；你可以随时查看进度、提出指导、审查代码并验收成果。
 
-Pi 提供管理者的推理与工具底座，执行员工使用独立身份和进程。项目、对话、计划和运行记录保存在本机 SQLite；使用远程模型时，推理上下文仍会发送到所配置的供应商。
+ApiX 自己管理主循环、工具、Skills、上下文与验收，直接通过模型 API 推理；Pi、Codex、Claude 等是使用独立身份和进程的可选执行员工。项目、对话、计划和运行记录保存在本机 SQLite；使用远程模型时，推理上下文仍会发送到所配置的供应商。
 
 - **从对话开始**：选择项目后直接输入工作请求，流式查看回复与真实工具活动。
 - **按能力分工**：结合任务要求、员工能力、可比历史、费用估计和队列安排工作。
@@ -107,19 +109,12 @@ Pi 提供管理者的推理与工具底座，执行员工使用独立身份和�
 | --- | --- |
 | Node.js | ≥ 22.19.0，内置 SQLite 支持 FTS5 |
 | Git | 已安装；未初始化 Git 或尚无首次提交的项目会建立托管快照 |
-| Pi CLI | 管理者推理所需，已安装且可访问配置的模型 |
-| 执行员工 CLI | 至少准备一种，并分别完成安装、登录与运行验证 |
+| 模型 API | 配置可用的 API URL、模型 ID、协议与密钥（本机服务可免密钥） |
+| 执行员工 CLI | 可选；委派任务时安装并登录所选的 Pi、Codex 或 Claude 等 CLI |
 
 ### 2. 安装并启动
 
-Pi CLI 是管理者的独立运行时，`npm ci` 只安装 ApiX 依赖，不会安装 Pi。先在将用于启动 ApiX 的终端安装并检查（[Pi 官方安装说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md)）：
-
-```powershell
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-pi --version
-```
-
-已安装 Pi 且版本命令成功可跳过安装。若终端找不到 `pi`，重新打开终端后重试；仍不可用时检查 npm 全局安装目录是否在 PATH 中，或按下方入口配置指定真实 CLI 文件。PowerShell 若提示 `pi.ps1` 无法运行，可用 `pi.cmd --version` 检查。配置 API URL、模型 ID 与 Key 不会安装 Pi。入口检测通过也不代表已登录或模型连接成功。
+ApiX 的对话与工具循环无需安装 Pi、Codex 或 Claude CLI。安装项目依赖并启动后，在“ApiX 推理模型”配置模型服务：
 
 ```powershell
 git clone https://github.com/Makimasdog/ApiX-Control-Center.git
@@ -145,8 +140,8 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 
 ### 3. 配置项目与模型
 
-1. 添加本机项目目录，在“任务与员工”注册可运行的员工。非 Git 项目使用计划级托管快照和隔离 worktree，原目录保持不变。
-2. 配置“ApiX 推理模型”：选择 Pi 已配置模型，或填写兼容 API 的 URL、模型 ID、协议与 Key 环境变量名。
+1. 普通对话可直接开始，工具任务选择本机项目目录；需要委派时再在“任务与员工”注册可运行的员工。非 Git 项目使用计划级托管快照和隔离 worktree，原目录保持不变。
+2. 配置“ApiX 推理模型”：选择模型平台，或填写兼容 API 的 URL、模型 ID、协议与 Key 环境变量名。
 3. 在对话工作区选择项目并提出一个小任务，例如“检查这个项目的 README，提出改进并安排文档任务”。
 4. 默认请求批准：检查需求和计划，再批准启动。希望持续自动安排时，按项目选择员工并“授权并开启自动协作”。
 
@@ -162,7 +157,7 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 
 ## Agent 接入
 
-管理者始终通过 Pi 调用所配置的模型；员工使用各自 CLI 的模型、账户及权限配置，彼此独立。
+管理者由 ApiX 直接调用模型 API。Pi、Codex、Claude 等处于同一可选执行层，使用各自 CLI 的模型、账户及权限配置，彼此独立。仅在需要委派时安装所选 CLI；例如 Pi 可按[官方说明](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md)执行 `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`。
 
 | 执行运行时 | 入口环境变量 | 接入方式 |
 | --- | --- | --- |
@@ -174,7 +169,7 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 | Kimi Code | `APIX_KIMI_ENTRY` | `--print --output-format=stream-json` |
 | 自定义 CLI | 在“任务与员工”登记 | 显式可执行文件、参数数组及输出格式 |
 
-未加入 PATH 时，可在项目根目录 `.env` 填写 JavaScript 入口或原生可执行文件的**绝对路径**；不接受目录、命令名、`.cmd`、`.bat`、`.ps1`。例如 `APIX_MANAGER_PI_ENTRY=C:/Users/你的用户名/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`，实际路径应以 `npm root -g` 和已安装包的 `package.json` 中 `bin.pi` 为准，不照抄示例。Windows 全局 npm 命令会按包清单定位实际入口，Pi 兼容新包名与旧的 `@mariozechner/pi-coding-agent`。`APIX_MANAGER_PI_ENTRY` 可单独覆盖管理者入口；显式配置无效时会报告不可用，不会静默切换到另一个 Pi。修改后重启服务。Pi 子进程会优先使用已安装 Git 的 Bash，不修改全局 PATH。
+未加入 PATH 时，可在项目根目录 `.env` 填写 JavaScript 入口或原生可执行文件的**绝对路径**；不接受目录、命令名、`.cmd`、`.bat`、`.ps1`。例如 `APIX_PI_ENTRY=C:/Users/你的用户名/AppData/Roaming/npm/node_modules/@earendil-works/pi-coding-agent/dist/cli.js`，实际路径应以 `npm root -g` 和已安装包的 `package.json` 中 `bin.pi` 为准，不照抄示例。Windows 全局 npm 命令会按包清单定位实际入口，Pi 兼容新包名与旧的 `@mariozechner/pi-coding-agent`。`APIX_MANAGER_PI_ENTRY` 已停用，管理者只读取模型 API 配置；显式配置无效时会报告不可用，不会静默切换到另一个 Pi。修改后重启服务。Pi 子进程会优先使用已安装 Git 的 Bash，不修改全局 PATH。
 
 每种 CLI 都须在终端单独完成安装和认证，再用小任务检查版本、权限与工作目录行为。Trae、Qoder、WorkBuddy 的桌面应用发现不代表可托管执行；需要可用的非交互 CLI 或包装器。
 
@@ -273,15 +268,14 @@ npm test
 
 编译产物 `dist/` 不入库。自动测试使用隔离数据库和假 CLI，不调用真实付费模型。
 
-对话工作区会检查项目目录、Pi 入口、模型密钥环境变量、员工入口和管理者预算，并提供修复入口。非 Git 项目在执行时建立托管基线；入口存在不证明认证、额度或推理可用，实际模型连接需要单独测试。“模型设置”进入真实管理者配置，浏览器模型收藏及 Skills/MCP 草稿不会改变运行时。计划格式或依赖无效时，在预算检查下纠正一次；仍无效则保留待审草案，错误原因与连接失败分开显示。
+对话工作区会检查项目目录、模型 API 配置、模型密钥环境变量、员工入口和管理者预算，并提供修复入口。非 Git 项目在执行时建立托管基线；入口存在不证明认证、额度或推理可用，实际模型连接需要单独测试。“模型设置”进入真实管理者配置，浏览器模型收藏及 Skills/MCP 草稿不会改变运行时。计划格式或依赖无效时，在预算检查下纠正一次；仍无效则保留待审草案，错误原因与连接失败分开显示。
 
 交付差异查询在独立线程执行，最多并行两次；检查期间任务状态变化需要重查。历史每页最多 200 条，可查看更早记录；记忆检索最多返回最近 50 个匹配项。验收与恢复仍会再次检查指纹。
 
-真实协作验收使用隔离 Git 项目，会调用已配置的阿里模型及真实 Codex/Claude CLI，可能产生费用。确认 CLI 登录、网关和 Pi 入口后，显式运行：
+真实协作验收使用隔离 Git 项目，会调用已配置的阿里模型及真实 Codex/Claude CLI，可能产生费用。确认所选员工 CLI 登录及模型 API 服务后，显式运行：
 
 ```powershell
-# 仅在需要指定管理者入口时设置；使用本机已安装的真实 Pi cli.js
-$env:APIX_MANAGER_PI_ENTRY = '你的真实 Pi cli.js 绝对路径'
+# 管理者无需 CLI；Pi 员工才需要 APIX_PI_ENTRY（或加入 PATH）
 npm run build
 node scripts/verify-real-collaboration.mjs --approve-cost
 ```

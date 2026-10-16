@@ -43,7 +43,7 @@ test('ApiX planning supports parallel ownership, evidence and explicit integrati
   let prompt;
   const agent=createApiXAgent({infer:async input=>{prompt=input;return JSON.stringify({steps:[{prompt:'实现 A 并提交验证证据',employeeId:'one',dependsOn:[]},{prompt:'实现 B 并提交验证证据',employeeId:'two',dependsOn:[]},{prompt:'集成后审查',employeeId:'two',dependsOn:[0,1]}]});}});
   const result=await agent.plan({goal:'优化协作',scope:'现有模块',constraints:'保留审批',deliverable:'代码与审查',acceptance:'可复现验证'},[{id:'one',role:'开发'},{id:'two',role:'审查'}]);
-  assert.equal(result.mode,'pi'); assert.deepEqual(result.steps.map(step=>step.dependsOn),[[],[],[0,1]]);
+  assert.equal(result.mode,'api'); assert.deepEqual(result.steps.map(step=>step.dependsOn),[[],[],[0,1]]);
   assert.match(prompt,/文件范围不重叠/); assert.match(prompt,/另一位合适员工/); assert.match(prompt,/集成后才能验证/);
 });
 

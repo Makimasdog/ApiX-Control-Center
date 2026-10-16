@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import {startModelFixture} from './fake-model-http.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
@@ -49,11 +50,14 @@ async function freePort() {
   });
 }
 async function startServer(port, dataDir) {
+  const model=await startModelFixture();
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); serverErrors.set(port, stderr); });
   try { await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok; } catch { return false; } }); }
   catch (error) { throw new Error(`ApiX server did not start (exit ${child.exitCode}): ${stderr || error.message}`); }
+  child.once('exit',()=>void model.close());
+  await post(port,'/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''});
   return child;
 }
 

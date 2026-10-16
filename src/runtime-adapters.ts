@@ -24,8 +24,6 @@ function entryCommand(path: string): Command | null {
   catch { return null; }
 }
 
-export const piUnavailableMessage='Pi 未安装或不可用：ApiX 的管理者依赖独立的 Pi CLI，npm ci 不会安装它。请执行 npm install -g --ignore-scripts @earendil-works/pi-coding-agent，在启动 ApiX 的同一终端确认 pi --version 成功后重启服务。已安装但未加入 PATH 时，在 .env 设置 APIX_MANAGER_PI_ENTRY 或 APIX_PI_ENTRY 为真实 cli.js 或可执行文件的绝对路径；不要填写 .cmd/.bat/.ps1。配置模型 URL 或 API Key 不能代替 Pi CLI。';
-
 function npmShimCommand(id: string, shim: string): Command | null {
   for (const packageName of npmPackages[id] ?? []) {
     const packageDir = join(dirname(shim),'node_modules',packageName);
@@ -83,6 +81,5 @@ export function createRuntimeAdapters(store: Store, findExecutable: (name: strin
   function format(id: string) { return row<CustomAdapter>('SELECT * FROM apix_adapters WHERE id=?',id)?.format ?? 'jsonl'; }
   function supportsModel(id:string){return ['pi','codex','claude'].includes(id);}
   function modelArgs(id:string,model:string){if(!model)return [];if(!supportsModel(id))throw new Error('当前适配器尚未验证显式模型选择，不能依据声明费率自动路由');return ['--model',model];}
-  function managerCommand(){const entry=process.env.APIX_MANAGER_PI_ENTRY;return entry?entryCommand(entry):command('pi');}
-  return { command, managerCommand, catalog, register, args, modelArgs,supportsModel,format };
+  return { command, catalog, register, args, modelArgs,supportsModel,format };
 }

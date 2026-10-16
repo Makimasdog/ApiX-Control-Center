@@ -10,7 +10,7 @@ test('planning distinguishes inference failure from invalid dependencies and acc
   const invalid=await createApiXAgent({infer:async()=>JSON.stringify({steps:[{prompt:'implement',employeeId:'one',dependsOn:[0]}]})}).plan(requirements,employees);
   assert.equal(invalid.failureKind,'response');assert.match(invalid.error,/计划依赖无效/);assert.equal(invalid.mode,'rules');
   const valid=await createApiXAgent({infer:async()=> ' \n```json\n'+JSON.stringify({steps:[{prompt:'implement',employeeId:'one',dependsOn:[]}]})+'\n```\n '}).plan(requirements,employees);
-  assert.equal(valid.mode,'pi');
+  assert.equal(valid.mode,'api');
 });
 
 test('ApiX streams only the top-level reply across escapes and Unicode splits', async()=>{
@@ -19,7 +19,7 @@ test('ApiX streams only the top-level reply across escapes and Unicode splits', 
   const deltas=[];
   const agent=createApiXAgent({infer:async(_prompt,onDelta)=>{for(const char of raw)onDelta(char);return raw;}});
   const result=await agent.discuss(emptyRequirements(),'讨论需求',[],[],'conversational',delta=>deltas.push(delta));
-  assert.equal(result.mode,'pi');
+  assert.equal(result.mode,'api');
   assert.equal(result.question,reply);
   assert.equal(deltas.join(''),reply);
   assert(deltas.length>1);
@@ -32,7 +32,7 @@ test('ApiX keeps a long reply, history and fact-based progress in the prompt',as
   const agent=createApiXAgent({infer:async input=>{prompt=input;return JSON.stringify({kind:'progress',question,updates:[],conflicts:[]});}});
   const result=await agent.discuss(emptyRequirements(),'继续讨论',[{role:'user',content:'前文目标'}],[{status:'running'}]);
   assert.equal(result.question,question);
-  assert.equal(result.mode,'pi');
+  assert.equal(result.mode,'api');
   assert.match(prompt,/前文目标/);
   assert.match(prompt,/running/);
 });
@@ -89,7 +89,7 @@ test('manager receives trusted project context and requests host scheduling even
 test('model-proposed fees are discarded before profile validation without granting a budget',async()=>{
   const agent=createApiXAgent({infer:async()=>JSON.stringify({steps:[{prompt:'创建并验证文件',employeeId:'worker',dependsOn:[],scheduling:{estimateMinor:0.02,fixedEmployeeId:'invented',estimates:'unapproved',writePaths:['sum.mjs']}}]})});
   const result=await agent.plan({goal:'测试',scope:'当前项目',constraints:'不批准费用',deliverable:'文件',acceptance:'验证'},[{id:'worker',name:'worker',runtime:'codex',enabled:1}]);
-  assert.equal(result.mode,'pi');assert.equal(result.steps[0].scheduling.estimateMinor,null);assert.equal(result.steps[0].scheduling.fixedEmployeeId,null);assert.deepEqual(result.steps[0].scheduling.estimates,[]);assert.deepEqual(result.steps[0].scheduling.writePaths,['sum.mjs']);
+  assert.equal(result.mode,'api');assert.equal(result.steps[0].scheduling.estimateMinor,null);assert.equal(result.steps[0].scheduling.fixedEmployeeId,null);assert.deepEqual(result.steps[0].scheduling.estimates,[]);assert.deepEqual(result.steps[0].scheduling.writePaths,['sum.mjs']);
 });
 test('A03 malformed architecture and contradictory quality replies cannot approve delivery',async()=>{
   const requirements={goal:'测试已确认目标',scope:'隔离项目',constraints:'不扩大范围',deliverable:'实现',acceptance:'实际检查'};
