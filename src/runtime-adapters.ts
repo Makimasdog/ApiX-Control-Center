@@ -59,8 +59,11 @@ export function createRuntimeAdapters(store: Store, findExecutable: (name: strin
       .map(c=>({...c,mailbox:'mailbox' in c && c.mailbox===true,available:!!command(c.id),managed:true,observable:true,cancellable:true,resumable:false}));
   }
   function register(input: unknown) {
-    const v = object(input); const id = text(v.id,50); const name = text(v.name,100); const executable = text(v.executable,1000);
-    if (!/^[a-z][a-z0-9-]*$/.test(id) || builtins.some(b=>b.id===id)) throw new Error('适配器 ID 无效或属于内置运行时');
+    const v = object(input); const id = text(v.id,50);
+    if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new Error('适配器 ID 须以小写英文字母开头，只能包含小写字母、数字和连字符（-），最多 50 字符，例如 qoder-cli');
+    const builtin = builtins.find(b=>b.id===id);
+    if (builtin) throw new Error(`${builtin.name}（${id}）已有内置适配器，无需重复注册。请在“任务与员工”点击“注册员工”，选择对应运行时；若不可用，请检查该 CLI 的安装和路径后点击“重新扫描”。ApiX 自身不依赖这些可选 CLI。`);
+    const name = text(v.name,100); const executable = text(v.executable,1000);
     if (!isAbsolute(executable) || !existsSync(executable) || /\.(cmd|bat|ps1)$/i.test(executable)) throw new Error('请选择已存在的可执行文件；脚本请通过 node.exe 等解释器和参数启动');
     if (!Array.isArray(v.args) || v.args.some(a=>typeof a!=='string') || v.args.length>30) throw new Error('参数必须为字符串数组');
     if (!['plain','jsonl'].includes(String(v.format))) throw new Error('输出格式应为 plain 或 jsonl');

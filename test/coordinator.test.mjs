@@ -17,6 +17,28 @@ import {startModelFixture} from './fake-model-http.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+test('adapter registration distinguishes invalid IDs from builtins without replacing their commands',()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE tasks(id TEXT,runtime TEXT,status TEXT)');
+  try {
+    const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
+    const input={name:'Custom worker',executable:process.execPath,args:[],format:'plain'};
+    for(const id of ['Pi','Claude Code','qoder_cli','1-worker','worker.cli'])assert.throws(()=>adapters.register({...input,id}),/以小写英文字母开头/);
+    for(const id of ['pi','codex','claude','gemini','opencode','kimi']){
+      const before=adapters.command(id);
+      assert.throws(()=>adapters.register({id}),error=>error.message.includes('已有内置适配器')&&error.message.includes('注册员工')&&error.message.includes('重新扫描'));
+      assert.deepEqual(adapters.command(id),before);
+    }
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM apix_adapters').get().n,0);
+    assert.equal(adapters.register({...input,id:'qoder-cli'}).available,true);
+    adapters.register({...input,id:'qoder-cli',name:'Updated',args:['worker.mjs']});
+    assert.deepEqual(adapters.command('qoder-cli'),{executable:process.execPath,prefix:['worker.mjs']});
+    db.prepare('INSERT INTO tasks VALUES (?,?,?)').run('busy','qoder-cli','unknown');
+    assert.throws(()=>adapters.register({...input,id:'qoder-cli'}),/待处理任务/);
+    assert.deepEqual(adapters.command('qoder-cli').prefix,['worker.mjs']);
+  } finally { db.close(); }
+});
+
 test('Assistant can start a general conversation without selecting a project or registering employees',async()=>harness(async h=>{
   const s=await h.request('/api/assistant/sessions',{});assert(s.project_id);
   const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(h.dir));
