@@ -30,8 +30,14 @@ process.stdin.on("data", (chunk) => {
         else answer={action:'finish',outcome:'completed',message:'已修复 a.txt，实际断言检查通过。'};
       }else if(message.includes('fixture-loop-delegate')){
         if(!context.context.workflow.enabled){answer=!results.some(e=>e.body.tool==='read_file')?action('read_file',{path:'verify.mjs'}):action('configure_agents',{runtimes:['codex'],profiles:[{runtime:'codex',model:'fixture-model',reasoningLevel:3,contextTokens:32000}],checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}]});}
+        else if(context.context.child)answer={action:'finish',outcome:'completed',message:'已核对当前委派，继续等待验收。'};
         else if(!history.some(e=>e.kind==='delegation_result'))answer=action('delegate',{goal:'实现 a.txt 内容接口',requirements:{scope:'仅实现 a.txt',constraints:'保留 verify.mjs，不扩大范围',deliverable:'a.txt 内容为 good',acceptance:'实际执行 verify.mjs，通过后对照冻结契约审查'}});
         else answer={action:'finish',outcome:'completed',message:'员工已完成修复、实际验证和集成验收。'};
+      }else if(message.includes('fixture-loop-mcp')){
+        const found=results.find(e=>e.body.tool==='search_tools');const called=results.find(e=>e.body.tool?.startsWith('mcp_'));const verified=results.find(e=>e.body.tool==='verify');
+        answer=!found?action('search_tools',{query:'echo'}):!called?action(found.body.result.tools[0].name,{text:'工具回显验收'}):!verified?action('verify',{executable:'node',args:['-e',"const fs=require('node:fs'),assert=require('node:assert/strict');assert(fs.readFileSync('mcp-calls.jsonl','utf8').includes('echo'));console.log('MCP call evidence verified')"]}):{action:'finish',outcome:'completed',message:'MCP 回显和实际调用证据已核对。'};
+      }else if(message.includes('fixture-loop-readlarge')){
+        answer=!results.some(e=>e.body.tool==='read_file')?action('read_file',{path:'large.txt'}):{action:'finish',outcome:'completed',message:'大文件结果已保存，可分段核对完整内容。'};
       }else if(message.includes('fixture-loop-skill')){
         answer=!results.some(e=>e.body.tool==='load_skill')?action('load_skill',{id:context.context.skills[0].id}):!results.some(e=>e.body.tool==='remember')?action('remember',{title:'项目验证约定',content:'使用实际断言检查，不能把进程成功当作交付。'}):{action:'finish',outcome:'completed',message:'已加载 Skill 并记录项目约定。'};
       }else if(message.includes('fixture-loop-choice')){

@@ -25,6 +25,7 @@ interface Dependencies extends Store {
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
   reviewTask(id:string,accepted:boolean,fingerprint:string):void;
+  onTaskEvent?(sessionId:string,kind:string):void;
 }
 export function createCoordinator(deps: Dependencies) {
   const { db, row, rows, now, memory, permissions, agent } = deps;
@@ -437,7 +438,7 @@ export function createCoordinator(deps: Dependencies) {
     const t = row<Task>('SELECT * FROM tasks WHERE id=?',taskId); if (!t) return;
     memory.append(t.project_id,taskId,kind,payload);
     const b = t.plan_id ? row<{session_id: string}>('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',t.plan_id) : undefined;
-    if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id); }
+    if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id);deps.onTaskEvent?.(b.session_id,kind); }
   }
   function assertRetry(taskId:string,input:Record<string,unknown>) {
     const task=row<Task>('SELECT * FROM tasks WHERE id=?',taskId);

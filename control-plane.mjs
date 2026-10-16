@@ -32,6 +32,7 @@ import {createTaskDelivery} from './src/task-delivery.mjs';
 import {createDeliveryInspection} from './src/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant-loop.js';
+import {createMcpManager} from './dist/src/mcp-manager.js';
 import {fileTool,commandTool,projectFingerprint,projectInstructions,skillsFor} from './dist/src/assistant-tools.js';
 
 loadEnvironment();
@@ -1256,7 +1257,8 @@ export function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
-const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, autonomy, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+let notifyAssistant=()=>{};
+const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),
@@ -1271,7 +1273,13 @@ for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.reco
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
 const assistantProject=id=>{const project=row('SELECT * FROM projects WHERE id=?',id);if(!project)throw new Error('项目不存在');const rel=relative(realpathSync.native(project.path),realpathSync.native(dataDir));if(!rel||rel!=='..'&&!rel.startsWith('..'+sep)&&!isAbsolute(rel))throw new Error('工作区不能包含 ApiX 的内部状态目录');return project;};
+const mcp=createMcpManager(store,{project:assistantProject,environment:()=>workerEnvironment(process.env,'mcp',coordinator.getSettings().apiKeyEnv)});
+export const mcpServers=projectId=>({servers:mcp.configs(projectId),tools:mcp.catalog(projectId)});
+export const saveMcpServer=(projectId,input)=>mcp.save(projectId,input);
+export const discoverMcpTools=projectId=>mcp.discover(projectId);
+export const closeMcpConnections=()=>mcp.close();
 const assistant=createAssistantLoop({...store,
+  toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return row('SELECT id FROM projects WHERE path=?',realpathSync.native(path))?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
   describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
@@ -1319,9 +1327,10 @@ const assistant=createAssistantLoop({...store,
     }
     throw new Error('工具不存在');
   },
-  child:id=>{const child=coordinator.sessionDetails(id);const state=child.autonomy?.state;const status=['running','ready'].includes(state)?'running':state==='attention'?'attention':state==='completed'?'completed':child.derivedStatus;return {status,complete:status==='completed'&&child.tasks.length>0&&child.tasks.every(t=>t.status==='accepted'),details:{id:child.id,status,tasks:child.tasks.map(t=>({id:t.id,status:t.status,employee_id:t.employee_id,delivery_commit:t.delivery_commit})),autonomy:child.autonomy?{state:child.autonomy.state,reason:child.autonomy.reason,contractDigest:child.autonomy.architecture?.digest,checks:child.autonomy.checks.map(c=>({id:c.id,status:c.status,fingerprint:c.fingerprint})),repairs:child.autonomy.repairs.map(r=>({id:r.id,status:r.status,attempt:r.attempt}))}:null}};},
+  child:id=>{const child=coordinator.sessionDetails(id);const state=child.autonomy?.state;const status=['running','ready'].includes(state)?'running':state==='attention'?'attention':state==='completed'?'completed':child.derivedStatus;return {status,complete:status==='completed'&&child.tasks.length>0&&child.tasks.every(t=>t.status==='accepted'),details:{id:child.id,status,tasks:child.tasks.map(t=>({id:t.id,status:t.status,employee_id:t.employee_id,delivery_commit:t.delivery_commit})),reports:rows("SELECT m.id,m.from_agent,m.task_id,substr(m.payload,1,3000) AS payload FROM agent_messages m JOIN tasks t ON t.id=m.task_id WHERE t.plan_id=? AND m.to_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 10",child.plan_id),autonomy:child.autonomy?{state:child.autonomy.state,reason:child.autonomy.reason,contractDigest:child.autonomy.architecture?.digest,checks:child.autonomy.checks.map(c=>({id:c.id,status:c.status,fingerprint:c.fingerprint})),repairs:child.autonomy.repairs.map(r=>({id:r.id,status:r.status,attempt:r.attempt}))}:null}};},
   stopChild:id=>{const child=coordinator.sessionDetails(id);if(child.busy&&!child.tasks.length||child.derivedStatus==='completed')return;coordinator.stopSession(id,{revision:child.revision});}
 });
+notifyAssistant=id=>assistant.notify(id);
 setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
 export const createAssistantSession=assistant.create;
 export const assistantSession=assistant.details;
@@ -1332,6 +1341,7 @@ export const assistantStop=assistant.stop;
 export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantEvents=assistant.eventPage;
+export const assistantOutput=assistant.readOutput;
 
 export const createCoordinationSession = coordinator.createSession;
 export const answerCoordinationSession = coordinator.answerSession;

@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createAssistantLoop} from '../dist/src/assistant-loop.js';
-const tool=(name,args={})=>({action:'tool',tool:name,args,message:'执行 '+name});
+const tool=(name,args={})=>({action:'tool',tool:name,args:{...({read_file:{path:'README.md'},write_file:{path:'a.txt',content:'fixture'},verify:{executable:'node'},run_command:{executable:'node'},delegate:{requirements:{scope:'fixture',constraints:'fixture',deliverable:'fixture',acceptance:'fixture'}},configure_agents:{checks:[{id:'test',args:['test.mjs']} ]}}[name]??{}),...args},message:'执行 '+name});
 const finish={action:'finish',outcome:'completed',message:'已完成并核对证据'};
 async function wait(service,id){for(let i=0;i<200;i++){const s=service.details(id);if(!s.busy&&s.status!=='running')return s;await new Promise(r=>setTimeout(r,5));}throw new Error('loop timeout');}
 async function fixture(work){
@@ -62,7 +62,7 @@ test('restart does not replay interrupted work; project notes are versioned and 
   assert.throws(()=>restored.message(h.id,{content:'继续'}),/检查原进程/);
 }));
 test('compaction persists a summary while original events remain inspectable',()=>fixture(async h=>{
-  for(let i=0;i<14;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,'now')").run(h.id,JSON.stringify({content:'约束：不扩大范围。'+'x'.repeat(3000)}));
+  for(let i=0;i<14;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,'now')").run(h.id,JSON.stringify({content:'约束：不扩大范围。'+'x'.repeat(5000)}));
   h.answer({summary:'目标与约束：不扩大范围，保留全部证据引用。'},finish);h.service.message(h.id,{content:'继续'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert(s.summary.includes('不扩大范围'));assert(s.compacted_through>0);assert(s.events.length>=16);assert(h.prompts[0].startsWith('APIX_COMPACT_JSON'));
 }));
 test('step budget stops an unproductive loop instead of running forever',()=>fixture(async h=>{
@@ -91,4 +91,58 @@ test('another active main loop blocks project writes but permits read-only conve
 test('an interrupted process in another conversation cannot be bypassed by creating a new writer',()=>fixture(async h=>{
   const other=h.service.create({projectId:'p'});h.db.prepare("UPDATE assistant_sessions SET status='running' WHERE id=?").run(other.id);const restored=createAssistantLoop(h.deps);
   h.answer(tool('run_command'));restored.message(h.id,{content:'重新写项目'});const s=await wait(restored,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);
+}));
+
+test('discovered MCP tools enter the same schema, approval and version guards as builtins',()=>fixture(async h=>{
+  let definition={name:'mcp_fixture_echo',description:'echo',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']},readOnly:false,changesWorkspace:true,version:'1:fixture',deferred:true};let external=0;
+  h.deps.toolDefinitions=()=>[definition];h.deps.discoverTools=async()=>({tools:[definition],errors:[]});h.deps.callExternal=async()=>{external++;return {content:[{type:'text',text:'real result'}]};};h.policy({mode:'ask_approval',version:0});
+  h.answer(tool('search_tools',{query:'echo'}),tool('mcp_fixture_echo',{text:'hello'}),{...finish,outcome:'blocked'});h.service.message(h.id,{content:'调用已启用工具'});let s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');assert.equal(s.pending.toolVersion,'1:fixture');assert.equal(external,0);
+  definition={...definition,version:'2:changed'};await assert.rejects(()=>h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:true}),/配置已变化/);
+  await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:false});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(external,0);
+}));
+
+test('MCP failures retain uncertainty and cannot be retried by a normal user message',()=>fixture(async h=>{
+  const definition={name:'mcp_fixture_echo',description:'echo',inputSchema:{type:'object'},readOnly:false,changesWorkspace:true,version:'1:fixture',deferred:true};let calls=0;
+  h.deps.toolDefinitions=()=>[definition];h.deps.discoverTools=async()=>({tools:[definition],errors:[]});h.deps.callExternal=async()=>{calls++;throw new Error('timeout after an unknown side effect');};
+  h.answer(tool('search_tools'),tool(definition.name));h.service.message(h.id,{content:'执行工具'});const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(calls,1);assert(s.events.some(e=>e.kind==='process_unknown'));assert.throws(()=>h.service.message(h.id,{content:'再试一次'}),/检查原进程/);
+}));
+
+test('large tool results become persistent references and can be read without executing the original tool again',()=>fixture(async h=>{
+  let reads=0;h.deps.execute=async(_s,name)=>{if(name==='read_file'){reads++;return {content:'中文'.repeat(16000)};}return {};};
+  h.answer(tool('read_file'),prompt=>{const context=JSON.parse(prompt.split('当前上下文：')[1]);const result=context.history.find(e=>e.kind==='tool_result').body.result;assert(result.outputRef);assert(!prompt.includes('中文'.repeat(1000)));return JSON.stringify(tool('read_context',{id:result.outputRef,offset:0,limit:2000}));},finish);
+  h.service.message(h.id,{content:'读取大文件并解释'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(reads,1);assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM assistant_outputs').get().n,1);assert(s.events.some(e=>e.kind==='tool_result'&&e.body.tool==='read_context'));
+}));
+
+test('agent memories need user confirmation before recall and cannot overwrite confirmed facts',()=>fixture(async h=>{
+  h.service.remember('p','登录约束','登录必须测试边界');h.service.remember('other','登录隔离','不要泄漏其他项目');
+  h.answer(finish);h.service.message(h.id,{content:'实现登录功能'});await wait(h.service,h.id);let context=JSON.parse(h.prompts.at(-1).split('当前上下文：')[1]);assert.equal(context.recalledMemories.length,0);
+  h.service.editMemory(h.id,{title:'登录约束',version:1,approve:true});assert.throws(()=>h.service.remember('p','登录约束','跳过测试'),/不能覆盖/);
+  h.answer(finish);h.service.message(h.id,{content:'检查登录功能'});await wait(h.service,h.id);context=JSON.parse(h.prompts.at(-1).split('当前上下文：')[1]);assert.equal(context.recalledMemories[0].content,'登录必须测试边界');assert(!JSON.stringify(context).includes('不要泄漏其他项目'));
+}));
+
+test('worker events wake a bounded supervisor, deduplicate snapshots and never duplicate delegation',()=>fixture(async h=>{
+  let sequence=0;h.deps.supervisionDebounceMs=0;h.deps.child=()=>({status:'running',complete:false,details:{id:'child',reports:[{sequence,summary:'真实阻塞或进展'}]}});
+  h.answer(tool('delegate',{goal:'实现模块'}),tool('send_agent_message',{taskId:'worker-task',content:'按契约检查边界'}),finish);h.service.message(h.id,{content:'开发模块并监督'});let s=await wait(h.service,h.id);assert.equal(s.status,'waiting_agents');
+  sequence=1;h.service.notify('child');for(let i=0;i<100&&!h.service.details(h.id).events.some(e=>e.kind==='supervision_event');i++)await new Promise(r=>setTimeout(r,5));s=await wait(h.service,h.id);assert.equal(s.status,'waiting_agents');assert.equal(h.calls.filter(c=>c.name==='delegate').length,1);assert.equal(h.calls.filter(c=>c.name==='send_agent_message').length,1);
+  await h.service.tick();assert.equal(h.prompts.length,3);assert.equal(h.db.prepare('SELECT wakes FROM assistant_supervision WHERE session_id=?').get(h.id).wakes,1);
+}));
+
+test('a supervisor cannot write alongside its active delegated workers',()=>fixture(async h=>{
+  let n=0;h.deps.supervisionDebounceMs=0;h.deps.child=()=>({status:'running',complete:false,details:{n}});
+  h.answer(tool('delegate',{goal:'模块'}),tool('write_file',{path:'unsafe',content:'bad'}));h.service.message(h.id,{content:'开发'});await wait(h.service,h.id);n++;await h.service.tick();const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.filter(c=>c.name==='write_file').length,0);
+}));
+
+test('schema mistakes become repairable observations without executing invalid arguments',()=>fixture(async h=>{
+  h.answer({action:'tool',tool:'write_file',args:{path:'a.txt'},message:'参数缺少内容'},tool('write_file',{path:'a.txt',content:'fixed'}),tool('verify'),finish);h.service.message(h.id,{content:'写入并检查'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(h.calls.filter(c=>c.name==='write_file').length,1);assert(s.events.some(e=>e.kind==='tool_result'&&e.body.ok===false&&e.body.error.includes('Schema')));
+}));
+
+test('editing confirmed memory invalidates an in-flight decision before its side effect',()=>fixture(async h=>{
+  let resolve;h.answer(()=>new Promise(r=>resolve=r),finish);h.service.message(h.id,{content:'登录模块'});while(!resolve)await new Promise(r=>setTimeout(r,1));h.service.editMemory(h.id,{title:'登录约束',content:'先解释方案',version:0,kind:'feedback'});resolve(JSON.stringify(tool('write_file',{path:'late',content:'bad'})));const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(h.calls.length,0);assert(h.prompts.at(-1).includes('先解释方案'));
+}));
+
+test('supervision wake limits persist across restart and block runaway reasoning on a stalled child',()=>fixture(async h=>{
+  let n=0,blocked=false;h.deps.supervisionDebounceMs=0;h.deps.child=()=>({status:blocked?'attention':'running',complete:false,details:{n}});
+  h.answer(tool('delegate',{goal:'长任务'}),...Array.from({length:6},()=>finish));h.service.message(h.id,{content:'开发并监督'});await wait(h.service,h.id);
+  for(let i=1;i<=6;i++){n=i;await h.service.tick();assert.equal((await wait(h.service,h.id)).status,'waiting_agents');}
+  assert.equal(h.prompts.length,7);const restored=createAssistantLoop(h.deps);n=7;await restored.tick();assert.equal(h.prompts.length,7);assert.equal(restored.details(h.id).status,'waiting_agents');blocked=true;await restored.tick();assert.equal(restored.details(h.id).status,'attention');
 }));

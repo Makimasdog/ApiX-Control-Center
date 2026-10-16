@@ -1,6 +1,8 @@
 import { createServer } from "node:http";
 import {browseFolders} from './src/project-folders.mjs';
 import {inspectEmployeeRuntime} from './control-plane.mjs';
+import {mcpServers,saveMcpServer,discoverMcpTools,closeMcpConnections} from './control-plane.mjs';
+import {assistantOutput} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,7 +73,9 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
       if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
+      if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+\/outputs\/[^/]+$/.test(pathname)&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,assistantOutput(pathname.split('/')[4],{id:pathname.split('/')[6],offset:q.has('offset')?Number(q.get('offset')):0,limit:6000}));return;}
       if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}
       if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
@@ -148,6 +152,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
       else if(/^\/api\/employees\/[^/]+\/runtime-info$/.test(pathname))result=await inspectEmployeeRuntime(pathname.split('/')[3]);
+      else if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname))result=await saveMcpServer(pathname.split('/')[3],input);
+      else if(/^\/api\/projects\/[^/]+\/mcp\/discover$/.test(pathname))result=await discoverMcpTools(pathname.split('/')[3]);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
       else if (pathname === '/api/manager/test') result = await testManagerConnection(input);
@@ -249,3 +255,5 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
 }).listen(port, "127.0.0.1", () => {
   process.stdout.write(`ApiX Web: http://127.0.0.1:${port}\n`);
 });
+let shuttingDown=false;
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),4000).unref();void closeMcpConnections().finally(()=>process.exit(0));});

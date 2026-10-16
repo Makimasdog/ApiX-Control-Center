@@ -228,9 +228,9 @@ function renderSettings() {
   $("#model-total").textContent = `${settings.models.length} 个模型`;
   $("#model-grid").innerHTML = settings.models.map((item) => `<article class="model-card"><div class="item-card-top"><span class="item-icon model">${icon("cube")}</span><span class="type-label">${escapeHtml(item.provider)}</span></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-subtitle">${escapeHtml(item.modelId)}</p><div class="item-card-bottom"><button class="text-action" data-model="${item.id}">${item.id === settings.selectedModelId ? "已选择" : "设为偏好"}</button><button class="text-action danger" data-remove-model="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">尚无模型偏好；运行时使用 Agent 自身配置。</div>`;
   $("#skill-tab-count").textContent = String(settings.skills.length);
-  $("#mcp-tab-count").textContent = String(settings.mcps.length);
+
   $("#skill-grid").innerHTML = settings.skills.map((item) => `<article class="resource-card"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><button class="toggle ${item.enabled ? "on" : ""}" data-toggle-skill="${item.id}" role="switch" aria-checked="${item.enabled}"></button></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.description)}</p><div class="item-card-bottom"><span class="type-label">本地配置 · 未注入运行时</span><button class="text-action danger" data-remove-skill="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">暂无 Skill 配置。</div>`;
-  $("#mcp-grid").innerHTML = settings.mcps.map((item) => `<article class="resource-card"><div class="item-card-top"><span class="item-icon mcp">${icon("globe")}</span><button class="toggle ${item.enabled ? "on" : ""}" data-toggle-mcp="${item.id}" role="switch" aria-checked="${item.enabled}"></button></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.description)}</p><div class="project-meta">${escapeHtml(item.transport)} · ${escapeHtml(item.target)}</div><div class="item-card-bottom"><span class="type-label">仅保存配置 · 未连接</span><button class="text-action danger" data-remove-mcp="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">暂无 MCP 配置。</div>`;
+
 }
 function openEditor(kind, id = null) {
   editing = { kind, id };
@@ -352,7 +352,7 @@ $("#model-form").addEventListener("submit", (event) => { event.preventDefault();
 $("#sidebar-add-project").addEventListener("click", () => openEditor("project"));
 $("#add-project").addEventListener("click", () => openEditor("project"));
 $("#add-skill").addEventListener("click", () => openEditor("skill"));
-$("#add-mcp").addEventListener("click", () => openEditor("mcp"));
+$("#add-mcp").addEventListener("click", () => document.dispatchEvent(new CustomEvent("apix:configure-mcp")));
 $("#add-employee").addEventListener("click", () => openEditor("employee"));
 $("#scan-agents").addEventListener("click", async () => { try { await api("/api/runtimes/scan", {}); await refresh(); toast("已重新扫描本机 Agent"); } catch (error) { toast(error.message); } });
 $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
@@ -475,7 +475,7 @@ const modelEntry=document.createElement('section');modelEntry.className='surface
 modelPage.append(modelEntry,modelArchive);
 $('#open-real-model-settings').addEventListener('click',()=>{go('coordinator');document.dispatchEvent(new Event('apix:manager-settings'));});
 const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
-$('#page-resources .page-intro p').textContent='下方仅保存浏览器草稿。默认对话循环会发现项目 .apix/skills、.claude/skills、.agents/skills 和用户 ~/.apix/skills 并按需加载；MCP 开关尚不连接运行时。';
+$('#page-resources .page-intro p').textContent='Skills 按需加载项目和用户技能；MCP 按项目保存到本地服务，明确启用后可发现工具，并由 ApiX 在对话中调用。';
 go("assistant");
 refresh();
 setInterval(refresh, 1500);
