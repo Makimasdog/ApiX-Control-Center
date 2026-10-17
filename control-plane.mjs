@@ -1,5 +1,5 @@
 import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
-import {projectDirectory} from './src/project-folders.mjs';
+import {projectDirectory,sameProjectDirectory} from './src/project-folders.mjs';
 import {inspectCodex,executionArgs} from './dist/src/agent-settings.js';
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
@@ -701,11 +701,12 @@ export function renameConversation(id, input) {
   if (!title || !db.prepare("UPDATE conversations SET title=?,updated_at=? WHERE id=?").run(title, now(), id).changes) throw new Error("对话不存在或标题为空");
 }
 
+function projectAtDirectory(path,exceptId){return rows('SELECT id,path FROM projects').find(p=>p.id!==exceptId&&sameProjectDirectory(p.path,path));}
 export function createProject(input) {
   const name = String(input.name ?? "").trim().slice(0, 100);
   if (!name) throw new Error("请填写项目名称");
   const path = projectDirectory(input.path,input.createDirectory===true);
-  if(row(`SELECT id FROM projects WHERE path=? ${process.platform==='win32'?'COLLATE NOCASE':''}`,path))throw new Error('该文件夹已添加为项目，请直接选择已有项目');
+  if(projectAtDirectory(path))throw new Error('该文件夹已添加为项目，请直接选择已有项目');
   const id = randomUUID();
   db.prepare("INSERT INTO projects(id,name,path,description,created_at) VALUES (?,?,?,?,?)").run(id, name, path, String(input.description ?? "").slice(0, 500), now());
   ensureMailbox(id, "apix-director", "director");
@@ -719,8 +720,8 @@ export function updateProject(id, input) {
   const name = String(input.name ?? "").trim().slice(0, 100);
   if (!name) throw new Error('请填写项目名称');
   const path = projectDirectory(input.path);
-  if(row(`SELECT id FROM projects WHERE path=? ${process.platform==='win32'?'COLLATE NOCASE':''} AND id!=?`,path,id))throw new Error('该文件夹已添加为其他项目，请选择不同目录');
-  if (path !== existing.path && row("SELECT id FROM tasks WHERE project_id=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1", id)) throw new Error("该项目有待处理或运行中的任务，暂不能修改目录");
+  if(projectAtDirectory(path,id))throw new Error('该文件夹已添加为其他项目，请选择不同目录');
+  if (!sameProjectDirectory(path,existing.path) && row("SELECT id FROM tasks WHERE project_id=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1", id)) throw new Error("该项目有待处理或运行中的任务，暂不能修改目录");
   db.prepare("UPDATE projects SET name=?,path=?,description=? WHERE id=?").run(name, path, String(input.description ?? "").slice(0, 500), id);
 }
 export function createTask(input) {
@@ -1281,7 +1282,7 @@ export const discoverMcpTools=projectId=>mcp.discover(projectId);
 export const closeMcpConnections=()=>mcp.close();
 const assistant=createAssistantLoop({...store,
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
-  defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return row('SELECT id FROM projects WHERE path=?',realpathSync.native(path))?.id??createProject({name:'通用工作区',path});},
+  defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
   describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
   infer:async(projectId,prompt,signal)=>{const id='assistant:'+randomUUID(),accountId=scheduling.policy(projectId).managerAccountId,secret=process.env[coordinator.getSettings().apiKeyEnv];const reserved=scheduling.reserveManager(id,projectId);try{return await inferManager(prompt,undefined,{projectId,purpose:'assistant_loop',signal});}catch(error){if(quotaFailure(error.message))scheduling.pauseAccountId(accountId,id);throw new Error(secret?String(error.message).split(secret).join('<redacted>'):error.message);}finally{if(reserved)scheduling.settle(id,null);}},

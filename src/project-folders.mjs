@@ -11,7 +11,11 @@ export function projectDirectory(value,create=false){
     mkdirSync(path,{recursive:true});
   }
   if(!statSync(path).isDirectory())throw new Error('项目路径必须是文件夹，不能是文件');
-  return realpathSync(path);
+  return realpathSync.native(path);
+}
+
+export function sameProjectDirectory(left,right){
+  try{const a=realpathSync.native(left),b=realpathSync.native(right);return process.platform==='win32'?a.toLowerCase()===b.toLowerCase():a===b;}catch{return false;}
 }
 
 export function browseFolders(value){

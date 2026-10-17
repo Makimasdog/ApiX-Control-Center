@@ -41,8 +41,12 @@ test('adapter registration distinguishes invalid IDs from builtins without repla
 
 test('Assistant can start a general conversation without selecting a project or registering employees',async()=>harness(async h=>{
   const s=await h.request('/api/assistant/sessions',{});assert(s.project_id);
-  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(h.dir));
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(join(realpathSync.native(h.dir),'data')));
   await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'解释如何协作，不执行命令'});await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+  const alias=join(h.dir,'general-alias');await symlink(project.path,alias,process.platform==='win32'?'junction':'dir');
+  const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));try{db.prepare('UPDATE projects SET path=? WHERE id=?').run(alias,project.id);}finally{db.close();}
+  assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+  await h.request('/api/projects',{name:'同一目录的别名',path:project.path},400);assert.equal((await h.request('/api/snapshot')).projects.length,1);
 }));
 
 test('Assistant refuses to expose its internal state directory as a workspace',async()=>harness(async h=>{
@@ -237,7 +241,7 @@ async function harness(work, extraEnv={}) {
   };
   const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
   try {await start();await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''}); await work({request,project,dir,model,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
-  finally {await stop();await model.close();await rm(dir,{recursive:true,force:true});}
+  finally {await stop();await model.close();const cleanup=resolve(dir);assert(cleanup.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(cleanup,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
 async function autonomyFixture(h,overrides={},verifySource="import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');assert.equal(process.env.APIX_AGENT_TOKEN,undefined);console.log('actual content check passed');") {
@@ -624,6 +628,8 @@ test('conversation acceptance cannot bypass a bound autonomous quality contract'
   const {s}=await autonomyFixture(h);const calls=h.model.calls.length;
   const reply=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:s.tasks[0].id,fingerprint:'unverified'}]});
   assert.match(reply.turns.at(-1).content,/不能通过聊天跳过/);assert(!reply.reviewTaskId);assert(reply.tasks.every(t=>t.status!=='accepted'));assert.equal(h.model.calls.length,calls);
+  await h.request(`/api/coordination/sessions/${s.id}/stop`,{revision:reply.revision});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks.every(t=>!['running','stopping'].includes(t.status));});
 }));
 
 test('non-Git projects run isolated tasks, freeze delivery, hand off code and prepare integration across restart',async()=>harness(async h=>{

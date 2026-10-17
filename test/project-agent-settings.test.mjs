@@ -1,19 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
-import {existsSync} from 'node:fs';
+import {existsSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {request} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {projectDirectory,browseFolders} from '../src/project-folders.mjs';
+import {projectDirectory,browseFolders,sameProjectDirectory} from '../src/project-folders.mjs';
 import {executionArgs,inspectCodex,normalizeQuota} from '../dist/src/agent-settings.js';
 const fixture=resolve('test/fake-agent-settings.mjs');
 test('folder browser and explicit creation validate absolute directories and preserve files',async()=>{
   const temp=await mkdtemp(join(tmpdir(),'apix-folder-'));
-  try{const sub=join(temp,'中文 空格');assert.throws(()=>projectDirectory(sub),/不存在/);assert(!existsSync(sub));assert.equal(projectDirectory(sub,true),sub);assert.throws(()=>projectDirectory(''),/绝对路径/);assert.throws(()=>projectDirectory('relative',true),/绝对路径/);const file=join(temp,'file');await writeFile(file,'keep');assert.throws(()=>projectDirectory(file,true),/文件夹/);const list=browseFolders(temp);assert(list.directories.some(d=>d.path===sub));assert(!list.directories.some(d=>d.path===file));}finally{await rm(temp,{recursive:true,force:true});}
+  try{const sub=join(temp,'中文 空格');assert.throws(()=>projectDirectory(sub),/不存在/);assert(!existsSync(sub));assert.equal(projectDirectory(sub,true),realpathSync.native(sub));assert(sameProjectDirectory(sub,realpathSync.native(sub)));assert(!sameProjectDirectory(sub,join(temp,'missing')));assert.throws(()=>projectDirectory(''),/绝对路径/);assert.throws(()=>projectDirectory('relative',true),/绝对路径/);const file=join(temp,'file');await writeFile(file,'keep');assert.throws(()=>projectDirectory(file,true),/文件夹/);const list=browseFolders(temp);assert(list.directories.some(d=>d.path===realpathSync.native(sub)));assert(!list.directories.some(d=>d.path===file));}finally{await rm(temp,{recursive:true,force:true});}
 });
 test('model argv and automatic effort distinguish difficulty and runtime',()=>{
   const modelArgs=(_,model)=>model?['--model',model]:[];

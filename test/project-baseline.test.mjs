@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,symlinkSync,unlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,symlinkSync,unlinkSync,realpathSync} from 'node:fs';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
@@ -27,7 +27,7 @@ test('existing Git stays in its repository and managed baseline tampering is rej
   const repo=projectBaseline(source,'plan',data);writeFileSync(join(repo,'a'),'tamper');git(repo,['add','a']);git(repo,['-c','user.name=Test','-c','user.email=test@local.invalid','commit','-m','tamper']);
   assert.throws(()=>projectBaseline(source,'plan',data),/基线已变化/);
   git(source,['init']);writeFileSync(join(source,'a'),'source');git(source,['add','a']);git(source,['-c','user.name=Test','-c','user.email=test@local.invalid','commit','-m','initial']);
-  assert.equal(projectBaseline(source,'other',data),source);
+  assert.equal(projectBaseline(source,'other',data),realpathSync.native(source));
 }));
 test('links and excessive inputs fail without publishing an incomplete baseline',()=>fixture(({source,data,dir})=>{
   const external=join(dir,'external');mkdirSync(external);writeFileSync(join(external,'secret'),'outside');symlinkSync(external,join(source,'linked'),process.platform==='win32'?'junction':'dir');
