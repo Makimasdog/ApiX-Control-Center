@@ -1,3 +1,4 @@
+import {conversationModel,saveConversationModel} from './control-plane.mjs';
 import { createServer } from "node:http";
 import {browseFolders} from './src/project-folders.mjs';
 import {inspectEmployeeRuntime} from './control-plane.mjs';
@@ -78,6 +79,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/outputs\/[^/]+$/.test(pathname)&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,assistantOutput(pathname.split('/')[4],{id:pathname.split('/')[6],offset:q.has('offset')?Number(q.get('offset')):0,limit:6000}));return;}
+      if(/^\/api\/conversation-models\/(assistant|coordination)\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,conversationModel(pathname.split('/')[3],pathname.split('/')[4]));return;}
       if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}
       if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
@@ -145,7 +147,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       }
       if (process.env.APIX_LEGACY_API !== '1' && (['/api/tasks','/api/director/plans','/api/director/messages','/api/collaboration/plans','/api/meetings','/api/manager-reviews'].includes(pathname) || /^\/api\/tasks\/[^/]+\/(resume|revise)$/.test(pathname) || pathname.startsWith('/api/director/'))) { send(409, { error: '请在 ApiX 目标工作台澄清并确认需求后安排任务' }); return; }
       let result;
-      if(pathname==='/api/assistant/sessions')result=createAssistantSession(input);
+      if(/^\/api\/conversation-models\/(assistant|coordination)\/[^/]+$/.test(pathname))result=saveConversationModel(pathname.split('/')[3],pathname.split('/')[4],input);
+      else if(pathname==='/api/assistant/sessions')result=createAssistantSession(input);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/messages$/.test(pathname))result=assistantMessage(pathname.split('/')[4],input);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/reply$/.test(pathname))result=await assistantReply(pathname.split('/')[4],input);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/stop$/.test(pathname))result=assistantStop(pathname.split('/')[4]);

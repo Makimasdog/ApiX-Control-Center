@@ -26,6 +26,7 @@ interface Dependencies extends Store {
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
   reviewTask(id:string,accepted:boolean,fingerprint:string):void;
+  onCreated?(id:string):void;
   onTaskEvent?(sessionId:string,kind:string):void;
 }
 export function createCoordinator(deps: Dependencies) {
@@ -101,6 +102,7 @@ export function createCoordinator(deps: Dependencies) {
       turn(session(id), 'apix', 'clarification', interactionMode === 'structured' ? '我是 ApiX。先核对任务范围，再确认约束、交付物和验收标准。请说明本次任务的范围与边界。' : '我是 ApiX，会与你讨论目标并安排员工执行。你可以自然描述想法，我会逐步澄清范围、约束和验收方式。');
       checkpoint(id);
     });
+    deps.onCreated?.(id);
     return details(id);
   }
   function answerSession(id: string, input: Record<string, unknown>) {
@@ -171,7 +173,7 @@ export function createCoordinator(deps: Dependencies) {
       const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
       const progress = details(id);
-      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,managerPermission:permissions.get(s.project_id).mode,availableEmployees:deps.employees().map(e=>({id:e.id,name:e.name,runtime:e.runtime})),status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion,{projectId:s.project_id,purpose:'discussion',onTool:event=>{memory.append(s.project_id,id,'manager.tool',event);onTool?.(event);}}));
+      const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,managerPermission:permissions.get(s.project_id).mode,availableEmployees:deps.employees().map(e=>({id:e.id,name:e.name,runtime:e.runtime})),status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion,{sessionId:s.id,projectId:s.project_id,purpose:'discussion',onTool:event=>{memory.append(s.project_id,id,'manager.tool',event);onTool?.(event);}}));
       if (session(id).revision !== s.revision) throw new Error('需求已变化，请重试');
       const mutable = ['clarifying', 'ready'].includes(s.status);
       const requirements = mutable ? { ...requirementsOf(s), ...decision.updates } : requirementsOf(s);
@@ -234,12 +236,12 @@ export function createCoordinator(deps: Dependencies) {
     try {
       const authorized=workflow.get(s.project_id);
       const autonomyPolicy=deps.autonomy.settings(s.project_id);
-      const architecture=autonomyPolicy.enabled?await metered(s.project_id,()=>agent.architect(requirementsOf(s),autonomyPolicy.checks,{projectId:s.project_id,purpose:'architecture'})):undefined;
+      const architecture=autonomyPolicy.enabled?await metered(s.project_id,()=>agent.architect(requirementsOf(s),autonomyPolicy.checks,{sessionId:s.id,projectId:s.project_id,purpose:'architecture'})):undefined;
       if(!shouldContinue())throw new Error('上层 Agent 已停止，未派发任务');
       const candidates=deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)}));
-      let generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture));
+      let generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{sessionId:s.id,projectId:s.project_id,purpose:'planning'},architecture));
       // Correct a malformed response once, with a separate budget reservation; never replay unavailable inference.
-      if(generated.failureKind==='response')generated=await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{projectId:s.project_id,purpose:'planning'},architecture,generated.error));
+      if(generated.failureKind==='response')generated=await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{sessionId:s.id,projectId:s.project_id,purpose:'planning'},architecture,generated.error));
       if(!shouldContinue())throw new Error('上层 Agent 已停止，未派发任务');
       mode = generated.mode;
       if(architecture && generated.mode!=='api')throw new Error(`架构执行计划校验失败，未派发任务：${generated.error ?? '模型未生成有效计划'}`);
@@ -389,7 +391,7 @@ export function createCoordinator(deps: Dependencies) {
     if (!claimed.changes) return;
     try {
       const count = row<{n:number}>("SELECT COUNT(*) AS n FROM apix_guidance WHERE task_id=? AND action='guide' AND status='sent'",task.id)?.n ?? 0;
-      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await metered(s.project_id,()=>agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked}));
+      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await metered(s.project_id,()=>agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked},{sessionId:s.id,projectId:s.project_id,purpose:'discussion'}));
       const current = session(bound.session_id);
       const liveTask = row<Task>('SELECT * FROM tasks WHERE id=?',task.id);
       if (!liveTask || current.plan_id !== task.plan_id || current.revision !== bound.revision || current.status !== 'running' || liveTask.status !== 'running') throw new Error('任务状态或用户需求已变化');
@@ -496,7 +498,7 @@ export function createCoordinator(deps: Dependencies) {
       return result;
     }finally{busy.delete(key);}
   }
-  async function qualityReview(projectId:string,sessionId:string,architecture:Architecture,moduleId:string,evidence:unknown){const s=session(sessionId);if(s.project_id!==projectId)throw new Error('审查会话不属于当前项目');return await metered(projectId,()=>agent.review(requirementsOf(s),architecture,moduleId,evidence,{projectId,purpose:'quality'}));}
+  async function qualityReview(projectId:string,sessionId:string,architecture:Architecture,moduleId:string,evidence:unknown){const s=session(sessionId);if(s.project_id!==projectId)throw new Error('审查会话不属于当前项目');return await metered(projectId,()=>agent.review(requirementsOf(s),architecture,moduleId,evidence,{sessionId,projectId,purpose:'quality'}));}
   function delivered(sessionId:string,planId:string){const s=session(sessionId);if(s.plan_id!==planId || !tasksOf(s).every(t=>t.status==='accepted') || row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',planId)?.state!=='completed')throw new Error('当前目标尚未完成系统验收');transaction(()=>{db.prepare("UPDATE coordination_sessions SET status='completed',updated_at=? WHERE id=?").run(now(),sessionId);turn(session(sessionId),'apix','delivery_completed','全部模块和系统集成已通过实际检查与 ApiX 自审，交付版本已冻结。成果保存在托管工作区，代码差异、验收证据和修复记录见工作详情。');checkpoint(sessionId);});}
   return {delivered,reassignPending,qualityReview,testModelConnection, workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
     listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:derivedStatus(s,tasksOf(s))} : details(s.id)),

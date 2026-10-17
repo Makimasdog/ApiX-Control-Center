@@ -1,3 +1,4 @@
+import {showTaskEvents} from './dist/web/task-events.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
@@ -277,7 +278,7 @@ document.addEventListener("click", async (event) => {
     const selected = data.tasks.find((item) => item.id === (d.openTask ?? d.viewTask));
     if (selected?.conversation_id) { selectedProjectId = selected.project_id; selectedConversationId = selected.conversation_id; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedTaskId = selected.id; await refresh(); go("workspace"); }
     else if (selected) {
-      try { const details = await api(`/api/tasks/${selected.id}/details`); $("#task-details-content").innerHTML = `<p><strong>${escapeHtml(selected.employee_name ?? names[selected.runtime])}</strong> · ${escapeHtml(labels[selected.status] ?? selected.status)} · ${time(selected.created_at)}</p><p>${escapeHtml(selected.prompt)}</p>${selected.result ? `<pre>${escapeHtml(selected.result)}</pre>` : ""}<h3>事件</h3>${details.events.slice(-100).reverse().map((item) => `<div class="activity-item"><strong>${escapeHtml(item.kind)}</strong><span>${time(item.created_at)}</span><p>${escapeHtml(summary(item))}</p></div>`).join("") || `<p>尚无事件。</p>`}`; $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
+      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
     }
   }
   else if (d.resumeTask) openEditor("resume", d.resumeTask);

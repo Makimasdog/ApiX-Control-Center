@@ -1,3 +1,4 @@
+import {createConversationModels} from './dist/src/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
 import {projectDirectory,sameProjectDirectory} from './src/project-folders.mjs';
 import {inspectCodex,executionArgs} from './dist/src/agent-settings.js';
@@ -18,7 +19,7 @@ import { requirementBrief } from "./dist/src/requirement-engine.js";
 import { createMemory as createEventMemory } from "./dist/src/memory.js";
 import { createPermissions } from "./dist/src/permissions.js";
 import { createApiXAgent } from "./dist/src/apix-agent.js";
-import { isLoopbackModelUrl } from "./dist/src/model-providers.js";
+import { isLoopbackModelUrl,getProviderConfig } from "./dist/src/model-providers.js";
 import { createRuntimeAdapters } from "./dist/src/runtime-adapters.js";
 import {inferModel,directModelSettings} from './dist/src/model-backend.js';
 import { normalizeWorkerEvent } from "./dist/src/worker-events.js";
@@ -452,7 +453,7 @@ function launch(task) {
   const project = row("SELECT * FROM projects WHERE id=?", task.project_id);
   const command = commandFor(task.runtime);
   if (!project || !command) throw new Error("Agent 不可用或项目不存在");
-  const environment=workerEnvironment(process.env,task.runtime,row('SELECT api_key_env FROM apix_manager_settings WHERE id=1')?.api_key_env);
+  const environment=workerEnvironment(process.env,task.runtime,managerApiKeys());
   environment.PYTHONUTF8='1';environment.PYTHONIOENCODING='utf-8';
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
@@ -999,12 +1000,18 @@ function directorPrompt(project, history, employees, progress, message) {
   return `APIX_DIRECTOR_JSON\n你是 ApiX 主 Agent（Director）。只负责理解用户、整理需求、设计可修改的多 Agent 提案，不运行工具，也不声称任务已经完成。只返回一个 JSON 对象，不要 Markdown。格式：{"reply":"给用户的简短中文答复","goal":"可检查的目标","steps":[{"prompt":"具体任务","employeeId":"可用员工 ID 或空字符串","dependsOn":[前序步骤的零基索引]}],"memoryCandidates":[{"category":"需求或决策","title":"短标题","content":"整理后的事实","evidence":"用户原话中的准确片段"}]}。需要新计划时 steps 为 2 至 8 项；仅回答问题、解释进度或澄清时 steps=[]，不要重复创建计划。无依赖步骤可以并行。未确定的内容在 reply 中提出，不能擅自启动任务。记忆候选必须有可在用户原话中逐字找到的 evidence，不要编造。对于正在执行的计划，先根据下列真实状态向用户说明进展；如需调整，只提新草案，不声称已改变运行中任务。\n项目：${project.name}\n项目描述：${project.description}\n可用员工：${JSON.stringify(employees.map((item) => ({ id: item.id, name: item.name, role: item.role, department: item.department })))}\n当前计划与任务状态：${JSON.stringify(progress)}\n最近对话：${JSON.stringify(history.map((item) => ({ role: item.role, content: item.content.slice(0, 1500) })))}\n用户最新消息：${message}`;
 }
 
+function managerApiKeys(){
+  const settings=[row('SELECT provider,base_url AS baseUrl,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1')];
+  if(row("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_models'"))settings.push(...rows('SELECT settings FROM conversation_models').map(r=>JSON.parse(r.settings)));
+  return [...new Set(settings.filter(Boolean).map(s=>s.apiKeyEnv||(!s.baseUrl?getProviderConfig(s.provider)?.defaultApiKeyEnv:'')).filter(Boolean))];
+}
+
 async function inferManager(prompt,onDelta,context) {
   if(context&&!row('SELECT id FROM projects WHERE id=?',context.projectId))throw new Error('推理项目不存在');
   const controller=new AbortController(),version=context?permissions.get(context.projectId).version:null;
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
-  try{return await inferModel(coordinator.getSettings(),prompt,onDelta,{signal:controller.signal});}
+  try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal});}
   catch(error){if(revoked)throw new Error('ApiX 项目权限已变化，本次模型请求已中止');throw error;}
   finally{if(watch)clearInterval(watch);context?.signal?.removeEventListener('abort',abort);}
 }
@@ -1013,7 +1020,7 @@ async function inferManager(prompt,onDelta,context) {
 async function askPiEmployee(prompt,consultation) {
   const command=commandFor('pi');if(!command)throw new Error('Pi 员工未安装或不可用，请检查 APIX_PI_ENTRY 或 Pi CLI 安装');
   return await new Promise((resolve,reject)=>{
-    const env=piShellEnvironment(workerEnvironment(process.env,'pi',coordinator.getSettings().apiKeyEnv));
+    const env=piShellEnvironment(workerEnvironment(process.env,'pi',managerApiKeys()));
     const child=spawn(command.executable,[...command.prefix,'--mode','rpc','--no-session','--no-extensions','--no-tools','--no-skills','--no-prompt-templates','--no-context-files',...(consultation.model?['--model',consultation.model]:[])],{cwd:consultation.cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
     let raw='',answer='',stderr='',settled=false,failed=false,finished=false;const decoder=new TextDecoder();
     child.stderr.setEncoding('utf8');
@@ -1260,12 +1267,12 @@ export function applyIntegration(id) {
 export function closeStore() { db.close(); }
 
 let notifyAssistant=()=>{};
-const coordinator = createCoordinator({ ...store, memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+const coordinator = createCoordinator({ ...store,onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),
   reportManagerFailure:(projectId,sourceId,error)=>{if(quotaFailure(error))scheduling.pauseAccountId(scheduling.policy(projectId).managerAccountId,sourceId);},
-  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model,coordinator.getSettings().apiKeyEnv):askPiEmployee(prompt,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
+  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model,managerApiKeys()):askPiEmployee(prompt,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
@@ -1275,24 +1282,25 @@ for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.reco
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
 const assistantProject=id=>{const project=row('SELECT * FROM projects WHERE id=?',id);if(!project)throw new Error('项目不存在');const rel=relative(realpathSync.native(project.path),realpathSync.native(dataDir));if(!rel||rel!=='..'&&!rel.startsWith('..'+sep)&&!isAbsolute(rel))throw new Error('工作区不能包含 ApiX 的内部状态目录');return project;};
-const mcp=createMcpManager(store,{project:assistantProject,environment:()=>workerEnvironment(process.env,'mcp',coordinator.getSettings().apiKeyEnv)});
+const mcp=createMcpManager(store,{project:assistantProject,environment:()=>workerEnvironment(process.env,'mcp',managerApiKeys())});
 export const mcpServers=projectId=>({servers:mcp.configs(projectId),tools:mcp.catalog(projectId)});
 export const saveMcpServer=(projectId,input)=>mcp.save(projectId,input);
 export const discoverMcpTools=projectId=>mcp.discover(projectId);
 export const closeMcpConnections=()=>mcp.close();
-const assistant=createAssistantLoop({...store,
+const conversationModels=createConversationModels(store,()=>coordinator.getSettings());
+const assistant=createAssistantLoop({...store,onCreated:id=>conversationModels.initialize('assistant',id),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
   describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
-  infer:async(projectId,prompt,signal)=>{const id='assistant:'+randomUUID(),accountId=scheduling.policy(projectId).managerAccountId,secret=process.env[coordinator.getSettings().apiKeyEnv];const reserved=scheduling.reserveManager(id,projectId);try{return await inferManager(prompt,undefined,{projectId,purpose:'assistant_loop',signal});}catch(error){if(quotaFailure(error.message))scheduling.pauseAccountId(accountId,id);throw new Error(secret?String(error.message).split(secret).join('<redacted>'):error.message);}finally{if(reserved)scheduling.settle(id,null);}},
+  infer:async(projectId,prompt,signal,sessionId)=>{const id='assistant:'+randomUUID(),accountId=scheduling.policy(projectId).managerAccountId,settings=conversationModels.get('assistant',sessionId).settings,secret=process.env[settings.apiKeyEnv];const reserved=scheduling.reserveManager(id,projectId);try{return await inferManager(prompt,undefined,{projectId,purpose:'assistant_loop',signal,modelSettings:settings});}catch(error){if(quotaFailure(error.message))scheduling.pauseAccountId(accountId,id);throw new Error(secret?String(error.message).split(secret).join('<redacted>'):error.message);}finally{if(reserved)scheduling.settle(id,null);}},
   fingerprint:projectId=>projectFingerprint(assistantProject(projectId).path),
   execute:async(s,tool,args,signal,userApproved)=>{
     const project=assistantProject(s.project_id);
     if(['read_file','list_files','write_file','load_skill'].includes(tool))return fileTool(project.path,tool,args);
     if(tool==='run_command'||tool==='verify'){
       const before=tool==='verify'?projectFingerprint(project.path):null;
-      const result=await commandTool(project.path,args,workerEnvironment(process.env,'assistant-tool',coordinator.getSettings().apiKeyEnv),signal,pid=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','command_started',?,?)").run(s.id,JSON.stringify({pid,cwd:project.path,executable:args.executable}),now()),[process.env[coordinator.getSettings().apiKeyEnv]].filter(Boolean));
+      const result=await commandTool(project.path,args,workerEnvironment(process.env,'assistant-tool',managerApiKeys()),signal,pid=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','command_started',?,?)").run(s.id,JSON.stringify({pid,cwd:project.path,executable:args.executable}),now()),managerApiKeys().map(key=>process.env[key]).filter(Boolean));
       if(tool==='verify'){const after=projectFingerprint(project.path);if(before!==after)throw new Error('验证命令修改了项目文件，请重新检查并验证');return {...result,fingerprint:after};}return result;
     }
     if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
@@ -1324,6 +1332,8 @@ const assistant=createAssistantLoop({...store,
       if(permissions.get(s.project_id).mode!=='full_access')throw new Error('委派闭环需要管理者的项目授权');
       const requirements=args.requirements;if(!requirements||typeof requirements!=='object')throw new Error('委派需要明确范围、约束、交付物、验收标准');
       let child=coordinator.createSession({projectId:s.project_id,goal:args.goal});
+      const inherited=conversationModels.get('assistant',s.id).settings;
+      db.prepare('UPDATE conversation_models SET settings=? WHERE kind=? AND session_id=?').run(JSON.stringify(inherited),'coordination',child.id);
       db.prepare('UPDATE assistant_sessions SET child_session_id=? WHERE id=?').run(child.id,s.id);
       try{for(const field of ['scope','constraints','deliverable','acceptance'])child=coordinator.answerSession(child.id,{revision:child.revision,field,value:requirements[field]});child=await coordinator.confirmSession(child.id,{revision:child.revision},()=>!signal.aborted&&row('SELECT status FROM assistant_sessions WHERE id=?',s.id)?.status==='running');return {childSessionId:child.id,architecture:child.autonomy?.architecture,tasks:child.tasks};}
       catch(error){return {childSessionId:child.id,error:error.message};}
@@ -1471,7 +1481,7 @@ export async function inspectEmployeeRuntime(id){
   if(employee.runtime!=='codex')return {source:'unsupported',observedAt:null,quota:{state:'unknown',windows:[],message:'此运行时尚无已接入的官方额度查询接口；请维护共享账户快照'},models:[]};
   if(runtimeInfoPending.has('codex'))return runtimeInfoPending.get('codex');
   const command=commandFor('codex');if(!command)throw new Error('Codex 未安装或不可用');
-  const env=workerEnvironment(process.env,'codex',coordinator.getSettings().apiKeyEnv);
+  const env=workerEnvironment(process.env,'codex',managerApiKeys());
   const pending=inspectCodex(command,env).finally(()=>runtimeInfoPending.delete('codex'));runtimeInfoPending.set('codex',pending);return pending;
 }
 export function agentTeam(projectId, taskId) {
@@ -1481,3 +1491,14 @@ export function agentTeam(projectId, taskId) {
 }
 
 export { registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact };
+
+function modelConversation(kind,id){
+  if(!['assistant','coordination'].includes(kind))throw new Error('对话类型无效');
+  return kind==='assistant'?assistant.details(id):coordinator.sessionDetails(id);
+}
+export function conversationModel(kind,id){modelConversation(kind,id);return conversationModels.get(kind,id);}
+export function saveConversationModel(kind,id,input){
+  const session=modelConversation(kind,id);
+  if(session.busy||['running','waiting_agents','waiting_user'].includes(session.status)||session.tasks?.some(t=>['running','queued','stopping'].includes(t.status)))throw new Error('请先停止或完成当前工作，再更改对话模型');
+  return conversationModels.save(kind,id,input);
+}

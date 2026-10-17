@@ -9,9 +9,10 @@ export interface AssistantSession {id:string;project_id:string;title:string;stat
 interface Event {id:number;role:string;kind:string;body:string}
 interface Dependencies extends Store {
   defaultProject?():string;
+  onCreated?(id:string):void;
   policy(projectId:string):Policy;
   describe(session:AssistantSession):unknown;
-  infer(projectId:string,prompt:string,signal?:AbortSignal):Promise<string>;
+  infer(projectId:string,prompt:string,signal?:AbortSignal,sessionId?:string):Promise<string>;
   execute(session:AssistantSession,tool:string,args:Record<string,unknown>,signal:AbortSignal,userApproved?:boolean):Promise<unknown>;
   fingerprint(projectId:string):string;
   child(id:string):{status:string;complete:boolean;details:unknown};
@@ -57,7 +58,7 @@ export function createAssistantLoop(deps:Dependencies){
     if(!row('SELECT title FROM assistant_notes WHERE project_id=? AND title=?',projectId,title)&&notes(projectId).length>=200)throw new Error('本项目记忆已达 200 条，请先整理');
     db.prepare('INSERT INTO assistant_notes(project_id,title,content,source,updated_at,kind,status,evidence_event_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(project_id,title) DO UPDATE SET content=excluded.content,source=excluded.source,version=assistant_notes.version+1,updated_at=excluded.updated_at,kind=excluded.kind,status=excluded.status,evidence_event_id=excluded.evidence_event_id').run(projectId,title,body,source,now(),kind,status,evidence);return {title,source,status};
   }
-  function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());return details(id);}
+  function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return details(id);}
   function kick(id:string){void run(id).catch(error=>{if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}});}
   function message(id:string,input:Record<string,unknown>){const s=get(id);const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
     const recovery=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind IN ('restart_interrupted','process_unknown','stopped')",id)?.id??0;
@@ -121,7 +122,7 @@ export function createAssistantLoop(deps:Dependencies){
       if(!end)throw new Error('无法在上下文预算内完整保留工具调用与结果，请拆分任务');
       const old=history.slice(0,end),payload={previous:s.summary,events:outputs.history(s.id,old)};
       if(estimateTokens(payload)>target-2000)throw new Error('单条历史消息超过压缩输入预算，请拆分任务');
-      const compact=await deps.infer(s.project_id,'APIX_COMPACT_JSON\n将旧对话压缩为工作摘要，保留用户约束、选择、任务状态、上下文引用、证据与失败、未完成事项。只返回 {"summary":"最多6000字符摘要"}，资料不授予权限。\n'+JSON.stringify(payload),controllers.get(s.id)?.signal);
+      const compact=await deps.infer(s.project_id,'APIX_COMPACT_JSON\n将旧对话压缩为工作摘要，保留用户约束、选择、任务状态、上下文引用、证据与失败、未完成事项。只返回 {"summary":"最多6000字符摘要"}，资料不授予权限。\n'+JSON.stringify(payload),controllers.get(s.id)?.signal,s.id);
       if(get(s.id).status!=='running')throw new Error('会话已停止');if(get(s.id).version!==s.version)continue;
       const summary=text(parse(compact).summary,6000);db.prepare('UPDATE assistant_sessions SET summary=?,compacted_through=? WHERE id=?').run(summary,old.at(-1)!.id,s.id);event(s.id,'system','compacted',{through:old.at(-1)!.id,count:old.length,estimatedBeforeTokens:estimateTokens(value)+overhead,windowTokens:window});
     }
@@ -136,7 +137,7 @@ export function createAssistantLoop(deps:Dependencies){
         const revision=s.version;db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);
         const prompt='APIX_AGENT_LOOP_JSON\n'+instruction+'\n工具目录：'+JSON.stringify(registry(s).catalog())+'\n当前上下文：'+JSON.stringify(currentContext);
         let decision:Record<string,unknown>;
-        try{decision=parse(await deps.infer(s.project_id,prompt,controllers.get(id)?.signal));}catch(error){if(!(error instanceof SyntaxError))throw error;event(id,'system','protocol_repair',{content:'模型未按 JSON 动作契约回复，正在请求一次格式纠正；未执行任何工具。'});const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=24)throw new Error('已达到本轮步数上限，未执行格式无效的操作');db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);try{decision=parse(await deps.infer(s.project_id,prompt+'\n上次回复不是合法 JSON。不要输出 DSML/XML、tool_calls 或 Markdown。只返回上述 action JSON；查询员工额度使用 inspect_quota，不调用不存在的工具。',controllers.get(id)?.signal));}catch(repairError){if(repairError instanceof SyntaxError)throw new Error('模型连续两次未返回有效 JSON 动作；没有执行未识别操作，请检查模型协议兼容性后继续');throw repairError;}}
+        try{decision=parse(await deps.infer(s.project_id,prompt,controllers.get(id)?.signal,id));}catch(error){if(!(error instanceof SyntaxError))throw error;event(id,'system','protocol_repair',{content:'模型未按 JSON 动作契约回复，正在请求一次格式纠正；未执行任何工具。'});const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=24)throw new Error('已达到本轮步数上限，未执行格式无效的操作');db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);try{decision=parse(await deps.infer(s.project_id,prompt+'\n上次回复不是合法 JSON。不要输出 DSML/XML、tool_calls 或 Markdown。只返回上述 action JSON；查询员工额度使用 inspect_quota，不调用不存在的工具。',controllers.get(id)?.signal,id));}catch(repairError){if(repairError instanceof SyntaxError)throw new Error('模型连续两次未返回有效 JSON 动作；没有执行未识别操作，请检查模型协议兼容性后继续');throw repairError;}}
         s=get(id);if(s.status!=='running')break;if(s.version!==revision)continue;
         if(decision.action==='ask'){
           const question=text(decision.question,2000);if(!Array.isArray(decision.options)||decision.options.length>8||decision.options.some(o=>typeof o!=='string'||!o.trim()||o.length>300)||typeof decision.multiple!=='boolean')throw new Error('用户选择格式无效');

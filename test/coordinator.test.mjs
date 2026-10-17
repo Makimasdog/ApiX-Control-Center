@@ -82,7 +82,9 @@ test('Assistant loop approves setup, delegates through frozen contracts and resu
   await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual child check passed');");
   execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture checks'],{cwd:h.project,stdio:'ignore'});
   const projectId=(await h.request('/api/projects',{name:'loop delegation',path:h.project})).id;
-  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
   let pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
   assert.equal(pending.pending.tool,'configure_agents');assert.equal((await h.request('/api/snapshot')).employees.length,0);
   pending=await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
@@ -91,6 +93,8 @@ test('Assistant loop approves setup, delegates through frozen contracts and resu
   }
   assert(final,'delegated loop timed out');assert(final.events.some(e=>e.kind==='delegation_result'));assert.equal(final.child_session_id,null);
   const delegated=final.events.find(e=>e.kind==='delegation_result').body;
+  assert(h.model.calls.every(c=>c.body.model==='fixture-parent-model'),'discussion, architecture, repairs and quality review inherit the parent model');
+  assert.equal((await h.request(`/api/conversation-models/coordination/${delegated.id}`)).settings.model,'fixture-parent-model');
   assert(delegated.tasks.every(t=>t.status==='accepted'));assert.equal(delegated.autonomy.repairs.length,1);assert(delegated.autonomy.checks.some(c=>c.status==='failed'));assert(delegated.autonomy.checks.some(c=>c.status==='passed'));
   assert.equal((await h.request('/api/snapshot')).employees.length,1);
 },{APIX_SUPERVISION_TICK_MS:'100'}));
@@ -100,7 +104,9 @@ test('Assistant project setup cannot overwrite an existing global employee profi
   const projectId=(await h.request('/api/projects',{name:'profile isolation',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'existing worker',runtime:'codex',role:'实现'})).id;
   const original=await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'user-model',reasoningLevel:5,contextTokens:64000});
-  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
   const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
   await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
   await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.events.some(e=>e.kind==='tool_result'&&e.body.tool==='configure_agents'&&e.body.ok===false&&e.body.error.includes('全局能力档案'));});
@@ -111,7 +117,9 @@ test('Assistant project setup cannot overwrite an existing global employee profi
 test('stopping Assistant during architecture inference prevents every later worker dispatch',async()=>harness(async h=>{
   await writeFile(join(h.project,'verify.mjs'),"console.log('fixture check');");
   const projectId=(await h.request('/api/projects',{name:'stop during planning',path:h.project})).id;
-  const parent=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
   const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
   await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
   await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.child_session_id&&s.busy?s:null;});
@@ -556,6 +564,9 @@ test('a manager quota failure pauses its shared account before any fallback work
   await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,accountId:'shared'});
   await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'shared',managerEstimateMinor:5});
   await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture-manager-quota'});
+  const selected=await h.request(`/api/conversation-models/coordination/${s.id}`);
+  assert.equal(selected.settings.model,'fixture-model','global defaults must not replace this conversation model');
+  await h.request(`/api/conversation-models/coordination/${s.id}`,{version:selected.version,model:'fixture-manager-quota'});
   await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision},400);
   const budget=await h.request(`/api/projects/${projectId}/scheduling`);assert.ok(budget.accounts[0].pause);assert.equal(budget.committedMinor,5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
 }));
@@ -751,6 +762,9 @@ test('interaction modes, conversation SSE and direct model endpoint persist acro
   await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:changed.revision,mode:'invalid'},400);
   const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:h.model.baseUrl,apiType:'openai-completions',apiKeyEnv:''});
   assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,h.model.baseUrl);
+  const selected=await h.request(`/api/conversation-models/coordination/${s.id}`);
+  assert.notEqual(selected.settings.model,'qwen-test','global defaults must not replace this conversation model');
+  await h.request(`/api/conversation-models/coordination/${s.id}`,{version:selected.version,model:'qwen-test'});
   const conversation=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:changed.revision,content:'继续澄清'})});
   const conversationFrames=(await conversation.text()).split('\n\n').filter(Boolean);
   assert.equal(conversation.status,200);

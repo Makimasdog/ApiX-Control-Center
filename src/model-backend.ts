@@ -1,6 +1,7 @@
+import {reasoningParameters} from './conversation-models.js';
 import {getProviderConfig,isLoopbackModelUrl,validateModelConfig} from './model-providers.js';
 
-export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string}
+export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string}
 export function directModelSettings(saved:ModelSettings):ModelSettings {
   const preset=!saved.baseUrl?getProviderConfig(saved.provider):undefined;
   const settings=preset?{...saved,baseUrl:preset.baseUrl,apiType:preset.apiType,apiKeyEnv:saved.apiKeyEnv||preset.defaultApiKeyEnv||''}:saved;
@@ -40,6 +41,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
   // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
   const stream=true;
   const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
+  Object.assign(body,reasoningParameters(settings));
   const headers:Record<string,string>={'Content-Type':'application/json','Accept':stream?'text/event-stream':'application/json'};
   if(key)headers[api==='anthropic-messages'?'x-api-key':'Authorization']=api==='anthropic-messages'?key:'Bearer '+key;
   if(api==='anthropic-messages')headers['anthropic-version']='2023-06-01';

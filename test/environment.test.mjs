@@ -40,3 +40,9 @@ test('shared manager and worker authentication fails explicitly, independent log
   assert.deepEqual(workerEnvironment({APIX_MANAGER_KEY:'manager-only',anthropic_api_key:'worker-only'},'claude','APIX_MANAGER_KEY'),{anthropic_api_key:'worker-only'});
   assert.deepEqual(workerEnvironment({PATH:'fixture'},'constructor',''),{PATH:'fixture'});
 });
+
+test('conversation snapshots keep old manager credentials and aliases out of worker environments',()=>{
+ const source={PATH:'fixture',OLD_MANAGER_KEY:'old-secret',NEW_MANAGER_KEY:'new-secret',ALIAS:'old-secret',OPENAI_API_KEY:'worker-only'};
+ assert.deepEqual(workerEnvironment(source,'codex',['OLD_MANAGER_KEY','NEW_MANAGER_KEY']),{PATH:'fixture',OPENAI_API_KEY:'worker-only'});
+ assert.throws(()=>workerEnvironment({...source,OPENAI_API_KEY:'old-secret'},'codex',['OLD_MANAGER_KEY','NEW_MANAGER_KEY']),/凭据共用/);
+});

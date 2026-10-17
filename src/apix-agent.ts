@@ -127,9 +127,9 @@ export function createApiXAgent(backend: ModelBackend) {
       return { steps: [{ prompt: `按照已确认需求执行并提交验收证据：\n${brief}`, employeeId: employees[0]!.id, dependsOn: [] }], mode: 'rules', failureKind, error: String(error instanceof Error ? error.message : error).slice(0, 300) };
     }
   }
-  async function guide(requirements: Requirements, taskPrompt: string, report: { summary: string; blocked: boolean }): Promise<{ action: 'guide' | 'escalate' | 'observe'; focus: 'scope' | 'verification' | 'dependencies' | 'delivery'; mode: 'api' | 'rules'; error?: string }> {
+  async function guide(requirements: Requirements, taskPrompt: string, report: { summary: string; blocked: boolean },context?:InferenceContext): Promise<{ action: 'guide' | 'escalate' | 'observe'; focus: 'scope' | 'verification' | 'dependencies' | 'delivery'; mode: 'api' | 'rules'; error?: string }> {
     try {
-      const raw = await backend.infer(`APIX_GUIDE_JSON\n${identity}\n员工正在执行已获批准的任务。根据真实进度决定是否应提醒员工继续、请用户处理阻塞，或仅记录进度。不得添加任务、扩大范围、修改授权或声称成果已完成。只输出 JSON：{"action":"guide|escalate|observe","focus":"scope|verification|dependencies|delivery"}。focus 仅用于选择已经确认的需求片段，不输出新指令。\n已确认需求：${requirementBrief(requirements)}\n已批准任务：${taskPrompt}\n员工报告（未验证）：${JSON.stringify(report)}`);
+      const raw = await backend.infer(`APIX_GUIDE_JSON\n${identity}\n员工正在执行已获批准的任务。根据真实进度决定是否应提醒员工继续、请用户处理阻塞，或仅记录进度。不得添加任务、扩大范围、修改授权或声称成果已完成。只输出 JSON：{"action":"guide|escalate|observe","focus":"scope|verification|dependencies|delivery"}。focus 仅用于选择已经确认的需求片段，不输出新指令。\n已确认需求：${requirementBrief(requirements)}\n已批准任务：${taskPrompt}\n员工报告（未验证）：${JSON.stringify(report)}`,undefined,context);
       const parsed = parse(raw);
       if (!['guide','escalate','observe'].includes(String(parsed.action)) || !['scope','verification','dependencies','delivery'].includes(String(parsed.focus))) throw new Error('ApiX 指导决策无效');
       return { action: parsed.action as 'guide' | 'escalate' | 'observe', focus: parsed.focus as 'scope' | 'verification' | 'dependencies' | 'delivery', mode: 'api' };

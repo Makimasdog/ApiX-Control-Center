@@ -21,7 +21,7 @@ export interface Store {
   now(): string;
 }
 export interface ManagerToolEvent { toolName:string; phase:'start'|'end'; isError?:boolean }
-export interface InferenceContext { projectId:string; purpose:'discussion'|'planning'|'formatting'|'connection_test'|'architecture'|'quality'|'assistant_loop'; onTool?:(event:ManagerToolEvent)=>void }
+export interface InferenceContext { sessionId?:string; projectId:string; purpose:'discussion'|'planning'|'formatting'|'connection_test'|'architecture'|'quality'|'assistant_loop'; onTool?:(event:ManagerToolEvent)=>void }
 export interface ModelBackend { infer(prompt: string, onDelta?: (delta: string) => void, context?:InferenceContext): Promise<string> }
 export interface CoordinatorDecision {
   kind: 'clarification' | 'requirement_review' | 'progress' | 'work';
