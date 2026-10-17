@@ -1,10 +1,6 @@
-> 当前开发分支已改为独立 ApiX 模型 API 后端，Pi 与其他 CLI 同为可选员工。本文中旧版 Pi 管理者描述保留为历史记录；当前接口与迁移见[独立后端说明](../协作/独立ApiX推理后端架构与验收.md)。
-
 # ApiX Control Center 项目 Wiki
 
-> 本文是项目的完整知识库，随开发进展持续更新。  
-> 当前对应分支：`codex/readiness-p0-p2`，基线提交 `93595d9` 已通过 PR #6 合入 `main`。  
-> 最后更新：2026-10-14。自主交付的最新范围见 [模块契约](自主交付与模块契约.md)和[稳定交付修复与自审](../协作/稳定交付修复与自审.md)。
+> 当前使用知识库，更新于 2026-10-18；源码基线 `codex/readiness-p0-p2` / `08bf165`。当前模块和循环以[架构文档](../架构设计文档.md)为准，历史验证按[变更回顾](变更回顾.md)区分提交与范围。
 
 ---
 
@@ -39,11 +35,11 @@
 
 ApiX Control Center 是一个**面向本机项目的多 Agent 管理平台**。
 
-**核心理念**：用户是决策者，ApiX 是管理者 Agent，AI 员工（Pi、Codex、Claude Code 等）是执行者。ApiX 不直接产出代码，而是与用户澄清需求、生成计划、分派任务、监督进度、收集交付物，让多个 AI 工具像真实团队一样协同工作。
+**核心理念**：用户是决策者，ApiX 是管理者 Agent，AI 员工（Pi、Codex、Claude Code 等）是执行者。ApiX 可直接使用宿主工具读取、修改和验证项目，也可将复杂任务交给 CLI 员工；主循环管理用户选择、权限、上下文与交付证据。
 
-ApiX 使用 Pi CLI 作为推理底座（管理者推理），但管理者与员工的身份、账户和权限严格隔离，互不共享。
+ApiX 直接调用模型 API；Pi 与 Codex、Claude 等同属可选执行员工，使用独立身份、模型和权限。
 
-**不是什么**：ApiX 不是又一个编码 Agent，不替代 Pi/Codex/Claude，也不提供面向公网的多用户服务。
+ApiX 是独立通用 Agent；管理 API 信任本机用户，不提供公网多用户认证或 OS 沙箱。
 
 ---
 
@@ -55,8 +51,8 @@ ApiX 使用 Pi CLI 作为推理底座（管理者推理），但管理者与员�
 | --- | --- |
 | Node.js | ≥ 22.19.0（需内置 SQLite FTS5 支持） |
 | Git | 已安装；非 Git 或尚无提交的项目使用托管输入快照 |
-| Pi CLI | 管理者推理所需 |
-| 执行员工 CLI | 至少一种（Pi、Codex、Claude Code 等） |
+| 模型 API | 提供可用 URL、模型、协议及所需密钥 |
+| 执行员工 CLI | 可选；委派时安装和认证所选员工 |
 
 ### 安装与启动
 
@@ -76,7 +72,7 @@ npm start          # 自动编译 TypeScript 后启动
 | `PORT` | 服务端口，默认 4173 |
 | `APIX_DATA_DIR` | 数据目录，默认 `~/.apix-agent-os/` |
 | `APIX_PI_ENTRY` | Pi CLI 入口路径 |
-| `APIX_MANAGER_PI_ENTRY` | 单独覆盖管理者的 Pi 入口 |
+| `APIX_MANAGER_PI_ENTRY` | 已停用，主模型不使用 Pi |
 | `APIX_CODEX_ENTRY` | Codex CLI 入口 |
 | `APIX_CLAUDE_ENTRY` | Claude Code 入口 |
 | `APIX_GEMINI_ENTRY` | Gemini CLI 入口 |
@@ -115,37 +111,9 @@ node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db 
 
 ## 4. 整体架构
 
-```
-用户浏览器 (index.html / web/*.ts)
-        │  HTTP + POST SSE
-        ▼
-    server.mjs                ← 本机 Host/Origin 校验、路由、JSON 校验
-        │
-        ▼
-control-plane.mjs             ← SQLite 初始化/迁移、模块装配、进程托管
-        │
-   ┌────┴─────────────────────────────────┐
-   │         src/ 核心业务逻辑            │
-   │                                       │
-   │  coordinator.ts  ──►  apix-agent.ts  │  ← 会话、计划、派发、调整
-   │       │                    │          │
-   │  requirement-engine.ts  permissions.ts│  ← 需求评估、授权
-   │  scheduling.ts     planning-meetings.ts│  ← 调度、规划会议
-   │  task-scheduler.mjs  execution-control│  ← DAG、并发、暂停
-   │  mailbox.mjs   agent-mailbox.ts       │  ← 消息、凭据
-   │  code-handoffs.mjs                    │  ← worktree、冻结交付
-   │  memory.ts   worker-events.ts         │  ← 账本、事件采集
-   └───────────────────────────────────────┘
-        │
-   外部 CLI 子进程 (Pi / Codex / Claude / ...)
-        │  stdin/stdout JSONL 或 stream-json
-        ▼
-   独立 Git Worktree (APIX_DATA_DIR/workspaces/<taskId>)
-```
+默认主对话 → assistant-loop → 模型 JSON 动作 → 工具/批准/用户选择 → 真实结果 → 再决策。复杂任务通过 delegate 进入模块契约、成本路由、worktree 执行和质量子流程，再把证据返回主循环。
 
-**调用链（正向）**：`web/coordinator.ts` → `POST /api/coordination/sessions/:id/messages/stream` → `src/coordinator.ts` → 需求/权限校验 → `resolveApproval` → `launch` → 外部 CLI。
-
----
+这是有界循环，不是一次性线性计划。每轮最多 24 步、30 分钟；等待用户或员工时持久化状态，事件和兜底定时器恢复推进。图示见[当前架构与主循环](ApiX当前架构与主循环.md)，模块入口见[代码索引](代码索引.md)。
 
 ## 5. 目录结构
 
@@ -209,6 +177,9 @@ ApiX-Control-Center/
 
 ## 6. 核心模块详解
 
+当前新增主循环 `assistant-loop`、模型后端 `model-backend`、对话配置 `conversation-models`、工具注册 `tool-registry`、MCP `mcp-manager`、分层上下文 `assistant-context`、记忆召回 `assistant-memory` 和历史 `chat-history`。这些模块与下方协调器通过宿主装配，完整职责见[代码索引](代码索引.md)。
+
+
 ### 6.1 `src/contracts.ts`
 
 所有共享类型定义的单一来源：需求字段、计划结构、会话状态、权限模式、事件类型、存储接口。修改此文件影响全局。
@@ -231,10 +202,10 @@ ApiX-Control-Center/
 ### 6.3 `src/apix-agent.ts`
 
 管理者推理封装：
-- 构建 Pi 推理输入（系统提示、工具定义、上下文）
+- 构建独立模型 API 的需求、架构、计划、指导与质量 JSON 契约
 - 带证据的需求提取：从对话中识别五维字段
 - 计划校验：检查员工真实可用、依赖指向合法、字段非空
-- 规则降级：带工具的结构化调用若返回普通文本，最多再进行一次无工具格式整理
+- 校验模型输出，规划失败按协作模式保存待审草案或停止；不虚构已执行操作
 
 ### 6.4 `src/requirement-engine.ts`
 
@@ -298,7 +269,7 @@ Git worktree 管理与交付冻结：
 ### 6.12 `src/readiness.mjs`
 
 就绪检查（`GET /api/readiness?projectId=...`）：
-- 检查项目目录、Pi 入口、模型密钥环境变量、员工入口、管理者预算；非 Git 项目执行时建立计划级托管基线
+- 检查项目目录、独立模型 API 配置、密钥环境变量、员工入口、管理者预算；非 Git 项目执行时建立计划级托管基线
 - 不预留费用，不宣称登录或额度已验证
 
 ---
@@ -311,6 +282,7 @@ Git worktree 管理与交付冻结：
 | --- | --- |
 | 项目与员工 | `projects`, `employees`, `departments`, `project_repositories` |
 | 计划与执行 | `plans`, `tasks`, `task_dependencies`, `approvals`, `runs`, `events`, `artifacts`, `workspaces` |
+| 主对话与模型 | `assistant_sessions`, `assistant_events`, `assistant_notes`, `assistant_outputs`, `assistant_tool_discoveries`, `assistant_supervision`, `conversation_models` |
 | 对话与需求 | `coordination_sessions`, `coordination_turns`, `coordination_checks`, `coordination_events`, `coordination_plan_briefs` |
 | 管理者状态 | `apix_manager_settings`, `apix_workflows`, `apix_policies`, `apix_grants`, `apix_guidance`, `apix_ledger` |
 | 项目记忆 | `project_profiles`, `memories`, `memory_revisions`, `memory_fts` |
@@ -326,6 +298,19 @@ Git worktree 管理与交付冻结：
 ## 8. HTTP API 参考
 
 所有 API 仅监听本机，信任本机用户，**不能暴露到公网**。修改类请求使用 JSON，须携带当前 revision/version 等乐观锁值。
+
+### 主对话与历史
+
+| 方法 路径 | 说明 |
+| --- | --- |
+| GET/POST /api/assistant/sessions | 列出/创建主对话；消息、批准/选择、停止、恢复、记忆和事件有独立子路由 |
+| GET/POST /api/conversation-models/:kind/:id | 读取/按配置版本修改本对话模型与强度，kind 为 assistant/coordination |
+| GET /api/chat-history | 项目统一历史，view 为 active/archived/deleted |
+| POST /api/chat-history/:kind/:id | 带 version 和 archive/delete/restore 操作；删除可恢复 |
+| GET /api/project-folders | 服务所在电脑的目录浏览 |
+| POST /api/employees/:id/runtime-info | 支持时查询实际额度与模型目录 |
+
+归档/删除不销毁证据，活动/未知任务须先处理。默认主循环轮询持久化事件，以下 POST SSE 属于协作目标工作台。
 
 ### 会话与协调
 
@@ -374,7 +359,7 @@ Git worktree 管理与交付冻结：
 | `complete` | 正式会话记录 |
 | `error` | 错误信息 |
 
-工具事件账本只存元数据（工具名、阶段、错误标记），不保存命令参数或文件内容。
+本节协调 SSE 的工具活动为元数据（工具名、阶段、错误标记）；默认主循环的 assistant_events 另有参数和结果记录，大结果完整保存在 assistant_outputs 并分页引用。
 
 ---
 
@@ -382,12 +367,15 @@ Git worktree 管理与交付冻结：
 
 | 文件 | 页面/功能 |
 | --- | --- |
-| `index.html` + `web/coordinator.ts` | 默认对话工作区：项目选择、会话管理、流式对话、工作详情（双模式） |
+| `web/assistant.ts` | 默认通用 Agent 对话、工具/选择、完整输出和项目记忆 |
+| `web/conversation-model.ts` / `web/chat-history.ts` | 每对话模型和项目统一历史 |
+| `web/task-events.ts` | 任务日志筛选、搜索、折叠、窄屏换行，最近最多 100 条 |
+| `index.html` + `web/coordinator.ts` | 协作目标、计划与验收，保留双模式与 SSE |
 | `web/conversation-stream.ts` | UTF-8/SSE 分帧、增量文本、工具活动显示、断流处理 |
 | `web/overview.ts` | 管理总览：项目目标、待处理事项、任务流转 |
 | `web/employee.ts` | 员工管理：注册、能力声明、状态显示 |
 | `web/model-settings.ts` | 管理者模型配置：自定义 URL、模型 ID、协议、Key 变量名、连接测试 |
-| `web/readiness.ts` | 就绪提示与修复入口（Pi 入口、模型、员工、预算） |
+| `web/readiness.ts` | 就绪提示与修复入口（模型 API、员工、预算） |
 | `web/execution-view.ts` | 并发与暂停设置 |
 | `web/scheduling-view.ts` | 调度偏好与预算账本 |
 | `web/requirements-form.ts` | 五维需求表单（约束模式） |
@@ -433,13 +421,9 @@ Git worktree 管理与交付冻结：
 
 ### 三级权限模式
 
-| 模式 | 对话工具 | 计划工具 | 执行策略 |
-| --- | --- | --- | --- |
-| `ask_approval` | 无 | 无 | 须用户批准 |
-| `read_only` | read/grep/find/ls | 同左 | 拒绝员工执行 |
-| `full_access` | 只读工具 + bash/edit/write | 仅只读工具 | 可策略授权 |
+主循环的 read_only 允许宿主标为只读的工具，拒绝非只读动作；ask_approval 对需要批准的副作用展示本次参数；full_access 仍受项目、工具和费用边界限制。持续员工协作配置始终须明确批准，候选记忆另行确认。
 
-权限按**项目 × 主体**独立设置。任一方为 `read_only` 拒绝执行；双方均为 `full_access` 才允许策略自动授权，否则须用户批准。
+外部 CLI 内部工具审批由原生模式与适配器管理，ApiX 不逐条拦截员工所有工具。员工执行授权仍按双方权限和版本检查，不能把只读主循环理解为已授权员工执行。
 
 ### 执行授权（`apix_grants`）
 
@@ -454,7 +438,7 @@ Git worktree 管理与交付冻结：
 
 - 默认关闭，首次开启须用户明确批准，选择至少一位可用员工
 - 事务中设置管理者和员工完全访问权限，保存版本
-- 已有活动、排队或状态未知任务时不能重新开启/修改授权
+- 已有充分权限时可复用原权限版本；需要扩大权限时先处理冲突任务。开关不自动恢复 unknown 或解除运行时暂停
 - 暂停自动安排不撤销已有权限，停止当前工作会撤销授权
 
 ---
@@ -483,6 +467,10 @@ Git worktree 管理与交付冻结：
 
 1. 硬筛选：必要标签、工具、上下文容量、指定员工
 2. 软排序：已验收历史（质量依据）→ 项目熟悉度 → 人工费用/时间估计 → 队列长度
+
+### 员工模型与运行时额度
+
+Codex 支持时通过只读 app-server 查询额度窗口和模型目录；其他缺少接口的运行时返回未知。员工模型单独配置，Codex 支持 auto/low/medium/high/xhigh 强度，auto 依任务难度映射。运行时额度与人工账户快照不是同一种数据。Windows 事件按 UTF-8 处理，但不能恢复原始 CLI 已经输出为问号的文字。
 
 ### 预算与额度
 
@@ -546,6 +534,10 @@ else → 'observe', focus: 'verification'
 
 ## 16. Git Worktree 与代码交接
 
+### 项目目录与非 Git 基线
+
+添加项目可浏览服务所在电脑的目录或手工输入。创建、更新与通用工作区复用共用规范路径身份，Windows 长/短路径或别名不会创建重复项目。非 Git 或无首次提交项目建立计划级托管快照与 worktree，仍须安装 Git，但不改写原目录。
+
 ### 工作区位置
 
 `APIX_DATA_DIR/workspaces/<taskId>` — Git detached worktree。
@@ -575,28 +567,13 @@ else → 'observe', focus: 'verification'
 
 ## 17. 管理者模型配置
 
-### 支持的模型来源
+在模型设置配置平台或自定义 URL、模型 ID、协议和 Key 环境变量名。支持 Chat Completions、Responses、Anthropic Messages；无需 Pi，也不生成管理者 Pi 配置。密钥值只放在本地环境中。
 
-1. Pi 已配置模型（默认）
-2. 兼容 OpenAI API 的自定义 URL（`openai-completions` 协议）
-3. 阿里百炼（通过 `.env` 配置 `ali_url` / `ali_api_key` / `ali_model_name`）
-4. 本地模型（Ollama、LM Studio 等，通过"读取本地模型"获取目录）
+全局设置提供新对话默认值；已有对话保存供应商连接快照。输入框上方为本对话选择模型和思考强度，刷新、切换、重启后保留。切换模型重置强度；执行、委派或等待批准时先处理当前工作再更改。
 
-### 独立连接测试
+主循环、摘要、格式纠正以及子流程架构/计划/监督/质量审查沿用对话模型，员工 CLI 模型独立。DeepSeek Flash/V4 Pro 已核验默认、关闭、低、高、最高；未知供应商/网关使用默认，不猜测能力。
 
-`POST /api/manager/test` — 须包含 `projectId`、`settings`、`approved=true`。
-
-- 使用当前项目推理预算预留，执行一次随机 nonce 回显校验
-- 禁用工具、项目上下文、执行邮箱凭据
-- 全局互斥：测试期间不能重复测试或修改配置
-- 90 秒后请求终止；断开浏览器不取消调用
-- 成功仅证明本次推理连接，不证明工具、员工或端到端协作
-
-### Pi 子进程行为
-
-Windows 下 Pi 子进程优先使用已安装 Git 的 Bash，不修改全局 PATH。管理者 Pi 使用 RPC 模式，禁用扩展、Skills 与提示模板。
-
----
+连接测试 POST /api/manager/test 要求 projectId、已保存 settings 和 approved=true，使用项目预算做 nonce 回显，无项目工具或员工派发，90 秒超时；成功只证明本次推理。读取本地模型目录不保存、加载模型或证明可推理。
 
 ## 18. 测试体系
 
@@ -630,7 +607,7 @@ P0–P2 阶段历史回归为 113/113。当前测试包含自主质量闭环、�
 ### 真实协作验收
 
 ```powershell
-$env:APIX_MANAGER_PI_ENTRY = '你的真实 Pi cli.js 绝对路径'
+# 先配置本地阿里 API 和真实 Codex/Claude 员工，费用需另行批准；固定测试模型 qwen3.8-27b
 npm run build
 node scripts/verify-real-collaboration.mjs --approve-cost
 ```
@@ -643,7 +620,7 @@ node scripts/verify-real-collaboration.mjs --approve-cost
 
 （源自 `AGENTS.md`，2026-10-12 更新）
 
-1. **双 Agent 协作**：Codex 与 Claude Code CLI 协作，任务归属由用户指定，见 `协作/` 目录
+1. **当前分工**：本轮由 Codex 完成前后端并自审，不额外启动 Agent；历史双 Agent 分工不自动恢复，见 AGENTS.md
 2. **每次修改纳入 Git 管理**：提交前审查最终 diff，包括新增文件、调用方、错误路径、数据一致性与访问边界
 3. **审查结论记录到 `协作/`**：自审如实标注自审，不称独立审查或人工批准
 4. **只有审查通过后才能提交**：提交前检查暂存区与被审查内容一致，审查后改动代码须重新审查
@@ -654,14 +631,14 @@ node scripts/verify-real-collaboration.mjs --approve-cost
 ```
 <type>: <subject>
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+# 仅为真实参与者记录共同作者，不自动添加历史作者
 ```
 
 ---
 
 ## 20. 多 Agent 协作历史
 
-项目采用 Codex + Claude Code CLI 双 Agent 协作开发，历史记录见 `协作/` 目录。
+项目历史上采用 Codex + Claude Code CLI 双 Agent 协作；本轮由 Codex 自审，历史记录见 `协作/` 目录。
 
 | 文档 | 内容 |
 | --- | --- |
@@ -678,27 +655,10 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 
 ## 21. 已验证范围与已知限制
 
-### 已验证
-
-| 范围 | 状态 |
-| --- | --- |
-| 代码基线 `93595d9` | Windows CI（Node 22.19.0），静态检查 + 100/100 测试通过 |
-| 连接测试功能 | 本地静态检查 + 104/104 回归 + 4/4 定向复验（假 CLI） |
-| P0–P2 代码 | 113/113 完整回归通过 |
-| 管理者真实模型 | Pi 0.74.2 + 阿里 `qwen3.7-flash`，read/bash/write 及任务派发验证 |
-| 界面布局 | 1360×900 与 390×844 流式对话、详情收起、窄屏验收 |
-| 真实多员工编码 | Pi 规划 + Codex 写入冻结 + Claude 接收代码及指导确认 + Node 验证，2026-10-13 通过 |
-
-### 已知限制与待补齐
-
-- Gemini/OpenCode/Kimi 真实 CLI 联调待补齐
-- 本轮新界面视觉验收待补（浏览器工具不可用）
-- 供应商用量同步、价格同步未实现
-- 操作系统级沙箱未实现
-- 远程多用户认证未实现
-- 不能仅凭计划、工具事件或自然语言总结证明项目已完成
-
----
+- a0dc6c0 有 Windows CI 247/247 通过记录；08bf165 最终相关测试 99 项通过，另有桌面及 390px 窄屏证据。范围不同，不相加，不称最新完整回归。
+- 确定性 HTTP、假 CLI 与历史真实小任务记录不能证明任意业务系统、供应商和 CLI 版本都能完成；真实模型权限、费用、限流和目标设备仍须验证。
+- 尚无公网多用户认证、OS 沙箱、任意原生会话重连、无限循环或自动重写全部冻结契约。额度查询只在运行时支持时提供，账户快照仍人工维护。
+- 原始编码已丢失为问号的文本不能还原。消息未确认不能声称指导已采纳。详见[功能与限制](功能与限制.md)与[变更回顾](变更回顾.md)。
 
 ## 22. 文档导航
 
@@ -711,7 +671,8 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 | 分支管理 | `docs/分支管理.md` | 分支历史与合并记录 |
 | 协调系统实现 | `docs/ApiX协调系统实现.md` | 重构历史与阶段设计 |
 | 管理总览设计 | `docs/管理总览设计.md` | 管理页面设计历史 |
-| 早期功能说明 | `docs/功能与限制.md` | 历史阶段能力记录 |
+| 功能与限制 | `docs/功能与限制.md` | 当前能力与限制 |
+| 变更回顾 | `docs/变更回顾.md` | 演进、修复与验证证据 |
 | 项目 Wiki（本文） | `docs/项目Wiki.md` | 完整知识库，随开发更新 |
 
 ---

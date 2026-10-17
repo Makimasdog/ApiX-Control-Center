@@ -1,6 +1,6 @@
 # ApiX 当前架构、模块关系与主 Agent loop
 
-代码基线：`codex/readiness-p0-p2`，`3f5f22c62d3b072c88af2ef91ef7963e86d4fcb5`，2026-10-16。本页描述该提交的实际实现，不代表当前启动进程已加载这个版本，也不是生产可用性认证。
+代码基线：`codex/readiness-p0-p2` / `08bf165`，2026-10-17。本文已更新到当前源码；原 HTML 图页是 2026-10-16 快照，未重绘，MCP、分层上下文、事件监督与对话模型以本页和[架构文档](../架构设计文档.md)为准。
 
 [打开四图浏览页](../.archify/architecture-apix-current-20261016-192305/index.html) · [交互框架图](../.archify/architecture-apix-current-20261016-192305/overview/overview.html) · [交互模块图](../.archify/architecture-apix-current-20261016-192305/modules/modules.html)
 
@@ -16,6 +16,7 @@ flowchart TB
     MODEL -->|结构化动作| MAIN
     MAIN -->|工具调用| BRIDGE[宿主 execute 工具桥]
     BRIDGE --> LOCAL[文件、命令、验证、Skill 与项目记忆]
+    BRIDGE --> MCP[用户启用的项目 MCP 工具]
     BRIDGE -->|delegate| TEAM[契约规划、任务调度与自主验收]
     TEAM --> CLI[可选员工：Pi、Codex、Claude 等 CLI]
     CLI --> WT[托管 Git worktree：实现与产物]
@@ -27,7 +28,7 @@ flowchart TB
 
 ApiX 自己实现主循环并调用模型 API。Pi 与 Codex、Claude 同属可选执行员工，主循环不依赖 Pi。OpenAI Chat Completions、Responses 和 Anthropic Messages 是模型接入协议，不意味着绑定某个模型品牌。
 
-默认对话入口是 `/api/assistant/sessions`。旧 `/api/coordination/sessions` 目标工作台仍保留，并作为复杂委派的子流程。默认主循环的工具目录目前没有通用 `call_mcp`；界面的 MCP 资源登记不能直接等同于主循环已具备任意 MCP 工具调用能力。
+默认对话入口是 `/api/assistant/sessions`。旧 `/api/coordination/sessions` 目标工作台仍保留，并作为复杂委派的子流程。主循环通过 `search_tools` 延迟发现用户已启用的项目 MCP 工具，再按 Schema、工具版本和项目权限调用；支持 stdio 与 Streamable HTTP，不等于可以调用任意未配置服务。
 
 ## 2. 模块关系
 
@@ -37,7 +38,10 @@ flowchart TB
     HOST --> COORD[coordinator：需求、计划与子会话]
     LOOP -->|通过宿主 infer| MODEL[model-backend：HTTP 模型推理]
     LOOP -->|通过宿主 execute| TOOLS[assistant-tools：文件、进程、规则与 Skill]
-    LOOP --> NOTES[assistant_notes：跨对话项目笔记]
+    LOOP --> NOTES[assistant_notes：项目内确认后召回]
+    LOOP --> REG[tool-registry 与 MCP：发现、Schema、版本]
+    LOOP --> CTX[assistant-context：完整引用与预算压缩]
+    MODEL --> CFG[conversation-models：对话模型与强度快照]
     COORD --> AGENT[apix-agent：架构、计划、审查与指导]
     AGENT -->|通过宿主 infer| MODEL
     COORD --> CONTRACT[architecture：接口、数据结构、边界与契约摘要]
@@ -60,7 +64,9 @@ flowchart TB
 |---|---|---|
 | 主循环 | `src/assistant-loop.ts` | `tool / ask / finish`，持久化等待与恢复状态 |
 | 模型后端 | `src/model-backend.ts` | HTTP 流式推理，90 秒超时，可取消，失败不自动重试 |
-| 工具和上下文 | `src/assistant-tools.ts` | 项目文件、直接进程调用、规则文件和 Skill 内容；不隐式使用 shell |
+| 工具目录与执行 | `src/tool-registry.ts`、`src/assistant-tools.ts`、`src/mcp-manager.ts` | Schema/版本校验、项目工具、启用的 MCP 发现与调用；不隐式使用 shell |
+| 分层上下文与记忆 | `src/assistant-context.ts`、`src/assistant-memory.ts` | 完整输出引用、预算压缩、项目内已确认记忆召回 |
+| 对话模型 | `src/conversation-models.ts` | 模型/强度和供应商连接快照；子流程继承，员工模型独立 |
 | 架构规划 | `src/apix-agent.ts`、`src/architecture.ts` | 冻结模块 paths、依赖、接口 schema、数据结构、验收条件和检查 ID |
 | 成本与难度 | `src/scheduling.ts` | 质量门槛后比较费用；未知费用不当作零，预估不自动授予费用上界 |
 | 排队与执行 | `src/task-scheduler.mjs`、`src/execution-control.mjs`、`src/runtime-adapters.ts` | 前置 accepted、权限、并发、额度和运行时准入 |
@@ -118,31 +124,36 @@ flowchart TD
     E -->|普通工具| R[记录真实成功或失败结果、验证证据]
     R --> B
     E -->|delegate 返回子会话| W[waiting_agents：暂停主循环推理]
-    W --> T[每秒检查子流程；调度与自主监督独立推进]
-    T -->|仍在执行| W
+    W --> T[关键事件通知与每秒兜底；调度和自主监督独立推进]
+    T -->|无变化或未到监督窗口| W
+    T -->|关键变化且未超唤醒限额| B
     T -->|全部 accepted| V[写入 delegation_result，恢复主循环]
     V --> B
-    T -->|阻塞、取消或需人工处理| X[attention]
+    T -->|持续阻塞或达到监督边界需处理| X[attention]
     D -->|finish completed| F{有副作用时，是否有当前文件指纹的成功 verify？}
     F -->|否| R
     F -->|是，或本轮无需 verify| DONE[答复用户，completed；仍可接收下一轮消息]
     D -->|finish blocked| X
-    C -->|格式错误、调用失败或达到本轮上限| X
+    C -->|JSON 语法错误| FIX{尚未纠正且步数和预算允许？}
+    FIX -->|是| ONCE[请求一次 JSON 格式纠正]
+    ONCE --> D
+    FIX -->|否或纠正后仍无效| X
+    C -->|其他无效动作、调用失败或达到上限| X
     E -->|进程停止情况未知、权限变化| X
     X -->|用户检查并明确恢复| RESUME{仍有子会话？}
     RESUME -->|是| W
     RESUME -->|否| B
 ```
 
-真实循环位于 `src/assistant-loop.ts:90`，核心是 `while (get(id).status === 'running')`。每次工具结果会参与下一次决策；主循环不是“生成一次计划后线性执行到结束”。
+真实循环位于 `src/assistant-loop.ts`，核心是 `while (get(id).status === 'running')`。每次工具结果会参与下一次决策；主循环不是“生成一次计划后线性执行到结束”。
 
 但它也不是不受约束的无限循环：每轮最多 24 步或 30 分钟。等待用户或员工时退出当前 `run()`，由用户回复或定时器重新 `kick()`。用户停止会取消模型请求和当前工具，并请求停止子流程；服务重启会把中断主会话置为 `attention`，需要检查后恢复，不自动重放未确认副作用。
 
-`send_agent_message` 已在工具目录，但主循环处于 `waiting_agents` 时不会自主继续推理发送指导；这一阶段主要靠 `autonomy` 的检查点和协作消息处理推进。不能把这个设计描述为“主模型一直思考并实时管理每个员工”。
+`waiting_agents` 期间关键事件可经去抖唤醒主循环，检查员工、发送指导或请求用户决定。普通变化至少间隔 30 秒，每次委派最多六次，另有每秒兜底；不能并行改文件、运行命令或重复委派。宿主的检查点与队列继续独立推进，不是主模型持续忙等。
 
 ## 上下文、成本与交付的准确含义
 
-- **上下文与记忆**：项目笔记在不同主会话之间共享；历史超过约 28000 字符且多于 8 条时压缩旧事件，保留最近 8 条、最多 6000 字符摘要、初始请求与最新请求。另有协作事件记忆，不是所有 Agent 共享无限上下文。
+- **上下文与记忆**：默认声明窗口 32768 Token，输入目标 72%，按 UTF-8 字节估算。大参数/结果先完整保存并引用，预算不足再分批摘要，保留工具组、初始和最新请求及真实状态。项目内最多召回五条、6000 字符已确认记忆；Agent 候选须确认，不是跨项目无限上下文。
 - **难度成本路由**：模型提供任务难度和工作量，候选员工依据用户声明的能力与模型档案筛选；已声明且模型匹配的费率用于费用预测。没有费率、额度或可信观测时保持未知，不能声称已经自动测得每个 Agent 的真实能力与实际账单。
 - **验证强度**：执行成功不等于验收；但验收仍受已授权测试脚本和可审查代码范围限制，不能证明所有业务场景完美。
 - **Git 与 GitHub**：已实现托管工作区、冻结交付与依赖交接。协作完成信息明确说成果保存在托管工作区；主循环完成不会自动等于合并原分支、推送 GitHub、创建 PR 或部署。主循环可在获得权限后执行相关命令，但这些不属于当前交付闭环的固定步骤。
@@ -151,17 +162,21 @@ flowchart TD
 
 | 行为 | 位置 |
 |---|---|
-| HTTP 主会话入口 | [server.mjs](../server.mjs#L136) |
-| 依赖注入、工具桥、delegate、子流程结果 | [control-plane.mjs](../control-plane.mjs#L1264) |
-| 主循环、完成门槛、批准、恢复与 tick | [assistant-loop.ts](../src/assistant-loop.ts#L90) |
-| 上下文压缩与项目笔记 | [assistant-loop.ts](../src/assistant-loop.ts#L79) |
-| 架构与计划生成、授权后派发 | [coordinator.ts](../src/coordinator.ts#L204) |
-| 契约验证、模块绑定与集成任务 | [architecture.ts](../src/architecture.ts#L49) |
-| 能力门槛、费用预测、候选排序 | [scheduling.ts](../src/scheduling.ts#L141) |
-| 前置验收与排队执行 | [task-scheduler.mjs](../src/task-scheduler.mjs#L3) |
-| 返工、测试与自审、周期监督 | [autonomy.ts](../src/autonomy.ts#L91) |
-| 自审标识 | [apix-agent.ts](../src/apix-agent.ts#L101) |
-| 冻结交付与代码交接 | [code-handoffs.mjs](../src/code-handoffs.mjs#L50) |
-| 子流程交付边界 | [coordinator.ts](../src/coordinator.ts#L474) |
+| HTTP 主会话入口 | [server.mjs](../server.mjs) |
+| 依赖注入、工具桥、delegate、子流程结果 | [control-plane.mjs](../control-plane.mjs) |
+| 主循环、完成门槛、批准、恢复与 tick | [assistant-loop.ts](../src/assistant-loop.ts) |
+| 上下文压缩与项目笔记 | [assistant-loop.ts](../src/assistant-loop.ts) |
+| 架构与计划生成、授权后派发 | [coordinator.ts](../src/coordinator.ts) |
+| 契约验证、模块绑定与集成任务 | [architecture.ts](../src/architecture.ts) |
+| 能力门槛、费用预测、候选排序 | [scheduling.ts](../src/scheduling.ts) |
+| 前置验收与排队执行 | [task-scheduler.mjs](../src/task-scheduler.mjs) |
+| 返工、测试与自审、周期监督 | [autonomy.ts](../src/autonomy.ts) |
+| 自审标识 | [apix-agent.ts](../src/apix-agent.ts) |
+| 冻结交付与代码交接 | [code-handoffs.mjs](../src/code-handoffs.mjs) |
+| 子流程交付边界 | [coordinator.ts](../src/coordinator.ts) |
 
 图形核验、源码引用检查、浏览器检查与人工视觉复核是不同的结果，详见本次 `协作/` 自审记录。本页未改变 ApiX 的程序逻辑或运行配置。
+
+## 本轮补充接口与界面
+
+每对话模型通过 `/api/conversation-models/:kind/:id` 保存，摘要、格式纠正和委派子流程继承配置；员工模型独立。主对话和协作目标通过统一历史接口归档/删除/恢复。任务事件面板支持类型筛选、已加载日志搜索、折叠及窄屏换行。实现与证据见[变更回顾](变更回顾.md)。
