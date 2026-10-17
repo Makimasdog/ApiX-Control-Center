@@ -38,11 +38,12 @@ test('ApiX keeps a long reply, history and fact-based progress in the prompt',as
 });
 
 test('malformed and over-limit model replies fall back without applying unvalidated updates',async()=>{
-  for(const raw of ['{"question":"半截', JSON.stringify({kind:'clarification',question:'x'.repeat(10001),updates:[],conflicts:[]})]) {
+  for(const raw of ['{"question":"半截','<｜DSML｜tool_calls><invoke name="quota" /></｜DSML｜tool_calls>', JSON.stringify({kind:'clarification',question:'x'.repeat(10001),updates:[],conflicts:[]})]) {
     const agent=createApiXAgent({infer:async()=>raw});
     const result=await agent.discuss(emptyRequirements(),'补充需求',[],[]);
     assert.equal(result.mode,'rules');
     assert(result.error);
+    assert(!result.error.includes('Unexpected token'));
     assert.deepEqual(result.updates,{});
   }
 });

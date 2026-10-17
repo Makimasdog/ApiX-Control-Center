@@ -12,6 +12,7 @@ import {createWorkflow} from './workflow.js';
 import {bindArchitecture,type Architecture} from './architecture.js';
 import type {Autonomy} from './autonomy.js';
 import {taskAcceptanceRequest} from './task-review.js';
+import {historyColumns} from './chat-history.js';
 
 interface Dependencies extends Store {
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
@@ -49,7 +50,8 @@ export function createCoordinator(deps: Dependencies) {
   if (!settingsColumns.some(column => column.name === 'api_type')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN api_type TEXT NOT NULL DEFAULT 'openai-completions'");
   if (!settingsColumns.some(column => column.name === 'api_key_env')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN api_key_env TEXT NOT NULL DEFAULT ''");
   db.prepare("UPDATE apix_guidance SET status='skipped',updated_at=? WHERE status='processing'").run(now());
-  const session = (id: string) => { const s = row<Session>('SELECT * FROM coordination_sessions WHERE id=?', id); if (!s) throw new Error('目标不存在'); return s; };
+  historyColumns(deps,'coordination');
+  const session = (id: string) => { const s = row<Session>('SELECT * FROM coordination_sessions WHERE id=? AND archived_at IS NULL AND deleted_at IS NULL', id); if (!s) throw new Error('目标不存在或已归档/删除，请先恢复'); return s; };
   const requirementsOf = (s: Session): Requirements => JSON.parse(s.requirements_json) as Requirements;
   const tasksOf = (s: Session) => s.plan_id ? rows<Task>('SELECT * FROM tasks WHERE plan_id=? ORDER BY rowid', s.plan_id) : [];
   const derivedStatus=(s:Session,tasks:Task[])=>{const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;if(state==='attention')return 'attention';if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';return coordinationStatus(s.status,tasks);};
@@ -497,6 +499,6 @@ export function createCoordinator(deps: Dependencies) {
   async function qualityReview(projectId:string,sessionId:string,architecture:Architecture,moduleId:string,evidence:unknown){const s=session(sessionId);if(s.project_id!==projectId)throw new Error('审查会话不属于当前项目');return await metered(projectId,()=>agent.review(requirementsOf(s),architecture,moduleId,evidence,{projectId,purpose:'quality'}));}
   function delivered(sessionId:string,planId:string){const s=session(sessionId);if(s.plan_id!==planId || !tasksOf(s).every(t=>t.status==='accepted') || row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',planId)?.state!=='completed')throw new Error('当前目标尚未完成系统验收');transaction(()=>{db.prepare("UPDATE coordination_sessions SET status='completed',updated_at=? WHERE id=?").run(now(),sessionId);turn(session(sessionId),'apix','delivery_completed','全部模块和系统集成已通过实际检查与 ApiX 自审，交付版本已冻结。成果保存在托管工作区，代码差异、验收证据和修复记录见工作详情。');checkpoint(sessionId);});}
   return {delivered,reassignPending,qualityReview,testModelConnection, workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
-    listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:derivedStatus(s,tasksOf(s))} : details(s.id)),
+    listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:derivedStatus(s,tasksOf(s))} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

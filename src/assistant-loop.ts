@@ -3,6 +3,7 @@ import {type Store,object,text,type Policy} from './contracts.js';
 import {createToolRegistry,type ToolDefinition} from './tool-registry.js';
 import {createContextOutputs,compactPrefix,estimateTokens,contextWindow} from './assistant-context.js';
 import {recallNotes,type RecallNote} from './assistant-memory.js';
+import {historyColumns} from './chat-history.js';
 
 export interface AssistantSession {id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;compacted_through:number;pending:string|null;child_session_id:string|null;needs_verification:number;verification:string|null;started_at:string;updated_at:string}
 interface Event {id:number;role:string;kind:string;body:string}
@@ -37,15 +38,16 @@ export function createAssistantLoop(deps:Dependencies){
   db.exec('CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)');
   const outputs=createContextOutputs(deps);let cachedRegistry=createToolRegistry(),registryKey='';
   function registry(s:AssistantSession){const found=new Map(rows<{name:string;version:string}>('SELECT name,version FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>[t.name,t.version]));const extra=(deps.toolDefinitions?.(s.project_id)??[]).filter(t=>found.get(t.name)===t.version);const key=JSON.stringify(extra);if(key!==registryKey){cachedRegistry=createToolRegistry(extra);registryKey=key;}return cachedRegistry;}
+  historyColumns(deps,'assistant');
   const interrupted=rows<{id:string}>("SELECT id FROM assistant_sessions WHERE status='running'");
   db.prepare("UPDATE assistant_sessions SET status='attention',pending=NULL,version=version+1,updated_at=? WHERE status='running'").run(now());
-  const get=(id:string)=>{const s=row<AssistantSession>('SELECT * FROM assistant_sessions WHERE id=?',id);if(!s)throw new Error('对话不存在');return s;};
+  const get=(id:string)=>{const s=row<AssistantSession>('SELECT * FROM assistant_sessions WHERE id=? AND archived_at IS NULL AND deleted_at IS NULL',id);if(!s)throw new Error('对话不存在或已归档/删除，请先恢复');return s;};
   const event=(id:string,role:string,kind:string,body:unknown)=>db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(id,role,kind,JSON.stringify(body),now());
   for(const s of interrupted)event(s.id,'system','restart_interrupted',{content:'服务重启中断了运行。请检查记录中的进程、委派与工具结果；不会自动重放未确认操作。'});
   function update(id:string,status:string){db.prepare('UPDATE assistant_sessions SET status=?,version=version+1,updated_at=? WHERE id=?').run(status,now(),id);}
   function eventPage(id:string,before?:unknown){get(id);const cursor=before===undefined?Number.MAX_SAFE_INTEGER:Number(before);if(!Number.isSafeInteger(cursor)||cursor<1)throw new Error('历史游标无效');const events=outputs.history(id,rows<Event>('SELECT * FROM assistant_events WHERE session_id=? AND id<? ORDER BY id DESC LIMIT 100',id,cursor).reverse());const first=events[0]?.id;return {events,previousEventId:first&&row('SELECT id FROM assistant_events WHERE session_id=? AND id<? LIMIT 1',id,first)?first:null};}
   function details(id:string){const s=get(id);return {...s,pending:s.pending?JSON.parse(s.pending):null,busy:busy.has(id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};}
-  function list(projectId:string){return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? ORDER BY updated_at DESC LIMIT 100',projectId);}
+  function list(projectId:string){return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',projectId);}
   function notes(projectId:string){return rows<RecallNote>('SELECT title,content,source,version,kind,status,updated_at,evidence_event_id FROM assistant_notes WHERE project_id=? ORDER BY updated_at DESC LIMIT 200',projectId);}
   function remember(projectId:string,titleValue:unknown,content:unknown,source='agent',kind='project',evidence:number|null=null){
     const title=text(titleValue,120),body=text(content,3000);
@@ -132,7 +134,9 @@ export function createAssistantLoop(deps:Dependencies){
         let s=get(id);if(s.steps>=24||Date.now()-Date.parse(s.started_at)>30*60000)throw new Error('达到本轮 24 步或 30 分钟上限；请检查后继续');
         const currentContext=await context(s);s=get(id);if(s.status!=='running')break;
         const revision=s.version;db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);
-        const decision=parse(await deps.infer(s.project_id,'APIX_AGENT_LOOP_JSON\n'+instruction+'\n工具目录：'+JSON.stringify(registry(s).catalog())+'\n当前上下文：'+JSON.stringify(currentContext),controllers.get(id)?.signal));
+        const prompt='APIX_AGENT_LOOP_JSON\n'+instruction+'\n工具目录：'+JSON.stringify(registry(s).catalog())+'\n当前上下文：'+JSON.stringify(currentContext);
+        let decision:Record<string,unknown>;
+        try{decision=parse(await deps.infer(s.project_id,prompt,controllers.get(id)?.signal));}catch(error){if(!(error instanceof SyntaxError))throw error;event(id,'system','protocol_repair',{content:'模型未按 JSON 动作契约回复，正在请求一次格式纠正；未执行任何工具。'});const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=24)throw new Error('已达到本轮步数上限，未执行格式无效的操作');db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);try{decision=parse(await deps.infer(s.project_id,prompt+'\n上次回复不是合法 JSON。不要输出 DSML/XML、tool_calls 或 Markdown。只返回上述 action JSON；查询员工额度使用 inspect_quota，不调用不存在的工具。',controllers.get(id)?.signal));}catch(repairError){if(repairError instanceof SyntaxError)throw new Error('模型连续两次未返回有效 JSON 动作；没有执行未识别操作，请检查模型协议兼容性后继续');throw repairError;}}
         s=get(id);if(s.status!=='running')break;if(s.version!==revision)continue;
         if(decision.action==='ask'){
           const question=text(decision.question,2000);if(!Array.isArray(decision.options)||decision.options.length>8||decision.options.some(o=>typeof o!=='string'||!o.trim()||o.length>300)||typeof decision.multiple!=='boolean')throw new Error('用户选择格式无效');

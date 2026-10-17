@@ -18,6 +18,7 @@ export const builtinTools:ToolDefinition[]=[
   {name:'read_memory',description:'读取本项目一条记忆及来源状态',readOnly:true,inputSchema:schema({title:string,id:string})},
   {name:'remember',description:'提出项目记忆候选，待用户确认后才自动召回',readOnly:false,inputSchema:schema({title:{...string,maxLength:120},content:{...string,maxLength:3000},kind:{enum:['user','feedback','project','reference']}},['title','content'])},
   {name:'inspect_agents',description:'查看员工能力、当前委派、进度与验收状态',readOnly:true,inputSchema:schema({})},
+  {name:'inspect_quota',description:'查询一位已注册员工的实际运行时额度及关联账户快照；先 inspect_agents 获取 employeeId，缺少官方接口时明确返回未知，不运行任意命令，不自动恢复暂停',readOnly:true,inputSchema:schema({employeeId:string},['employeeId'])},
   {name:'configure_agents',description:'申请持续项目协作授权，始终需要用户批准',readOnly:false,inputSchema:schema({runtimes:{type:'array',minItems:1,maxItems:6,items:string},profiles:{type:'array',maxItems:6,items:{type:'object'}},checks:{type:'array',minItems:1,maxItems:20,items:{type:'object'}}},['runtimes','checks'])},
   {name:'delegate',description:'冻结模块契约后委派；已有子流程时禁止重复派发',readOnly:false,inputSchema:schema({goal:string,requirements:schema({scope:string,constraints:string,deliverable:string,acceptance:string},['scope','constraints','deliverable','acceptance'])},['goal','requirements'])},
   {name:'send_agent_message',description:'向当前委派中正在运行的员工发送指导',readOnly:false,inputSchema:schema({taskId:string,content:{...string,maxLength:2000}},['taskId','content'])},

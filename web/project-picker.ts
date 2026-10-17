@@ -20,3 +20,4 @@ picker.addEventListener('click',event=>{const b=(event.target as Element).closes
 });
 picker.addEventListener('cancel',()=>revision++);
 document.addEventListener('click',event=>{if((event.target as Element).closest('[data-choose-project-folder]')){picker.showModal();const value=document.querySelector<HTMLInputElement>('#editor-form [name=path]')?.value;void browse(value||'');}});
+document.addEventListener('input',event=>{const input=event.target as HTMLInputElement;if(input.matches('#editor-form [name=name]'))delete input.dataset.folderName;if(input.matches('#editor-form [name=path]')){const name=document.querySelector<HTMLInputElement>('#editor-form [name=name]');if(name&&(!name.value.trim()||name.dataset.folderName)){const folder=input.value.trim().replace(/[\\/]+$/,'').split(/[\\/]/).at(-1);if(folder){name.value=folder;name.dataset.folderName='1';}}}});

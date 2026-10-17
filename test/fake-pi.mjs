@@ -33,6 +33,8 @@ process.stdin.on("data", (chunk) => {
         else if(context.context.child)answer={action:'finish',outcome:'completed',message:'已核对当前委派，继续等待验收。'};
         else if(!history.some(e=>e.kind==='delegation_result'))answer=action('delegate',{goal:'实现 a.txt 内容接口',requirements:{scope:'仅实现 a.txt',constraints:'保留 verify.mjs，不扩大范围',deliverable:'a.txt 内容为 good',acceptance:'实际执行 verify.mjs，通过后对照冻结契约审查'}});
         else answer={action:'finish',outcome:'completed',message:'员工已完成修复、实际验证和集成验收。'};
+      }else if(message.includes('fixture-loop-quota')){
+        const inspected=results.some(e=>e.body.tool==='inspect_agents'),queried=results.some(e=>e.body.tool==='inspect_quota');answer=!inspected?action('inspect_agents',{}):!queried?action('inspect_quota',{employeeId:results.find(e=>e.body.tool==='inspect_agents').body.result.employees[0].id}):{action:'finish',outcome:'completed',message:'已读取真实运行时额度，未知信息不作推测。'};
       }else if(message.includes('fixture-loop-mcp')){
         const found=results.find(e=>e.body.tool==='search_tools');const called=results.find(e=>e.body.tool?.startsWith('mcp_'));const verified=results.find(e=>e.body.tool==='verify');
         answer=!found?action('search_tools',{query:'echo'}):!called?action(found.body.result.tools[0].name,{text:'工具回显验收'}):!verified?action('verify',{executable:'node',args:['-e',"const fs=require('node:fs'),assert=require('node:assert/strict');assert(fs.readFileSync('mcp-calls.jsonl','utf8').includes('echo'));console.log('MCP call evidence verified')"]}):{action:'finish',outcome:'completed',message:'MCP 回显和实际调用证据已核对。'};

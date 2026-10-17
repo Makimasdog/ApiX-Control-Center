@@ -75,6 +75,7 @@ function selectSession(id:string) {
   const input=$<HTMLTextAreaElement>('#coord-message textarea');
   if(sessionId)messageDrafts.set(sessionId,input.value);
   sessionId=id;current=null;reloadVersion++;editingBrief=false;planKey='';
+  if(id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id,kind:'coordination'}}));
   if(id)localStorage.setItem('apix.chat.'+projectId,id);
   input.value=messageDrafts.get(id) ?? '';
   $('#coord-turns').querySelectorAll('.coord-turn:not(#coord-stream)').forEach(node=>node.remove());
@@ -167,6 +168,7 @@ const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coor
 const inspector=document.createElement('aside');inspector.className='desktop-inspector';inspector.id='desktop-inspector';
 const main=document.createElement('div');main.className='desktop-main';main.append(empty,body);
 const chats=$('#coord-sessions');const chatSection=document.createElement('div');chatSection.className='sidebar-section desktop-chats';chatSection.innerHTML='<div class="section-heading"><span class="section-caption">对话</span><button class="icon-button" id="desktop-new-chat" aria-label="新建对话">＋</button></div>';chatSection.append(chats);document.querySelector('.project-section')!.after(chatSection);
+chatSection.hidden=true;
 chats.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLButtonElement>('button[data-session]');if(button && chats.contains(button) && button.dataset.session!==sessionId){newChat=false;selectSession(button.dataset.session!);void reload().catch(e=>notice(String(e),true));}});
 inspector.innerHTML='<div class="desktop-inspector-head"><strong>工作详情</strong><button class="outline-button" id="desktop-close-details" aria-label="关闭工作详情">关闭</button></div><section id="desktop-workflow" class="surface-card"></section><details class="desktop-detail"><summary>ApiX 工具活动</summary><div id="desktop-tools"></div></details>';
 for(const section of [...body.children])if(section.classList.contains('coord-section') || section.id==='coord-execution'){
@@ -240,7 +242,8 @@ function render(s: Session) {
   const activity=$('#desktop-activity');activity.hidden=!s.tasks.length;
   const automaticQuality=s.autonomy?.state==='running'&&s.autonomyPolicy?.enabled===true;
   const finished=automaticQuality?undefined:s.tasks.find(t=>t.status==='completed');
-  activity.innerHTML=`<div><strong>${esc(statuses[s.derivedStatus]??s.derivedStatus)}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${s.tasks.filter(t=>t.status==='queued').length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span></div>${s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?`<button class="outline-button" data-delivery="${esc(finished.id)}">查看变更并验收</button>`:''}`;
+  const queued=s.tasks.filter(t=>t.status==='queued');const queueReasons=[...new Set(queued.map(t=>t.queue_reason||'等待调度复核'))];
+  activity.innerHTML=`<div><strong>${esc(statuses[s.derivedStatus]??s.derivedStatus)}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${queued.length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span>${queueReasons.map(r=>`<p>${esc(r)}</p>`).join('')}${queued.length?'<button class="outline-button" data-queue-settings>查看执行暂停与账户阻塞</button>':''}</div>${s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?`<button class="outline-button" data-delivery="${esc(finished.id)}">查看变更并验收</button>`:''}`;
   $('#desktop-stop').hidden=!s.tasks.some(t=>['running','queued','awaiting_approval','stopping'].includes(t.status));
   if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
   if(!meetingSection.contains(document.activeElement)){
@@ -342,6 +345,8 @@ document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;p
 }) as EventListener);
 document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(event.detail==='coordinator' && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
 document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{selectSession(event.detail);void reload().catch(e=>notice(String(e),true));document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
+document.addEventListener('apix:history-changed',((event:CustomEvent<{id:string;kind:string;action:string}>)=>{if(event.detail.kind==='coordination'&&event.detail.id===sessionId&&event.detail.action!=='restore'){newChat=true;selectSession('');localStorage.removeItem('apix.chat.'+projectId);}if(root.classList.contains('active-page'))void reload();}) as EventListener);
+root.addEventListener('click',event=>{if((event.target as Element).closest('[data-queue-settings]')){toggleInspector(true);executionSection.closest('details')?.setAttribute('open','');schedulingSection.closest('details')?.setAttribute('open','');executionSection.scrollIntoView({block:'nearest'});}});
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 $('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});selectSession(created.id);form.reset();});});
 $('#coord-message').addEventListener('submit',event=>{event.preventDefault();if(!current || $<HTMLButtonElement>('#coord-message button').disabled)return;void action(async()=>{const content=$<HTMLTextAreaElement>('#coord-message textarea').value.trim();if(!content)return;const id=sessionId;messageDrafts.set(id,content);const reviewedDeliveries=current!.tasks.filter(t=>t.status==='completed'&&deliveryFingerprints.has(t.id)).map(t=>({taskId:t.id,fingerprint:deliveryFingerprints.get(t.id)!}));await streamMessage(id,{revision:current!.revision,content,reviewedDeliveries},content);});});

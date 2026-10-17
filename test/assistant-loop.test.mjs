@@ -146,3 +146,10 @@ test('supervision wake limits persist across restart and block runaway reasoning
   for(let i=1;i<=6;i++){n=i;await h.service.tick();assert.equal((await wait(h.service,h.id)).status,'waiting_agents');}
   assert.equal(h.prompts.length,7);const restored=createAssistantLoop(h.deps);n=7;await restored.tick();assert.equal(h.prompts.length,7);assert.equal(restored.details(h.id).status,'waiting_agents');blocked=true;await restored.tick();assert.equal(restored.details(h.id).status,'attention');
 }));
+
+test('DSML is never executed and one budgeted protocol repair can select the host quota tool',()=>fixture(async h=>{
+  h.answer(()=>'<｜DSML｜tool_calls><invoke name="shell">bad</invoke></｜DSML｜tool_calls>',tool('inspect_quota',{employeeId:'employee'}),finish);h.service.message(h.id,{content:'查询员工额度'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.deepEqual(h.calls.map(c=>c.name),['inspect_quota']);assert(s.events.some(e=>e.kind==='protocol_repair'));assert.equal(s.steps,3);assert(h.prompts[1].includes('不要输出 DSML'));
+}));
+test('repeated invalid model protocols stop clearly without leaking JSON parser errors or replaying tools',()=>fixture(async h=>{
+  h.answer(()=>'<DSML bad>',()=>'<DSML bad>');h.service.message(h.id,{content:'查额度'});const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);assert.equal(h.prompts.length,2);assert(s.events.some(e=>e.kind==='error'&&e.body.error.includes('连续两次')));assert(!JSON.stringify(s.events).includes('Unexpected token'));
+}));

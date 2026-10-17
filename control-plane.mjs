@@ -33,6 +33,7 @@ import {createDeliveryInspection} from './src/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant-loop.js';
 import {createMcpManager} from './dist/src/mcp-manager.js';
+import {createChatHistory} from './dist/src/chat-history.js';
 import {fileTool,commandTool,projectFingerprint,projectInstructions,skillsFor} from './dist/src/assistant-tools.js';
 
 loadEnvironment();
@@ -1294,7 +1295,8 @@ const assistant=createAssistantLoop({...store,
       if(tool==='verify'){const after=projectFingerprint(project.path);if(before!==after)throw new Error('验证命令修改了项目文件，请重新检查并验证');return {...result,fingerprint:after};}return result;
     }
     if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
-    if(tool==='inspect_agents')return {employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),runtimes:runtimes(),child:s.child_session_id?coordinator.sessionDetails(s.child_session_id):null};
+    if(tool==='inspect_agents')return {employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),runtimes:runtimes(),execution:executionControl.get(s.project_id),child:s.child_session_id?coordinator.sessionDetails(s.child_session_id):null};
+    if(tool==='inspect_quota'){const employee=row('SELECT id,name,runtime FROM employees WHERE id=? AND deleted_at IS NULL',String(args.employeeId));if(!employee)throw new Error('员工不存在');const view=scheduling.view(s.project_id),accountId=scheduling.profile(employee.id).accountId;return {employee,observedAt:now(),runtime:await inspectEmployeeRuntime(employee.id),account:accountId?view.accounts.find(a=>a.id===accountId)??null:null,execution:executionControl.get(s.project_id),note:'运行时额度与手工账户快照分别展示，未知不等于零；查询不会恢复暂停或启动任务'};}
     if(tool==='send_agent_message'){
       if(!s.child_session_id)throw new Error('当前会话没有委派任务');const child=coordinator.sessionDetails(s.child_session_id);
       if(!child.tasks.some(t=>t.id===args.taskId))throw new Error('员工任务不属于当前循环');
@@ -1342,6 +1344,18 @@ export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;
+const history=createChatHistory(store,(kind,id)=>{
+  const source=row(`SELECT * FROM ${kind==='assistant'?'assistant_sessions':'coordination_sessions'} WHERE id=?`,id);
+  if(!source)return false;
+  if(kind==='assistant'&&row("SELECT 1 FROM assistant_events WHERE session_id=? GROUP BY session_id HAVING MAX(CASE WHEN kind IN ('restart_interrupted','process_unknown') THEN id ELSE 0 END)>MAX(CASE WHEN kind='resumed' THEN id ELSE 0 END)",id))return true;
+  if(!source.archived_at&&!source.deleted_at){const d=kind==='assistant'?assistant.details(id):coordinator.sessionDetails(id);if(d.busy||['running','waiting_agents','waiting_user','planning','dispatching'].includes(d.status))return true;}
+  const planId=kind==='assistant'?(source.child_session_id?row('SELECT plan_id FROM coordination_sessions WHERE id=?',source.child_session_id)?.plan_id:null):source.plan_id;
+  return !!(planId&&row("SELECT id FROM tasks WHERE plan_id=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1",planId));
+});
+export const chatHistory=(projectId,view)=>history.list(projectId,view);
+export const changeChatHistory=(kind,id,input)=>history.change(kind,id,input);
+// Reconcile approved queued work after restart or missed completion notifications; admission still enforces pauses and quotas.
+setInterval(()=>{try{pumpTasks();}catch{process.stderr.write('任务队列复核失败\n');}},5000).unref();
 
 export const createCoordinationSession = coordinator.createSession;
 export const answerCoordinationSession = coordinator.answerSession;

@@ -3,6 +3,7 @@ import {browseFolders} from './src/project-folders.mjs';
 import {inspectEmployeeRuntime} from './control-plane.mjs';
 import {mcpServers,saveMcpServer,discoverMcpTools,closeMcpConnections} from './control-plane.mjs';
 import {assistantOutput} from './control-plane.mjs';
+import {chatHistory,changeChatHistory} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,6 +73,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if(pathname==='/api/chat-history'&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,chatHistory(q.get('projectId')??'',q.get('view')??'active'));return;}
       if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
       if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
@@ -178,6 +180,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else if (/^\/api\/coordination\/sessions\/[^/]+\/dispatch$/.test(pathname)) result = dispatchCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/revise$/.test(pathname)) result = reviseCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/instructions$/.test(pathname)) result = instructCoordinationEmployee(pathname.split("/")[4], input);
+      else if(/^\/api\/chat-history\/(assistant|coordination)\/[^/]+$/.test(pathname))result=changeChatHistory(pathname.split('/')[3],pathname.split('/')[4],input);
       else if (pathname === "/api/projects") result = { id: createProject(input) };
       else if (/^\/api\/projects\/[^/]+\/profile$/.test(pathname)) result = saveProjectProfile(pathname.split("/")[3], input);
       else if (/^\/api\/projects\/[^/]+$/.test(pathname)) { updateProject(pathname.split("/")[3], input); result = { updated: true }; }

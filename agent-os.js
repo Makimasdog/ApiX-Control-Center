@@ -74,9 +74,10 @@ function go(page) {
   $("#breadcrumb-page").textContent = { assistant: "对话", overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
-let refreshing=false;let snapshotETag='';
-async function refresh() {
-  if(refreshing)return;refreshing=true;
+let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();
+function refresh() {
+  if(refreshing)return refreshPending;refreshing=true;
+  refreshPending=(async()=>{
   try {
     const response=await fetch('/api/snapshot',{headers:snapshotETag?{'If-None-Match':snapshotETag}:{}});
     if(response.status!==304){if(!response.ok)throw new Error(`HTTP ${response.status}`);data=await response.json();snapshotETag=response.headers.get('ETag') ?? '';}
@@ -96,6 +97,7 @@ async function refresh() {
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
   finally{refreshing=false;}
+  })();return refreshPending;
 }
 function render() { renderProjects(); renderAgents(); renderTasks(); renderPlans(); renderDirector(); renderConversations(); renderWorkspace(); renderSettings(); renderCollaboration(); renderMemory(); renderMessageSupervision(); }
 function renderMessageSupervision() {
@@ -338,7 +340,7 @@ $("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Ent
 $("#editor-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(event.currentTarget));
-  if (editing.kind === "project") { values.createDirectory = values.createDirectory === "on"; $("#project-editor-error").textContent=""; try { const created = await api(editing.id ? `/api/projects/${editing.id}` : "/api/projects", values); if (created.id) { selectedProjectId = created.id; localStorage.setItem("apix.selectedProject", created.id); } await refresh(); } catch (error) { $("#project-editor-error").textContent=error.message; return; } }
+  if (editing.kind === "project") { values.createDirectory = values.createDirectory === "on"; values.path=values.path.trim(); $("#project-editor-error").textContent=""; try { const created = await api(editing.id ? `/api/projects/${editing.id}` : "/api/projects", values); snapshotETag='';await refresh();if (created.id) { selectedProjectId = created.id; localStorage.setItem("apix.selectedProject", created.id);await refresh(); } toast('项目已保存'); } catch (error) { $("#project-editor-error").textContent=error.message; return; } }
   else if (editing.kind === "employee") { try { values.enabled = values.enabled === "true"; if (!values.runtime) values.runtime = data.employees.find((item) => item.id === editing.id)?.runtime ?? editing.id; await api(data.employees.some((item) => item.id === editing.id) ? `/api/employees/${editing.id}` : "/api/employees", values); await refresh(); } catch (error) { toast(error.message); return; } }
   else if (editing.kind === "department") { try { await api(`/api/departments/${editing.id}`, values); await refresh(); } catch (error) { toast(error.message); return; } }
   else if (editing.kind === "plan-task") { try { await api(`/api/tasks/${editing.id}/revise`, values); await refresh(); toast("步骤已修改，请重新审批"); } catch (error) { toast(error.message); return; } }
