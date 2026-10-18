@@ -239,7 +239,7 @@ export function createScheduling(store: Store, dependencies: {
     if(existing.state==='reserved'){
       const run=row<{status:string}>('SELECT status FROM runs WHERE id=?',id);
       const meeting=row('SELECT name FROM sqlite_master WHERE type=\'table\' AND name=\'planning_meetings\'')?row<{status:string}>('SELECT status FROM planning_meetings WHERE id=?',id.split(':')[0]!):undefined;
-      const ended=run && ['unknown','cancelled','completed','failed','blocked'].includes(run.status) || meeting?.status==='interrupted' || id.startsWith('apix:') && !activeManagers.has(id);
+      const ended=run && ['unknown','cancelled','completed','failed','blocked'].includes(run.status) || meeting?.status==='interrupted' || /^(apix|assistant):/.test(id) && !activeManagers.has(id);
       if(!ended || input.confirmedStopped!==true)throw new Error('预留仍可能有运行进程；请确认原进程已停止，活动运行不能结算');
     }
     const amount=integer(input.actualMinor,'人工核对费用');if(amount===null)throw new Error('需要核对费用，不能把未知当成零');
@@ -249,6 +249,8 @@ export function createScheduling(store: Store, dependencies: {
   }
   function reserveManager(id:string,projectId:string) {
     const p=policy(projectId);const account=accounts().find(a=>a.id===p.managerAccountId);
+    const unresolved=rows<{id:string}>("SELECT id FROM scheduling_reservations WHERE state='reserved' AND id LIKE 'assistant:%' AND (project_id=? OR account_id=?)",projectId,p.managerAccountId).find(r=>!activeManagers.has(r.id));
+    if(unresolved)throw new Error('历史推理预留的账本状态未确认，请先核对并结算');
     if(!account){if(p.limitMinor!==null || p.requireFreshQuota)throw new Error('严格预算或额度策略需要先指定 ApiX 推理账户及费用上界');return false;}
     db.exec('SAVEPOINT manager_budget');
     try{

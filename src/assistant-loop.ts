@@ -76,6 +76,7 @@ export function createAssistantLoop(deps:Dependencies){
   function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return details(id);}
   function kick(id:string){void run(id).catch(error=>{
     if(error?.code==='MODEL_CLEANUP_UNKNOWN'){event(id,'system','process_unknown',{resource:'model_transport',error:safeError(error)});update(id,'attention');}
+    else if(error?.code==='INFERENCE_ACCOUNTING_UNKNOWN'){event(id,'system','process_unknown',{resource:'inference_accounting',error:safeError(error)});update(id,'attention');}
     else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}
   });}
   function message(id:string,input:Record<string,unknown>){const s=get(id);const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
