@@ -65,4 +65,4 @@ Mewcode 对照入口：`mewcode/mcp/manager.py`、`mewcode/mcp/tool_wrapper.py`�
 - 历史和输出持续保存在本地，未增加自动清理；项目级词法召回暂不等同语义检索或跨项目全局记忆。
 - Windows 强制终止整个 ApiX 时无法保证执行信号清理；正常 SIGINT/SIGTERM 有限时关闭，POSIX 后代进程树未在本轮实测。
 
-使用说明见 [工具、上下文、监督与记忆](../docs/ApiX工具上下文监督与记忆.md)。
+使用说明见 [工具、上下文、监督与记忆](../docs/参考/工具上下文与记忆.md)。

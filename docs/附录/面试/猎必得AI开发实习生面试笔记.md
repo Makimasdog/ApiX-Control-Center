@@ -295,7 +295,7 @@ MCP 工具执行错误和 JSON-RPC 协议错误要分开处理；具体返回字
 
 迁移到招聘：确认“把申请 A 从状态 X 推进到 Y”应绑定对象版本与操作者，职位或权限变化后重新确认。
 
-证据：[permissions.ts](../src/permissions.ts)、[coordinator.ts](../src/coordinator.ts)。
+证据：[permissions.ts](../../../src/permissions.ts)、[coordinator.ts](../../../src/coordinator.ts)。
 
 ### Q24【P0】DAG 调度中，完成为什么不等于可启动下游？
 
@@ -305,13 +305,13 @@ MCP 工具执行错误和 JSON-RPC 协议错误要分开处理；具体返回字
 
 追问：死锁或环怎么处理？建计划时验证依赖；实际算法和代码要能指出，不能只说“用了 DAG 所以没有环”。
 
-证据：[task-scheduler.mjs](../src/task-scheduler.mjs)、[task-tracker.ts](../src/task-tracker.ts)。
+证据：[task-scheduler.mjs](../../../src/task-scheduler.mjs)、[task-tracker.ts](../../../src/task-tracker.ts)。
 
 ### Q25【P0】worktree 怎么避免冲突？依赖任务如何拿到代码？
 
 > 独立 worktree 隔离员工工作目录，减少相互覆盖。验收前检查差异指纹，之后把已验收成果冻结成 Git 交付；下游应用该交付，冲突时阻止进程启动并保留现场。worktree 本身不保证代码逻辑无冲突，也不是操作系统安全沙箱。
 
-证据：[code-handoffs.mjs](../src/code-handoffs.mjs)。
+证据：[code-handoffs.mjs](../../../src/code-handoffs.mjs)。
 
 ### Q26【P0】你说事件溯源，真的能重建任意时刻的全部状态吗？
 
@@ -321,7 +321,7 @@ MCP 工具执行错误和 JSON-RPC 协议错误要分开处理；具体返回字
 
 简历可口述得更精确：“支持按事件序号查看历史协调快照与决策轨迹”。
 
-证据：[memory.ts](../src/memory.ts)。
+证据：[memory.ts](../../../src/memory.ts)。
 
 ### Q27【P0】Mailbox 怎么保证消息可靠？和 MCP 有什么区别？
 
@@ -331,7 +331,7 @@ MCP 工具执行错误和 JSON-RPC 协议错误要分开处理；具体返回字
 
 追问：租约到期旧持有者继续操作怎么办？租约不等于强制隔离；若外部写入要严格互斥，需要存储侧版本或 fencing token 等强制校验。当前协作锁不能约束所有外部进程。
 
-证据：[Mailbox 协议](agent-message-protocol.md)、[agent-mailbox.ts](../src/agent-mailbox.ts)。
+证据：[Mailbox 协议](../../参考/agent-message-protocol.md)、[agent-mailbox.ts](../../../src/agent-mailbox.ts)。
 
 ### Q28【P0】崩溃后能恢复吗？
 

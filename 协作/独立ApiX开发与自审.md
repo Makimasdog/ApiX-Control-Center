@@ -4,7 +4,7 @@
 
 ## 结果与范围
 
-用户明确要求 ApiX 独立，Pi 与 Codex、Claude 同为执行 Agent。已先确定[模块边界与验收契约](./独立ApiX推理后端架构与验收.md)，再实现：
+用户明确要求 ApiX 独立，Pi 与 Codex、Claude 同为执行 Agent。已先确定[模块边界与验收契约](独立ApiX推理后端架构与验收.md)，再实现：
 
 - 新增 `src/model-backend.ts`：直接通过 HTTP 调用已配置的 Chat Completions、Responses 或 Anthropic Messages；统一处理 SSE、公开答复、完整结束标记、错误、超时、取消、大小限制和认证。
 - `control-plane.mjs` 的对话、架构、规划、监督、质量审查及摘要统一调用独立 API 后端。管理者不再启动 Pi，不写 `manager-pi/models.json`，不使用 `APIX_MANAGER_PI_ENTRY`，也不读取 Pi 登录信息。Pi RPC 只保留在显式员工咨询与执行路径。
@@ -36,9 +36,9 @@
 - `npm test` 全量运行完成：215 项中 214 通过、1 失败，约 1008 秒。全量进程已加载的旧 HTTP 测试夹具未给 SSE 额度错误附上错误码，导致一项额度用例失败；新夹具保留固定额度代码后，同名测试单独 1/1 通过，最终 HTTP 专项 9/9 中再次通过（含账户暂停和重复测试拦截），没有放宽产品额度校验。最终代码另有上述 45+9 项通过，包含全量启动后新增的 HTTP 停止用例；没有冒称全量整套在修正后重新跑过。
 - 浏览器：隔离端口 4477，独立数据目录，PATH 为空，Pi/Codex/Claude 入口均不可用；通过 ApiX 对话完成写入 bad → 实际断言失败 → 写入 good → 实际断言通过。快照确认 `PiAvailable=false`、员工数 0、员工运行数 0。再验证首次打开模型配置、保存现有本机模型与明确批准的连接测试成功；无控制台 error。模型为本机 HTTP 夹具，不是实际 qwen3.8-27b。
 
-![无 Pi 的独立 ApiX 主循环](./独立ApiX无Pi浏览器验收.jpg)
+![无 Pi 的独立 ApiX 主循环](独立ApiX无Pi浏览器验收.jpg)
 
-![独立模型配置与连接测试](./独立ApiX模型配置验收.jpg)
+![独立模型配置与连接测试](独立ApiX模型配置验收.jpg)
 
 测试浏览器与隔离进程已关闭，没有操作用户的 4173 服务。除夹具模型返回外，HTTP、Node 断言、SQLite、Git、消息与员工子进程均实际执行。
 
