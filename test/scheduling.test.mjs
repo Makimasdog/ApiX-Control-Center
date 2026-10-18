@@ -4,6 +4,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {createScheduling,taskProfile,overlaps} from '../dist/src/scheduling.js';
 import {createPlanningMeetings} from '../dist/src/planning-meetings.js';
 import {createEmployeeInsights} from '../dist/src/employee-insights.js';
+import {createRuntimeAdapters} from '../dist/src/runtime-adapters.js';
+test('cost routing specifies the selected model using argv without shell interpolation',()=>{
+  const db=new DatabaseSync(':memory:');const store={db,row:(s,...p)=>db.prepare(s).get(...p),rows:(s,...p)=>db.prepare(s).all(...p),now:()=>''};try{const adapters=createRuntimeAdapters(store,()=>null);for(const id of ['pi','codex','claude'])assert.deepEqual(adapters.modelArgs(id,'model with spaces'),['--model','model with spaces']);assert.throws(()=>adapters.modelArgs('custom','model'),/尚未验证/);assert.deepEqual(adapters.modelArgs('custom',''),[]);}finally{db.close();}
+});
 
 async function fixture(work){
   const db=new DatabaseSync(':memory:');
@@ -15,6 +19,19 @@ async function fixture(work){
 }
 const account=(id='shared',limitMinor=100)=>({id,version:0,alias:id,type:'api',currency:'USD',limitMinor,remainingPercent:90,reservePercent:10,observedAt:new Date().toISOString()});
 const profile=(id='shared')=>({version:0,model:'model-v1',tags:['typescript'],tools:['git'],languages:['TypeScript'],projectIds:['p'],accountId:id,contextTokens:32000});
+test('difficulty gates quality while workload and versioned rates route bulk simple work to cheaper models',()=>fixture(s=>{
+  s.saveAccount(account());
+  const rate=cost=>({model:'model-v1',version:'2026-10-13',currency:'USD',inputMinorPerMillion:cost,outputMinorPerMillion:cost*2});
+  s.saveProfile('a',{...profile(),reasoningLevel:2,pricing:rate(10)});s.saveProfile('b',{...profile(),reasoningLevel:5,pricing:rate(100)});
+  const bulk=taskProfile({difficulty:2,workload:{inputTokens:1000000,outputTokens:100000,calls:3}});
+  assert.equal(s.candidates('p',bulk)[0].employeeId,'a');assert.equal(s.candidates('p',bulk)[0].forecastMinor,36);
+  const hard=taskProfile({difficulty:5,workload:{inputTokens:100,outputTokens:100,calls:1}});assert.equal(s.candidates('p',hard)[0].employeeId,'b');assert.equal(s.candidates('p',hard).find(c=>c.employeeId==='a').eligible,false);
+  assert.equal(s.candidates('p',bulk)[0].estimateMinor,null,'a forecast never grants a spending cap');
+  assert.equal(s.candidates('p',{...bulk,estimateMinor:1}).every(c=>!c.eligible),true,'known forecasts exceeding a cap cannot reserve an unrealistically small amount');
+  assert.throws(()=>s.reserve('r','p','a',bulk),/费用上界/);
+  assert.throws(()=>s.saveProfile('a',{...profile(),version:1,reasoningLevel:2,pricing:{...rate(10),model:'different'}}),/对应/);
+  s.saveProfile('a',{...profile(),version:1,model:'model-v2',reasoningLevel:2,pricing:null});assert.equal(s.candidates('p',bulk).find(c=>c.employeeId==='a').forecastMinor,null);
+}));
 test('capability gates, quota freshness and new model history remain explainable',()=>fixture((s,store,deny)=>{
   s.saveAccount(account());s.saveProfile('a',profile());
   const spec=taskProfile({tags:['typescript'],tools:['git'],contextTokens:2000});

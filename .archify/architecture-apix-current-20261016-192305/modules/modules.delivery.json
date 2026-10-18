@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2c00c85b-b37f-4107-bddf-4d2596f396c9",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\candidate.json",
+  "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.html",
+  "specification": {
+    "sha256": "5a062f337d3adea649fcf506535760e181243a8a54519c128aa5b9d7a0c8c3cc",
+    "bytes": 7021
+  },
+  "artifact": {
+    "sha256": "508d5a1ddf8e0400bf32cd4c6b12f1c8f6c1ccace907e17d694ee4ca3d125684",
+    "bytes": 759873
+  }
+}

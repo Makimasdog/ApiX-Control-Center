@@ -2043,3 +2043,29 @@ svg.icon {
     margin-top: 8px;
   }
 }
+/* Conversation controls and task log viewer share the desktop theme. */
+.conversation-model-picker{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 2px;color:#cbd5e1;font-size:12px}
+.conversation-model-picker label{display:flex;align-items:center;gap:6px}
+.conversation-model-picker input,.conversation-model-picker select{background:#18212e;color:#e2e8f0;border:1px solid #3c495c;border-radius:8px;padding:7px;max-width:230px}
+.conversation-model-picker small{color:#94a3b8}.conversation-model-feedback{color:#fda4af}
+#task-details-dialog{width:min(1080px,calc(100vw - 32px));height:min(820px,calc(100dvh - 40px));max-height:calc(100dvh - 40px);box-sizing:border-box;padding:0;color:#e2e8f0;overflow:hidden}
+#task-details-dialog[open]{display:flex;flex-direction:column}
+#task-details-dialog .dialog-top{padding:20px 24px;border-bottom:1px solid #334155;flex-shrink:0}
+#task-details-content{overflow:auto;min-height:0;padding:20px 24px;overscroll-behavior:contain;overflow-wrap:anywhere}
+.task-event-overview{padding:16px;background:#192333;border:1px solid #334155;border-radius:12px;margin-bottom:16px}
+.task-event-overview>strong{margin-left:12px}.task-event-overview p{white-space:pre-wrap;line-height:1.7;color:#d3dce9}
+.task-event-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:0 0 12px}
+.task-event-toolbar label{display:flex;align-items:center;gap:8px;font-size:13px}
+.task-event-toolbar input,.task-event-toolbar select{background:#192333;color:#e2e8f0;border:1px solid #475569;border-radius:8px;padding:9px;max-width:100%}
+.task-event-toolbar small,.task-event-count,.task-event-empty{color:#94a3b8;font-size:12px}
+.task-event-card{border:1px solid #334155;background:#141e2d;border-radius:10px;margin-bottom:10px;min-width:0}
+.task-event-card summary{cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;padding:14px;list-style:disclosure-closed}
+.task-event-kind{color:#67e8f9;font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}.task-event-kind.is-warning{color:#fbbf24}
+.task-event-card time{color:#94a3b8;font-size:12px}.task-event-preview{grid-column:1/-1;color:#cbd5e1;font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+#task-details-content pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-width:100%;background:#0b1220;color:#d7e2f0;font:12px/1.7 ui-monospace,monospace;padding:14px;margin:0;border-radius:8px;overflow:auto}
+@media(max-width:600px){#task-details-content{padding:12px}#task-details-dialog .dialog-top{padding:14px}.task-event-card summary{grid-template-columns:minmax(0,1fr)}.task-event-card time{grid-column:1}.conversation-model-picker input{max-width:180px}}
+
+.task-event-card summary::after{content:"展开原始日志 ⌄";grid-column:1/-1;color:#67e8f9;font:12px/1.5 system-ui}.task-event-card[open] summary::after{content:"收起原始日志 ⌃"}
+
+#page-coordinator #coord-conversation-model{width:min(100%,800px);margin:0 auto;flex:none}
+#page-coordinator #coord-conversation-model label{display:flex;align-items:center;gap:6px;flex-direction:row;margin:0}

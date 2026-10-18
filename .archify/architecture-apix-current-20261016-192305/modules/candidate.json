@@ -1,0 +1,319 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ApiX · 核心模块装配关系",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-apix-current-20261016-192305/modules/modules.html",
+    "repository": {
+      "url": "https://github.com/Makimasdog/ApiX-Control-Center.git",
+      "revision": "3f5f22c62d3b072c88af2ef91ef7963e86d4fcb5",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "assembly",
+      "type": "backend",
+      "label": "control-plane.mjs",
+      "sublabel": "统一装配与副作用执行入口",
+      "pos": [
+        420,
+        320
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 328,
+          "end_line": 354
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 1249,
+          "end_line": 1315
+        }
+      ]
+    },
+    {
+      "id": "assistant",
+      "type": "backend",
+      "label": "主循环与模型推理",
+      "sublabel": "assistant-loop · model-backend",
+      "pos": [
+        40,
+        70
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "src/assistant-loop.ts",
+          "line": 6,
+          "end_line": 16
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 1264,
+          "end_line": 1269
+        },
+        {
+          "path": "src/model-backend.ts",
+          "line": 35,
+          "end_line": 86
+        }
+      ]
+    },
+    {
+      "id": "tooling",
+      "type": "backend",
+      "label": "项目文件与命令工具",
+      "sublabel": "assistant-tools · 上下文与 Skill",
+      "pos": [
+        40,
+        320
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 1270,
+          "end_line": 1279
+        },
+        {
+          "path": "src/assistant-tools.ts",
+          "line": 11,
+          "end_line": 67
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "SQLite 与记忆",
+      "sublabel": "会话事件 · 项目笔记 · 检索",
+      "pos": [
+        40,
+        570
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 38
+        },
+        {
+          "path": "src/assistant-loop.ts",
+          "line": 26,
+          "end_line": 43
+        },
+        {
+          "path": "src/memory.ts",
+          "line": 1,
+          "end_line": 38
+        }
+      ]
+    },
+    {
+      "id": "planning",
+      "type": "backend",
+      "label": "规划与契约绑定",
+      "sublabel": "coordinator · apix-agent · architecture",
+      "pos": [
+        800,
+        70
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "src/coordinator.ts",
+          "line": 204,
+          "end_line": 241
+        },
+        {
+          "path": "src/architecture.ts",
+          "line": 49,
+          "end_line": 77
+        }
+      ]
+    },
+    {
+      "id": "execution",
+      "type": "backend",
+      "label": "调度与运行控制",
+      "sublabel": "scheduling · task-scheduler · adapters",
+      "pos": [
+        800,
+        320
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 340,
+          "end_line": 342
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 386
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 488,
+          "end_line": 505
+        }
+      ]
+    },
+    {
+      "id": "autonomy",
+      "type": "security",
+      "label": "监督与质量闭环",
+      "sublabel": "autonomy · 权限 · 证据审查",
+      "pos": [
+        800,
+        570
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 344,
+          "end_line": 354
+        },
+        {
+          "path": "src/autonomy.ts",
+          "line": 134,
+          "end_line": 170
+        },
+        {
+          "path": "src/permissions.ts",
+          "line": 26,
+          "end_line": 41
+        }
+      ]
+    },
+    {
+      "id": "handoff",
+      "type": "database",
+      "label": "Git 与员工消息",
+      "sublabel": "code-handoffs · agent-mailbox · mailbox",
+      "pos": [
+        420,
+        800
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 336,
+          "end_line": 338
+        },
+        {
+          "path": "src/code-handoffs.mjs",
+          "line": 50,
+          "end_line": 103
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 1400,
+          "end_line": 1428
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "assembly-assistant",
+      "from": "assembly",
+      "to": "assistant",
+      "label": "注入依赖"
+    },
+    {
+      "id": "assembly-tooling",
+      "from": "assembly",
+      "to": "tooling",
+      "label": "执行工具"
+    },
+    {
+      "id": "assembly-store",
+      "from": "assembly",
+      "to": "store",
+      "label": "共享存储"
+    },
+    {
+      "id": "assembly-planning",
+      "from": "assembly",
+      "to": "planning",
+      "label": "创建计划"
+    },
+    {
+      "id": "assembly-execution",
+      "from": "assembly",
+      "to": "execution",
+      "label": "启动任务"
+    },
+    {
+      "id": "assembly-autonomy",
+      "from": "assembly",
+      "to": "autonomy",
+      "label": "周期检查"
+    },
+    {
+      "id": "assembly-handoff",
+      "from": "assembly",
+      "to": "handoff",
+      "label": "代码与消息"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "这张图表示装配关系",
+      "items": [
+        "control-plane 共享 Store，并通过依赖注入连接各模块；不是每个模块都直接 import 彼此。",
+        "assistant-loop → 宿主 execute → coordinator，是复杂任务委派的调用链。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "协作内部依赖",
+      "items": [
+        "coordinator 用 apix-agent 生成架构与计划，再由 architecture 验证并冻结模块边界。",
+        "scheduling 筛选候选，task-scheduler 等待前置任务 accepted，再经宿主启动 CLI。",
+        "autonomy 请求宿主运行验收，并通过 coordinator → apix-agent 审查；失败时请求恢复或改派任务。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "共享不是无限共享",
+      "items": [
+        "主会话有项目笔记与摘要，协作另有事件记忆和员工上下文。",
+        "员工按任务与运行凭据访问 mailbox；第三方 CLI 需要主动轮询才能在运行中收到消息。"
+      ]
+    }
+  ]
+}

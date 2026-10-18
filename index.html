@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f5f7" />
-    <title>ApiX · Agent 协调工作台</title>
+    <title>ApiX · 智能工作区</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./phase4.css" />
     <link rel="stylesheet" href="./director.css" />
@@ -13,6 +13,11 @@
     <script type="module" src="./dist/web/overview.js"></script>
     <script type="module" src="./dist/web/coordinator.js"></script>
     <script type="module" src="./dist/web/employee.js"></script>
+    <script type="module" src="./dist/web/project-picker.js"></script>
+    <script type="module" src="./dist/web/mcp-settings.js"></script>
+    <link rel="stylesheet" href="./assistant.css" />
+    <script type="module" src="./dist/web/assistant.js"></script>
+    <script type="module" src="./dist/web/chat-history.js"></script>
     <script type="module" src="./agent-os.js"></script>
   </head>
   <body>
@@ -47,13 +52,14 @@
         <div class="sidebar-section nav-section">
           <div class="section-caption">工作空间</div>
           <nav class="nav-list" aria-label="主导航">
+            <button class="nav-item" data-page-target="assistant" aria-label="与 ApiX 对话"><svg class="icon"><use href="#icon-spark"/></svg><span>与 ApiX 对话</span></button>
             <button class="nav-item active" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
-            <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>对话工作区</span></button>
-            <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
+            <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
+            <details class="assistant-more"><summary>更多设置</summary><button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
             <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
             <button class="nav-item" data-page-target="models" aria-label="模型偏好"><svg class="icon"><use href="#icon-cube"/></svg><span>模型偏好</span></button>
             <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
-            <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button>
+            <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button></details>
           </nav>
         </div>
 
@@ -62,6 +68,7 @@
           <div id="sidebar-projects" class="sidebar-projects"></div>
         </div>
 
+        <div class="sidebar-section"><div class="section-caption">对话</div><div id="assistant-thread-list"></div></div>
         <div class="sidebar-bottom">
           <div class="local-badge"><span class="status-pulse"></span><span>本地工作台</span><span class="badge-meta">真实运行</span></div>
           <button class="profile-card" id="open-about">
@@ -79,6 +86,7 @@
         </header>
 
         <main id="page-overview" class="page settings-page"></main>
+        <main id="page-assistant" class="page"></main>
         <main id="page-coordinator" class="page settings-page"></main>
         <main id="page-workspace" class="page workspace-page active-page">
           <section class="conversation-area">
@@ -92,7 +100,7 @@
           <aside class="activity-panel"><div class="activity-heading"><div><div class="eyebrow tiny-eyebrow">LIVE ACTIVITY</div><h2>Agent 活动</h2></div><span class="activity-count" id="activity-count">00</span></div><div class="activity-intro">来自 Agent 接口或本地进程的事件。</div><div id="activity-list" class="activity-list"></div><div class="activity-footer"><div class="activity-footer-icon"><svg class="icon"><use href="#icon-spark"/></svg></div><div><strong>状态来源</strong><span>运行状态由本地服务确认</span></div></div></aside>
         </main>
 
-        <main id="page-director" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> APIX DIRECTOR</div><h1>与 ApiX 沟通<span class="title-period">.</span></h1><p>ApiX 主 Agent 通过 Pi 整理目标并提出可编辑方案。你检查计划后再创建任务；每个员工 Run 都保留独立审批记录。</p></div><section class="surface-card director-dialogue"><div class="block-header"><div><h2>主 Agent 对话</h2><p id="director-project-name">选择项目后描述目标、约束或中途调整。</p></div></div><div id="director-messages" class="director-messages" aria-live="polite"></div><form id="director-chat-form" class="stacked-form"><label>给 ApiX 的消息<textarea name="content" id="director-chat-input" required maxlength="10000" placeholder="例如：设计并实现多语言支持，先给我可检查的方案"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section><section id="director-proposal" class="section-block"></section><section class="section-block"><div class="block-header"><div><h2>计划看板</h2><p>可修改未启动的步骤；运行中可请求停止，再与 ApiX 讨论新方案。</p></div></div><div id="plan-board" class="plan-board"></div></section><section class="surface-card director-composer section-block"><h2>规则型快速拆分</h2><p>Pi 不可用时也可以手动使用固定规则创建计划；任务仍需逐项审批。</p><form id="director-form" class="stacked-form"><label>目标<textarea id="director-goal" name="goal" required maxlength="20000" placeholder="例如：分析项目结构；实现功能；验证并形成报告"></textarea></label><button class="outline-button" type="submit">按规则生成计划</button></form></section></main>
+        <main id="page-director" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> APIX DIRECTOR</div><h1>与 ApiX 沟通<span class="title-period">.</span></h1><p>ApiX 主 Agent 直接使用模型 API 整理目标并提出可编辑方案。你检查计划后再创建任务；每个员工 Run 都保留独立审批记录。</p></div><section class="surface-card director-dialogue"><div class="block-header"><div><h2>主 Agent 对话</h2><p id="director-project-name">选择项目后描述目标、约束或中途调整。</p></div></div><div id="director-messages" class="director-messages" aria-live="polite"></div><form id="director-chat-form" class="stacked-form"><label>给 ApiX 的消息<textarea name="content" id="director-chat-input" required maxlength="10000" placeholder="例如：设计并实现多语言支持，先给我可检查的方案"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section><section id="director-proposal" class="section-block"></section><section class="section-block"><div class="block-header"><div><h2>计划看板</h2><p>可修改未启动的步骤；运行中可请求停止，再与 ApiX 讨论新方案。</p></div></div><div id="plan-board" class="plan-board"></div></section><section class="surface-card director-composer section-block"><h2>规则型快速拆分</h2><p>模型服务不可用时也可以手动使用固定规则创建计划；任务仍需逐项审批。</p><form id="director-form" class="stacked-form"><label>目标<textarea id="director-goal" name="goal" required maxlength="20000" placeholder="例如：分析项目结构；实现功能；验证并形成报告"></textarea></label><button class="outline-button" type="submit">按规则生成计划</button></form></section></main>
 
         <main id="page-missions" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> MISSION CONTROL</div><h1>任务与员工<span class="title-period">.</span></h1><p>发现本机 Agent，注册逻辑员工，查看任务审批、运行状态、交付物与历史。</p></div><section class="section-block"><div class="block-header"><div><h2>已发现的 Runtime</h2><p>可用性来自本机命令探测；无法控制外部独立启动的会话。</p></div><button class="outline-button" id="scan-agents">重新扫描</button></div><div id="runtime-grid" class="resource-grid"></div></section><section class="section-block"><div class="block-header"><div><h2>Agent 员工</h2><p>一个 Runtime 可以注册多个岗位；任务派发给具体员工。</p></div><button class="primary-button" id="add-employee">注册员工</button></div><div id="agent-grid" class="resource-grid"></div></section><section class="section-block"><div class="block-header"><div><h2>任务列表</h2><p>所有历史保存在本地 SQLite，服务重启后继续可见。</p></div></div><div id="task-list" class="task-list"></div></section></main>
 

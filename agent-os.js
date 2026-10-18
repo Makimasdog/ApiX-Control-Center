@@ -1,3 +1,4 @@
+import {showTaskEvents} from './dist/web/task-events.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"/></svg>`;
@@ -16,7 +17,7 @@ let profileLoadedProjectId = null;
 let memoryResults = null;
 let renderedProposalKey = null;
 let directorSending = false;
-let currentPage = "coordinator";
+let currentPage = "assistant";
 let editing = null;
 let toastTimer;
 let messageStream = null;
@@ -71,12 +72,13 @@ function go(page) {
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
-  $("#breadcrumb-page").textContent = { overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { assistant: "对话", overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
-let refreshing=false;let snapshotETag='';
-async function refresh() {
-  if(refreshing)return;refreshing=true;
+let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();
+function refresh() {
+  if(refreshing)return refreshPending;refreshing=true;
+  refreshPending=(async()=>{
   try {
     const response=await fetch('/api/snapshot',{headers:snapshotETag?{'If-None-Match':snapshotETag}:{}});
     if(response.status!==304){if(!response.ok)throw new Error(`HTTP ${response.status}`);data=await response.json();snapshotETag=response.headers.get('ETag') ?? '';}
@@ -96,6 +98,7 @@ async function refresh() {
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
   finally{refreshing=false;}
+  })();return refreshPending;
 }
 function render() { renderProjects(); renderAgents(); renderTasks(); renderPlans(); renderDirector(); renderConversations(); renderWorkspace(); renderSettings(); renderCollaboration(); renderMemory(); renderMessageSupervision(); }
 function renderMessageSupervision() {
@@ -228,9 +231,9 @@ function renderSettings() {
   $("#model-total").textContent = `${settings.models.length} 个模型`;
   $("#model-grid").innerHTML = settings.models.map((item) => `<article class="model-card"><div class="item-card-top"><span class="item-icon model">${icon("cube")}</span><span class="type-label">${escapeHtml(item.provider)}</span></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-subtitle">${escapeHtml(item.modelId)}</p><div class="item-card-bottom"><button class="text-action" data-model="${item.id}">${item.id === settings.selectedModelId ? "已选择" : "设为偏好"}</button><button class="text-action danger" data-remove-model="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">尚无模型偏好；运行时使用 Agent 自身配置。</div>`;
   $("#skill-tab-count").textContent = String(settings.skills.length);
-  $("#mcp-tab-count").textContent = String(settings.mcps.length);
+
   $("#skill-grid").innerHTML = settings.skills.map((item) => `<article class="resource-card"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><button class="toggle ${item.enabled ? "on" : ""}" data-toggle-skill="${item.id}" role="switch" aria-checked="${item.enabled}"></button></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.description)}</p><div class="item-card-bottom"><span class="type-label">本地配置 · 未注入运行时</span><button class="text-action danger" data-remove-skill="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">暂无 Skill 配置。</div>`;
-  $("#mcp-grid").innerHTML = settings.mcps.map((item) => `<article class="resource-card"><div class="item-card-top"><span class="item-icon mcp">${icon("globe")}</span><button class="toggle ${item.enabled ? "on" : ""}" data-toggle-mcp="${item.id}" role="switch" aria-checked="${item.enabled}"></button></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.description)}</p><div class="project-meta">${escapeHtml(item.transport)} · ${escapeHtml(item.target)}</div><div class="item-card-bottom"><span class="type-label">仅保存配置 · 未连接</span><button class="text-action danger" data-remove-mcp="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">暂无 MCP 配置。</div>`;
+
 }
 function openEditor(kind, id = null) {
   editing = { kind, id };
@@ -247,7 +250,7 @@ function openEditor(kind, id = null) {
   if (existing) { $("#dialog-kicker").textContent = "编辑配置"; $("#dialog-title").textContent = { employee: "编辑员工", department: "更换部门经理", resume: "继续未完成任务", project: "编辑项目", memory: "编辑记忆", conversation: "重命名对话" }[kind]; }
   else $("#dialog-title").textContent = { project: "添加项目", employee: "注册员工", skill: "添加 Skill", mcp: "添加 MCP 服务" }[kind];
   const field = (label, name, placeholder = "", value = "") => `<label>${label}<input name="${name}" required maxlength="500" placeholder="${escapeHtml(placeholder)}" value="${escapeHtml(value)}" /></label>`;
-  $("#dialog-fields").innerHTML = kind === "project" ? field("项目名称", "name", "ApiX 开发", existing?.name) + field("已有目录绝对路径", "path", "E:\\Projects\\ApiX", existing?.path) + `<label>描述<input name="description" maxlength="500" value="${escapeHtml(existing?.description)}" /></label>` : kind === "employee" ? `<label>Runtime<select name="runtime" ${existing ? "disabled" : ""}>${data.runtimes.map((item) => `<option value="${item.id}" ${item.id === (existing?.runtime ?? id) ? "selected" : ""}>${escapeHtml(item.name)}${item.available ? "" : "（未安装）"}</option>`).join("")}</select></label>` + field("员工名称", "name", "例如：代码审查员", existing?.name) + field("岗位", "role", "例如：代码审查", existing?.role) + `<label>部门<input name="department" maxlength="100" value="${escapeHtml(existing?.department)}" placeholder="例如：研发部" /></label><label>状态<select name="enabled"><option value="true" ${existing?.enabled === 0 ? "" : "selected"}>启用</option><option value="false" ${existing?.enabled === 0 ? "selected" : ""}>停用</option></select></label>` : kind === "department" ? field("部门名称", "name", "例如：研发部", existing?.name) + `<label>经理员工<select name="managerId" required>${data.employees.filter((item) => item.enabled).map((item) => `<option value="${item.id}" ${item.id === existing.manager_id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label>` : kind === "resume" ? `<p class="form-note">旧进程可能仍有副作用。继续操作会创建一条新的待审批任务，请先核对项目当前状态。</p><label>执行员工<select name="employeeId" required>${data.employees.filter((item) => item.enabled).map((item) => `<option value="${item.id}" ${item.id === existing.employee_id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><label>补充要求<textarea name="instruction" maxlength="4000" placeholder="例如：先检查已修改文件和测试结果，再继续"></textarea></label>` : kind === "memory" ? field("标题", "title", "", existing?.title) + `<label>内容<textarea name="content" required maxlength="10000">${escapeHtml(existing?.content)}</textarea></label>` : kind === "conversation" ? field("对话标题", "title", "", existing?.title) : kind === "skill" ? field("Skill 名称", "name") + field("用途描述", "description") + `<label>简要指令<textarea name="instructions" maxlength="1000"></textarea></label>` : field("服务名称", "name") + field("用途描述", "description") + `<label>传输<select name="transport"><option>stdio</option><option>http</option></select></label>` + field("命令或 URL", "target");
+  $("#dialog-fields").innerHTML = kind === "project" ? field("项目名称", "name", "ApiX 开发", existing?.name) + field("项目文件夹绝对路径", "path", "E:\\Projects\\ApiX", existing?.path) + `<button type="button" class="outline-button" data-choose-project-folder>选择文件夹</button>${existing ? "" : '<label><input type="checkbox" name="createDirectory">目录不存在时创建目录</label>'}<p id="project-editor-error" role="alert"></p><label>描述<input name="description" maxlength="500" value="${escapeHtml(existing?.description)}" /></label>` : kind === "employee" ? `<label>Runtime<select name="runtime" ${existing ? "disabled" : ""}>${data.runtimes.map((item) => `<option value="${item.id}" ${item.id === (existing?.runtime ?? id) ? "selected" : ""}>${escapeHtml(item.name)}${item.available ? "" : "（未安装）"}</option>`).join("")}</select></label>` + field("员工名称", "name", "例如：代码审查员", existing?.name) + field("岗位", "role", "例如：代码审查", existing?.role) + `<label>部门<input name="department" maxlength="100" value="${escapeHtml(existing?.department)}" placeholder="例如：研发部" /></label><label>状态<select name="enabled"><option value="true" ${existing?.enabled === 0 ? "" : "selected"}>启用</option><option value="false" ${existing?.enabled === 0 ? "selected" : ""}>停用</option></select></label>` : kind === "department" ? field("部门名称", "name", "例如：研发部", existing?.name) + `<label>经理员工<select name="managerId" required>${data.employees.filter((item) => item.enabled).map((item) => `<option value="${item.id}" ${item.id === existing.manager_id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label>` : kind === "resume" ? `<p class="form-note">旧进程可能仍有副作用。继续操作会创建一条新的待审批任务，请先核对项目当前状态。</p><label>执行员工<select name="employeeId" required>${data.employees.filter((item) => item.enabled).map((item) => `<option value="${item.id}" ${item.id === existing.employee_id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}</select></label><label>补充要求<textarea name="instruction" maxlength="4000" placeholder="例如：先检查已修改文件和测试结果，再继续"></textarea></label>` : kind === "memory" ? field("标题", "title", "", existing?.title) + `<label>内容<textarea name="content" required maxlength="10000">${escapeHtml(existing?.content)}</textarea></label>` : kind === "conversation" ? field("对话标题", "title", "", existing?.title) : kind === "skill" ? field("Skill 名称", "name") + field("用途描述", "description") + `<label>简要指令<textarea name="instructions" maxlength="1000"></textarea></label>` : field("服务名称", "name") + field("用途描述", "description") + `<label>传输<select name="transport"><option>stdio</option><option>http</option></select></label>` + field("命令或 URL", "target");
   if (kind === "employee" && !existing) for (const option of $$("#dialog-fields select[name=runtime] option")) if (!data.runtimes.some((item) => item.id === option.value && item.available && item.managed)) option.remove();
   $("#editor-dialog").showModal();
 }
@@ -263,7 +266,7 @@ document.addEventListener("click", async (event) => {
     const report = review && JSON.parse(review.report);
     if (review && await confirmAction("应用集成结果", `目标仓库：${review.repository_path}\n变更文件：${report.changedFiles.join(", ")}\n\n确认后会把已审查的差异写入该仓库工作区。`)) await mutate(`/api/integrations/${review.id}/apply`, {});
   }
-  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("coordinator"); }
+  else if (d.selectProject) { selectedProjectId = d.selectProject; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedConversationId = data.conversations.find((item) => item.project_id === selectedProjectId)?.id ?? null; selectedTaskId = null; selectedDetails = null; profileLoadedProjectId = null; renderedProposalKey = null; memoryResults = null; $("#memory-search-input").value = ""; await refresh(); go("assistant"); }
   else if (d.editProject) openEditor("project", d.editProject);
   else if (d.registerRuntime) openEditor("employee", d.registerRuntime);
   else if (d.openEmployee) { go('employee'); document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:d.openEmployee})); }
@@ -275,7 +278,7 @@ document.addEventListener("click", async (event) => {
     const selected = data.tasks.find((item) => item.id === (d.openTask ?? d.viewTask));
     if (selected?.conversation_id) { selectedProjectId = selected.project_id; selectedConversationId = selected.conversation_id; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedTaskId = selected.id; await refresh(); go("workspace"); }
     else if (selected) {
-      try { const details = await api(`/api/tasks/${selected.id}/details`); $("#task-details-content").innerHTML = `<p><strong>${escapeHtml(selected.employee_name ?? names[selected.runtime])}</strong> · ${escapeHtml(labels[selected.status] ?? selected.status)} · ${time(selected.created_at)}</p><p>${escapeHtml(selected.prompt)}</p>${selected.result ? `<pre>${escapeHtml(selected.result)}</pre>` : ""}<h3>事件</h3>${details.events.slice(-100).reverse().map((item) => `<div class="activity-item"><strong>${escapeHtml(item.kind)}</strong><span>${time(item.created_at)}</span><p>${escapeHtml(summary(item))}</p></div>`).join("") || `<p>尚无事件。</p>`}`; $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
+      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
     }
   }
   else if (d.resumeTask) openEditor("resume", d.resumeTask);
@@ -338,7 +341,7 @@ $("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Ent
 $("#editor-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const values = Object.fromEntries(new FormData(event.currentTarget));
-  if (editing.kind === "project") { try { const created = await api(editing.id ? `/api/projects/${editing.id}` : "/api/projects", values); if (created.id) { selectedProjectId = created.id; localStorage.setItem("apix.selectedProject", created.id); } await refresh(); } catch (error) { toast(error.message); return; } }
+  if (editing.kind === "project") { values.createDirectory = values.createDirectory === "on"; values.path=values.path.trim(); $("#project-editor-error").textContent=""; try { const created = await api(editing.id ? `/api/projects/${editing.id}` : "/api/projects", values); snapshotETag='';await refresh();if (created.id) { selectedProjectId = created.id; localStorage.setItem("apix.selectedProject", created.id);await refresh(); } toast('项目已保存'); } catch (error) { $("#project-editor-error").textContent=error.message; return; } }
   else if (editing.kind === "employee") { try { values.enabled = values.enabled === "true"; if (!values.runtime) values.runtime = data.employees.find((item) => item.id === editing.id)?.runtime ?? editing.id; await api(data.employees.some((item) => item.id === editing.id) ? `/api/employees/${editing.id}` : "/api/employees", values); await refresh(); } catch (error) { toast(error.message); return; } }
   else if (editing.kind === "department") { try { await api(`/api/departments/${editing.id}`, values); await refresh(); } catch (error) { toast(error.message); return; } }
   else if (editing.kind === "plan-task") { try { await api(`/api/tasks/${editing.id}/revise`, values); await refresh(); toast("步骤已修改，请重新审批"); } catch (error) { toast(error.message); return; } }
@@ -352,13 +355,13 @@ $("#model-form").addEventListener("submit", (event) => { event.preventDefault();
 $("#sidebar-add-project").addEventListener("click", () => openEditor("project"));
 $("#add-project").addEventListener("click", () => openEditor("project"));
 $("#add-skill").addEventListener("click", () => openEditor("skill"));
-$("#add-mcp").addEventListener("click", () => openEditor("mcp"));
+$("#add-mcp").addEventListener("click", () => document.dispatchEvent(new CustomEvent("apix:configure-mcp")));
 $("#add-employee").addEventListener("click", () => openEditor("employee"));
 $("#scan-agents").addEventListener("click", async () => { try { await api("/api/runtimes/scan", {}); await refresh(); toast("已重新扫描本机 Agent"); } catch (error) { toast(error.message); } });
 $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
 $("#task-details-close").addEventListener("click", () => $("#task-details-dialog").close());
 $("#dialog-cancel").addEventListener("click", () => $("#editor-dialog").close());
-$("#brand-home").addEventListener("click", () => go("overview"));
+$("#brand-home").addEventListener("click", () => go("assistant"));
 $("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
@@ -465,7 +468,18 @@ document.addEventListener("click", async (event) => {
   const released = event.target.closest("[data-release-lock]");
   if (released && await confirmAction("释放资源锁", "先确认持有该锁的 Agent 不再使用该资源。")) await mutate(`/api/locks/${released.dataset.releaseLock}/release`, { agentId: "apix-director" });
 });
-go("coordinator");
+// Keep saved browser preferences, but make the actual manager configuration the primary entry.
+const modelPage=$("#page-models");
+modelPage.querySelector('.page-intro h1').textContent='模型设置';
+modelPage.querySelector('.page-intro p').textContent='配置 ApiX 管理者的真实推理连接；员工模型和登录仍由各自 CLI 配置。';
+const modelArchive=document.createElement('details');modelArchive.className='preferences-archive';modelArchive.innerHTML='<summary>浏览器模型收藏（不影响执行）</summary>';
+for(const child of [...modelPage.children])if(!child.classList.contains('page-intro'))modelArchive.append(child);
+const modelEntry=document.createElement('section');modelEntry.className='surface-card model-runtime-entry';modelEntry.innerHTML='<h2>ApiX 推理模型</h2><p>在项目工作区配置模型、保存连接并进行显式费用批准的连接测试。模型收藏不会切换管理者或员工模型。</p><button class="primary-button" id="open-real-model-settings">配置真实模型连接</button>';
+modelPage.append(modelEntry,modelArchive);
+$('#open-real-model-settings').addEventListener('click',()=>{go('coordinator');document.dispatchEvent(new Event('apix:manager-settings'));});
+const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
+$('#page-resources .page-intro p').textContent='Skills 按需加载项目和用户技能；MCP 按项目保存到本地服务，明确启用后可发现工具，并由 ApiX 在对话中调用。';
+go("assistant");
 refresh();
 setInterval(refresh, 1500);
 

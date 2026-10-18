@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, realpathSync, unlinkSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, realpathSync, unlinkSync, readFileSync,statSync } from 'node:fs';
+import { join, resolve,relative,isAbsolute } from 'node:path';
 
 const git = (cwd,args,options={}) => execFileSync('git',args,{cwd,encoding:'utf8',timeout:20000,maxBuffer:10000000,windowsHide:true,stdio:['pipe','pipe','pipe'],...options});
 const parts = value => value.split('\0').filter(Boolean);
-export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
+export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWorkspace=true}) {
   const indexDir=resolve(dataDir,'inspection-indexes'); mkdirSync(indexDir,{recursive:true});
   function workspace(task) {
     const w=row('SELECT * FROM workspaces WHERE task_id=?',task.id);
@@ -23,7 +23,7 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
     if(common!==realpathSync.native(expectedCommon)) throw new Error('工作区 Git 目录已变化，请重新审查');
     const gitDir=git(path,['rev-parse','--absolute-git-dir']).trim();
     if(!existsSync(join(gitDir,'gitdir')) || realpathSync.native(resolve(readFileSync(join(gitDir,'gitdir'),'utf8').trim()))!==realpathSync.native(join(path,'.git'))) throw new Error('Git worktree 登记与任务目录不一致');
-    if(!w.common_dir)db.prepare('UPDATE workspaces SET common_dir=? WHERE task_id=?').run(common,task.id);
+    if(!w.common_dir && persistWorkspace)db.prepare('UPDATE workspaces SET common_dir=? WHERE task_id=?').run(common,task.id);
     return {path,common,base:w.base_sha,input:task.input_commit ?? w.base_sha};
   }
   function inspect(task) {
@@ -54,7 +54,9 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
     const w=workspace(task);
     const commit=commitTree(w.path,preview.tree,w.input,`ApiX reviewed delivery ${task.id}`);
     const run=row('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id);
-    git(w.path,['update-ref',`refs/apix/deliveries/${task.id}/${run?.id ?? randomUUID()}`,commit]);
+    // Keep Git ref lock paths short on Windows; consumers use the stored commit.
+    const ref=createHash('sha256').update(`${task.id}:${run?.id ?? randomUUID()}`).digest('hex').slice(0,32);
+    git(w.path,['update-ref',`refs/apix/deliveries/${ref}`,commit]);
     db.prepare('UPDATE tasks SET delivery_commit=?,delivery_fingerprint=?,updated_at=? WHERE id=?').run(commit,preview.fingerprint,now(),task.id);
     recordTask(task.id,'delivery.frozen',{commit,inputCommit:w.input,files:preview.files,fingerprint:preview.fingerprint});
     return {commit,...preview};
@@ -121,5 +123,13 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask}) {
     recordTask(task.id,'handoff.resolved',{inputCommit:input,files:preview.files});
     return {tree:preview.tree,inputCommit:input};
   }
-  return {workspace,inspect,freeze,patch,populate,ancestors,approveResolution};
+  function qualityContext(task){
+    const binding=row('SELECT a.module_id,p.body FROM autonomy_tasks a JOIN autonomy_plans p ON p.plan_id=? WHERE a.task_id=?',task.plan_id,task.id);if(!binding)throw new Error('任务没有冻结架构');
+    const architecture=JSON.parse(binding.body);const selected=binding.module_id==='integration'?architecture.modules:architecture.modules.filter(m=>m.id===binding.module_id);const paths=selected.flatMap(m=>m.paths);
+    const w=workspace(task);const normalize=value=>process.platform==='win32'?value.toLowerCase():value;const all=[...new Set(parts(git(w.path,['ls-files','--cached','--others','--exclude-standard','-z'])))].filter(file=>paths.some(path=>normalize(file)===normalize(path)||normalize(file).startsWith(normalize(path)+'/')));
+    const files=[];let size=0;let truncated=false;
+    for(const file of all){const path=resolve(w.path,file);if(!existsSync(path))continue;const rel=relative(w.path,realpathSync.native(path));if(rel.startsWith('..')||isAbsolute(rel))throw new Error('审查文件通过链接越过工作区');const bytes=statSync(path).size;if(size+bytes>70000 || files.length>=100){truncated=true;continue;}const body=readFileSync(path,'utf8');if(body.includes('\0')){truncated=true;continue;}size+=bytes;files.push({path:file,content:body});}
+    return {files,truncated};
+  }
+  return {workspace,inspect,freeze,patch,populate,ancestors,approveResolution,qualityContext};
 }

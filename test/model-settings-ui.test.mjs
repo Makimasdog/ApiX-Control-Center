@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
-import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels } from '../dist/web/model-settings.js';
+import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest } from '../dist/web/model-settings.js';
 const providers=BUILTIN_PROVIDERS;
 const defaults={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
+test('connection test requires loaded, saved configuration, project and explicit fee approval',()=>{
+  const draft=selectProvider('',providers);
+  assert.throws(()=>connectionTestRequest(draft,providers,defaults,false,'p',true),/尚未加载/);
+  assert.throws(()=>connectionTestRequest(draft,providers,defaults,true,'',true),/选择项目/);
+  assert.throws(()=>connectionTestRequest(draft,providers,defaults,true,'p',false),/费用/);
+  assert.throws(()=>connectionTestRequest(selectProvider('deepseek',providers),providers,defaults,true,'p',true),/先保存/);
+  assert.deepEqual(connectionTestRequest(draft,providers,defaults,true,'p',true),{projectId:'p',settings:defaults,approved:true});
+});
 test('provider change clears custom name; actual selected model is saved',()=>{
   const deep=selectProvider('deepseek',providers);deep.customModelName='old';
   const next=selectProvider('dashscope',providers);

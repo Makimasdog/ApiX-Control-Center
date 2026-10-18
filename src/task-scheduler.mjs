@@ -16,11 +16,11 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
       let reason=null;
       if (!dependencies.every((dependency) => requiresAcceptance ? dependency.status === "accepted" : ["completed", "accepted"].includes(dependency.status))) reason='等待前置任务验收';
       else reason=admission(candidate);
-      if(reason){db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);onWaiting(candidate,reason);return;}
+      if(reason){if(candidate.status!=='queued'||candidate.queue_reason!==reason){db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);onWaiting(candidate,reason);}return;}
       if (["queued", "awaiting_approval"].includes(candidate.status)) {
         db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), candidate.id);
         try { launch(candidate); } catch (error) {
-          db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(error.code==='HANDOFF_CONFLICT'?'blocked':'failed',String(error.message), now(), candidate.id);
+          db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed',String(error.message), now(), candidate.id);
           recordTask(candidate.id, 'task.launch_failed', {error: String(error.message)});
           scheduleDependents(candidate.id);
         }

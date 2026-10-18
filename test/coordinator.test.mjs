@@ -13,8 +13,140 @@ import { createTaskScheduler } from '../src/task-scheduler.mjs';
 import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
 import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
 import { createCodeHandoffs } from '../src/code-handoffs.mjs';
+import {startModelFixture} from './fake-model-http.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+test('adapter registration distinguishes invalid IDs from builtins without replacing their commands',()=>{
+  const db=new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE tasks(id TEXT,runtime TEXT,status TEXT)');
+  try {
+    const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
+    const input={name:'Custom worker',executable:process.execPath,args:[],format:'plain'};
+    for(const id of ['Pi','Claude Code','qoder_cli','1-worker','worker.cli'])assert.throws(()=>adapters.register({...input,id}),/以小写英文字母开头/);
+    for(const id of ['pi','codex','claude','gemini','opencode','kimi']){
+      const before=adapters.command(id);
+      assert.throws(()=>adapters.register({id}),error=>error.message.includes('已有内置适配器')&&error.message.includes('注册员工')&&error.message.includes('重新扫描'));
+      assert.deepEqual(adapters.command(id),before);
+    }
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM apix_adapters').get().n,0);
+    assert.equal(adapters.register({...input,id:'qoder-cli'}).available,true);
+    adapters.register({...input,id:'qoder-cli',name:'Updated',args:['worker.mjs']});
+    assert.deepEqual(adapters.command('qoder-cli'),{executable:process.execPath,prefix:['worker.mjs']});
+    db.prepare('INSERT INTO tasks VALUES (?,?,?)').run('busy','qoder-cli','unknown');
+    assert.throws(()=>adapters.register({...input,id:'qoder-cli'}),/待处理任务/);
+    assert.deepEqual(adapters.command('qoder-cli').prefix,['worker.mjs']);
+  } finally { db.close(); }
+});
+
+test('Assistant can start a general conversation without selecting a project or registering employees',async()=>harness(async h=>{
+  const s=await h.request('/api/assistant/sessions',{});assert(s.project_id);
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(join(realpathSync.native(h.dir),'data')));
+  await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'解释如何协作，不执行命令'});await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+  const alias=join(h.dir,'general-alias');await symlink(project.path,alias,process.platform==='win32'?'junction':'dir');
+  const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));try{db.prepare('UPDATE projects SET path=? WHERE id=?').run(alias,project.id);}finally{db.close();}
+  assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+  await h.request('/api/projects',{name:'同一目录的别名',path:project.path},400);assert.equal((await h.request('/api/snapshot')).projects.length,1);
+}));
+
+test('Assistant refuses to expose its internal state directory as a workspace',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'invalid private workspace',path:join(h.dir,'data')})).id;
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'读取当前目录'});
+  const stopped=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);return state.status==='attention'?state:null;});
+  assert(stopped.events.some(e=>String(e.body.error??'').includes('内部状态目录')));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
+test('Assistant HTTP defaults to a general loop and repairs real file checks without employees',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'general assistant',path:h.project})).id;
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  let s=await h.request('/api/assistant/sessions',{projectId});s=await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
+  const done=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);if(state.status==='attention')throw new Error(JSON.stringify(state.events));return state.status==='completed'?state:null;});
+  assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode!==0));
+  assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode===0));assert.equal((await h.request('/api/snapshot')).employees.length,0);
+  await h.restart();assert.equal((await h.request(`/api/assistant/sessions/${s.id}`)).status,'completed');
+}));
+
+test('Assistant HTTP choice survives refresh and default permission asks before a side effect',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'assistant approval',path:h.project})).id;
+  let s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-choice'});
+  s=await waitFor(async()=>{const current=await h.request(`/api/assistant/sessions/${s.id}`);return current.status==='waiting_user'?current:null;});
+  await h.restart();s=await h.request(`/api/assistant/sessions/${s.id}`);assert.equal(s.pending.multiple,true);
+  await h.request(`/api/assistant/sessions/${s.id}/reply`,{version:s.version,requestId:s.pending.id,selected:['后端','文档'],content:'保持兼容'});
+  await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');
+  let write=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${write.id}/messages`,{content:'fixture-loop-write'});
+  write=await waitFor(async()=>{const current=await h.request(`/api/assistant/sessions/${write.id}`);return current.status==='waiting_user'?current:null;});
+  assert.equal(write.pending.tool,'write_file');await assert.rejects(()=>readFile(join(h.project,'a.txt')));
+  await h.request(`/api/assistant/sessions/${write.id}/stop`,{});
+}));
+
+test('Assistant loop approves setup, delegates through frozen contracts and resumes after repair and integrated acceptance',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual child check passed');");
+  execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture checks'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'loop delegation',path:h.project})).id;
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  let pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  assert.equal(pending.pending.tool,'configure_agents');assert.equal((await h.request('/api/snapshot')).employees.length,0);
+  pending=await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  let final;for(let i=0;i<1800;i++){
+    const s=await h.request(`/api/assistant/sessions/${parent.id}`);if(s.status==='attention')throw new Error(JSON.stringify(s.events));if(s.status==='completed'){final=s;break;}await delay(100);
+  }
+  assert(final,'delegated loop timed out');assert(final.events.some(e=>e.kind==='delegation_result'));assert.equal(final.child_session_id,null);
+  const delegated=final.events.find(e=>e.kind==='delegation_result').body;
+  assert(h.model.calls.every(c=>c.body.model==='fixture-parent-model'),'discussion, architecture, repairs and quality review inherit the parent model');
+  assert.equal((await h.request(`/api/conversation-models/coordination/${delegated.id}`)).settings.model,'fixture-parent-model');
+  assert(delegated.tasks.every(t=>t.status==='accepted'));assert.equal(delegated.autonomy.repairs.length,1);assert(delegated.autonomy.checks.some(c=>c.status==='failed'));assert(delegated.autonomy.checks.some(c=>c.status==='passed'));
+  assert.equal((await h.request('/api/snapshot')).employees.length,1);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+
+test('Assistant project setup cannot overwrite an existing global employee profile',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"console.log('actual fixture script');");
+  const projectId=(await h.request('/api/projects',{name:'profile isolation',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'existing worker',runtime:'codex',role:'实现'})).id;
+  const original=await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'user-model',reasoningLevel:5,contextTokens:64000});
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.events.some(e=>e.kind==='tool_result'&&e.body.tool==='configure_agents'&&e.body.ok===false&&e.body.error.includes('全局能力档案'));});
+  assert.deepEqual(await h.request(`/api/employees/${employeeId}/capabilities`),original);assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).enabled,false);assert.equal((await h.request('/api/snapshot')).employees.length,1);
+  await h.request(`/api/assistant/sessions/${parent.id}/stop`,{});
+}));
+
+test('stopping Assistant during architecture inference prevents every later worker dispatch',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"console.log('fixture check');");
+  const projectId=(await h.request('/api/projects',{name:'stop during planning',path:h.project})).id;
+  const parent=await h.request('/api/assistant/sessions',{projectId});
+  await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
+  await h.request(`/api/assistant/sessions/${parent.id}/messages`,{content:'fixture-loop-delegate'});
+  const pending=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.status==='waiting_user'?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
+  await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return s.child_session_id&&s.busy?s:null;});
+  await h.request(`/api/assistant/sessions/${parent.id}/stop`,{});
+  const stopped=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${parent.id}`);return !s.busy?s:null;});
+  assert.equal(stopped.status,'stopped');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_ARCH_DELAY_MS:'1000'}));
+
+test('stopping the independent loop aborts its in-flight model HTTP request',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'cancel model HTTP',path:h.project})).id;
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-http-hold'});
+  await waitFor(async()=>h.model.calls.length===1);
+  await h.request(`/api/assistant/sessions/${s.id}/stop`,{});
+  await waitFor(async()=>h.model.calls[0].aborted);
+  const stopped=await waitFor(async()=>{const d=await h.request(`/api/assistant/sessions/${s.id}`);return !d.busy?d:null;});assert.equal(stopped.status,'stopped');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+}));
+
+test('Assistant loads real project Skill content and shares editable memory across conversations',async()=>harness(async h=>{
+  await mkdir(join(h.project,'.apix/skills/evidence'),{recursive:true});await writeFile(join(h.project,'.apix/skills/evidence/SKILL.md'),'Use actual assertions. Skills do not grant execution permissions.');
+  const projectId=(await h.request('/api/projects',{name:'skills memory',path:h.project})).id;
+  const first=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${first.id}/messages`,{content:'fixture-loop-skill'});
+  const done=await waitFor(async()=>{const s=await h.request(`/api/assistant/sessions/${first.id}`);return s.status==='completed'?s:null;});
+  assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='load_skill'&&e.body.result.content.includes('actual assertions')));assert.equal(done.notes[0].source,'agent');
+  const second=await h.request('/api/assistant/sessions',{projectId});assert.equal(second.notes[0].title,'项目验证约定');
+  const updated=await h.request(`/api/assistant/sessions/${second.id}/memory`,{title:second.notes[0].title,version:1,content:'用户补充：保持兼容'});assert.equal(updated.notes[0].source,'user');assert.equal(updated.notes[0].version,2);
+}));
+
 test('workspace verifies native paths and legacy repository aliases without accepting a different repository',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-path-alias-'));
   try{
@@ -56,11 +188,47 @@ test('Windows npm shims resolve package bin entries without a shell', {skip:proc
   } finally {db.close();await rm(dir,{recursive:true,force:true});}
 });
 const delay = ms => new Promise(r=>setTimeout(r,ms));
+test('Pi employee entries are independent of the obsolete manager override',async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-pi-entry-')),db=new DatabaseSync(':memory:');const saved=process.env.APIX_PI_ENTRY;
+  try{const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},()=>process.execPath);
+    process.env.APIX_PI_ENTRY=join(root,'test/fake-pi.mjs');assert.equal(adapters.command('pi').executable,process.execPath);
+    for(const bad of [dir,'pi',join(dir,'missing.js'),join(dir,'pi.cmd')]){process.env.APIX_PI_ENTRY=bad;assert.equal(adapters.command('pi'),null);}
+    process.env.APIX_PI_ENTRY=process.execPath;assert.deepEqual(adapters.command('pi'),{executable:process.execPath,prefix:[]});
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
+});
+
+test('Windows Pi npm shims accept both official package scopes and reject invalid bin entries',{skip:process.platform!=='win32'},async()=>{
+  const dir=await mkdtemp(join(tmpdir(),'apix-pi-shims-')),db=new DatabaseSync(':memory:');const saved=process.env.APIX_PI_ENTRY;delete process.env.APIX_PI_ENTRY;
+  try{
+    for(const scope of ['@earendil-works','@mariozechner']){
+      const prefix=join(dir,scope),packageDir=join(prefix,'node_modules',scope,'pi-coding-agent'),entry=join(packageDir,'dist/cli.js');
+      await mkdir(dirname(entry),{recursive:true});await writeFile(entry,"console.log('fixture Pi');");await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'dist/cli.js'}}));await writeFile(join(prefix,'pi.cmd'),'fixture');
+      const adapters=createRuntimeAdapters({db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>''},name=>name==='pi'?join(prefix,'pi.cmd'):null);
+      assert.deepEqual(adapters.command('pi'),{executable:process.execPath,prefix:[entry]});
+      await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'../outside.js'}}));assert.equal(adapters.command('pi'),null);
+      await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'dist'}}));assert.equal(adapters.command('pi'),null);
+    }
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true,force:true});}
+});
+
+test('ApiX operates without Pi and missing model configuration does not start a CLI',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'independent ApiX',path:h.project})).id;
+  const ready=await h.request('/api/readiness?projectId='+projectId);assert.equal(ready.checks.find(c=>c.id==='manager').state,'ready');assert.equal(ready.canPlan,true);
+  assert.equal((await h.request('/api/snapshot')).runtimes.find(r=>r.id==='pi').available,false);
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
+  await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');
+  assert(h.model.calls.length>=5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  await h.request('/api/manager/settings',{});const empty=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${empty.id}/messages`,{content:'hello'});
+  const blocked=await waitFor(async()=>{const x=await h.request(`/api/assistant/sessions/${empty.id}`);return x.status==='attention'?x:null;});assert.match(blocked.events.find(e=>e.kind==='error').body.error,/配置 ApiX/);
+},{APIX_MANAGER_PI_ENTRY:'pi.cmd',APIX_PI_ENTRY:'not-installed'}));
+
 async function waitFor(predicate) {
   for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
   throw new Error('Timed out');
 }
 async function harness(work, extraEnv={}) {
+  const model=await startModelFixture(extraEnv);
   const dir=await mkdtemp(join(tmpdir(),'apix-coordinator-'));
   const project=join(dir,'project');
   execFileSync('git',['init',project],{stdio:'ignore'});
@@ -71,7 +239,7 @@ async function harness(work, extraEnv={}) {
   let server; let errors='';
   const env={...process.env,APIX_LEGACY_API:'0',APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_PI_ENTRY:join(root,'test/fake-pi.mjs'),APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-claude.mjs'),...extraEnv};
   const request=async(path,body,expected=200,headers={})=>{
-    const res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});
+    let res;try{res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});}catch(error){throw new Error(`${error.message} (server pid ${server?.pid}, exit ${server?.exitCode})\n${errors}`);}
     const json=await res.json();assert.equal(res.status,expected,JSON.stringify(json));return json;
   };
   const start=async()=>{
@@ -80,13 +248,131 @@ async function harness(work, extraEnv={}) {
     await waitFor(async()=>{if(server.exitCode!==null)throw new Error(errors);try{return(await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok;}catch{return false;}});
   };
   const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
-  try {await start(); await work({request,project,dir,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
-  finally {await stop();await rm(dir,{recursive:true,force:true});}
+  try {await start();await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''}); await work({request,project,dir,model,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
+  finally {await stop();await model.close();const cleanup=resolve(dir);assert(cleanup.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(cleanup,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
-test('manager tools follow project permission, use project cwd and stream audited activity',async()=>harness(async h=>{
+async function autonomyFixture(h,overrides={},verifySource="import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');assert.equal(process.env.APIX_AGENT_TOKEN,undefined);console.log('actual content check passed');") {
+  await writeFile(join(h.project,'verify.mjs'),verifySource);execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','approved fixture checks'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'autonomous fixture',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'implementer',runtime:'codex',role:'实现'})).id;
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'fixture-model',reasoningLevel:3,tags:[],tools:[],languages:[],projectIds:[],contextTokens:32000});
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  await h.request(`/api/projects/${projectId}/autonomy`,{version:0,enabled:true,approved:true,maxRepairs:2,maxMinutes:10,maxRunMinutes:5,checkpointMinutes:1,autoReassign:true,taskCapMinor:null,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}],...overrides});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'实现 a.txt 内容接口'});
+  for(const [field,value] of Object.entries({...answers,scope:'仅实现 a.txt 并按已有 verify.mjs 验收'}))s=await h.request(`/api/coordination/sessions/${s.id}/answers`,{revision:s.revision,field,value});
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});return {s,projectId,employeeId};
+}
+async function waitAutonomy(h,id,predicate){for(let i=0;i<400;i++){const s=await h.request(`/api/coordination/sessions/${id}`);if(predicate(s))return s;if(s.autonomy.state==='attention')throw new Error(JSON.stringify(s.autonomy));await delay(100);}throw new Error('autonomy timed out');}
+test('autonomous contract runs actual checks, creates a repair and accepts final integrated code without user review',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h);assert.equal(s.autonomy.architecture.modules[0].id,'core');assert.equal(s.tasks.length,2);assert.equal(s.autonomy.tasks[1].module_id,'integration');
+  const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed'||s.autonomy.state==='attention');assert.equal(final.autonomy.state,'completed',JSON.stringify(final.autonomy));assert.equal(final.derivedStatus,'completed');assert(final.tasks.every(t=>t.status==='accepted'));
+  assert.equal(final.autonomy.repairs.length,1);assert.match(final.autonomy.repairs[0].instruction,/检查 tests 失败/);assert.equal(final.autonomy.repairs[0].status,'dispatched');
+  assert.equal(final.autonomy.checks.filter(c=>c.status==='passed').length,2);assert.equal(final.autonomy.checks.filter(c=>c.status==='failed').length,1);assert(final.autonomy.checks.some(c=>c.body.tests[0].output.includes('actual content check passed')));
+  assert(final.autonomy.checks.filter(c=>c.status==='passed').every(c=>c.body.review.reviewMode==='apix_self_review'));
+  assert.equal(final.status,'completed');assert.equal(final.turns.filter(t=>t.kind==='delivery_completed').length,1);assert(!final.turns.find(t=>t.kind==='retry_approved').content.includes('AssertionError'),'technical failure details belong in delivery evidence');
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.runs.filter(r=>final.tasks.some(t=>t.id===r.task_id)).length,3,'background ticks must not duplicate a repair or verification');
+  const auditDb=new DatabaseSync(join(h.dir,'data','apix.sqlite'),{readOnly:true});try{assert(auditDb.prepare('SELECT observed_model FROM scheduling_attempts').all().every(a=>a.observed_model==='fixture-model'),'selected model must reach the actual worker argv');}finally{auditDb.close();}
+  const delivery=await h.request(`/api/tasks/${final.tasks[1].id}/delivery`);assert.equal(await readFile(join(delivery.workspacePath,'a.txt'),'utf8'),'good');
+  await h.restart();const restored=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(restored.autonomy.state,'completed');assert.equal(restored.autonomy.repairs.length,1);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('autonomous repair cap stops failures instead of accepting a successful process exit',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h,{maxRepairs:0});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert.equal(final.tasks[0].status,'needs_revision',final.autonomy.reason);assert.equal(final.autonomy.repairs.length,0);assert.match(final.autonomy.reason,/修复上限/);assert(final.tasks[1].status!=='accepted');
+  await h.request(`/api/coordination/sessions/${s.id}/autonomy/resume`,{revision:final.revision,fingerprint:'stale',reviewed:true},400);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('passing actual checks cannot override failed ApiX review and repair evidence stays auditable',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h,{maxRepairs:1});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert(final.autonomy.checks.some(c=>c.body.review?.passed===false && c.body.tests.every(t=>t.exitCode===0)));assert.equal(final.autonomy.repairs.length,1);assert(final.tasks.every(t=>t.status!=='accepted'));
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_FIXTURE_QUALITY_FAIL:'1'}));
+test('revoking autonomous policy during a real verification prevents review, acceptance and retry',async()=>harness(async h=>{
+  const {s,projectId}=await autonomyFixture(h,{},"setTimeout(()=>{console.log('delayed actual check');},4000);");const checking=await waitAutonomy(h,s.id,s=>s.autonomy.checks.some(c=>c.status==='running'));
+  await h.request(`/api/projects/${projectId}/autonomy`,{version:checking.autonomyPolicy.version,enabled:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='attention');assert(final.tasks.every(t=>t.status!=='accepted'));assert.equal(final.autonomy.repairs.length,0);assert.match(final.autonomy.reason,/授权|策略/);
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('autonomous repair waits through a project pause and resumes its dependency chain without user recovery',async()=>harness(async h=>{
+  const {s,projectId}=await autonomyFixture(h,{},"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';await new Promise(r=>setTimeout(r,2000));assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual delayed content check passed');");
+  const checking=await waitAutonomy(h,s.id,s=>s.autonomy.checks.some(c=>c.status==='running'));assert.equal(checking.derivedStatus,'running');const paused=await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  const waiting=await waitAutonomy(h,s.id,s=>s.autonomy.repairs.some(r=>r.status==='waiting'));assert.equal(waiting.autonomy.state,'running');assert.equal(waiting.derivedStatus,'queued');assert(waiting.tasks.every(t=>t.status!=='accepted'));assert.equal(waiting.autonomy.repairs.length,1);
+  await h.restart();const restored=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(restored.autonomy.repairs[0].status,'waiting');assert.equal(restored.autonomy.state,'running');
+  await h.request(`/api/projects/${projectId}/execution`,{version:paused.version,paused:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed');assert(final.tasks.every(t=>t.status==='accepted'));assert.equal(final.autonomy.repairs.length,1);assert.equal(final.autonomy.repairs[0].status,'dispatched');
+},{APIX_SUPERVISION_TICK_MS:'100'}));
+test('slow Git inspection does not block HTTP and preserves the production delivery fingerprint',async()=>harness(async h=>{
+  let {s,employeeId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  const task=s.tasks[0];const started=join(h.dir,'clean-started');const filter=join(h.dir,'slow-clean.mjs');
+  await writeFile(filter,`import {writeFileSync} from 'node:fs';let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(started)},'started');setTimeout(()=>process.stdout.write(text),2000);});`);
+  const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+  execFileSync('git',['config','filter.apixdelay.clean',quote(process.execPath.replaceAll('\\','/'))+' '+quote(filter.replaceAll('\\','/'))],{cwd:h.project});
+  await writeFile(join(task.workspace_path,'.gitattributes'),'slow.txt filter=apixdelay\n');await writeFile(join(task.workspace_path,'slow.txt'),'real delayed filter\n');
+  const pending=h.request(`/api/tasks/${task.id}/delivery`);
+  await waitFor(async()=>{try{return await readFile(started);}catch{return false;}});
+  const start=Date.now();await h.request('/api/manager/settings');assert(Date.now()-start<1500,'HTTP blocked by Git filter');
+  const delivery=await pending;assert(delivery.inspection.fingerprint);assert(delivery.inspection.files.includes('slow.txt'));
+  await h.request(`/api/tasks/${task.id}/review`,{accepted:true,fingerprint:delivery.inspection.fingerprint});
+}));
+test('Codex reconnect diagnostics do not fail a later successful turn',async()=>harness(async h=>{
+  let {s,employeeId}=await setup(h);
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,dependsOn:[],prompt:'fixture-codex-reconnect'}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  const done=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return ['completed','failed'].includes(d.tasks[0].status)&&d;});
+  assert.equal(done.tasks[0].status,'completed');
+}));
+test('connection test uses saved settings without tools, work or approval bypass',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'连接测试',path:h.project})).id;
+  const settings=await h.request('/api/manager/settings');
+  await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
+  assert.match((await h.request('/api/manager/test',{projectId,settings},400)).error,/费用/);
+  assert.match((await h.request('/api/manager/test',{projectId:'missing',settings,approved:true},400)).error,/不存在/);
+  assert.match((await h.request('/api/manager/test',{projectId,settings:{...settings,model:'stale'},approved:true},400)).error,/变化/);
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:true});
+  assert.match((await h.request('/api/manager/test',{projectId,settings,approved:true},400)).error,/账户/);
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:1,requireFreshQuota:false});
+  const result=await h.request('/api/manager/test',{projectId,settings,approved:true});
+  assert.equal(result.toolsEnabled,false);assert(result.durationMs>=0);assert.deepEqual(result.settings,settings);
+  assert.equal((await h.request('/api/snapshot')).tasks.length,0);
+  assert.deepEqual(await h.request(`/api/coordination/sessions?projectId=${projectId}`),[]);
+  assert.equal(await readFile(join(h.project,'README.md'),'utf8'),'fixture\n');
+  assert.deepEqual(await h.request('/api/manager/settings'),settings);
+},{APIX_AGENT_TOKEN:'fixture-worker-token'}));
+test('connection test reserves budget once and blocks duplicate calls and configuration changes',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'连接预算',path:h.project})).id;
+  const settings=await h.request('/api/manager/settings');
+  await h.request('/api/scheduling/accounts',{id:'connection-api',alias:'连接测试账户',type:'api',currency:'USD',limitMinor:10,version:0});
+  await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,limitMinor:10,currency:'USD',managerAccountId:'connection-api',managerEstimateMinor:6});
+  const pending=h.request('/api/manager/test',{projectId,settings,approved:true});
+  await waitFor(async()=>{const view=await h.request(`/api/projects/${projectId}/scheduling`);return view.ledger.some(r=>r.state==='reserved');});
+  assert.match((await h.request('/api/manager/test',{projectId,settings,approved:true},400)).error,/进行中/);
+  assert.match((await h.request('/api/manager/settings',settings,400)).error,/进行中/);
+  await pending;
+  const budget=await h.request(`/api/projects/${projectId}/scheduling`);
+  assert.equal(budget.committedMinor,6);assert.equal(budget.ledger.length,1);assert.equal(budget.ledger[0].state,'unmeasured');
+  await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+  await h.request('/api/manager/settings',settings);
+},{APIX_FIXTURE_CONNECTION_DELAY_MS:'600'}));
+test('connection test rejects invalid replies and redacts native failures while releasing its busy guard',async()=>{
+  for(const mode of ['invalid','error','quota'])await harness(async h=>{
+    const projectId=(await h.request('/api/projects',{name:'连接失败',path:h.project})).id;
+    const settings=await h.request('/api/manager/settings');
+    if(mode==='quota'){
+      await h.request('/api/scheduling/accounts',{id:'quota-api',alias:'额度测试账户',type:'api',currency:'USD',version:0});
+      await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'quota-api',managerEstimateMinor:1});
+    }
+    const result=await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+    assert.match(result.error,mode==='invalid'?/有效连接测试/:mode==='quota'?/额度不足/:/连接测试失败/);
+    assert.doesNotMatch(JSON.stringify(result),/fixture-secret/);
+    await h.request('/api/manager/settings',settings);
+    const retry=await h.request('/api/manager/test',{projectId,settings,approved:true},400);
+    assert.doesNotMatch(retry.error,/进行中/);
+    if(mode==='quota'){
+      const budget=await h.request(`/api/projects/${projectId}/scheduling`);
+      assert.equal(budget.ledger.length,1);assert.equal(budget.ledger[0].state,'unmeasured');assert(budget.accounts[0].pause);
+      assert.match(retry.error,/暂停/);
+    }
+  },{APIX_FIXTURE_CONNECTION_MODE:mode});
+});
+test('legacy planning never executes native CLI tools outside the ApiX tool loop',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'工具验收',path:h.project})).id;
-  for(const [mode,expected] of [['ask_approval',[]],['read_only',['read','grep','find','ls']],['full_access',['read','bash','edit','write','grep','find','ls']]]){
+  for(const [mode,expected] of [['ask_approval',[]],['read_only',[]],['full_access',[]]]){
     const policy=(await h.request(`/api/projects/${projectId}/workflow`)).manager;
     await h.request('/api/permissions',{projectId,subject:'apix',mode,version:policy.version});
     const s=await h.request('/api/coordination/sessions',{projectId,goal:'测试工具'});
@@ -98,7 +384,7 @@ test('manager tools follow project permission, use project cwd and stream audite
     if(expected.length)assert.match(stream,/event: tool/);
     if(mode!=='full_access')await assert.rejects(readFile(join(h.project,'manager-tool-fixture.txt')));
   }
-  assert.equal(await readFile(join(h.project,'manager-tool-fixture.txt'),'utf8'),'manager write fixture');
+  await assert.rejects(readFile(join(h.project,'manager-tool-fixture.txt')));
 }));
 
 test('manager aborts tool-enabled inference when project permission is revoked',async()=>harness(async h=>{
@@ -122,14 +408,14 @@ test('explicit work creates a real review plan without automatic authorization',
   assert.equal(s.policy.mode,'ask_approval');assert.equal(s.workflow.enabled,false);
 }));
 
-test('natural language after manager tools is formatted without replaying tools before dispatch',async()=>harness(async h=>{
+test('API planning dispatches without invoking native CLI tools',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'工具后结构化',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
   await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：安排检查'});
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：安排检查'});
-  assert.equal(s.agent.mode,'pi');assert.equal(s.status,'running');assert.equal(s.tasks.length,1);
-  assert.deepEqual(s.managerTools,[{toolName:'read',phase:'start'},{toolName:'read',phase:'end',isError:false}]);
+  assert.equal(s.agent.mode,'api');assert.equal(s.status,'running');assert.equal(s.tasks.length,1);
+  assert.deepEqual(s.managerTools,[]);
   assert.equal((await h.request('/api/snapshot')).runs.length,1);
 },{APIX_FIXTURE_NON_JSON_AFTER_TOOLS:'1'}));
 
@@ -164,7 +450,9 @@ test('automatic work respects strict fee approval and stop cancels queued work b
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
   assert.equal(s.tasks[0].status,'queued');
-  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:true,approved:true,employees:[{id:employeeId,version:1}],managerVersion:1},400);
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:true,approved:true,employees:[{id:employeeId,version:1}],managerVersion:1});
+  const unchanged=await h.request(`/api/projects/${projectId}/workflow`);
+  assert.equal(unchanged.manager.version,1);assert.equal(unchanged.employees.find(e=>e.id===employeeId).version,1);
   s=await h.request(`/api/coordination/sessions/${s.id}/stop`,{revision:s.revision});assert.equal(s.status,'cancelled');assert.equal(s.tasks[0].status,'cancelled');
   await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});assert.equal((await h.request('/api/snapshot')).runs.length,0);
   await h.request('/api/scheduling/accounts',{id:'api',alias:'收费账户',type:'api',currency:'USD',version:0});
@@ -177,6 +465,25 @@ test('automatic work respects strict fee approval and stop cancels queued work b
   await h.request('/api/permissions',{projectId,subject:employeeId,version:1,mode:'read_only'});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion},400);
 }));
+
+test('reenabling automation with existing permissions preserves queued grants and unknown tasks',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'resume automation',path:h.project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'worker',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});assert.equal(s.tasks[0].status,'queued');
+  await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:false});
+  const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));
+  try{db.prepare('UPDATE tasks SET status=? WHERE id=?').run('unknown',s.tasks[0].id);}finally{db.close();}
+  await h.request(`/api/projects/${projectId}/workflow`,{version:2,enabled:true,approved:true,managerVersion:1,employees:[{id:employeeId,version:1}]});
+  const enabled=await h.request(`/api/projects/${projectId}/workflow`);
+  assert.equal(enabled.enabled,true);assert.equal(enabled.manager.version,1);assert.equal(enabled.employees.find(e=>e.id===employeeId).version,1);
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'unknown');assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  const restore=new DatabaseSync(join(h.dir,'data','apix.sqlite'));try{restore.prepare('UPDATE tasks SET status=? WHERE id=?').run('queued',s.tasks[0].id);}finally{restore.close();}
+  await h.request(`/api/projects/${projectId}/execution`,{version:1,paused:false});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return ['completed','failed'].includes(d.tasks[0].status)&&d;});assert.equal(s.tasks[0].status,'completed');
+}));
 test('revoking automatic work while a plan is being generated prevents dispatch',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'撤回授权',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'员工',runtime:'pi',role:'开发'})).id;
@@ -187,15 +494,14 @@ test('revoking automatic work while a plan is being generated prevents dispatch'
   await h.request(`/api/projects/${projectId}/workflow`,{version:1,enabled:false});
   const result=await pending;assert.equal(result.plan_id,null);assert.equal((await h.request('/api/snapshot')).runs.length,0);assert(result.turns.some(t=>t.kind==='workflow_blocked'));
 },{APIX_FIXTURE_PLAN_DELAY_MS:'1500'}));
-test('custom manager uses an environment key reference and accepts Pi agent_end',async()=>harness(async h=>{
-  await h.request('/api/manager/settings',{baseUrl:'https://example.invalid/v1',model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
+test('direct manager uses its own API credentials and creates no Pi configuration',async()=>harness(async h=>{
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:'APIX_TEST_MANAGER_KEY'});
   const {s}=await setup(h);
-  assert.equal(s.agent.mode,'pi');assert.equal(s.agent.error,null);
-  const models=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
-  assert.equal(models.providers['apix-custom'].apiKey,'APIX_TEST_MANAGER_KEY');
-  assert(!JSON.stringify(models).includes('fixture-secret-value'));
+  assert.equal(s.agent.mode,'api');assert.equal(s.agent.error,null);
+  assert.equal(h.model.calls.at(-1).headers.authorization,'Bearer fixture-secret-value');
+  await assert.rejects(readFile(join(h.dir,'data','manager-pi','models.json')));
   const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
-  assert.equal(plan.agent.mode,'pi');assert.equal(plan.status,'plan_review');
+  assert.equal(plan.agent.mode,'api');assert.equal(plan.status,'plan_review');
 },{APIX_FIXTURE_MODERN_PI:'1',APIX_TEST_MANAGER_KEY:'fixture-secret-value'}));
 test('planning meetings isolate participants, record disagreements and require a new plan approval',async()=>harness(async h=>{
   const {projectId,employeeId,s}=await setup(h);const second=(await h.request('/api/employees',{name:'第二参与者',runtime:'claude',role:'验证'})).id;
@@ -257,7 +563,10 @@ test('a manager quota failure pauses its shared account before any fallback work
   await h.request('/api/scheduling/accounts',{id:'shared',alias:'manager and workers',type:'api',currency:'USD',limitMinor:100,remainingPercent:90,observedAt:new Date().toISOString(),version:0});
   await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,accountId:'shared'});
   await h.request(`/api/projects/${projectId}/scheduling`,{version:0,requireFreshQuota:false,managerAccountId:'shared',managerEstimateMinor:5});
-  await h.request('/api/manager/settings',{provider:'test-provider',model:'fixture-manager-quota'});
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture-manager-quota'});
+  const selected=await h.request(`/api/conversation-models/coordination/${s.id}`);
+  assert.equal(selected.settings.model,'fixture-model','global defaults must not replace this conversation model');
+  await h.request(`/api/conversation-models/coordination/${s.id}`,{version:selected.version,model:'fixture-manager-quota'});
   await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision},400);
   const budget=await h.request(`/api/projects/${projectId}/scheduling`);assert.ok(budget.accounts[0].pause);assert.equal(budget.committedMinor,5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
 }));
@@ -288,9 +597,90 @@ async function setup(h,runtime='pi') {
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:JSON.stringify(answers)});
   return {projectId,employeeId,s};
 }
+
+test('conversation acceptance requires an inspected fingerprint and actually unblocks dependent tasks',async()=>harness(async h=>{
+  let {s}=await setup(h);
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  const employeeId=s.tasks[0].employee_id;
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first implementation',dependsOn:[]},{employeeId,prompt:'review frozen implementation',dependsOn:[0]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  const task=s.tasks[0];const next=s.tasks[1];assert.equal(next.status,'queued');
+  await writeFile(join(task.workspace_path,'reviewed.txt'),'original inspected delivery');
+  const calls=h.model.calls.length;
+  const open=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收'});
+  assert.equal(open.reviewTaskId,task.id);assert.equal(open.tasks[0].status,'completed');assert.equal(open.tasks[1].status,'queued');assert.match(open.turns.at(-1).content,/尚未验收/);assert.equal(h.model.calls.length,calls);
+  const first=await h.request(`/api/tasks/${task.id}/delivery`);
+  await writeFile(join(task.workspace_path,'reviewed.txt'),'changed after inspection');
+  await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:open.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:task.id,fingerprint:first.inspection.fingerprint}]},400);
+  assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'completed');
+  const other=await h.request('/api/coordination/sessions',{projectId:s.project_id,goal:'unrelated session'});
+  const unrelated=await h.request(`/api/coordination/sessions/${other.id}/messages`,{revision:other.revision,content:'确认验收',reviewedDeliveries:[{taskId:task.id,fingerprint:first.inspection.fingerprint}]});
+  assert(!unrelated.reviewTaskId);assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status,'completed');
+  const checked=await h.request(`/api/tasks/${task.id}/delivery`);
+  const accepted=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:open.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:task.id,fingerprint:checked.inspection.fingerprint}]});
+  assert.equal(accepted.tasks[0].status,'accepted');assert(accepted.tasks[0].delivery_commit);assert.match(accepted.turns.at(-1).content,/已由宿主执行验收/);assert.equal(h.model.calls.length,calls);
+  const done=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[1].status==='completed'&&d;});
+  assert.equal(await readFile(join(done.tasks[1].workspace_path,'reviewed.txt'),'utf8'),'changed after inspection');
+  await h.restart();const persisted=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(persisted.tasks[0].status,'accepted');assert.equal(persisted.tasks[1].status,'completed');
+  const ambiguous=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:persisted.revision,content:'确认验收任务 1'});assert.equal(ambiguous.tasks[1].status,'completed');assert.match(ambiguous.turns.at(-1).content,/accepted/);
+}));
+
+test('conversation acceptance never guesses between multiple completed deliveries',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const employeeId=s.tasks[0].employee_id;
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first',dependsOn:[]},{employeeId,prompt:'second',dependsOn:[]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks.every(t=>t.status==='completed')&&d;});
+  const checked=await h.request(`/api/tasks/${s.tasks[0].id}/delivery`);
+  const result=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收',reviewedDeliveries:[{taskId:s.tasks[0].id,fingerprint:checked.inspection.fingerprint}]});
+  assert(result.tasks.every(t=>t.status==='completed'));assert.match(result.turns.at(-1).content,/多个任务待验收/);assert(!result.reviewTaskId);
+}));
+
+test('conversation acceptance cannot bypass a bound autonomous quality contract',async()=>harness(async h=>{
+  const {s}=await autonomyFixture(h);const calls=h.model.calls.length;
+  const reply=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'确认验收任务 1',reviewedDeliveries:[{taskId:s.tasks[0].id,fingerprint:'unverified'}]});
+  assert.match(reply.turns.at(-1).content,/不能通过聊天跳过/);assert(!reply.reviewTaskId);assert(reply.tasks.every(t=>t.status!=='accepted'));assert.equal(h.model.calls.length,calls);
+  await h.request(`/api/coordination/sessions/${s.id}/stop`,{revision:reply.revision});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks.every(t=>!['running','stopping'].includes(t.status));});
+}));
+
+test('non-Git projects run isolated tasks, freeze delivery, hand off code and prepare integration across restart',async()=>harness(async h=>{
+  const project=join(h.dir,'non-git');await mkdir(project);await writeFile(join(project,'README.md'),'original');await writeFile(join(project,'.env'),'never copy');
+  const projectId=(await h.request('/api/projects',{name:'non Git',path:project})).id;
+  const employeeId=(await h.request('/api/employees',{name:'worker',runtime:'pi',role:'开发'})).id;
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'检查项目'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:JSON.stringify(answers)});
+  s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  s=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:s.revision,planVersion:s.planVersion,steps:[{employeeId,prompt:'first',dependsOn:[]},{employeeId,prompt:'second',dependsOn:[0]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
+  await writeFile(join(s.tasks[0].workspace_path,'handoff.txt'),'accepted code');
+  const first=await h.request(`/api/tasks/${s.tasks[0].id}/delivery`);assert(first.inspection.fingerprint);
+  await h.request(`/api/tasks/${s.tasks[0].id}/review`,{accepted:true,fingerprint:first.inspection.fingerprint});
+  s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[1].status==='completed'&&d;});
+  assert.equal(await readFile(join(s.tasks[1].workspace_path,'handoff.txt'),'utf8'),'accepted code');
+  await h.restart();const second=await h.request(`/api/tasks/${s.tasks[1].id}/delivery`);assert(second.inspection.fingerprint);
+  await h.request(`/api/tasks/${s.tasks[1].id}/review`,{accepted:true,fingerprint:second.inspection.fingerprint});
+  const integration=await h.request('/api/integrations',{planId:s.plan_id});assert.equal(integration.report.sourceKind,'snapshot');assert.equal(integration.status,'ready');
+  assert.equal(await readFile(join(integration.workspacePath,'handoff.txt'),'utf8'),'accepted code');
+  await h.request(`/api/integrations/${integration.id}/apply`,{},400);
+  assert.equal(await readFile(join(project,'README.md'),'utf8'),'original');await assert.rejects(readFile(join(project,'.git')));await assert.rejects(readFile(join(s.tasks[0].workspace_path,'.env')));
+}));
+
+test('invalid planning dependencies are corrected once before dispatch',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(s.agent.mode,'api');assert.equal(s.agent.error,null);assert.deepEqual(s.dependencies,[]);
+  assert(s.tasks.every(t=>t.status==='awaiting_approval'));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_PLAN_INVALID:'once'}));
+
+test('repeated invalid dependencies stay a review draft and are not mislabeled as unavailable backend',async()=>harness(async h=>{
+  let {s}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/计划依赖无效/);
+  assert.match(s.turns.at(-1).content,/模型已响应/);assert(!s.turns.at(-1).content.includes('推理后端不可用'));
+  assert(s.tasks.every(t=>t.status==='awaiting_approval'));assert.equal((await h.request('/api/snapshot')).runs.length,0);
+},{APIX_FIXTURE_PLAN_INVALID:'always'}));
 test('ApiX requires complete confirmed requirements; approvals, independent memory and replay survive restart',async()=>harness(async h=>{
   const {projectId,s}=await setup(h);
-  assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'Pi');assert.equal(s.assessment.ready,true);
+  assert.equal(s.agent.name,'ApiX');assert.equal(s.agent.foundation,'ApiX');assert.equal(s.assessment.ready,true);
   await h.request('/api/tasks',{projectId,prompt:'bypass'},409);
   const incomplete=await h.request('/api/coordination/sessions',{projectId,goal:'另一个目标'});
   await h.request(`/api/coordination/sessions/${incomplete.id}/confirm`,{revision:1},400);
@@ -346,7 +736,7 @@ test('full access requires explicit worker permission; automatic dispatch and pe
 },{APIX_FIXTURE_HOLD:'1'}));
 test('plan edits create a new immutable plan; model config is persisted; Claude adapter returns artifacts',async()=>harness(async h=>{
   const {s}=await setup(h,'claude');
-  await h.request('/api/manager/settings',{provider:'test-provider',model:'test-model'});
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'test-model'});
   assert.equal((await h.request('/api/manager/settings')).model,'test-model');
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const oldPlan=p.plan_id;
   p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'verify changed plan',employeeId:p.tasks[0].employee_id,dependsOn:[]}]});
@@ -355,7 +745,7 @@ test('plan edits create a new immutable plan; model config is persisted; Claude 
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).derivedStatus==='awaiting_acceptance');
   assert((await h.request('/api/snapshot')).artifacts.some(a=>a.content.includes('Claude result')));
 }));
-test('interaction modes, conversation SSE and custom Pi endpoint persist across restart',async()=>harness(async h=>{
+test('interaction modes, conversation SSE and direct model endpoint persist across restart',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'模式测试',path:h.project})).id;
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'梳理新功能',interactionMode:'structured'});
   assert.equal(s.interaction_mode,'structured');
@@ -370,8 +760,11 @@ test('interaction modes, conversation SSE and custom Pi endpoint persist across 
   const changed=await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:s.revision,mode:'conversational'});
   assert.equal(changed.interaction_mode,'conversational');assert.equal(changed.revision,s.revision+1);
   await h.request(`/api/coordination/sessions/${s.id}/mode`,{revision:changed.revision,mode:'invalid'},400);
-  const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
-  assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,'http://127.0.0.1:11434/v1');
+  const settings=await h.request('/api/manager/settings',{model:'qwen-test',baseUrl:h.model.baseUrl,apiType:'openai-completions',apiKeyEnv:''});
+  assert.equal(settings.provider,'apix-custom');assert.equal(settings.baseUrl,h.model.baseUrl);
+  const selected=await h.request(`/api/conversation-models/coordination/${s.id}`);
+  assert.notEqual(selected.settings.model,'qwen-test','global defaults must not replace this conversation model');
+  await h.request(`/api/conversation-models/coordination/${s.id}`,{version:selected.version,model:'qwen-test'});
   const conversation=await fetch(`${h.origin}/api/coordination/sessions/${s.id}/messages/stream`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision:changed.revision,content:'继续澄清'})});
   const conversationFrames=(await conversation.text()).split('\n\n').filter(Boolean);
   assert.equal(conversation.status,200);
@@ -379,9 +772,8 @@ test('interaction modes, conversation SSE and custom Pi endpoint persist across 
   const conversationComplete=conversationFrames.find(frame=>frame.startsWith('event: complete\n'));
   assert(conversationComplete);
   assert.equal(JSON.parse(conversationComplete.split('data: ')[1]).interaction_mode,'conversational');
-  const generated=JSON.parse(await readFile(join(h.dir,'data','manager-pi','models.json'),'utf8'));
-  assert.equal(generated.providers['apix-custom'].baseUrl,settings.baseUrl);
-  assert.equal(generated.providers['apix-custom'].models[0].id,'qwen-test');
+  assert.equal(h.model.calls.at(-1).body.model,'qwen-test');
+  await assert.rejects(readFile(join(h.dir,'data','manager-pi','models.json')));
   await h.restart();
   assert.equal((await h.request(`/api/coordination/sessions/${s.id}`)).interaction_mode,'conversational');
   assert.equal((await h.request('/api/manager/settings')).baseUrl,settings.baseUrl);
@@ -611,7 +1003,7 @@ test('SSE stale revisions, model fallback and client disconnect leave the sessio
   for await(const event of streamFrames(await streamRequest(h,s,'fixture-invalid-reply')))if(event.type==='complete')s=event.data;
   assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/不支持的行为/);assert.equal(s.busy,false);
   for await(const event of streamFrames(await streamRequest(h,s,'fixture-runtime-error')))if(event.type==='complete')s=event.data;
-  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/Pi 未返回可用答复/);assert.equal(s.busy,false);
+  assert.equal(s.agent.mode,'rules');assert.match(s.agent.error,/模型流返回错误|模型未返回/);assert.equal(s.busy,false);
   const frames=streamFrames(await streamRequest(h,s,'fixture-context'));
   for await(const event of frames)if(event.type==='delta')break;
   // Stop reading without reissuing the request; the backend still owns this turn.
@@ -624,14 +1016,16 @@ test('SSE stale revisions, model fallback and client disconnect leave the sessio
 },{APIX_FIXTURE_STREAM:'1',APIX_FIXTURE_STREAM_DELAY_MS:'60'}));
 
 test('scheduler propagates launch failure through downstream dependencies',()=>{
+  for(const code of [undefined,'WORKER_CREDENTIAL_CONFLICT']) {
   const db=new DatabaseSync(':memory:');
   try {
     db.exec("CREATE TABLE tasks(id TEXT PRIMARY KEY,status TEXT,plan_id TEXT,updated_at TEXT,result TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE plans(id TEXT,mode TEXT);CREATE TABLE meeting_items(id TEXT,task_id TEXT);CREATE TABLE approvals(task_id TEXT,status TEXT,action TEXT,created_at TEXT);INSERT INTO tasks(id,status) VALUES ('a','completed'),('b','queued'),('c','queued');INSERT INTO task_dependencies VALUES ('b','a'),('c','b');INSERT INTO approvals VALUES ('b','approved','start-agent-in-project','now');");
     const row=(q,...p)=>db.prepare(q).get(...p);const rows=(q,...p)=>db.prepare(q).all(...p);
-    createTaskScheduler({db,row,rows,now:()=>new Date().toISOString(),launch:()=>{throw new Error('runtime gone');}}).scheduleDependents('a');
-    assert.equal(row('SELECT status FROM tasks WHERE id=?','b').status,'failed');
+    createTaskScheduler({db,row,rows,now:()=>new Date().toISOString(),launch:()=>{throw Object.assign(new Error('runtime gone'),{code});}}).scheduleDependents('a');
+    assert.equal(row('SELECT status FROM tasks WHERE id=?','b').status,code?'blocked':'failed');
     assert.equal(row('SELECT status FROM tasks WHERE id=?','c').status,'blocked');
   } finally {db.close();}
+  }
 });
 
 test('coordinator dependencies wait for acceptance and rejection blocks downstream work',async()=>harness(async h=>{
@@ -705,6 +1099,31 @@ test('run credentials isolate concurrent employee inboxes, acknowledgements and 
   }
 }));
 
+test('shared manager authentication blocks before creating a run or workspace and records a clear diagnostic',async()=>harness(async h=>{
+  await h.request('/api/manager/settings',{baseUrl:h.model.baseUrl,model:'fixture',apiKeyEnv:'OPENAI_API_KEY'});
+  const {s,employeeId}=await setup(h,'codex');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'must not launch with shared credentials',employeeId,dependsOn:[]}]});
+  const result=await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  assert.equal(result.tasks[0].status,'blocked');assert.match(result.tasks[0].result,/凭据共用/);
+  assert.equal((await h.request('/api/snapshot')).runs.length,0);
+  assert(!result.tasks[0].workspace_path);
+},{OPENAI_API_KEY:'fixture-shared-manager-key'}));
+
+test('spawned employees receive fresh mailbox identity and independent credentials without manager secrets',async()=>harness(async h=>{
+  const worker=join(h.dir,'environment-worker.mjs');
+  await writeFile(worker,`process.stdin.resume();process.stdin.on('end',()=>{const keys=['APIX_ALI_API_KEY','ali_api_key','APIX_DATA_DIR','APIX_PI_ENTRY','APIX_CODEX_ENTRY','APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL','APIX_WORKER_FIXTURE_KEY'];process.stdout.write(JSON.stringify(Object.fromEntries(keys.map(k=>[k,!!process.env[k]]))));});`);
+  await h.request('/api/adapters',{id:'environment-worker',name:'Environment worker',executable:process.execPath,args:[worker],format:'plain'});
+  const {s,employeeId}=await setup(h,'environment-worker');
+  let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'inspect own environment presence only',employeeId,dependsOn:[]}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+  const task=await waitFor(async()=>{const t=(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0];return t.status==='completed'?t:null;});
+  const env=JSON.parse(task.result);
+  for(const key of ['APIX_ALI_API_KEY','ali_api_key','APIX_DATA_DIR','APIX_PI_ENTRY','APIX_CODEX_ENTRY'])assert.equal(env[key],false,key);
+  for(const key of ['APIX_AGENT_TOKEN','APIX_PROJECT_ID','APIX_TASK_ID','APIX_RUN_ID','APIX_MAILBOX_URL','APIX_WORKER_FIXTURE_KEY'])assert.equal(env[key],true,key);
+},{APIX_ALI_API_KEY:'fixture-manager-key',ali_api_key:'fixture-manager-key',APIX_WORKER_FIXTURE_KEY:'fixture-worker-key'}));
+
 test('accepted code including new files reaches chained workers from frozen Git deliveries',async()=>harness(async h=>{
   const worker=join(h.dir,'code-worker.mjs');
   await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
@@ -722,6 +1141,10 @@ test('accepted code including new files reaches chained workers from frozen Git 
   await writeFile(join(source.workspace_path,'shared.txt'),'accepted input');
   const inspected=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
   await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true,fingerprint:inspected.inspection.fingerprint});
+  const refs=execFileSync('git',['for-each-ref','--format=%(refname)','refs/apix/deliveries/'],{cwd:h.project,encoding:'utf8'}).trim().split(/\r?\n/);
+  assert.equal(refs.length,1);assert.match(refs[0],/^refs\/apix\/deliveries\/[a-f0-9]{32}$/);
+  const frozen=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[0].id);
+  assert.equal(execFileSync('git',['rev-parse',refs[0]],{cwd:h.project,encoding:'utf8'}).trim(),frozen.delivery_commit);
   await writeFile(join(source.workspace_path,'shared.txt'),'unreviewed mutation');
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[1].status==='completed');
   let state=await h.request(`/api/coordination/sessions/${s.id}`);

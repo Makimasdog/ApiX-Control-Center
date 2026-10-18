@@ -1,15 +1,23 @@
+import {conversationModel,saveConversationModel} from './control-plane.mjs';
 import { createServer } from "node:http";
+import {browseFolders} from './src/project-folders.mjs';
+import {inspectEmployeeRuntime} from './control-plane.mjs';
+import {mcpServers,saveMcpServer,discoverMcpTools,closeMcpConnections} from './control-plane.mjs';
+import {assistantOutput} from './control-plane.mjs';
+import {chatHistory,changeChatHistory} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } from "./control-plane.mjs";
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
-import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
+import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, testManagerConnection, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
 import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery,executionSettings,saveExecutionSettings,changeRuntimePause,recoverTask } from './control-plane.mjs';
 import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
 import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
 import { readLocalModels } from './dist/src/local-models.js';
-import {workflowSettings,saveWorkflow,stopCoordinationSession} from './control-plane.mjs';
+import {workflowSettings,saveWorkflow,stopCoordinationSession,readiness,inspectTaskDelivery} from './control-plane.mjs';
+import {autonomySettings,saveAutonomySettings,resumeAutonomySession} from './control-plane.mjs';
+import {createAssistantSession,assistantSession,assistantSessions,assistantMessage,assistantReply,assistantStop,assistantResume,assistantEditMemory,assistantEvents} from './control-plane.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
@@ -21,7 +29,8 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
 };
 
-createServer(async (request, response) => {
+// Freezing Git inputs can outlast the default idle timeout while a polling request is in transit.
+createServer({keepAliveTimeout:65000},async (request, response) => {
   let pathname;
   try {
     pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
@@ -33,7 +42,7 @@ createServer(async (request, response) => {
   if (pathname.startsWith("/api/")) {
     if (![ `127.0.0.1:${port}`, `localhost:${port}` ].includes(request.headers.host ?? '')) { response.writeHead(403); response.end('Forbidden host'); return; }
     const origin = request.headers.origin;
-    const expectedOrigin = `http://127.0.0.1:${port}`;
+    const expectedOrigin = `http://${request.headers.host}`;
     if (origin && origin !== expectedOrigin) { response.writeHead(403); response.end("Forbidden origin"); return; }
     const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
@@ -42,6 +51,7 @@ createServer(async (request, response) => {
         if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id,actor.task_id)); return; }
         if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveAgentMessages(actor)); return; }
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
+        request.setEncoding('utf8');
         let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
         const input = JSON.parse(body || '{}');
         actor = authenticateAgent(request.headers.authorization);
@@ -64,7 +74,17 @@ createServer(async (request, response) => {
         return;
       }
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if(pathname==='/api/chat-history'&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,chatHistory(q.get('projectId')??'',q.get('view')??'active'));return;}
+      if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
+      if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+\/outputs\/[^/]+$/.test(pathname)&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,assistantOutput(pathname.split('/')[4],{id:pathname.split('/')[6],offset:q.has('offset')?Number(q.get('offset')):0,limit:6000}));return;}
+      if(/^\/api\/conversation-models\/(assistant|coordination)\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,conversationModel(pathname.split('/')[3],pathname.split('/')[4]));return;}
+      if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}
+      if(pathname==='/api/readiness' && request.method==='GET'){send(200,await readiness(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname) && request.method === 'GET') {send(200,workflowSettings(pathname.split('/')[3]));return;}
+      if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname) && request.method === 'GET') {send(200,autonomySettings(pathname.split('/')[3]));return;}
       if (pathname === '/api/manager/providers' && request.method === 'GET') { send(200, {providers: BUILTIN_PROVIDERS}); return; }
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
       if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
@@ -106,7 +126,7 @@ createServer(async (request, response) => {
         return;
       }
       if (/^\/api\/tasks\/[^/]+\/details$/.test(pathname) && request.method === "GET") { send(200, taskDetails(pathname.split("/")[3])); return; }
-      if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,taskDelivery(pathname.split('/')[3]));return; }
+      if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname) && request.method === 'GET') { send(200,await inspectTaskDelivery(pathname.split('/')[3]));return; }
       if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname) && request.method === 'GET') {send(200,executionSettings(pathname.split('/')[3]));return;}
       if (/^\/api\/employees\/[^/]+\/details$/.test(pathname) && request.method === 'GET') { send(200,employeeDetails(pathname.split('/')[3])); return; }
       if (/^\/api\/employees\/[^/]+\/capabilities$/.test(pathname) && request.method === 'GET') { send(200,employeeCapability(pathname.split('/')[3])); return; }
@@ -114,6 +134,7 @@ createServer(async (request, response) => {
       if (/^\/api\/packs\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, workflowPack(pathname.split("/")[3])); return; }
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
       let raw = "";
+      request.setEncoding('utf8');
       for await (const chunk of request) { raw += chunk; if (raw.length > 30000) throw new Error("请求过大"); }
       const input = JSON.parse(raw || "{}");
       if (/^\/api\/coordination\/sessions\/[^/]+\/messages\/stream$/.test(pathname)) {
@@ -126,11 +147,24 @@ createServer(async (request, response) => {
       }
       if (process.env.APIX_LEGACY_API !== '1' && (['/api/tasks','/api/director/plans','/api/director/messages','/api/collaboration/plans','/api/meetings','/api/manager-reviews'].includes(pathname) || /^\/api\/tasks\/[^/]+\/(resume|revise)$/.test(pathname) || pathname.startsWith('/api/director/'))) { send(409, { error: '请在 ApiX 目标工作台澄清并确认需求后安排任务' }); return; }
       let result;
-      if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
+      if(/^\/api\/conversation-models\/(assistant|coordination)\/[^/]+$/.test(pathname))result=saveConversationModel(pathname.split('/')[3],pathname.split('/')[4],input);
+      else if(pathname==='/api/assistant/sessions')result=createAssistantSession(input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/messages$/.test(pathname))result=assistantMessage(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/reply$/.test(pathname))result=await assistantReply(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/stop$/.test(pathname))result=assistantStop(pathname.split('/')[4]);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/resume$/.test(pathname))result=assistantResume(pathname.split('/')[4],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/memory$/.test(pathname))result=assistantEditMemory(pathname.split('/')[4],input);
+      else if (pathname === "/api/runtimes/scan") result = await scanRuntimes();
       else if (pathname === '/api/adapters') result = registerRuntimeAdapter(input);
+      else if(/^\/api\/employees\/[^/]+\/runtime-info$/.test(pathname))result=await inspectEmployeeRuntime(pathname.split('/')[3]);
+      else if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname))result=await saveMcpServer(pathname.split('/')[3],input);
+      else if(/^\/api\/projects\/[^/]+\/mcp\/discover$/.test(pathname))result=await discoverMcpTools(pathname.split('/')[3]);
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (pathname === '/api/manager/test') result = await testManagerConnection(input);
       else if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname)) result=saveWorkflow(pathname.split('/')[3],input);
+      else if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname)) result=saveAutonomySettings(pathname.split('/')[3],input);
+      else if (/^\/api\/coordination\/sessions\/[^/]+\/autonomy\/resume$/.test(pathname)) result=resumeAutonomySession(pathname.split('/')[4],input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/stop$/.test(pathname)) result=stopCoordinationSession(pathname.split('/')[4],input);
       else if (pathname === '/api/scheduling/accounts') result=schedulingAccount(input);
       else if (pathname === '/api/scheduling/accounts/resume') result=resumeSchedulingAccount(input);
@@ -149,6 +183,7 @@ createServer(async (request, response) => {
       else if (/^\/api\/coordination\/sessions\/[^/]+\/dispatch$/.test(pathname)) result = dispatchCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/revise$/.test(pathname)) result = reviseCoordinationSession(pathname.split("/")[4], input);
       else if (/^\/api\/coordination\/sessions\/[^/]+\/instructions$/.test(pathname)) result = instructCoordinationEmployee(pathname.split("/")[4], input);
+      else if(/^\/api\/chat-history\/(assistant|coordination)\/[^/]+$/.test(pathname))result=changeChatHistory(pathname.split('/')[3],pathname.split('/')[4],input);
       else if (pathname === "/api/projects") result = { id: createProject(input) };
       else if (/^\/api\/projects\/[^/]+\/profile$/.test(pathname)) result = saveProjectProfile(pathname.split("/")[3], input);
       else if (/^\/api\/projects\/[^/]+$/.test(pathname)) { updateProject(pathname.split("/")[3], input); result = { updated: true }; }
@@ -193,7 +228,7 @@ createServer(async (request, response) => {
       else if (/^\/api\/runs\/[^/]+\/stop$/.test(pathname)) { stopRun(pathname.split("/")[3]); result = { requested: true }; }
       else if (/^\/api\/tasks\/[^/]+\/review$/.test(pathname)) { acceptTask(pathname.split("/")[3], input.accepted === true,input.fingerprint); result = { reviewed: true }; }
       else if (/^\/api\/tasks\/[^/]+\/delivery$/.test(pathname)) result=freezeHistoricalDelivery(pathname.split('/')[3],input);
-      else if (/^\/api\/tasks\/[^/]+\/recovery$/.test(pathname)) result=recoverTask(pathname.split('/')[3],input);
+      else if (/^\/api\/tasks\/[^/]+\/recovery$/.test(pathname)) result=await recoverTask(pathname.split('/')[3],input);
       else if (/^\/api\/projects\/[^/]+\/execution$/.test(pathname)) result=saveExecutionSettings(pathname.split('/')[3],input);
       else if (/^\/api\/projects\/[^/]+\/execution\/runtime$/.test(pathname)) result=changeRuntimePause(pathname.split('/')[3],input);
       else { send(404, { error: "Not found" }); return; }
@@ -202,7 +237,7 @@ createServer(async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css']);
+  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css','assistant.css']);
   if (!publicFiles.has(relativePath) && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
   const filePath = normalize(join(root, relativePath));
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {
@@ -226,3 +261,5 @@ createServer(async (request, response) => {
 }).listen(port, "127.0.0.1", () => {
   process.stdout.write(`ApiX Web: http://127.0.0.1:${port}\n`);
 });
+let shuttingDown=false;
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),4000).unref();void closeMcpConnections().finally(()=>process.exit(0));});

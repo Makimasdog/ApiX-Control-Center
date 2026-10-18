@@ -34,6 +34,8 @@ export const BUILTIN_PROVIDERS: ProviderConfig[] = [
     defaultApiKeyEnv: 'DEEPSEEK_API_KEY',
     description: 'DeepSeek 深度求索 - 高性价比推理模型',
     models: [
+      {id:'deepseek-flash',name:'DeepSeek Flash',description:'通用与推理模型'},
+      {id:'deepseek-v4-pro',name:'DeepSeek V4 Pro',description:'复杂任务与推理模型'},
       {
         id: 'deepseek-chat',
         name: 'DeepSeek Chat',
