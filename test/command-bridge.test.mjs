@@ -24,7 +24,7 @@ test('production command bridge records real normal and failed process facts',{t
  assert.equal(h.db.prepare("SELECT COUNT(*) n FROM assistant_events WHERE kind='command_finished'").get().n,2);
 }));
 for(const phase of ['intent','identity','output'])test(`actual SQLite ${phase} recording failure gates execution and recovery`,{timeout:25000},()=>fixture(async h=>{
- h.db.exec(phase==='output'?"CREATE TRIGGER deny BEFORE INSERT ON assistant_outputs BEGIN SELECT RAISE(FAIL,'output record failed');END;":`CREATE TRIGGER deny BEFORE INSERT ON assistant_events WHEN NEW.kind='command_${phase}' ${phase==='identity'?"AND json_extract(NEW.body,'$.identity.pid') IS NOT NULL":''} BEGIN SELECT RAISE(FAIL,'record failed');END;`);
+ h.db.exec(phase==='output'?"CREATE TRIGGER deny BEFORE INSERT ON assistant_outputs WHEN NEW.id NOT LIKE 'review-%' BEGIN SELECT RAISE(FAIL,'output record failed');END;":`CREATE TRIGGER deny BEFORE INSERT ON assistant_events WHEN NEW.kind='command_${phase}' ${phase==='identity'?"AND json_extract(NEW.body,'$.identity.pid') IS NOT NULL":''} BEGIN SELECT RAISE(FAIL,'record failed');END;`);
  h.push(action('run_command',{executable:'node',args:['-e',"require('node:fs').writeFileSync('ran','yes');setTimeout(()=>{},200)"],timeoutMs:5000}),finish);h.service.message(h.id,{content:'command'});let s=await idle(h);assert.equal(s.status,'attention');assert.equal(s.busy,false);assert(s.events.some(e=>e.kind==='process_unknown'));
  if(phase==='intent')assert.equal(existsSync(join(h.root,'ran')),false);
  assert.throws(()=>h.service.message(h.id,{content:'repeat'}),/核对|恢复|检查后继续/);

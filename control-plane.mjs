@@ -1359,6 +1359,10 @@ export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;
+export const assistantStartTask=assistant.startTask;
+export const assistantDelivery=assistant.delivery;
+export const assistantDeliveryFile=assistant.deliveryFile;
+export const assistantReviewDelivery=assistant.reviewDelivery;
 export const assistantLogOutput=(id,args)=>{assistant.details(id);return assistantCommands.readOutput(id,args);};
 const history=createChatHistory(store,(kind,id)=>{
   const source=row(`SELECT * FROM ${kind==='assistant'?'assistant_sessions':'coordination_sessions'} WHERE id=?`,id);
