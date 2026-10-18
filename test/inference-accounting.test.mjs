@@ -25,3 +25,11 @@ for(const primary of [true,false])test(`real SQLite settlement failure preserves
  store.db.exec('DROP TRIGGER refuse_settlement');const reservation=store.row('SELECT id FROM scheduling_reservations');restored.settleReported('p',{id:reservation.id,reviewed:true,confirmedStopped:true,actualMinor:1});assert.equal(store.row('SELECT state FROM scheduling_reservations').state,'settled');
  }finally{if(previous===undefined)delete process.env.APIX_ACCOUNTING_TEST_KEY;else process.env.APIX_ACCOUNTING_TEST_KEY=previous;}
 }));
+
+test('real pause failure is recorded independently and blocks shared-account restart',{timeout:5000},()=>fixture(async(s,store)=>{
+ store.db.exec("DROP TRIGGER refuse_settlement;CREATE TABLE assistant_events(kind TEXT,body TEXT);CREATE TRIGGER refuse_pause BEFORE INSERT ON scheduling_account_pauses BEGIN SELECT RAISE(FAIL,'pause failed');END;");
+ s.saveAccount({id:'shared',version:1,alias:'shared',type:'api',currency:'USD',limitMinor:null,remainingPercent:90,reservePercent:0,observedAt:new Date().toISOString()});s.savePolicy('p',{version:1,requireFreshQuota:false,managerAccountId:'shared',managerEstimateMinor:null});
+ const infer=createAssistantInference({settings:()=>({apiKeyEnv:'NONE'}),account:()=> 'shared',reserve:s.reserveManager,settle:s.settle,pause:s.pauseAccountId,quotaFailure:()=>true,recordFailure:r=>store.db.prepare('INSERT INTO assistant_events VALUES (?,?)').run('inference_accounting_failure',JSON.stringify(r)),infer:async()=>{throw new ModelCleanupUnknownError('quota cleanup unknown');}});
+ await assert.rejects(infer('p','task'),e=>{assert(e instanceof ModelCleanupUnknownError);assert(e.accountingFailures.some(f=>f.stage==='pause'&&f.persisted));return true;});assert.equal(store.row('SELECT state FROM scheduling_reservations').state,'unmeasured');
+ const restored=createScheduling(store,{employees:()=>[],available:()=>true,denied:()=>false,waiting:()=>null});assert.throws(()=>restored.reserveManager('assistant:new','p'),/账本|核对/);
+}));

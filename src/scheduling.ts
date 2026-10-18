@@ -250,7 +250,8 @@ export function createScheduling(store: Store, dependencies: {
   function reserveManager(id:string,projectId:string) {
     const p=policy(projectId);const account=accounts().find(a=>a.id===p.managerAccountId);
     const unresolved=rows<{id:string}>("SELECT id FROM scheduling_reservations WHERE state='reserved' AND id LIKE 'assistant:%' AND (project_id=? OR account_id=?)",projectId,p.managerAccountId).find(r=>!activeManagers.has(r.id));
-    if(unresolved)throw new Error('历史推理预留的账本状态未确认，请先核对并结算');
+    const failedAccounting=row("SELECT name FROM sqlite_master WHERE type='table' AND name='assistant_events'")&&row("SELECT r.id FROM scheduling_reservations r WHERE r.state IN ('reserved','unmeasured') AND (r.project_id=? OR r.account_id=?) AND EXISTS (SELECT 1 FROM assistant_events e WHERE e.kind='inference_accounting_failure' AND json_extract(e.body,'$.id')=r.id) LIMIT 1",projectId,p.managerAccountId);
+    if(unresolved||failedAccounting)throw new Error('历史推理预留的账本状态未确认，请先核对并结算');
     if(!account){if(p.limitMinor!==null || p.requireFreshQuota)throw new Error('严格预算或额度策略需要先指定 ApiX 推理账户及费用上界');return false;}
     db.exec('SAVEPOINT manager_budget');
     try{
