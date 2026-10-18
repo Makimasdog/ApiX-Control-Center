@@ -3,7 +3,7 @@ import {commandTool,preflightCommand,projectFingerprint} from './assistant-tools
 import {inspectCommandSync,type CommandIdentity,type CommandResult} from './command-lifecycle.js';
 import {type Store,type Policy} from './contracts.js';
 
-export class CommandSafetyError extends Error {readonly code='COMMAND_LIFECYCLE_UNKNOWN';constructor(message:string,readonly operationId?:string){super(message);}}
+export class CommandSafetyError extends Error {readonly code='COMMAND_LIFECYCLE_UNKNOWN';constructor(message:string,readonly operationId?:string,readonly resource:'command_operation'|'file_operation'='command_operation'){super(message);}}
 interface Session {id:string;project_id:string}
 interface Dependencies extends Store {root(projectId:string):string;env():NodeJS.ProcessEnv;protectedValues():string[];policy(projectId:string):Policy}
 export function createAssistantCommands(deps:Dependencies){
@@ -17,7 +17,7 @@ export function createAssistantCommands(deps:Dependencies){
   return [...operations.entries()].filter(([,op])=>!(op.result?.processesEnded&&!op.result.sideEffectsNeedReview&&op.result.evidencePersisted)&&((resumed.get(op.sessionId)??0)<=op.id));
  }
  function assertClear(s:Session,ownOnly=false){
-  if(blocked.has(s.project_id)||pending(s.project_id).some(([,op])=>!ownOnly||op.sessionId===s.id))throw new CommandSafetyError('本项目有命令或副作用尚未核对；普通消息不会重放，请检查后恢复');
+  if(blocked.has(s.project_id)||pending(s.project_id).some(([,op])=>!ownOnly||op.sessionId===s.id))throw new Error('本项目有命令或副作用尚未核对；普通消息不会重放，请检查后恢复');
  }
  function recover(s:Session){
   for(const [id,op] of pending(s.project_id).filter(([,op])=>op.sessionId===s.id)){

@@ -5,6 +5,7 @@ import {homedir} from 'node:os';
 import {managedCommand,type CommandHooks} from './command-lifecycle.js';
 import {object,text} from './contracts.js';
 import {commandCapabilities} from './command-capabilities.js';
+import {readSource,sourceBuffer,fileSha,prepareEdit,commitEdit,searchSource} from './coding-files.js';
 
 const excluded=(name:string)=>name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
 function within(root:string,path:string){const rel=relative(root,path);return rel!== '..'&&!rel.startsWith('..\\')&&!rel.startsWith('../')&&!isAbsolute(rel);}
@@ -14,6 +15,7 @@ export function projectPath(root:string,input:unknown,write=false):string {
   const target=resolve(root,name);if(!within(root,target))throw new Error('路径越过项目边界');
   let parent=target;while(!existsSync(parent)){const next=dirname(parent);if(next===parent)throw new Error('路径不存在');parent=next;}
   if(!within(root,realpathSync.native(parent)))throw new Error('链接越过项目边界');
+  if(relative(root,realpathSync.native(parent)).split(/[\\/]/).some(excluded))throw new Error('实际路径包含凭据文件');
   if(!write&&!existsSync(target))throw new Error('文件不存在');return target;
 }
 export function projectFingerprint(root:string,mutablePaths:string[]=[],protectChecks=false):string {
@@ -47,6 +49,8 @@ export function skillsFor(root:string){
 }
 export function fileTool(root:string,tool:string,input:unknown){
   const args=object(input);
+  if(tool==='search_files')return searchSource(realpathSync.native(root),args,path=>projectPath(root,path));
+  if(tool==='edit_file'){const path=projectPath(root,args.path);return {path:args.path,...commitEdit(path,prepareEdit(path,args))};}
   if(tool==='list_files'){
     const path=projectPath(root,args.path??'.');const entries=readdirSync(path,{withFileTypes:true}).filter(e=>!excluded(e.name));
     return {entries:entries.slice(0,200).map(e=>({name:e.name,directory:e.isDirectory(),link:e.isSymbolicLink()})),truncated:entries.length>200};
@@ -57,7 +61,10 @@ export function fileTool(root:string,tool:string,input:unknown){
     return {name:skill.name,content:readFileSync(skill.path,'utf8'),authority:'context_only'};
   }
   const path=projectPath(root,args.path,tool==='write_file');
-  if(tool==='read_file'){if(lstatSync(realpathSync.native(path)).size>20000)throw new Error('文件超过完整读取预算，请委派拆分审查');return {path:args.path,content:readFileSync(path,'utf8')};}
+  if(tool==='read_file'){
+    if(args.startLine!==undefined||args.endLine!==undefined||args.cursor!==undefined||args.maxBytes!==undefined)return {path:args.path,...readSource(path,args)};
+    if(lstatSync(realpathSync.native(path)).size>20000)throw new Error('文件超过完整读取预算，请用 startLine/endLine 或游标按范围读取');const data=sourceBuffer(path,20000);return {path:args.path,content:data.toString('utf8'),sha256:fileSha(data),startLine:1,endLine:data.toString('utf8').split('\n').length,bytesReturned:data.length,byteBudget:20000,hasMore:false,nextCursor:null};
+  }
   if(tool==='write_file'){
     if(typeof args.content!=='string'||args.content.length>20000||path===realpathSync.native(root))throw new Error('写入内容无效或过大');
     mkdirSync(dirname(path),{recursive:true});writeFileSync(path,args.content);return {path:args.path,bytes:Buffer.byteLength(args.content)};

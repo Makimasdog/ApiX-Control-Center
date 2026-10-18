@@ -1,5 +1,5 @@
 // This is the single, versioned projection used by host history, model context and UI.
-export const hostResultFields=['hostResultVersion','operationId','reason','processesEnded','executionComplete','sideEffectsNeedReview','evidencePersisted','passed','exitCode','timedOut','aborted','unknown','isError','error','fingerprint','truncated','log','path','beforeSha256','afterSha256','startLine','endLine','conflict'] as const;
+export const hostResultFields=['hostResultVersion','operationId','reason','processesEnded','executionComplete','sideEffectsNeedReview','evidencePersisted','passed','exitCode','timedOut','aborted','unknown','isError','error','fingerprint','truncated','log','path','beforeSha256','afterSha256','startLine','endLine','conflict','diffTruncated','added','removed'] as const;
 export function hostResultSummary(value:unknown):Record<string,unknown>{
  const r=value&&typeof value==='object'?value as Record<string,unknown>:{};
  return Object.fromEntries(hostResultFields.filter(k=>k in r).map(k=>[k,r[k]]));

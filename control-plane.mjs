@@ -34,6 +34,7 @@ import {createDeliveryInspection} from './src/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant-loop.js';
 import {createAssistantCommands} from './dist/src/assistant-commands.js';
+import {createAssistantCoding} from './dist/src/assistant-coding.js';
 import {createAssistantInference,managerInferenceError} from './dist/src/assistant-inference.js';
 import {createMcpManager} from './dist/src/mcp-manager.js';
 import {createChatHistory} from './dist/src/chat-history.js';
@@ -1291,18 +1292,19 @@ export const discoverMcpTools=projectId=>mcp.discover(projectId);
 export const closeMcpConnections=()=>mcp.close();
 const conversationModels=createConversationModels(store,()=>coordinator.getSettings());
 const assistantCommands=createAssistantCommands({...store,root:projectId=>assistantProject(projectId).path,env:()=>workerEnvironment(process.env,'assistant-tool',managerApiKeys()),protectedValues:()=>managerApiKeys().map(key=>process.env[key]).filter(Boolean),policy:projectId=>permissions.get(projectId)});
+const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(projectId).path);
 const assistant=createAssistantLoop({...store,onCreated:id=>conversationModels.initialize('assistant',id),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
   describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
   infer:createAssistantInference({settings:sessionId=>conversationModels.get('assistant',sessionId).settings,account:projectId=>scheduling.policy(projectId).managerAccountId,reserve:(id,projectId)=>scheduling.reserveManager(id,projectId),settle:(id,cost)=>scheduling.settle(id,cost),pause:(accountId,id)=>scheduling.pauseAccountId(accountId,id),quotaFailure,recordFailure:record=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','inference_accounting_failure',?,?)").run(record.sessionId,JSON.stringify(record),now()),infer:inferManager}),
-  commandState:(s,phase)=>phase==='resume'?assistantCommands.recover(s):assistantCommands.assertClear(s,phase==='message'),
+  commandState:(s,phase)=>{if(phase==='resume'){assistantCommands.recover(s);assistantCoding.recover(s);}else{assistantCommands.assertClear(s,phase==='message');assistantCoding.assertClear(s,phase==='message');}},
   fingerprint:projectId=>projectFingerprint(assistantProject(projectId).path),
   projectRoot:projectId=>assistantProject(projectId).path,
   execute:async(s,tool,args,signal,userApproved)=>{
     const project=assistantProject(s.project_id);
-    if(['read_file','list_files','write_file','load_skill'].includes(tool))return fileTool(project.path,tool,args);
+    if(['read_file','list_files','write_file','edit_file','search_files','get_diff','load_skill'].includes(tool))return assistantCoding.execute(s,tool,args,signal);
     if(tool==='run_command'||tool==='verify')return assistantCommands.execute(s,tool,args,signal);
     if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
     if(tool==='inspect_agents')return {employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),runtimes:runtimes(),execution:executionControl.get(s.project_id),child:s.child_session_id?coordinator.sessionDetails(s.child_session_id):null};
