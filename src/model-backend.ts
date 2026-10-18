@@ -5,6 +5,10 @@ import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
 
 export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string}
+// Only host-created instances may retain this code across inference boundaries.
+export class ModelCleanupUnknownError extends Error {
+  readonly code='MODEL_CLEANUP_UNKNOWN';
+}
 export function directModelSettings(saved:ModelSettings):ModelSettings {
   const preset=!saved.baseUrl?getProviderConfig(saved.provider):undefined;
   const settings=preset?{...saved,baseUrl:preset.baseUrl,apiType:preset.apiType,apiKeyEnv:saved.apiKeyEnv||preset.defaultApiKeyEnv||''}:saved;
@@ -141,7 +145,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
     let cleanupTimer:ReturnType<typeof setTimeout>|undefined;
     try{
       await Promise.race([transportClosed,new Promise<void>((_,reject)=>{
-        cleanupTimer=setTimeout(()=>reject(Object.assign(new Error(`模型传输清理未确认（${phase}，1000 ms）；资源状态未知，请人工核对；没有自动重试`),{code:'MODEL_CLEANUP_UNKNOWN'})),1000);
+        cleanupTimer=setTimeout(()=>reject(new ModelCleanupUnknownError(`模型传输清理未确认（${phase}，1000 ms）；资源状态未知，请人工核对；没有自动重试`)),1000);
       })]);
     }finally{clearTimeout(cleanupTimer);if(closed){response?.removeAllListeners();request?.removeAllListeners();}}
   }

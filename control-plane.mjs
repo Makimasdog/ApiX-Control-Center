@@ -33,6 +33,7 @@ import {createTaskDelivery} from './src/task-delivery.mjs';
 import {createDeliveryInspection} from './src/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant-loop.js';
+import {createAssistantInference,managerInferenceError} from './dist/src/assistant-inference.js';
 import {createMcpManager} from './dist/src/mcp-manager.js';
 import {createChatHistory} from './dist/src/chat-history.js';
 import {fileTool,commandTool,projectFingerprint,projectInstructions,skillsFor} from './dist/src/assistant-tools.js';
@@ -1012,7 +1013,7 @@ async function inferManager(prompt,onDelta,context) {
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
   try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal});}
-  catch(error){if(revoked&&error?.code!=='MODEL_CLEANUP_UNKNOWN')throw new Error('ApiX 项目权限已变化，本次模型请求已中止');throw error;}
+  catch(error){throw managerInferenceError(error,revoked);}
   finally{if(watch)clearInterval(watch);context?.signal?.removeEventListener('abort',abort);}
 }
 
@@ -1293,7 +1294,7 @@ const assistant=createAssistantLoop({...store,onCreated:id=>conversationModels.i
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
   describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
-  infer:async(projectId,prompt,signal,sessionId)=>{const id='assistant:'+randomUUID(),accountId=scheduling.policy(projectId).managerAccountId,settings=conversationModels.get('assistant',sessionId).settings,secret=process.env[settings.apiKeyEnv];const reserved=scheduling.reserveManager(id,projectId);try{return await inferManager(prompt,undefined,{projectId,purpose:'assistant_loop',signal,modelSettings:settings});}catch(error){if(quotaFailure(error.message))scheduling.pauseAccountId(accountId,id);throw new Error(secret?String(error.message).split(secret).join('<redacted>'):error.message);}finally{if(reserved)scheduling.settle(id,null);}},
+  infer:createAssistantInference({settings:sessionId=>conversationModels.get('assistant',sessionId).settings,account:projectId=>scheduling.policy(projectId).managerAccountId,reserve:(id,projectId)=>scheduling.reserveManager(id,projectId),settle:(id,cost)=>scheduling.settle(id,cost),pause:(accountId,id)=>scheduling.pauseAccountId(accountId,id),quotaFailure,infer:inferManager}),
   fingerprint:projectId=>projectFingerprint(assistantProject(projectId).path),
   projectRoot:projectId=>assistantProject(projectId).path,
   execute:async(s,tool,args,signal,userApproved)=>{
