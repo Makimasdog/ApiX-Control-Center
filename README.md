@@ -300,6 +300,8 @@ node scripts/verify-real-collaboration.mjs --approve-cost
 
 ### 已验证与待完成
 
+P1.1 直接主对话现支持“本任务交付”的净差异、冻结文件/检查证据、修改意见与明确版本验收；独立工作用“开始下一任务”分开范围。五类评测区分 Runtime 检查、独立任务判定和用户验收，真实模型仍需显式预算。当前工程测试与限制见 [P1.1 自审](协作/20261019-P11任务交付与评测自审.md)，操作见[使用指南](docs/使用指南.md#主对话的任务交付审阅)。下表保留历史范围及其原始证据。
+
 | 范围 | 验证情况 |
 | --- | --- |
 | 代码基线 `93595d9` | [Windows CI](https://github.com/Makimasdog/ApiX-Control-Center/actions/runs/38340466487) 使用 Node.js 22.19.0，静态检查及 100/100 测试通过 |
