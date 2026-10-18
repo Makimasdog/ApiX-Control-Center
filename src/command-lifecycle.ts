@@ -7,8 +7,8 @@ import {resolve} from 'node:path';
 const helper=fileURLToPath(new URL('../../src/windows-command.ps1',import.meta.url));
 const powershell=process.env.SystemRoot?resolve(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'):'powershell.exe';
 export interface CommandIdentity {jobName:string;ownerPid?:number;ownerBirth?:string;pid?:number;birth?:string;observedMembers?:{pid:number;name:string}[]}
-export interface CommandResult {hostResultVersion?:1;operationId:string;startedAt:string;finishedAt:string;reason:string;exitCode:number|null;output:string;truncated:boolean;timedOut:boolean;aborted:boolean;unknown:boolean;processesEnded:boolean;sideEffectsNeedReview:boolean;executionComplete:boolean;identity:CommandIdentity;evidencePersisted?:boolean;error?:string}
-export interface CommandHooks {operationId?:string;identity?(identity:CommandIdentity):void}
+export interface CommandResult {hostResultVersion?:1;operationId:string;startedAt:string;finishedAt:string;reason:string;exitCode:number|null;output:string;truncated:boolean;timedOut:boolean;aborted:boolean;unknown:boolean;processesEnded:boolean;sideEffectsNeedReview:boolean;executionComplete:boolean;identity:CommandIdentity;evidencePersisted?:boolean;error?:string;captureError?:boolean;log?:Record<string,unknown>}
+export interface CommandHooks {operationId?:string;identity?(identity:CommandIdentity):void;output?(channel:'stdout'|'stderr',text:string):void}
 export function inspectCommandSync(identity:CommandIdentity):'ended'|'active'|'unknown'{
  if(process.platform!=='win32')return 'unknown';if(!identity.ownerPid)return 'ended';
  const result=spawnSync(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-JobName',identity.jobName,'-Inspect','-OwnerPid',String(identity.ownerPid),'-OwnerBirth',identity.ownerBirth??''],{windowsHide:true,timeout:6000,encoding:'utf8'});
@@ -36,14 +36,15 @@ export async function managedCommand(executable:string,args:string[],cwd:string,
  return new Promise(resolve=>{
   let reason='',exitCode:number|null=null,finished=false,launched=false,helperClosed=false,reportedEmpty=false,probe:Promise<void>|undefined,raw='',pending='',truncated=false,error='';
   const decoders={stdout:new StringDecoder('utf8'),stderr:new StringDecoder('utf8')};const limit=12000+Math.max(0,...secrets.map(s=>s.length));
-  const output=(chunk:Buffer,channel:string)=>{raw+=decoders[channel==='stderr'?'stderr':'stdout'].write(chunk);if(raw.length>limit){truncated=true;raw=raw.slice(0,limit);}};
+  let captureError=false;
+  const output=(chunk:Buffer,channel:string)=>{const kind=channel==='stderr'?'stderr':'stdout',text=decoders[kind].write(chunk);try{hooks.output?.(kind,text);}catch{captureError=true;}raw+=text;if(raw.length>limit){truncated=true;raw=raw.slice(0,limit);}};
   const killHelper=()=>{try{child.kill();}catch(e){error=e instanceof Error?e.message:'终止监督进程失败';}};
   const finish=(processesEnded:boolean)=>{
    if(finished)return;finished=true;clearTimeout(startup);clearTimeout(deadline);clearTimeout(cleanup);signal.removeEventListener('abort',abort);
    child.stdout.removeAllListeners('data');child.stderr.removeAllListeners('data');child.stdin.destroy();child.stdout.destroy();child.stderr.destroy();
-   raw+=decoders.stdout.end()+decoders.stderr.end();let text=safe(raw);if(text.length>12000)truncated=true;
+   for(const channel of ['stdout','stderr'] as const){const end=decoders[channel].end();raw+=end;try{hooks.output?.(channel,end);}catch{captureError=true;}}let text=safe(raw);if(text.length>12000)truncated=true;
    const executionComplete=reason==='exit'&&processesEnded&&exitCode!==null;
-   resolve({hostResultVersion:1,operationId,startedAt,finishedAt:new Date().toISOString(),reason,exitCode,output:text.slice(0,12000),truncated,timedOut:reason==='timeout',aborted:reason==='aborted',unknown:!processesEnded,processesEnded,sideEffectsNeedReview:!executionComplete&&!(reason==='start_failed'&&!identity.pid),executionComplete,identity:{...identity},...(error?{error:safe(error).slice(0,1000)}:{})});
+   resolve({hostResultVersion:1,operationId,startedAt,finishedAt:new Date().toISOString(),reason,exitCode,output:text.slice(0,12000),truncated,captureError,timedOut:reason==='timeout',aborted:reason==='aborted',unknown:!processesEnded,processesEnded,sideEffectsNeedReview:!executionComplete&&!(reason==='start_failed'&&!identity.pid),executionComplete,identity:{...identity},...(error?{error:safe(error).slice(0,1000)}:{})});
   };
   let startup:ReturnType<typeof setTimeout>,deadline:ReturnType<typeof setTimeout>|undefined,cleanup:ReturnType<typeof setTimeout>|undefined;
   const terminate=()=>{

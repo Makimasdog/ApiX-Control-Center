@@ -2,12 +2,13 @@ import {randomUUID,createHash} from 'node:crypto';
 import {commandTool,preflightCommand,projectFingerprint} from './assistant-tools.js';
 import {inspectCommandSync,type CommandIdentity,type CommandResult} from './command-lifecycle.js';
 import {type Store,type Policy} from './contracts.js';
+import {createCommandLogs} from './command-logs.js';
 
 export class CommandSafetyError extends Error {readonly code='COMMAND_LIFECYCLE_UNKNOWN';constructor(message:string,readonly operationId?:string,readonly resource:'command_operation'|'file_operation'='command_operation'){super(message);}}
 interface Session {id:string;project_id:string}
 interface Dependencies extends Store {root(projectId:string):string;env():NodeJS.ProcessEnv;protectedValues():string[];policy(projectId:string):Policy}
 export function createAssistantCommands(deps:Dependencies){
- const {db,row,rows,now}=deps,inFlight=new Set<string>(),blocked=new Set<string>();
+ const {db,row,rows,now}=deps,inFlight=new Set<string>(),blocked=new Set<string>(),logs=createCommandLogs(deps);
  const safe=(error:unknown)=>{let text=error instanceof Error?error.message:'命令记录失败';for(const secret of [...deps.protectedValues(),...Object.entries({...process.env,...deps.env()}).filter(([key,value])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6).map(([,value])=>value!)])if(secret)text=text.split(secret).join('<redacted>');return text.slice(0,1000);};
  const event=(id:string,kind:string,body:unknown)=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system',?,?,?)").run(id,kind,JSON.stringify(body),now());
  function pending(projectId:string){
@@ -37,8 +38,11 @@ export function createAssistantCommands(deps:Dependencies){
   try{intentId=Number(event(s.id,'command_intent',{operationId,projectId:s.project_id,sessionId:s.id,identity,commandHash:createHash('sha256').update(JSON.stringify(args)).digest('hex'),tool,startedAt:now()}).lastInsertRowid);}
   catch(error){blocked.add(s.project_id);throw new CommandSafetyError('执行意图未可靠保存，命令未启动：'+safe(error),operationId);}
   inFlight.add(operationId);
+  const secrets=[...values,...Object.entries({...process.env,...deps.env()}).filter(([key,value])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6).map(([,value])=>value!)];
+  const log=logs.start(s.id,operationId,secrets);
   try{
-   const result=await commandTool(root,args,deps.env(),signal,()=>{},values,{operationId,identity:identity=>event(s.id,'command_identity',{operationId,projectId:s.project_id,identity})});
+   const result=await commandTool(root,args,deps.env(),signal,()=>{},values,{operationId,identity:identity=>event(s.id,'command_identity',{operationId,projectId:s.project_id,identity}),output:(channel,text)=>log.write(channel,text)});
+   result.log=log.finish(result.captureError);
    if(deps.policy(s.project_id).version!==version){result.aborted=true;result.sideEffectsNeedReview=true;result.executionComplete=false;result.reason='permission_revoked';}
    const outputRef=randomUUID(),body=JSON.stringify(result);
    try{db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(outputRef,s.id,intentId,body,createHash('sha256').update(body).digest('hex'),now());result.evidencePersisted=true;event(s.id,'command_finished',{...result,outputRef,output:undefined});}
@@ -54,5 +58,5 @@ export function createAssistantCommands(deps:Dependencies){
    }throw error;
   }finally{inFlight.delete(operationId);}
  }
- return {execute,assertClear,recover};
+ return {execute,assertClear,recover,readOutput:logs.read};
 }

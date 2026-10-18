@@ -1304,6 +1304,7 @@ const assistant=createAssistantLoop({...store,onCreated:id=>conversationModels.i
   projectRoot:projectId=>assistantProject(projectId).path,
   execute:async(s,tool,args,signal,userApproved)=>{
     const project=assistantProject(s.project_id);
+    if(tool==='read_output')return assistantCommands.readOutput(s.id,args);
     if(['read_file','list_files','write_file','edit_file','search_files','get_diff','load_skill'].includes(tool))return assistantCoding.execute(s,tool,args,signal);
     if(tool==='run_command'||tool==='verify')return assistantCommands.execute(s,tool,args,signal);
     if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
@@ -1358,6 +1359,7 @@ export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;
+export const assistantLogOutput=(id,args)=>{assistant.details(id);return assistantCommands.readOutput(id,args);};
 const history=createChatHistory(store,(kind,id)=>{
   const source=row(`SELECT * FROM ${kind==='assistant'?'assistant_sessions':'coordination_sessions'} WHERE id=?`,id);
   if(!source)return false;

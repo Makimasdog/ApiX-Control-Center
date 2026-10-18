@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import {browseFolders} from './src/project-folders.mjs';
 import {inspectEmployeeRuntime} from './control-plane.mjs';
 import {mcpServers,saveMcpServer,discoverMcpTools,closeMcpConnections} from './control-plane.mjs';
-import {assistantOutput} from './control-plane.mjs';
+import {assistantOutput,assistantLogOutput} from './control-plane.mjs';
 import {chatHistory,changeChatHistory} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
@@ -79,6 +79,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/outputs\/[^/]+$/.test(pathname)&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,assistantOutput(pathname.split('/')[4],{id:pathname.split('/')[6],offset:q.has('offset')?Number(q.get('offset')):0,limit:6000}));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+\/logs\/[^/]+$/.test(pathname)&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,assistantLogOutput(pathname.split('/')[4],{operationId:pathname.split('/')[6],channel:q.get('channel')??'stdout',mode:q.get('mode')??'head',offset:Number(q.get('offset')??0),limit:6000}));return;}
       if(/^\/api\/conversation-models\/(assistant|coordination)\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,conversationModel(pathname.split('/')[3],pathname.split('/')[4]));return;}
       if(pathname==='/api/assistant/sessions'&&request.method==='GET'){send(200,assistantSessions(new URL(request.url,'http://localhost').searchParams.get('projectId')??''));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+$/.test(pathname)&&request.method==='GET'){send(200,assistantSession(pathname.split('/')[4]));return;}

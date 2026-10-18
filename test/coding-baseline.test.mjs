@@ -32,3 +32,6 @@ test('versioned command summaries fail closed on missing facts without condemnin
  assert.equal(toolResultSucceeded({result:{...facts,truncated:true}}),true);
  for(const key of Object.keys(facts)){if(key==='hostResultVersion')continue;const missing={...facts};delete missing[key];assert.equal(toolResultSucceeded({result:missing}),false,key);}
 });
+test('a long source read keeps its source SHA and cursor distinct from the saved JSON digest',()=>{
+ const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES ('s')");try{const outputs=createContextOutputs(store(db)),result={path:'large.ts',content:'x'.repeat(9000),sha256:'f'.repeat(64),nextCursor:'source-page',hasMore:true,byteBudget:16000};const r=outputs.history('s',[{id:1,role:'tool',kind:'tool_result',body:JSON.stringify({tool:'read_file',ok:true,result})}])[0].body.result;assert.equal(r.sha256,result.sha256);assert.equal(r.nextCursor,'source-page');assert.notEqual(r.savedResultSha256,r.sha256);}finally{db.close();}
+});

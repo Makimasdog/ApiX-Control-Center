@@ -1,0 +1,8 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {assistantTimeline,toolResultSucceeded} from '../dist/web/assistant-view.js';
+test('coding evidence cards label operations, files, scopes and log completeness without trusting HTML',()=>{
+ const host={hostResultVersion:1,operationId:'op-1',reason:'exit',exitCode:0,unknown:false,aborted:false,timedOut:false,processesEnded:true,executionComplete:true,sideEffectsNeedReview:false,evidencePersisted:true,truncated:true,log:{complete:false,reason:'operation_capacity'}};
+ assert.equal(toolResultSucceeded({result:host}),true,'preview shortening is not command failure');
+ const events=[{kind:'command_intent',body:{operationId:'op-1'}},{kind:'command_identity',body:{operationId:'op-1',identity:{ownerPid:123,pid:456}}},{kind:'command_finished',body:host},{kind:'tool_result',body:{tool:'edit_file',ok:true,result:{path:'<img onerror=bad>.ts',diff:'-wrong\n+<script>bad</script>',beforeSha256:'before',afterSha256:'after'}}},{kind:'tool_result',body:{tool:'search_files',ok:true,result:{matches:[],scanComplete:false}}},{kind:'tool_result',body:{tool:'get_diff',ok:true,result:{files:[]}}},{kind:'delivery_summary',body:{verification:{verificationStatus:'verified'},acceptanceStatus:'not_accepted'}}].map((e,i)=>({id:i+1,role:'system',...e}));
+ const html=assistantTimeline(events);for(const text of ['命令已登记','命令已启动','日志不完整','op-1','本会话实际差异','尚未正式验收','扫描不完整','stdout','尾部'])assert(html.includes(text),text);assert(!html.includes('<img'));assert(!html.includes('<script>'));assert(html.includes('&lt;script&gt;'));assert.equal(assistantTimeline(events),html,'refresh is deterministic');
+});
