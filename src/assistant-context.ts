@@ -1,5 +1,6 @@
 import {createHash,randomUUID} from 'node:crypto';
 import type {Store} from './contracts.js';
+import {hostResultSummary} from './assistant-result.js';
 
 export interface ContextEvent {id:number;role:string;kind:string;body:string}
 export const estimateTokens=(value:unknown)=>Math.ceil(Buffer.byteLength(typeof value==='string'?value:JSON.stringify(value),'utf8')/3);
@@ -12,7 +13,7 @@ export function createContextOutputs(store:Store){
     const body=JSON.parse(e.body);if(!['tool_started','tool_result','delegation_result','supervision_event'].includes(e.kind)||e.body.length<=8000||body.tool==='read_context')return {...e,body};
     let saved=row<{id:string;sha256:string}>('SELECT id,sha256 FROM assistant_outputs WHERE session_id=? AND event_id=?',sessionId,e.id);
     if(!saved){const id=randomUUID(),sha256=createHash('sha256').update(e.body).digest('hex');db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(id,sessionId,e.id,e.body,sha256,now());saved={id,sha256};}
-    const result=body.result??body;const flags=Object.fromEntries(['exitCode','fingerprint','truncated','timedOut','aborted','unknown','isError'].filter(k=>result&&typeof result==='object'&&k in result).map(k=>[k,result[k]]));
+    const result=body.result??body;const flags=hostResultSummary(result);
     const reference={...flags,outputRef:saved.id,sha256:saved.sha256,characters:e.body.length,preview:e.body.slice(0,1200),fullResultAvailable:true};
     return {...e,body:e.kind==='tool_started'?{tool:body.tool,args:{path:body.args?.path,executable:body.args?.executable,...reference}}:{tool:body.tool,ok:body.ok,result:reference}};
   });}

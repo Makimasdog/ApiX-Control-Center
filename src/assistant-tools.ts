@@ -4,6 +4,7 @@ import {resolve,relative,isAbsolute,dirname,join} from 'node:path';
 import {homedir} from 'node:os';
 import {managedCommand,type CommandHooks} from './command-lifecycle.js';
 import {object,text} from './contracts.js';
+import {commandCapabilities} from './command-capabilities.js';
 
 const excluded=(name:string)=>name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
 function within(root:string,path:string){const rel=relative(root,path);return rel!== '..'&&!rel.startsWith('..\\')&&!rel.startsWith('../')&&!isAbsolute(rel);}
@@ -63,12 +64,16 @@ export function fileTool(root:string,tool:string,input:unknown){
   }
   throw new Error('未知文件工具');
 }
-export async function commandTool(root:string,input:unknown,env:NodeJS.ProcessEnv,signal:AbortSignal,onSpawn:(pid:number|undefined)=>void=()=>{},protectedValues:string[]=[],hooks:CommandHooks={}){
+export function preflightCommand(root:string,input:unknown,platform=process.platform){
   const args=object(input);const executable=text(args.executable,1000);
   if(args.args===undefined)args.args=[];
   if(!Array.isArray(args.args)||args.args.length>40||args.args.some(a=>typeof a!=='string'||a.length>2000||a.includes('\0')))throw new Error('命令参数无效');
   const timeout=Number(args.timeoutMs??30000);if(!Number.isSafeInteger(timeout)||timeout<100||timeout>120000)throw new Error('命令超时应为 100–120000 毫秒');
-  if(signal.aborted)throw new Error('执行已停止');
+  if(!commandCapabilities(platform).managedCommands.available)throw new Error(commandCapabilities(platform).managedCommands.reason!);
+  return {executable:executable==='node'?process.execPath:executable,args:args.args as string[],cwd:realpathSync.native(root),timeout};
+}
+export async function commandTool(root:string,input:unknown,env:NodeJS.ProcessEnv,signal:AbortSignal,onSpawn:(pid:number|undefined)=>void=()=>{},protectedValues:string[]=[],hooks:CommandHooks={}){
+  if(signal.aborted)throw new Error('执行已停止');const command=preflightCommand(root,input);
   const secrets=[...new Set([...protectedValues.filter(v=>!!v),...Object.entries({...process.env,...env}).filter(([key,value])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6).map(([,value])=>value!)])];
-  return managedCommand(executable==='node'?process.execPath:executable,args.args as string[],realpathSync.native(root),env,signal,timeout,onSpawn,secrets,hooks);
+  return managedCommand(command.executable,command.args,command.cwd,env,signal,command.timeout,onSpawn,secrets,hooks);
 }

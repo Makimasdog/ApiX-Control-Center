@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import {serviceDiagnostics,waitServiceReady,stopService} from './service-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile, readFile, mkdir, symlink } from 'node:fs/promises';
@@ -242,15 +243,17 @@ async function harness(work, extraEnv={}) {
   let server; let errors='';
   const env={...process.env,APIX_LEGACY_API:'0',APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_PI_ENTRY:join(root,'test/fake-pi.mjs'),APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-claude.mjs'),...extraEnv};
   const request=async(path,body,expected=200,headers={})=>{
-    let res;try{res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body)});}catch(error){throw new Error(`${error.message} (server pid ${server?.pid}, exit ${server?.exitCode})\n${errors}`);}
+    let res;try{res=await fetch(`http://127.0.0.1:${port}${path}`,body===undefined?{headers,signal:AbortSignal.timeout(30000)}:{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(body),signal:AbortSignal.timeout(30000)});}catch(error){throw new Error(`${error.message} (server pid ${server?.pid}, exit ${server?.exitCode})\n${diagnostic?.report('request',{path})??''}`);}
     const json=await res.json();assert.equal(res.status,expected,JSON.stringify(json));return json;
   };
+  let diagnostic;
   const start=async()=>{
-    server=spawn(process.execPath,[join(root,'server.mjs')],{cwd:root,env,stdio:['ignore','ignore','pipe']});
+    server=spawn(process.execPath,[join(root,'server.mjs')],{cwd:root,env,stdio:['ignore','pipe','pipe']});
+    diagnostic=serviceDiagnostics(server,env);
     server.stderr.on('data',c=>errors+=c);
-    await waitFor(async()=>{if(server.exitCode!==null)throw new Error(errors);try{return(await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok;}catch{return false;}});
+    await waitServiceReady(diagnostic,`http://127.0.0.1:${port}/api/snapshot`);
   };
-  const stop=async()=>{if(server?.exitCode===null){server.kill();await new Promise(r=>server.once('exit',r));}};
+  const stop=()=>stopService(server);
   try {await start();await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''}); await work({request,project,dir,model,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
   finally {await stop();await model.close();const cleanup=resolve(dir);assert(cleanup.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(cleanup,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }

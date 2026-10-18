@@ -1,5 +1,5 @@
 import {randomUUID,createHash} from 'node:crypto';
-import {commandTool,projectFingerprint} from './assistant-tools.js';
+import {commandTool,preflightCommand,projectFingerprint} from './assistant-tools.js';
 import {inspectCommandSync,type CommandIdentity,type CommandResult} from './command-lifecycle.js';
 import {type Store,type Policy} from './contracts.js';
 
@@ -30,6 +30,7 @@ export function createAssistantCommands(deps:Dependencies){
  async function execute(s:Session,tool:string,args:Record<string,unknown>,signal:AbortSignal){
   if(signal.aborted)throw new Error('执行已停止');
   assertClear(s);const operationId=randomUUID(),root=deps.root(s.project_id),identity={jobName:'Local\\ApiX-Command-'+operationId};
+  preflightCommand(root,args);
   const values=deps.protectedValues(),version=deps.policy(s.project_id).version;
   let before:string|null=null;if(tool==='verify')before=projectFingerprint(root);
   let intentId:number;

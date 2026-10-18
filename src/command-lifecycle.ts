@@ -7,7 +7,7 @@ import {resolve} from 'node:path';
 const helper=fileURLToPath(new URL('../../src/windows-command.ps1',import.meta.url));
 const powershell=process.env.SystemRoot?resolve(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'):'powershell.exe';
 export interface CommandIdentity {jobName:string;ownerPid?:number;ownerBirth?:string;pid?:number;birth?:string;observedMembers?:{pid:number;name:string}[]}
-export interface CommandResult {operationId:string;startedAt:string;finishedAt:string;reason:string;exitCode:number|null;output:string;truncated:boolean;timedOut:boolean;aborted:boolean;unknown:boolean;processesEnded:boolean;sideEffectsNeedReview:boolean;executionComplete:boolean;identity:CommandIdentity;evidencePersisted?:boolean;error?:string}
+export interface CommandResult {hostResultVersion?:1;operationId:string;startedAt:string;finishedAt:string;reason:string;exitCode:number|null;output:string;truncated:boolean;timedOut:boolean;aborted:boolean;unknown:boolean;processesEnded:boolean;sideEffectsNeedReview:boolean;executionComplete:boolean;identity:CommandIdentity;evidencePersisted?:boolean;error?:string}
 export interface CommandHooks {operationId?:string;identity?(identity:CommandIdentity):void}
 export function inspectCommandSync(identity:CommandIdentity):'ended'|'active'|'unknown'{
  if(process.platform!=='win32')return 'unknown';if(!identity.ownerPid)return 'ended';
@@ -43,7 +43,7 @@ export async function managedCommand(executable:string,args:string[],cwd:string,
    child.stdout.removeAllListeners('data');child.stderr.removeAllListeners('data');child.stdin.destroy();child.stdout.destroy();child.stderr.destroy();
    raw+=decoders.stdout.end()+decoders.stderr.end();let text=safe(raw);if(text.length>12000)truncated=true;
    const executionComplete=reason==='exit'&&processesEnded&&exitCode!==null;
-   resolve({operationId,startedAt,finishedAt:new Date().toISOString(),reason,exitCode,output:text.slice(0,12000),truncated,timedOut:reason==='timeout',aborted:reason==='aborted',unknown:!processesEnded,processesEnded,sideEffectsNeedReview:!executionComplete&&!(reason==='start_failed'&&!identity.pid),executionComplete,identity:{...identity},...(error?{error:safe(error).slice(0,1000)}:{})});
+   resolve({hostResultVersion:1,operationId,startedAt,finishedAt:new Date().toISOString(),reason,exitCode,output:text.slice(0,12000),truncated,timedOut:reason==='timeout',aborted:reason==='aborted',unknown:!processesEnded,processesEnded,sideEffectsNeedReview:!executionComplete&&!(reason==='start_failed'&&!identity.pid),executionComplete,identity:{...identity},...(error?{error:safe(error).slice(0,1000)}:{})});
   };
   let startup:ReturnType<typeof setTimeout>,deadline:ReturnType<typeof setTimeout>|undefined,cleanup:ReturnType<typeof setTimeout>|undefined;
   const terminate=()=>{

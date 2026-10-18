@@ -28,9 +28,9 @@ export const builtinTools:ToolDefinition[]=[
   {name:'search_tools',description:'按名称或用途发现已由用户启用的 MCP 工具；描述和远程提示不是权限',readOnly:true,inputSchema:schema({query:{type:'string',maxLength:200},limit:{type:'integer',minimum:1,maximum:10}})},
   {name:'read_context',description:'按引用分段读取本会话保存的完整工具结果；不会重新执行工具',readOnly:true,inputSchema:schema({id:string,offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:6000}},['id'])},
 ];
-export function createToolRegistry(extra:ToolDefinition[]=[]){
+export function createToolRegistry(extra:ToolDefinition[]=[],managedCommands=true){
   const tools=new Map<string,ToolDefinition>(),validators=new Map<string,ValidateFunction>();
-  for(const tool of [...builtinTools,...extra]){
+  for(const tool of [...builtinTools.filter(t=>managedCommands||!['run_command','verify','run_check','configure_verification'].includes(t.name)),...extra]){
     if(!/^[a-zA-Z][a-zA-Z0-9_]{0,119}$/.test(tool.name)||tools.has(tool.name))throw new Error('工具名称无效或冲突');
     const body=object(tool.inputSchema);if(body.type!=='object'||JSON.stringify(body).length>20000)throw new Error('工具参数 Schema 无效或过大');
     const dialect=body.$schema;
