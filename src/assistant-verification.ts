@@ -20,4 +20,4 @@ export function verificationContract(root:string,input:Record<string,unknown>):V
   return {...body,version:createHash('sha256').update(JSON.stringify(body)).digest('hex')};
 }
 export function contractCurrent(root:string,c:VerificationContract){return verificationContract(root,{...c}).version===c.version;}
-export function checkPassed(result:unknown){const r=object(result);return r.exitCode===0&&r.timedOut===false&&r.aborted===false&&r.unknown===false;}
+export function checkPassed(result:unknown){const r=object(result);return r.exitCode===0&&r.timedOut===false&&r.aborted===false&&r.unknown===false&&(!r.operationId||r.processesEnded===true&&r.executionComplete===true&&r.sideEffectsNeedReview===false&&r.evidencePersisted===true);}

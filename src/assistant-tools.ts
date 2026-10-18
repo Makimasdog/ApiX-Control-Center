@@ -2,8 +2,7 @@ import {createHash} from 'node:crypto';
 import {existsSync,lstatSync,readdirSync,readFileSync,realpathSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,relative,isAbsolute,dirname,join} from 'node:path';
 import {homedir} from 'node:os';
-import {spawn} from 'node:child_process';
-import {StringDecoder} from 'node:string_decoder';
+import {managedCommand,type CommandHooks} from './command-lifecycle.js';
 import {object,text} from './contracts.js';
 
 const excluded=(name:string)=>name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
@@ -64,24 +63,12 @@ export function fileTool(root:string,tool:string,input:unknown){
   }
   throw new Error('未知文件工具');
 }
-export async function commandTool(root:string,input:unknown,env:NodeJS.ProcessEnv,signal:AbortSignal,onSpawn:(pid:number|undefined)=>void=()=>{},protectedValues:string[]=[]){
+export async function commandTool(root:string,input:unknown,env:NodeJS.ProcessEnv,signal:AbortSignal,onSpawn:(pid:number|undefined)=>void=()=>{},protectedValues:string[]=[],hooks:CommandHooks={}){
   const args=object(input);const executable=text(args.executable,1000);
   if(args.args===undefined)args.args=[];
   if(!Array.isArray(args.args)||args.args.length>40||args.args.some(a=>typeof a!=='string'||a.length>2000||a.includes('\0')))throw new Error('命令参数无效');
   const timeout=Number(args.timeoutMs??30000);if(!Number.isSafeInteger(timeout)||timeout<100||timeout>120000)throw new Error('命令超时应为 100–120000 毫秒');
   if(signal.aborted)throw new Error('执行已停止');
   const secrets=[...new Set([...protectedValues.filter(v=>!!v),...Object.entries({...process.env,...env}).filter(([key,value])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6).map(([,value])=>value!)])];
-  const rawLimit=12000+Math.max(0,...secrets.map(s=>s.length));
-  return await new Promise<{exitCode:number|null;output:string;truncated:boolean;timedOut:boolean;aborted:boolean;unknown:boolean}>((done,reject)=>{
-    const child=spawn(executable==='node'?process.execPath:executable,args.args as string[],{cwd:realpathSync.native(root),env,windowsHide:true,stdio:['ignore','pipe','pipe']});
-    let raw='',truncated=false,timedOut=false,aborted=false,finished=false;let uncertain:ReturnType<typeof setTimeout>|undefined;const stdout=new StringDecoder('utf8'),stderr=new StringDecoder('utf8');
-    const finish=(exitCode:number|null,unknown=false)=>{if(finished)return;receive(stdout.end()+stderr.end());finished=true;clearTimeout(timer);clearTimeout(uncertain);signal.removeEventListener('abort',abort);let output=raw;for(const secret of secrets)output=output.split(secret).join('<redacted>');if(output.length>12000)truncated=true;done({exitCode,output:output.slice(0,12000),truncated,timedOut,aborted,unknown});};
-    const kill=()=>{child.kill();uncertain=setTimeout(()=>finish(null,true),5000);};
-    const abort=()=>{aborted=true;kill();};
-    const timer=setTimeout(()=>{timedOut=true;kill();},timeout);signal.addEventListener('abort',abort,{once:true});
-    const receive=(value:string)=>{if(finished)return;if(raw.length+value.length>rawLimit)truncated=true;raw=(raw+value).slice(0,rawLimit);};
-    child.stdout.on('data',chunk=>receive(stdout.write(chunk)));child.stderr.on('data',chunk=>receive(stderr.write(chunk)));
-    child.on('error',error=>{clearTimeout(timer);clearTimeout(uncertain);signal.removeEventListener('abort',abort);if(!finished){finished=true;reject(error);}});child.on('close',code=>finish(code));
-    try{onSpawn(child.pid);}catch(error){child.kill();reject(error);}
-  });
+  return managedCommand(executable==='node'?process.execPath:executable,args.args as string[],realpathSync.native(root),env,signal,timeout,onSpawn,secrets,hooks);
 }

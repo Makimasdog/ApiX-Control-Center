@@ -5,6 +5,7 @@ import {mkdtempSync,writeFileSync,rmSync,mkdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createAssistantLoop} from '../dist/src/assistant-loop.js';
+import {createAssistantCommands} from '../dist/src/assistant-commands.js';
 import {fileTool,commandTool,projectFingerprint} from '../dist/src/assistant-tools.js';
 import {createToolRegistry} from '../dist/src/tool-registry.js';
 import {verificationContract} from '../dist/src/assistant-verification.js';
@@ -16,7 +17,9 @@ async function wait(h){for(let n=0;n<1500;n++){const d=h.service.details(h.id);i
 async function fixture(work,script="const fs=require('node:fs');const value=fs.readFileSync('src/value.txt','utf8');console.log('observed='+value);process.exit(value==='good'?0:2)"){
   const root=mkdtempSync(join(tmpdir(),'apix-trusted-'));mkdirSync(join(root,'src'));writeFileSync(join(root,'src/value.txt'),'old');writeFileSync(join(root,'check.cjs'),script);
   const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES ('p')");
-  const queue=[],calls=[],prompts=[];const deps={db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString(),policy:()=>({mode:'full_access',version:1}),projectRoot:()=>root,fingerprint:()=>projectFingerprint(root),describe:()=>({}),child:()=>({complete:false}),stopChild:()=>{},infer:async(_p,prompt)=>{prompts.push(prompt);const a=queue.shift();if(!a)throw Error('fixture exhausted');return JSON.stringify(typeof a==='function'?await a():a);},execute:async(s,tool,args,signal)=>{calls.push({tool,args});return tool==='write_file'?fileTool(root,tool,args):commandTool(root,args,process.env,signal);}};
+  const store={db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};
+  const bridge=createAssistantCommands({...store,root:()=>root,env:()=>process.env,protectedValues:()=>[],policy:()=>({mode:'full_access',version:1})});
+  const queue=[],calls=[],prompts=[];const deps={db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString(),policy:()=>({mode:'full_access',version:1}),projectRoot:()=>root,fingerprint:()=>projectFingerprint(root),describe:()=>({}),child:()=>({complete:false}),stopChild:()=>{},infer:async(_p,prompt)=>{prompts.push(prompt);const a=queue.shift();if(!a)throw Error('fixture exhausted');return JSON.stringify(typeof a==='function'?await a():a);},execute:async(s,tool,args,signal)=>{calls.push({tool,args});return tool==='write_file'?fileTool(root,tool,args):bridge.execute(s,tool,args,signal);}};
   const h={db,root,deps,calls,prompts,service:createAssistantLoop(deps),push:(...a)=>queue.push(...a)};h.id=h.service.create({projectId:'p'}).id;
   h.start=(...a)=>{h.push(...a);h.service.message(h.id,{content:'implement and verify'});return wait(h);};
   h.approve=async(...a)=>{const d=await h.start(action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:1000}],writablePaths:['src']}),...a);assert.equal(d.status,'waiting_user');assert.equal(calls.length,0);await h.service.reply(h.id,{version:d.version,requestId:d.pending.id,approved:true});return wait(h);};
@@ -27,20 +30,20 @@ test('arbitrary successful diagnostic and no configured checks cannot verify or 
   assert.equal(d.status,'attention');assert.equal(d.verificationStatus,'needs_review');assert.equal(d.verification,null);assert(!d.events.some(e=>e.kind==='verification_evidence'));assert(!d.events.some(e=>e.kind==='answer'&&e.body.content==='ALL TESTS PASS'));
 }));
 test('read-only command explanation needs no code verification and receives no trusted pass',()=>fixture(async h=>{
-  const d=await h.start(action('run_command',{executable:'node',args:['--version']}),finish);assert.equal(d.status,'completed');assert.equal(d.verificationStatus,'not_required');assert.equal(d.verification,null);assert.equal(d.needs_verification,0);assert(!d.events.some(e=>e.kind==='verification_evidence'));
+  const d=await h.start(action('run_command',{executable:'node',args:['--version']}),finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert.equal(d.verificationStatus,'not_required');assert.equal(d.verification,null);assert.equal(d.needs_verification,0);assert(!d.events.some(e=>e.kind==='verification_evidence'));
 }));
 test('a command that actually writes code still requires a trusted check',()=>fixture(async h=>{
   const d=await h.start(action('run_command',{executable:'node',args:['-e',"require('node:fs').writeFileSync('src/value.txt','good')"]}),finish);assert.equal(d.status,'attention');assert.equal(d.verificationStatus,'needs_review');assert.equal(d.needs_verification,1);assert.equal(d.verification,null);
 }));
 test('approved real check binds execution, output, current code and contract without employees',()=>fixture(async h=>{
-  const d=await h.approve(write('good'),check,finish);assert.equal(d.status,'completed');assert.equal(d.verificationStatus,'verified');assert.equal(d.acceptanceStatus,'not_accepted');
+  const d=await h.approve(write('good'),check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert.equal(d.verificationStatus,'verified',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert.equal(d.acceptanceStatus,'not_accepted');
   const e=d.checks[0];assert.equal(e.exitCode,0);assert(e.passed);assert.equal(e.projectFingerprint,projectFingerprint(h.root));assert.equal(e.checkContractVersion,d.contract.version);assert(e.startedAt&&e.finishedAt&&e.runId&&e.sessionId===h.id);
   assert.match(h.service.readOutput(h.id,{id:e.outputRef}).text,/observed=good/);
   h.service=createAssistantLoop(h.deps);assert.equal(h.service.details(h.id).verificationStatus,'verified');
 }));
 test('every required check must pass and model cannot override the fixed command',()=>fixture(async h=>{
   const pending=await h.start(action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:1000},{id:'second',args:['check.cjs'],timeoutMs:1000}],writablePaths:['src']}),write('good'),action('run_check',{checkId:'unit',executable:'node',args:['-e','process.exit(0)']}),finish,action('run_check',{checkId:'second'}),finish);
-  await h.service.reply(h.id,{version:pending.version,requestId:pending.pending.id,approved:true});const d=await wait(h);assert.equal(d.status,'completed');assert.equal(d.checks.length,2);assert(d.checks.every(e=>e.passed));assert(d.events.some(e=>e.kind==='completion_rejected'));assert(h.calls.filter(c=>c.tool==='run_command').every(c=>c.args.args[0]==='check.cjs'));
+  await h.service.reply(h.id,{version:pending.version,requestId:pending.pending.id,approved:true});const d=await wait(h);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert.equal(d.checks.length,2);assert(d.checks.every(e=>e.passed));assert(d.events.some(e=>e.kind==='completion_rejected'));assert(h.calls.filter(c=>c.tool==='run_command').every(c=>c.args.args[0]==='check.cjs'));
 }));
 test('check modifying its own script cannot generate trusted success',()=>fixture(async h=>{
   const d=await h.approve(write('good'),check,finish);assert.equal(d.status,'attention');assert.equal(d.verificationStatus,'needs_review');assert(d.events.some(e=>e.kind==='verification_evidence'&&e.body.exitCode===0&&e.body.passed===false));
@@ -55,11 +58,11 @@ test('contract cannot make its own check writable or expand executor limits',()=
   const registry=createToolRegistry();assert.throws(()=>registry.validate('configure_verification',{...config,checks:[{id:'unit',args:['check.cjs','x'.repeat(1001)],timeoutMs:1000}]}));
 }));
 test('failed trusted check rejects completion and provides actual evidence for repair and retest',()=>fixture(async h=>{
-  const d=await h.approve(write('bad'),check,finish,write('good'),check,finish);assert.equal(d.status,'completed');
+  const d=await h.approve(write('bad'),check,finish,write('good'),check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));
   const failed=d.events.find(e=>e.kind==='verification_evidence'&&e.body.exitCode===2);assert(failed);assert.equal(failed.body.passed,false);assert(d.events.some(e=>e.kind==='completion_rejected'));assert(h.prompts.some(p=>p.includes('outputRef')));assert.match(h.service.readOutput(h.id,{id:failed.body.outputRef}).text,/observed=bad/);
 }));
 test('writing after a successful check invalidates evidence even when bytes are unchanged',()=>fixture(async h=>{
-  const d=await h.approve(write('good'),check,write('good'),finish,check,finish);assert.equal(d.status,'completed');assert(d.events.some(e=>e.kind==='completion_rejected'));assert.equal(h.calls.filter(c=>c.tool==='run_command').length,2);
+  const d=await h.approve(write('good'),check,write('good'),finish,check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert(d.events.some(e=>e.kind==='completion_rejected'));assert.equal(h.calls.filter(c=>c.tool==='run_command').length,2);
 }));
 test('writes in another conversation invalidate old project evidence even for identical bytes',()=>fixture(async h=>{
   const verified=await h.approve(write('good'),check,finish);assert.equal(verified.verificationStatus,'verified');const first=h.id;h.id=h.service.create({projectId:'p'}).id;
@@ -93,5 +96,5 @@ test('approval binds hidden files and cannot authorize changed script closure',(
 test('tool schemas match executor limits without relaxing safety',async()=>{
   const r=createToolRegistry();for(const name of ['verify','run_command']){for(const args of [{executable:'node',args:Array(41).fill('x')},{executable:'node',args:['x'.repeat(2001)]},{executable:'node',args:['\0']},{executable:'node',timeoutMs:99}])assert.throws(()=>r.validate(name,args));r.validate(name,{executable:'node',args:['x'],timeoutMs:100});}
   assert.throws(()=>r.validate('write_file',{path:'src/x',content:'x'.repeat(20001)}));
-  await fixture(async h=>{assert.throws(()=>fileTool(h.root,'write_file',{path:'src/x',content:'x'.repeat(20001)}));const a={executable:'node',timeoutMs:5000};r.validate('run_command',a);const result=await commandTool(h.root,a,process.env,new AbortController().signal);assert.equal(result.exitCode,0);});
+  await fixture(async h=>{assert.throws(()=>fileTool(h.root,'write_file',{path:'src/x',content:'x'.repeat(20001)}));const a={executable:'node',timeoutMs:5000};r.validate('run_command',a);const result=await commandTool(h.root,a,process.env,new AbortController().signal);assert.equal(result.exitCode,0,JSON.stringify(result));});
 });
