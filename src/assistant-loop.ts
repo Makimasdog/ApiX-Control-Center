@@ -74,7 +74,10 @@ export function createAssistantLoop(deps:Dependencies){
     db.prepare('INSERT INTO assistant_notes(project_id,title,content,source,updated_at,kind,status,evidence_event_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(project_id,title) DO UPDATE SET content=excluded.content,source=excluded.source,version=assistant_notes.version+1,updated_at=excluded.updated_at,kind=excluded.kind,status=excluded.status,evidence_event_id=excluded.evidence_event_id').run(projectId,title,body,source,now(),kind,status,evidence);return {title,source,status};
   }
   function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return details(id);}
-  function kick(id:string){void run(id).catch(error=>{if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}});}
+  function kick(id:string){void run(id).catch(error=>{
+    if(error?.code==='MODEL_CLEANUP_UNKNOWN'){event(id,'system','process_unknown',{resource:'model_transport',error:safeError(error)});update(id,'attention');}
+    else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}
+  });}
   function message(id:string,input:Record<string,unknown>){const s=get(id);const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
     const recovery=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind IN ('restart_interrupted','process_unknown','stopped')",id)?.id??0;
     const confirmed=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind='resumed'",id)?.id??0;

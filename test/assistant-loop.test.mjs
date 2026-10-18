@@ -2,6 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createAssistantLoop} from '../dist/src/assistant-loop.js';
+import {inferModel} from '../dist/src/model-backend.js';
+import {createServer} from 'node:http';
 const tool=(name,args={})=>({action:'tool',tool:name,args:{...({read_file:{path:'README.md'},write_file:{path:'a.txt',content:'fixture'},verify:{executable:'node'},run_command:{executable:'node'},delegate:{requirements:{scope:'fixture',constraints:'fixture',deliverable:'fixture',acceptance:'fixture'}},configure_agents:{checks:[{id:'test',args:['test.mjs']} ]}}[name]??{}),...args},message:'执行 '+name});
 const finish={action:'finish',outcome:'completed',message:'已完成并核对证据'};
 async function wait(service,id){for(let i=0;i<200;i++){const s=service.details(id);if(!s.busy&&s.status!=='running')return s;await new Promise(r=>setTimeout(r,5));}throw new Error('loop timeout');}
@@ -49,6 +51,23 @@ test('delegation is a loop step; accepted child wakes the manager for another de
 }));
 test('stop discards a late model decision and does not dispatch its side effect',()=>fixture(async h=>{
   let resolve;h.answer(()=>new Promise(r=>resolve=r));h.service.message(h.id,{content:'工作'});while(!resolve)await new Promise(r=>setTimeout(r,1));h.service.stop(h.id);resolve(JSON.stringify(tool('write_file',{path:'late',content:'bad'})));const s=await wait(h.service,h.id);assert.equal(s.status,'stopped');assert.equal(h.calls.length,0);
+}));
+
+test('stop aborts a real stalled model body and releases loop busy state',{timeout:5000},()=>fixture(async h=>{
+  let entered,closed;const ready=new Promise(r=>entered=r),disconnected=new Promise(r=>closed=r);
+  const server=createServer(async(req,res)=>{for await(const _ of req){}res.once('close',closed);res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');entered();});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const guard=setTimeout(()=>server.closeAllConnections(),2000);
+  h.deps.infer=(_project,prompt,signal)=>inferModel({provider:'apix-custom',model:'fixture',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,apiType:'openai-completions',apiKeyEnv:''},prompt,undefined,{signal,timeoutMs:1000});
+  try{h.service.message(h.id,{content:'工作'});await ready;h.service.stop(h.id);const s=await wait(h.service,h.id);await disconnected;assert.equal(s.status,'stopped');assert.equal(s.busy,false);assert.equal(h.calls.length,0);}
+  finally{clearTimeout(guard);server.closeAllConnections();await new Promise(r=>server.close(r));}
+}));
+test('unknown model cleanup after stop stays visible and requires manual recovery',()=>fixture(async h=>{
+  let entered;const ready=new Promise(r=>entered=r);
+  h.deps.infer=(_project,_prompt,signal)=>new Promise((_,reject)=>{signal.addEventListener('abort',()=>reject(Object.assign(new Error('模型传输清理未确认；资源状态未知'),{code:'MODEL_CLEANUP_UNKNOWN'})),{once:true});entered();});
+  h.service.message(h.id,{content:'工作'});await ready;h.service.stop(h.id);const s=await wait(h.service,h.id);
+  assert.equal(s.status,'attention');assert.equal(s.busy,false);assert(s.events.some(e=>e.kind==='process_unknown'&&e.body.error.includes('资源状态未知')));assert.equal(h.calls.length,0);
+  assert.throws(()=>h.service.message(h.id,{content:'继续'}),/检查原进程/);
 }));
 test('new user steering invalidates the in-flight decision and preserves both messages',()=>fixture(async h=>{
   let resolve;h.answer(()=>new Promise(r=>resolve=r),finish);h.service.message(h.id,{content:'写文件'});while(!resolve)await new Promise(r=>setTimeout(r,1));h.service.message(h.id,{content:'改为只解释，不写文件'});resolve(JSON.stringify(tool('write_file',{path:'late',content:'bad'})));const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(h.calls.length,0);assert(h.prompts.at(-1).includes('改为只解释'));

@@ -1012,7 +1012,7 @@ async function inferManager(prompt,onDelta,context) {
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
   try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal});}
-  catch(error){if(revoked)throw new Error('ApiX 项目权限已变化，本次模型请求已中止');throw error;}
+  catch(error){if(revoked&&error?.code!=='MODEL_CLEANUP_UNKNOWN')throw new Error('ApiX 项目权限已变化，本次模型请求已中止');throw error;}
   finally{if(watch)clearInterval(watch);context?.signal?.removeEventListener('abort',abort);}
 }
 

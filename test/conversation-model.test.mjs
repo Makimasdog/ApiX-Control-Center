@@ -11,6 +11,9 @@ import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createServer} from 'node:net';
 import {startModelFixture} from './fake-model-http.mjs';
+import http from 'node:http';
+import https from 'node:https';
+import {syncBuiltinESMExports} from 'node:module';
 const defaults={provider:'apix-custom',model:'deepseek-flash',baseUrl:'https://api.deepseek.com/v1',apiType:'openai-completions',apiKeyEnv:'DEEPSEEK_API_KEY'};
 test('conversation models isolate sessions, freeze provider settings, survive reopen and reject stale updates',()=>{
  const db=new DatabaseSync(':memory:');const deps={db,row:(q,...p)=>db.prepare(q).get(...p),now:()=>new Date().toISOString()};let current={...defaults};let models=createConversationModels(deps,()=>current);
@@ -31,10 +34,13 @@ test('only documented provider capabilities are offered, and no reasoning parame
  assert.throws(()=>reasoningParameters({...defaults,reasoningEffort:'medium'}),/不支持/);
 });
 test('actual HTTP request body contains selected model and protocol-specific effort without a paid model call',async()=>{
- const previous=globalThis.fetch,secret=process.env.APIX_EFFORT_FIXTURE;process.env.APIX_EFFORT_FIXTURE='fixture';const calls=[];
- globalThis.fetch=async(_url,options)=>{const body=JSON.parse(options.body);calls.push(body);return new Response(JSON.stringify(body.input?{status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'ok'}]}]}:body.max_tokens?{stop_reason:'end_turn',content:[{type:'text',text:'ok'}]}:{choices:[{finish_reason:'stop',message:{content:'ok'}}]}),{headers:{'Content-Type':'application/json'}});};
- try{for(const apiType of ['openai-completions','openai-responses','anthropic-messages'])assert.equal(await inferModel({...defaults,model:'deepseek-v4-pro',apiKeyEnv:'APIX_EFFORT_FIXTURE',apiType,reasoningEffort:'max'},'fixture'),'ok');assert(calls.every(c=>c.model==='deepseek-v4-pro'));assert.equal(calls[0].reasoning_effort,'max');assert.equal(calls[1].reasoning.effort,'max');assert.equal(calls[2].output_config.effort,'max');}
- finally{globalThis.fetch=previous;if(secret===undefined)delete process.env.APIX_EFFORT_FIXTURE;else process.env.APIX_EFFORT_FIXTURE=secret;}
+ const previous=https.request,secret=process.env.APIX_EFFORT_FIXTURE;process.env.APIX_EFFORT_FIXTURE='fixture';const calls=[];
+ const server=http.createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);calls.push({...body,fixtureHeaders:req.headers});res.end(JSON.stringify(body.input?{status:'completed',output:[{type:'message',role:'assistant',content:[{type:'output_text',text:'ok'}]}]}:body.max_tokens?{stop_reason:'end_turn',content:[{type:'text',text:'ok'}]}:{choices:[{finish_reason:'stop',message:{content:'ok'}}]}));});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ // Map only this documented provider's transport to loopback; retain capability validation.
+ https.request=(url,options,callback)=>{assert.equal(url.hostname,'api.deepseek.com');return http.request(`http://127.0.0.1:${server.address().port}${url.pathname}`,options,callback);};syncBuiltinESMExports();
+ try{for(const apiType of ['openai-completions','openai-responses','anthropic-messages'])assert.equal(await inferModel({...defaults,model:'deepseek-v4-pro',apiKeyEnv:'APIX_EFFORT_FIXTURE',apiType,reasoningEffort:'max'},'fixture'),'ok');assert(calls.every(c=>c.model==='deepseek-v4-pro'));assert.equal(calls[0].fixtureHeaders.authorization,'Bearer fixture');assert.equal(calls[2].fixtureHeaders['x-api-key'],'fixture');assert.equal(calls[0].reasoning_effort,'max');assert.equal(calls[1].reasoning.effort,'max');assert.equal(calls[2].output_config.effort,'max');}
+ finally{https.request=previous;syncBuiltinESMExports();server.closeAllConnections();await new Promise(r=>server.close(r));if(secret===undefined)delete process.env.APIX_EFFORT_FIXTURE;else process.env.APIX_EFFORT_FIXTURE=secret;}
 });
 test('event viewer filters by type and content and escapes both previews and complete long logs',()=>{
  const events=[{kind:'stderr',created_at:'2026-10-17T12:00:00Z',payload:{text:'<script>unsafe</script>'+('长日志'.repeat(1000))}},{kind:'tool_result',created_at:'2026-10-17T12:00:01Z',payload:{text:'unique query'}}];

@@ -8,6 +8,7 @@ on:
 jobs:
   check:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -15,4 +16,16 @@ jobs:
           node-version: '22.19.0'
       - run: npm ci
       - run: npm run check
-      - run: npm test
+      - name: Tests with outer deadline and retained diagnostics
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .tmp-ci | Out-Null
+          npm test 2>&1 | Tee-Object -FilePath .tmp-ci/npm-test.log
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-diagnostics
+          path: .tmp-ci/npm-test.log
+          if-no-files-found: ignore
