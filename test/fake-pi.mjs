@@ -24,8 +24,10 @@ process.stdin.on("data", (chunk) => {
       if(history.some(e=>e.kind==='request_answer'&&e.body.approved===false))answer={action:'finish',outcome:'blocked',message:'用户拒绝了操作，未继续执行。'};
       else if(message.includes('fixture-loop-write')){
         const writes=history.filter(e=>e.kind==='tool_started'&&e.body.tool==='write_file');const last=results.at(-1);
-        if(!writes.length)answer=action('write_file',{path:'a.txt',content:'bad'});
-        else if(last?.body.tool==='write_file')answer=action('verify',{executable:'node',args:['-e',"require('node:assert/strict').equal(require('node:fs').readFileSync('a.txt','utf8'),'good');console.log('actual verification passed')"]});
+        const trusted=message.includes('fixture-loop-write-trusted');
+        if(trusted&&!context.verificationState.contract)answer=action('configure_verification',{checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}],writablePaths:['a.txt']});
+        else if(!writes.length)answer=action('write_file',{path:'a.txt',content:'bad'});
+        else if(last?.body.tool==='write_file')answer=trusted?action('run_check',{checkId:'tests'}):action('verify',{executable:'node',args:['-e',"require('node:assert/strict').equal(require('node:fs').readFileSync('a.txt','utf8'),'good');console.log('actual verification passed')"]});
         else if(last?.body.result?.exitCode!==0)answer=action('write_file',{path:'a.txt',content:'good'});
         else answer={action:'finish',outcome:'completed',message:'已修复 a.txt，实际断言检查通过。'};
       }else if(message.includes('fixture-loop-delegate')){

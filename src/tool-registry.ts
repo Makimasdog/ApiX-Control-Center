@@ -8,12 +8,15 @@ export interface ToolDefinition {name:string;description:string;inputSchema:Reco
 const string={type:'string',minLength:1,maxLength:10000};
 const validatorsCache=new Map<string,ValidateFunction>();
 const schema=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object',properties,required});
-const command=schema({executable:string,args:{type:'array',maxItems:100,items:{type:'string'}},timeoutMs:{type:'integer',minimum:1,maximum:120000}},['executable']);
+const command=schema({executable:{...string,maxLength:1000,pattern:'^[^\\u0000]+$'},args:{type:'array',maxItems:40,items:{type:'string',maxLength:2000,pattern:'^[^\\u0000]*$'}},timeoutMs:{type:'integer',minimum:100,maximum:120000}},['executable']);
+const checks={type:'array',minItems:1,maxItems:20,items:schema({id:{type:'string',pattern:'^[a-zA-Z0-9_-]+$',maxLength:60},args:{type:'array',minItems:1,maxItems:30,uniqueItems:true,items:{type:'string',minLength:1,maxLength:1000,pattern:'^[^\\u0000]+$'}},timeoutMs:{type:'integer',minimum:100,maximum:120000}},['id','args','timeoutMs'])};
 export const builtinTools:ToolDefinition[]=[
   {name:'read_file',description:'完整读取项目内的 UTF-8 文件',readOnly:true,inputSchema:schema({path:string},['path'])},
   {name:'list_files',description:'列出项目目录',readOnly:true,inputSchema:schema({path:string})},
-  {name:'write_file',description:'写入项目文件；之后必须实际验证',readOnly:false,changesWorkspace:true,inputSchema:schema({path:string,content:{type:'string',maxLength:100000}},['path','content'])},
-  ...['run_command','verify'].map(name=>({name,description:name==='verify'?'执行实际验收命令并记录文件指纹':'直接启动进程，不隐式使用 shell',readOnly:false,changesWorkspace:true,inputSchema:command})),
+  {name:'write_file',description:'写入项目文件；之后必须实际验证',readOnly:false,changesWorkspace:true,inputSchema:schema({path:{...string,maxLength:1000},content:{type:'string',maxLength:20000}},['path','content'])},
+  ...['run_command','verify'].map(name=>({name,description:name==='verify'?'执行诊断命令，退出成功不代表可信验收通过':'直接启动进程，不隐式使用 shell',readOnly:false,changesWorkspace:true,inputSchema:command})),
+  {name:'configure_verification',description:'申请用户批准单 Agent 验收契约；固定 Node 检查及可修改范围，其他项目文件被冻结；不需要员工配置，始终请求批准',readOnly:false,inputSchema:schema({checks,writablePaths:{type:'array',minItems:1,maxItems:40,items:{type:'string',minLength:1,maxLength:1000}}},['checks','writablePaths'])},
+  {name:'run_check',description:'运行已获用户批准的检查 ID，宿主保存真实证据；失败须修复重验，未知状态必须人工处理',readOnly:false,inputSchema:schema({checkId:{type:'string',minLength:1,maxLength:60}},['checkId'])},
   {name:'load_skill',description:'加载技能，仅作为参考，不授予权限',readOnly:true,inputSchema:schema({id:string},['id'])},
   {name:'read_memory',description:'读取本项目一条记忆及来源状态',readOnly:true,inputSchema:schema({title:string,id:string})},
   {name:'remember',description:'提出项目记忆候选，待用户确认后才自动召回',readOnly:false,inputSchema:schema({title:{...string,maxLength:120},content:{...string,maxLength:3000},kind:{enum:['user','feedback','project','reference']}},['title','content'])},

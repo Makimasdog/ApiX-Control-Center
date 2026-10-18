@@ -25,4 +25,6 @@ test('timeline escapes user, tool and model data and does not turn text into con
   const html=assistantTimeline([{id:1,role:'user',kind:'message',body:{content:'<img onerror=alert(1)>'}},{id:2,role:'tool',kind:'tool_result',body:{tool:'<script>',ok:false,result:'<script>'}}]);assert(!html.includes('<img'));assert(!html.includes('<script>'));assert(html.includes('&lt;img'));
   assert.equal(approvalLabel('approval','write_file'),'仅批准这一次');assert.equal(approvalLabel('approval','configure_agents'),'授权此项目并继续');
   assert.equal(toolResultSucceeded({ok:true,result:{exitCode:1}}),false);assert.equal(toolResultSucceeded({ok:true,result:{exitCode:0,truncated:true}}),false);assert.equal(toolResultSucceeded({ok:true,result:{exitCode:0}}),true);
+  assert.equal(toolResultSucceeded({ok:true,result:{exitCode:0,passed:false}}),false);assert.equal(approvalLabel('approval','configure_verification'),'批准此验收契约');
+  const evidence=assistantTimeline([{id:3,role:'system',kind:'verification_evidence',body:{checkId:'<script>',verificationStatus:'failed',passed:false,outputRef:'evidence'}}]);assert(evidence.includes('! 可信检查'));assert(!evidence.includes('<script>'));assert(evidence.includes('data-output-reference="evidence"'));
 });

@@ -56,12 +56,15 @@ test('Assistant refuses to expose its internal state directory as a workspace',a
   assert(stopped.events.some(e=>String(e.body.error??'').includes('内部状态目录')));assert.equal((await h.request('/api/snapshot')).runs.length,0);
 }));
 test('Assistant HTTP defaults to a general loop and repairs real file checks without employees',async()=>harness(async h=>{
+  await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual trusted verification passed');");
   const projectId=(await h.request('/api/projects',{name:'general assistant',path:h.project})).id;
   await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
-  let s=await h.request('/api/assistant/sessions',{projectId});s=await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
+  let s=await h.request('/api/assistant/sessions',{projectId});s=await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write-trusted'});
+  const pending=await waitFor(async()=>{const d=await h.request(`/api/assistant/sessions/${s.id}`);return d.status==='waiting_user'?d:null;});assert.equal(pending.pending.tool,'configure_verification');
+  await h.request(`/api/assistant/sessions/${s.id}/reply`,{version:pending.version,requestId:pending.pending.id,approved:true});
   const done=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);if(state.status==='attention')throw new Error(JSON.stringify(state.events));return state.status==='completed'?state:null;});
-  assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode!==0));
-  assert(done.events.some(e=>e.kind==='tool_result'&&e.body.tool==='verify'&&e.body.result.exitCode===0));assert.equal((await h.request('/api/snapshot')).employees.length,0);
+  assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');assert(done.events.some(e=>e.kind==='verification_evidence'&&e.body.exitCode===1&&!e.body.passed));
+  assert.equal(done.verificationStatus,'verified');assert(done.events.some(e=>e.kind==='verification_evidence'&&e.body.exitCode===0&&e.body.passed));assert.equal((await h.request('/api/snapshot')).employees.length,0);
   await h.restart();assert.equal((await h.request(`/api/assistant/sessions/${s.id}`)).status,'completed');
 }));
 
@@ -217,7 +220,7 @@ test('ApiX operates without Pi and missing model configuration does not start a 
   assert.equal((await h.request('/api/snapshot')).runtimes.find(r=>r.id==='pi').available,false);
   await h.request('/api/permissions',{projectId,subject:'apix',mode:'full_access',version:0});
   const s=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-write'});
-  await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');
+  const reviewed=await waitFor(async()=>{const d=await h.request(`/api/assistant/sessions/${s.id}`);return d.status==='attention'?d:null;});assert.equal(reviewed.verificationStatus,'needs_review');assert.equal(reviewed.verification,null);assert.equal(await readFile(join(h.project,'a.txt'),'utf8'),'good');
   assert(h.model.calls.length>=5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
   await h.request('/api/manager/settings',{});const empty=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${empty.id}/messages`,{content:'hello'});
   const blocked=await waitFor(async()=>{const x=await h.request(`/api/assistant/sessions/${empty.id}`);return x.status==='attention'?x:null;});assert.match(blocked.events.find(e=>e.kind==='error').body.error,/配置 ApiX/);

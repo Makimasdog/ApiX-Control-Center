@@ -16,12 +16,16 @@ export function projectPath(root:string,input:unknown,write=false):string {
   if(!within(root,realpathSync.native(parent)))throw new Error('链接越过项目边界');
   if(!write&&!existsSync(target))throw new Error('文件不存在');return target;
 }
-export function projectFingerprint(root:string):string {
+export function projectFingerprint(root:string,mutablePaths:string[]=[],protectChecks=false):string {
   root=realpathSync.native(root);const hash=createHash('sha256');let count=0,bytes=0;
   function visit(dir:string){for(const name of readdirSync(dir).sort()){
-    if(excluded(name))continue;const path=join(dir,name),stat=lstatSync(path);if(++count>3000)throw new Error('项目超过完整验证范围，请拆分任务或使用委派工作区');
+    if(protectChecks?name==='.git':excluded(name))continue;const path=join(dir,name),stat=lstatSync(path);if(++count>3000)throw new Error('项目超过完整验证范围，请拆分任务或使用委派工作区');
     if(stat.isSymbolicLink())throw new Error('验证范围包含链接，请使用可核对的工作区');
-    hash.update(JSON.stringify([relative(root,path),stat.isDirectory(),stat.size]));if(stat.isDirectory())visit(path);else if(stat.isFile()){if((bytes+=stat.size)>8*1024*1024)throw new Error('项目超过 8 MiB 完整验证范围');hash.update(readFileSync(path));}
+    const rel=relative(root,path).replaceAll('\\','/');
+    const key=(p:string)=>process.platform==='win32'?p.toLowerCase():p;
+    if(mutablePaths.some(p=>key(rel)===key(p)||key(rel).startsWith(key(p)+'/')))continue;
+    if(!protectChecks)hash.update(JSON.stringify([relative(root,path),stat.isDirectory(),stat.size]));
+    if(stat.isDirectory()){visit(path);}else if(stat.isFile()){if(protectChecks)hash.update(JSON.stringify([rel,stat.size]));if((bytes+=stat.size)>8*1024*1024)throw new Error('项目超过 8 MiB 完整验证范围');hash.update(readFileSync(path));}
   }}visit(root);return hash.digest('hex');
 }
 export function projectInstructions(root:string){
@@ -62,6 +66,7 @@ export function fileTool(root:string,tool:string,input:unknown){
 }
 export async function commandTool(root:string,input:unknown,env:NodeJS.ProcessEnv,signal:AbortSignal,onSpawn:(pid:number|undefined)=>void=()=>{},protectedValues:string[]=[]){
   const args=object(input);const executable=text(args.executable,1000);
+  if(args.args===undefined)args.args=[];
   if(!Array.isArray(args.args)||args.args.length>40||args.args.some(a=>typeof a!=='string'||a.length>2000||a.includes('\0')))throw new Error('命令参数无效');
   const timeout=Number(args.timeoutMs??30000);if(!Number.isSafeInteger(timeout)||timeout<100||timeout>120000)throw new Error('命令超时应为 100–120000 毫秒');
   if(signal.aborted)throw new Error('执行已停止');

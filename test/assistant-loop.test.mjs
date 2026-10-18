@@ -15,12 +15,12 @@ async function fixture(work){
 test('default loop performs tools, verifies changes and delivers without any registered employee',()=>fixture(async h=>{
   h.answer(tool('write_file',{path:'a.txt',content:'good'}),tool('verify',{executable:'node',args:['test.mjs']}),finish);
   h.service.message(h.id,{content:'实现文件并验证'});const s=await wait(h.service,h.id);
-  assert.equal(s.status,'completed');assert.deepEqual(h.calls.map(c=>c.name),['write_file','verify']);assert(s.verification);
+  assert.equal(s.status,'attention');assert.deepEqual(h.calls.map(c=>c.name),['write_file','verify']);assert.equal(s.verification,null);assert.equal(s.verificationStatus,'needs_review');
 }));
 test('failed tools return observations and stale verification cannot approve changed code',()=>fixture(async h=>{
   const execute=h.deps.execute;let once=true;h.deps.execute=async(...args)=>{if(args[1]==='read_file'&&once){once=false;throw new Error('file missing');}return execute(...args);};
   h.answer(tool('read_file',{path:'missing'}),tool('write_file',{path:'a',content:'one'}),tool('verify'),tool('write_file',{path:'a',content:'two'}),finish,tool('verify'),finish);
-  h.service.message(h.id,{content:'修复并复验'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert(s.events.some(e=>e.kind==='completion_rejected'));assert(h.prompts.some(p=>p.includes('file missing')));
+  h.service.message(h.id,{content:'修复并复验'});const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(s.verificationStatus,'needs_review');assert(s.events.some(e=>e.kind==='completion_rejected'));assert(h.prompts.some(p=>p.includes('file missing')));
 }));
 test('one-time approval binds parameters, permission version, request and session; rejection never executes',()=>fixture(async h=>{
   h.policy({mode:'ask_approval',version:0});h.answer(tool('write_file',{path:'a',content:'requested'}),{...finish,outcome:'blocked'});
@@ -133,7 +133,7 @@ test('a supervisor cannot write alongside its active delegated workers',()=>fixt
 }));
 
 test('schema mistakes become repairable observations without executing invalid arguments',()=>fixture(async h=>{
-  h.answer({action:'tool',tool:'write_file',args:{path:'a.txt'},message:'参数缺少内容'},tool('write_file',{path:'a.txt',content:'fixed'}),tool('verify'),finish);h.service.message(h.id,{content:'写入并检查'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(h.calls.filter(c=>c.name==='write_file').length,1);assert(s.events.some(e=>e.kind==='tool_result'&&e.body.ok===false&&e.body.error.includes('Schema')));
+  h.answer({action:'tool',tool:'write_file',args:{path:'a.txt'},message:'参数缺少内容'},tool('write_file',{path:'a.txt',content:'fixed'}),tool('verify'),finish);h.service.message(h.id,{content:'写入并检查'});const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(s.verificationStatus,'needs_review');assert.equal(h.calls.filter(c=>c.name==='write_file').length,1);assert(s.events.some(e=>e.kind==='tool_result'&&e.body.ok===false&&e.body.error.includes('Schema')));
 }));
 
 test('editing confirmed memory invalidates an in-flight decision before its side effect',()=>fixture(async h=>{
