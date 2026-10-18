@@ -44,12 +44,12 @@ export function createAssistantCommands(deps:Dependencies){
    const result=await commandTool(root,args,deps.env(),signal,()=>{},values,{operationId,identity:identity=>event(s.id,'command_identity',{operationId,projectId:s.project_id,identity}),output:(channel,text)=>log.write(channel,text)});
    result.log=log.finish(result.captureError);
    if(deps.policy(s.project_id).version!==version){result.aborted=true;result.sideEffectsNeedReview=true;result.executionComplete=false;result.reason='permission_revoked';}
-   const outputRef=randomUUID(),body=JSON.stringify(result);
-   try{db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(outputRef,s.id,intentId,body,createHash('sha256').update(body).digest('hex'),now());result.evidencePersisted=true;event(s.id,'command_finished',{...result,outputRef,output:undefined});}
-   catch(error){blocked.add(s.project_id);throw new CommandSafetyError('命令最终证据未可靠保存，不得宣称成功：'+safe(error),operationId);}
+   const outputRef=randomUUID(),terminal={...result,outputRef,evidencePersisted:true,...(tool==='verify'?{fingerprint:projectFingerprint(root)}:{})},body=JSON.stringify(terminal);
+   try{db.exec('SAVEPOINT assistant_command_terminal');db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(outputRef,s.id,intentId,body,createHash('sha256').update(body).digest('hex'),now());event(s.id,'command_finished',{...terminal,output:undefined});db.exec('RELEASE assistant_command_terminal');}
+   catch(error){try{db.exec('ROLLBACK TO assistant_command_terminal');db.exec('RELEASE assistant_command_terminal');}catch{console.error('命令终态事务回滚未确认；必须核对持久化状态');}blocked.add(s.project_id);throw new CommandSafetyError('命令最终证据未可靠保存，不得宣称成功：'+safe(error),operationId);}
    if(result.sideEffectsNeedReview||result.unknown)try{event(s.id,'process_unknown',{resource:'command_operation',operationId,processesEnded:result.processesEnded,error:'命令异常或部分副作用待核对；不自动重放'});}catch(error){blocked.add(s.project_id);throw new CommandSafetyError('命令异常状态未可靠保存：'+safe(error),operationId);}
    if(before!==null&&before!==projectFingerprint(root)&&!result.sideEffectsNeedReview)throw new Error('验证命令修改了项目文件，请重新检查并验证');
-   return {...result,outputRef,...(tool==='verify'?{fingerprint:projectFingerprint(root)}:{})};
+   return terminal;
   }catch(error){
    if(error instanceof CommandSafetyError)throw error;
    // Validation/startup failures must have a trustworthy terminal too; an absent terminal remains gated.

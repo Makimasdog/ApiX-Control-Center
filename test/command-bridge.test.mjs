@@ -60,7 +60,7 @@ test('permission revocation cancels a real command and keeps the recovery gate',
 test('trusted final evidence failure rolls back verification and requires review',{timeout:25000},()=>fixture(async h=>{
  writeFileSync(join(h.root,'check.cjs'),"console.log('real test')");
  h.push(action('configure_verification',{checks:[{id:'check',args:['check.cjs'],timeoutMs:5000}],writablePaths:['src']}));h.service.message(h.id,{content:'configure'});let s=await idle(h);
- h.db.exec("CREATE TRIGGER deny_check BEFORE INSERT ON assistant_outputs WHEN json_extract(NEW.body,'$.outputRef') IS NOT NULL BEGIN SELECT RAISE(FAIL,'check evidence unavailable');END;");
+ h.db.exec("CREATE TRIGGER deny_check BEFORE INSERT ON assistant_outputs WHEN json_extract(NEW.body,'$.outputRef') IS NOT NULL AND NEW.id<>json_extract(NEW.body,'$.outputRef') BEGIN SELECT RAISE(FAIL,'check evidence unavailable');END;");
  h.push(action('run_check',{checkId:'check'}),finish);await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:true});s=await idle(h);
  assert.equal(s.status,'attention');assert.equal(s.verification,null);assert(s.events.some(e=>e.kind==='command_finished'&&e.body.executionComplete));assert(!s.events.some(e=>e.kind==='verification_evidence'&&e.body.passed));assert(s.events.some(e=>e.kind==='process_unknown'));assert.throws(()=>h.service.message(h.id,{content:'retry'}),/核对|恢复|检查后继续/);
  h.db.exec('DROP TRIGGER deny_check');h.restart();assert.throws(()=>h.service.message(h.id,{content:'restart retry'}),/核对|恢复|检查后继续/);
