@@ -7,7 +7,7 @@ import {object,text} from './contracts.js';
 import {commandCapabilities} from './command-capabilities.js';
 import {readSource,sourceBuffer,fileSha,prepareEdit,commitEdit,searchSource} from './coding-files.js';
 
-const excluded=(name:string)=>name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
+const excluded=(name:string)=>name.toLowerCase()==='.npmrc'||name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
 function within(root:string,path:string){const rel=relative(root,path);return rel!== '..'&&!rel.startsWith('..\\')&&!rel.startsWith('../')&&!isAbsolute(rel);}
 export function projectPath(root:string,input:unknown,write=false):string {
   root=realpathSync.native(root);const name=text(input,1000);

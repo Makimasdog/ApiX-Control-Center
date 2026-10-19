@@ -28,9 +28,9 @@ export function createAssistantCommands(deps:Dependencies){
   // A failed journal must be writable again before any explicit recovery can clear memory protection.
   event(s.id,'command_recovery_checked',{projectId:s.project_id});blocked.delete(s.project_id);
  }
- async function execute(s:Session,tool:string,args:Record<string,unknown>,signal:AbortSignal){
+ async function execute(s:Session,tool:string,args:Record<string,unknown>,signal:AbortSignal,context?:{root:string;env:NodeJS.ProcessEnv}){
   if(signal.aborted)throw new Error('执行已停止');
-  assertClear(s);const operationId=randomUUID(),root=deps.root(s.project_id),identity={jobName:'Local\\ApiX-Command-'+operationId};
+  assertClear(s);const operationId=randomUUID(),root=context?.root??deps.root(s.project_id),identity={jobName:'Local\\ApiX-Command-'+operationId};
   preflightCommand(root,args);
   const values=deps.protectedValues(),version=deps.policy(s.project_id).version;
   let before:string|null=null;if(tool==='verify')before=projectFingerprint(root);
@@ -41,7 +41,7 @@ export function createAssistantCommands(deps:Dependencies){
   const secrets=[...values,...Object.entries({...process.env,...deps.env()}).filter(([key,value])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6).map(([,value])=>value!)];
   const log=logs.start(s.id,operationId,secrets);
   try{
-   const result=await commandTool(root,args,deps.env(),signal,()=>{},values,{operationId,identity:identity=>event(s.id,'command_identity',{operationId,projectId:s.project_id,identity}),output:(channel,text)=>log.write(channel,text)});
+   const result=await commandTool(root,args,context?.env??deps.env(),signal,()=>{},values,{operationId,identity:identity=>event(s.id,'command_identity',{operationId,projectId:s.project_id,identity}),output:(channel,text)=>log.write(channel,text)});
    result.log=log.finish(result.captureError);
    if(deps.policy(s.project_id).version!==version){result.aborted=true;result.sideEffectsNeedReview=true;result.executionComplete=false;result.reason='permission_revoked';}
    const outputRef=randomUUID(),terminal={...result,outputRef,evidencePersisted:true,...(tool==='verify'?{fingerprint:projectFingerprint(root)}:{})},body=JSON.stringify(terminal);

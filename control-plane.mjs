@@ -1,3 +1,4 @@
+import {createNpmValidation} from './dist/src/npm-validation.js';
 import {createConversationModels} from './dist/src/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/environment.mjs';
 import {projectDirectory,sameProjectDirectory} from './src/project-folders.mjs';
@@ -1292,8 +1293,9 @@ export const discoverMcpTools=projectId=>mcp.discover(projectId);
 export const closeMcpConnections=()=>mcp.close();
 const conversationModels=createConversationModels(store,()=>coordinator.getSettings());
 const assistantCommands=createAssistantCommands({...store,root:projectId=>assistantProject(projectId).path,env:()=>workerEnvironment(process.env,'assistant-tool',managerApiKeys()),protectedValues:()=>managerApiKeys().map(key=>process.env[key]).filter(Boolean),policy:projectId=>permissions.get(projectId)});
+const npmValidation=createNpmValidation({...store,directory:join(dataDir,'npm-validation'),root:projectId=>assistantProject(projectId).path,command:(s,args,signal,context)=>assistantCommands.execute(s,'npm_validation',args,signal,context)});
 const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(projectId).path);
-const assistant=createAssistantLoop({...store,onCreated:id=>conversationModels.initialize('assistant',id),
+const assistant=createAssistantLoop({...store,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
@@ -1359,6 +1361,9 @@ export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;
+export const assistantProjectDiagnosis=assistant.projectDiagnosis;
+export const assistantNpmProposal=assistant.npmProposal;
+export const assistantApproveNpm=assistant.approveNpm;
 export const assistantStartTask=assistant.startTask;
 export const assistantDelivery=assistant.delivery;
 export const assistantDeliveryFile=assistant.deliveryFile;

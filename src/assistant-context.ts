@@ -10,7 +10,7 @@ export function createContextOutputs(store:Store){
   db.exec('CREATE TABLE IF NOT EXISTS assistant_outputs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),event_id INTEGER NOT NULL,body TEXT NOT NULL,sha256 TEXT NOT NULL,created_at TEXT NOT NULL)');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_output_event ON assistant_outputs(session_id,event_id)');
   function history(sessionId:string,events:ContextEvent[]){return events.map(e=>{
-    const body=JSON.parse(e.body);if(!['tool_started','tool_result','delegation_result','supervision_event','file_edit_result','delivery_summary','delivery_record'].includes(e.kind)||e.body.length<=8000||body.tool==='read_context'||body.tool==='read_output')return {...e,body};
+    const body=JSON.parse(e.body);if(!['tool_started','tool_result','delegation_result','supervision_event','file_edit_result','delivery_summary','delivery_record','verification_evidence','npm_validation_started','npm_validation_prepared','npm_validation_finished'].includes(e.kind)||e.body.length<=8000||body.tool==='read_context'||body.tool==='read_output')return {...e,body};
     let saved=row<{id:string;sha256:string}>('SELECT id,sha256 FROM assistant_outputs WHERE session_id=? AND event_id=?',sessionId,e.id);
     if(!saved){const id=randomUUID(),sha256=createHash('sha256').update(e.body).digest('hex');db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(id,sessionId,e.id,e.body,sha256,now());saved={id,sha256};}
     const result=body.result??body;const flags=hostResultSummary(result);
