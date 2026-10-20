@@ -40,7 +40,7 @@ public static class ApiXCommandJob {
  }
  static string Quote(string arg){var b=new StringBuilder("\"");int slash=0;foreach(char c in arg){if(c=='\\'){slash++;continue;}if(c=='\"')b.Append('\\',slash*2+1);else b.Append('\\',slash);b.Append(c);slash=0;}b.Append('\\',slash*2);return b.Append('"').ToString();}
  static Task Pump(System.IO.Stream input,string channel){return Task.Run(async()=>{byte[] buf=new byte[4096];int n;while((n=await input.ReadAsync(buf,0,buf.Length))>0)Emit("out|"+channel+"|"+Convert.ToBase64String(buf,0,n));});}
- public static void Run(string name,string exe,string[] args,string cwd,int timeout){
+ public static void Run(string name,string exe,string[] args,string cwd,int timeout,System.Collections.IDictionary environment){
   IntPtr job=IntPtr.Zero;Process child=null;
   try{
    job=CreateJobObject(IntPtr.Zero,name);if(job==IntPtr.Zero||Marshal.GetLastWin32Error()==183)throw new Exception("job creation refused");
@@ -50,6 +50,7 @@ public static class ApiXCommandJob {
    Emit("job|"+self.Id+"|"+Birth(self));
    if(Console.In.ReadLine()!="go")return;
    var start=new ProcessStartInfo(exe);start.Arguments=String.Join(" ",Array.ConvertAll(args,Quote));start.WorkingDirectory=cwd;start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardInput=true;start.RedirectStandardOutput=true;start.RedirectStandardError=true;
+   start.EnvironmentVariables.Clear();foreach(System.Collections.DictionaryEntry entry in environment)start.EnvironmentVariables[(string)entry.Key]=(string)entry.Value;
    child=Process.Start(start);child.StandardInput.Close();bool member;if(!IsProcessInJob(child.Handle,job,out member)||!member){child.Kill();throw new Exception("worker job membership unconfirmed");}
    // Fast commands can exit before Process.StartTime is readable. Child PIDs never authorize kills;
    // the already-recorded owner birth and private job are the durable containment identity.

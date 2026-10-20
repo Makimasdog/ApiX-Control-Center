@@ -27,6 +27,8 @@
 
 使用发现并冻结的 Node/npm 路径，以参数数组执行 `npm ci --ignore-scripts --no-audit --no-fund --engine-strict --include=dev --include=optional --registry=https://registry.npmjs.org`。无下载批准增加 `--offline`。全局和用户 npm 配置分别使用空文件；宿主仅传必要 Windows 变量、固定 PATH、私有 HOME/TEMP/cache 和 CI 设置，不继承模型凭据、NODE_OPTIONS 或用户 npm 配置。
 
+上述环境限制针对项目进程。固定的 PowerShell 监督程序使用宿主环境完成自身初始化，不执行项目代码；真正启动项目命令前，显式清空继承环境并设置所选项目环境。环境配置通过私有管道传递，不保存为工具输出；不会为了让监督程序启动而把宿主环境放进项目命令。
+
 npm 10 的 `ignore-scripts` 会关闭安装脚本，但显式 `npm run` 仍执行指定脚本，并跳过自动 pre/post。因此宿主按批准顺序分别执行 `npm run --ignore-scripts <name>`。需要安装脚本的包被拒绝或标记准备不完整，不能据此假定关闭脚本后任意项目都可运行。参见 [npm ci v10](https://docs.npmjs.com/cli/v10/commands/npm-ci/) 和 [npm scripts v10](https://docs.npmjs.com/cli/v10/using-npm/scripts/)。
 
 准备证据包含实际命令终态、npm/Node 版本和入口哈希、配置策略、lock 哈希、安装后依赖全树哈希/容量/数量。每个检查后再次核对副本源码和依赖；改写输入则拒绝原证据。产物保存本次所有权、文件清单、容量与哈希。结束时源工作区与契约也必须匹配；用户在源目录的并发修改不会被覆盖，也不会被副本的成功结果验收。

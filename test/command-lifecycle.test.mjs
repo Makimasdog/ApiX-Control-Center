@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,watch} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {join,resolve,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
@@ -54,4 +54,17 @@ test('timeout and repeated stop race settles once and ignores late supervisor ev
 
 test('nonexistent executable is a confirmed no-worker startup failure',{timeout:15000},async()=>{
  const h=fixture();try{const result=await commandTool(h.root,{executable:join(h.root,'missing.exe')},process.env,new AbortController().signal);assert.equal(result.reason,'start_failed');assert.equal(result.exitCode,null);assert.equal(result.processesEnded,true);assert.equal(result.executionComplete,false);assert.equal(result.sideEffectsNeedReview,false);}finally{assert.equal(h.cleanup(),false);}
+});
+
+test('supervisor bootstrap ignores worker TEMP and passes only the selected environment to the command',{timeout:20000},async()=>{
+ const h=fixture(),previous=process.env.APIX_SUPERVISOR_ONLY,original=cp.spawn;let supervisorEnvironment;
+ process.env.APIX_SUPERVISOR_ONLY='fixture-host-value';
+ cp.spawn=(exe,args,options)=>{if(!args.includes('-Inspect'))supervisorEnvironment={...options.env};return original(exe,args,options);};syncBuiltinESMExports();
+ const temp=join(h.root,'missing','worker-temp');
+ const env={SystemRoot:process.env.SystemRoot,PATH:dirname(process.execPath),TEMP:temp,TMP:temp,APIX_WORKER_ONLY:'selected'};
+ try{
+  const result=await commandTool(h.root,{executable:process.execPath,args:['-e',"const a=require('node:assert/strict');a.equal(process.env.APIX_SUPERVISOR_ONLY,undefined);a.equal(process.env.APIX_WORKER_ONLY,'selected');a.equal(process.env.TEMP,process.argv[1]);console.log('worker environment isolated');",temp],timeoutMs:5000},env,new AbortController().signal);
+  assert.equal(result.executionComplete,true,JSON.stringify(result));assert.equal(result.exitCode,0);assert.equal(result.processesEnded,true);assert.match(result.output,/worker environment isolated/);
+  assert.equal(supervisorEnvironment.APIX_SUPERVISOR_ONLY,'fixture-host-value');assert.equal(supervisorEnvironment.APIX_WORKER_ONLY,undefined);
+ }finally{cp.spawn=original;syncBuiltinESMExports();if(previous===undefined)delete process.env.APIX_SUPERVISOR_ONLY;else process.env.APIX_SUPERVISOR_ONLY=previous;assert.equal(h.cleanup(),false);}
 });

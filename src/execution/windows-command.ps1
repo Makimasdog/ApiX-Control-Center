@@ -6,4 +6,6 @@ Add-Type -TypeDefinition (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'win
 if($Inspect){[ApiXCommandJob]::Inspect($JobName,$Terminate.IsPresent,$OwnerPid,$OwnerBirth);exit}
 $config=[Console]::In.ReadLine() | ConvertFrom-Json
 if($null -eq $config){exit 1}
-[ApiXCommandJob]::Run($JobName,[string]$config.executable,[string[]]$config.args,[string]$config.cwd,[int]$config.timeoutMs)
+$environment=@{}
+foreach($entry in $config.env.PSObject.Properties){$environment[$entry.Name]=[string]$entry.Value}
+[ApiXCommandJob]::Run($JobName,[string]$config.executable,[string[]]$config.args,[string]$config.cwd,[int]$config.timeoutMs,$environment)

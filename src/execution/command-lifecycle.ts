@@ -31,7 +31,8 @@ export async function managedCommand(executable:string,args:string[],cwd:string,
  if(process.platform!=='win32')throw new Error('此平台尚无可确认的主 Agent 命令托管实现；未启动命令');
  const operationId=hooks.operationId??randomUUID(),identity:CommandIdentity={jobName:'Local\\ApiX-Command-'+operationId};
  const startedAt=new Date().toISOString();
- const child=spawn(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-JobName',identity.jobName],{cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
+ // Bootstrap the trusted supervisor in the host environment; apply worker env only at launch.
+ const child=spawn(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-JobName',identity.jobName],{cwd,env:process.env,windowsHide:true,stdio:['pipe','pipe','pipe']});
  const safe=(text:string)=>{for(const s of secrets)text=text.split(s).join('<redacted>');return text;};
  return new Promise(resolve=>{
   let reason='',exitCode:number|null=null,finished=false,launched=false,helperClosed=false,reportedEmpty=false,probe:Promise<void>|undefined,raw='',pending='',truncated=false,error='';
@@ -78,6 +79,6 @@ export async function managedCommand(executable:string,args:string[],cwd:string,
   child.stderr.on('data',chunk=>{error=safe((error+chunk.toString('utf8')).slice(-2000));});
   child.on('error',e=>{if(finished)return;error=e.message;if(!reason)reason='start_failed';helperClosed=true;finish(!launched);});
   child.once('close',()=>{helperClosed=true;if(finished)return;if(reportedEmpty){finish(true);return;}if(!reason)reason='supervisor_lost';if(!launched)finish(true);else if(!probe){probe=(async()=>finish(await inspectCommand(identity)==='ended'))();}});
-  child.stdin.write(JSON.stringify({executable,args,cwd,timeoutMs})+'\n');if(signal.aborted)abort();
+  child.stdin.write(JSON.stringify({executable,args,cwd,timeoutMs,env})+'\n');if(signal.aborted)abort();
  });
 }
