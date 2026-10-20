@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { workerPrompt } from '../dist/src/worker-context.js';
-import { coordinationStatus, progressSummary } from '../dist/src/task-tracker.js';
-import { createApiXAgent } from '../dist/src/apix-agent.js';
-import {normalizeWorkerEvent} from '../dist/src/worker-events.js';
+import { workerPrompt } from '../dist/src/agents/worker-context.js';
+import { coordinationStatus, progressSummary } from '../dist/src/coordination/task-tracker.js';
+import { createApiXAgent } from '../dist/src/coordination/apix-agent.js';
+import {normalizeWorkerEvent} from '../dist/src/agents/worker-events.js';
 test('native Codex retry diagnostics stay observable while terminal failures still fail',()=>{
   assert.equal(normalizeWorkerEvent('codex',{type:'error',message:'Reconnecting... 5/5 (request timed out)'}).failed,false);
   assert.equal(normalizeWorkerEvent('codex',{type:'turn.failed'}).failed,true);

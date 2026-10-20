@@ -1,12 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createContextOutputs} from '../dist/src/assistant-context.js';
+import {createContextOutputs} from '../dist/src/assistant/assistant-context.js';
 import {toolResultSucceeded} from '../dist/web/assistant-view.js';
-import {createAssistantCommands} from '../dist/src/assistant-commands.js';
-import {preflightCommand,fileTool} from '../dist/src/assistant-tools.js';
-import {createToolRegistry} from '../dist/src/tool-registry.js';
-import {commandCapabilities} from '../dist/src/command-capabilities.js';
+import {createAssistantCommands} from '../dist/src/assistant/assistant-commands.js';
+import {preflightCommand,fileTool} from '../dist/src/assistant/assistant-tools.js';
+import {createToolRegistry} from '../dist/src/assistant/tool-registry.js';
+import {commandCapabilities} from '../dist/src/execution/command-capabilities.js';
 import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';
 
 function store(db){return {db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};}

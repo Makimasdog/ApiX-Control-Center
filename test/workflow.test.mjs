@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createWorkflow} from '../dist/src/workflow.js';
-import {createPermissions} from '../dist/src/permissions.js';
+import {createWorkflow} from '../dist/src/coordination/workflow.js';
+import {createPermissions} from '../dist/src/coordination/permissions.js';
 
 function fixture(work){
   const db=new DatabaseSync(':memory:');

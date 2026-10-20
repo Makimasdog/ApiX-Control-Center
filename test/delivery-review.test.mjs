@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {writeFileSync,readFileSync,unlinkSync,mkdirSync,symlinkSync} from 'node:fs';import {execFileSync} from 'node:child_process';import {join} from 'node:path';import {codingFixture,finish,action} from './coding-harness.mjs';import {createHash,randomUUID} from 'node:crypto';
-import {reviewSnapshot,reviewDiff} from '../dist/src/assistant-delivery.js';import {deliveryView} from '../dist/web/delivery-view.js';
+import {reviewSnapshot,reviewDiff} from '../dist/src/assistant/assistant-delivery.js';import {deliveryView} from '../dist/web/delivery-view.js';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const contract=action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:5000}],writablePaths:['src']});
 async function code(h,...actions){writeFileSync(join(h.root,'src/a.cjs'),'// user pre-existing\nmodule.exports=1;');writeFileSync(join(h.root,'check.cjs'),"require('node:assert/strict').equal(require('./src/a.cjs'),2)");h.queue(contract);h.service.message(h.id,{content:'Fix source to 2'});await h.idle();return h.approve(...actions,action('run_check',{checkId:'unit'}),finish);}

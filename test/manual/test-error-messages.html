@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>测试错误信息</title>
+  <style>
+    body { font-family: Inter, sans-serif; padding: 40px; background: #0B0E14; color: #F8FAFC; }
+    .test { margin: 20px 0; padding: 20px; background: #111827; border: 1px solid #1E293B; border-radius: 12px; }
+    .result { margin-top: 10px; padding: 10px; border-radius: 8px; }
+    .success { background: rgba(34, 197, 94, 0.15); color: #22C55E; }
+    .error { background: rgba(239, 68, 68, 0.15); color: #EF4444; }
+    button { padding: 8px 16px; background: #38BDF8; color: #0B0E14; border: 0; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #22D3EE; }
+    pre { background: #0B0E14; padding: 10px; border-radius: 6px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>ApiX 配置错误信息测试</h1>
+
+  <div class="test">
+    <h2>测试 1: 小写 API Key 环境变量（应失败）</h2>
+    <button onclick="test1()">运行测试</button>
+    <div id="result1" class="result"></div>
+  </div>
+
+  <div class="test">
+    <h2>测试 2: 正确格式 API Key（应成功）</h2>
+    <button onclick="test2()">运行测试</button>
+    <div id="result2" class="result"></div>
+  </div>
+
+  <div class="test">
+    <h2>测试 3: 空 API Key（本地模型，应成功）</h2>
+    <button onclick="test3()">运行测试</button>
+    <div id="result3" class="result"></div>
+  </div>
+
+  <div class="test">
+    <h2>测试 4: 无效的 API Type（应失败）</h2>
+    <button onclick="test4()">运行测试</button>
+    <div id="result4" class="result"></div>
+  </div>
+
+  <script>
+    async function testConfig(testNum, config) {
+      const resultDiv = document.getElementById(`result${testNum}`);
+      resultDiv.innerHTML = '测试中...';
+
+      try {
+        const response = await fetch('/api/manager/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          resultDiv.className = 'result success';
+          resultDiv.innerHTML = `<strong>✅ 成功</strong><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        } else {
+          resultDiv.className = 'result error';
+          resultDiv.innerHTML = `<strong>❌ 失败（预期）</strong><pre>错误: ${data.error}</pre>`;
+        }
+      } catch (error) {
+        resultDiv.className = 'result error';
+        resultDiv.innerHTML = `<strong>⚠️ 网络错误</strong><pre>${error.message}</pre>`;
+      }
+    }
+
+    function test1() {
+      testConfig(1, {
+        provider: 'apix-custom',
+        model: 'deepseek-chat',
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiType: 'openai-completions',
+        apiKeyEnv: 'deepseek_api_key'  // 小写，应该失败
+      });
+    }
+
+    function test2() {
+      testConfig(2, {
+        provider: 'apix-custom',
+        model: 'deepseek-chat',
+        baseUrl: 'https://api.deepseek.com/v1',
+        apiType: 'openai-completions',
+        apiKeyEnv: 'DEEPSEEK_API_KEY'  // 正确格式
+      });
+    }
+
+    function test3() {
+      testConfig(3, {
+        provider: 'apix-custom',
+        model: 'qwen2.5:32b',
+        baseUrl: 'http://127.0.0.1:11434/v1',
+        apiType: 'openai-completions',
+        apiKeyEnv: ''  // 空，本地模型
+      });
+    }
+
+    function test4() {
+      testConfig(4, {
+        provider: 'apix-custom',
+        model: 'test-model',
+        baseUrl: 'https://api.test.com/v1',
+        apiType: 'invalid-type',  // 无效类型
+        apiKeyEnv: 'TEST_API_KEY'
+      });
+    }
+  </script>
+</body>
+</html>

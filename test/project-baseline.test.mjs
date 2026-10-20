@@ -4,8 +4,8 @@ import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,symli
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
-import {projectBaseline,projectSourceVersion} from '../src/project-baseline.mjs';
-import {createTaskDelivery} from '../src/task-delivery.mjs';
+import {projectBaseline,projectSourceVersion} from '../src/projects/project-baseline.mjs';
+import {createTaskDelivery} from '../src/projects/task-delivery.mjs';
 const git=(cwd,args)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true});}}
 test('ApiX data root cannot be snapshotted as a project',()=>fixture(({source})=>{

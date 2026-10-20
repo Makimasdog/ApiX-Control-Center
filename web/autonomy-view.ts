@@ -1,4 +1,4 @@
-import type {AutonomyPolicy,Architecture} from '../src/architecture.js';
+import type {AutonomyPolicy,Architecture} from '../src/coordination/architecture.js';
 export interface AutonomyState {state:string;reason:string|null;architecture:Architecture;tasks:{task_id:string;module_id:string;repairs:number}[];checks:{id:string;task_id:string;status:string;fingerprint:string;body:unknown}[];repairs:{id:string;task_id:string;attempt:number;employee_id:string;instruction:string;status:string}[]}
 const esc=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const label=(value:string)=>({ready:'待执行',running:'自动检查与交付中',completed:'已交付',attention:'需要处理',passed:'通过',failed:'未通过',error:'检查错误',interrupted:'检查中断',prepared:'修复已准备',waiting:'等待执行资源',dispatched:'修复已派发',blocked:'修复受阻',low:'低',medium:'中',high:'高'}[value]??value);

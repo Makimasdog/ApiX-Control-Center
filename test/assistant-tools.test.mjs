@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync} from 'node:fs';import {join,resolve} from 'node:path';import {tmpdir} from 'node:os';
-import {fileTool,projectPath,projectFingerprint,projectInstructions,skillsFor,commandTool} from '../dist/src/assistant-tools.js';
+import {fileTool,projectPath,projectFingerprint,projectInstructions,skillsFor,commandTool} from '../dist/src/assistant/assistant-tools.js';
 import {assistantTimeline,approvalLabel,toolResultSucceeded} from '../dist/web/assistant-view.js';
 test('file tools enforce real project boundaries, full reads, skills and instruction loading',()=>{
   const dir=mkdtempSync(join(tmpdir(),'apix-assistant-tools-')),root=join(dir,'project');mkdirSync(root);

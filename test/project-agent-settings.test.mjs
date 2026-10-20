@@ -8,8 +8,8 @@ import {spawn} from 'node:child_process';
 import {createServer} from 'node:net';
 import {request} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {projectDirectory,browseFolders,sameProjectDirectory} from '../src/project-folders.mjs';
-import {executionArgs,inspectCodex,normalizeQuota} from '../dist/src/agent-settings.js';
+import {projectDirectory,browseFolders,sameProjectDirectory} from '../src/projects/project-folders.mjs';
+import {executionArgs,inspectCodex,normalizeQuota} from '../dist/src/agents/agent-settings.js';
 const fixture=resolve('test/fake-agent-settings.mjs');
 test('folder browser and explicit creation validate absolute directories and preserve files',async()=>{
   const temp=await mkdtemp(join(tmpdir(),'apix-folder-'));

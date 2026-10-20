@@ -1,4 +1,4 @@
-import type { CapabilityProfile } from '../src/scheduling.js';
+import type { CapabilityProfile } from '../src/coordination/scheduling.js';
 type View = {
   policy:{version:number;quotaMaxAgeMinutes:number;requireFreshQuota:boolean;limitMinor:number|null;currency:string|null;managerAccountId:string|null;managerEstimateMinor:number|null};
   accounts:{id:string;alias:string;type:string;currency:string|null;limitMinor:number|null;remainingPercent:number|null;reservePercent:number;observedAt:string|null;resetsAt:string|null;version:number;quotaState:string;committedMinor:number;pause:{reason:string}|null}[];

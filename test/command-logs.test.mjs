@@ -1,8 +1,8 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {codingFixture} from './coding-harness.mjs';
-import {projectFingerprint} from '../dist/src/assistant-tools.js';
-import {createCommandLogs,logLimits} from '../dist/src/command-logs.js';
-import {createContextOutputs} from '../dist/src/assistant-context.js';
+import {projectFingerprint} from '../dist/src/assistant/assistant-tools.js';
+import {createCommandLogs,logLimits} from '../dist/src/execution/command-logs.js';
+import {createContextOutputs} from '../dist/src/assistant/assistant-context.js';
 test('real command logs retain late errors, stdout/stderr and cross-chunk redaction after preview truncation',{timeout:25000},()=>codingFixture(async h=>{
  const key=process.env.APIX_LOG_TEST_KEY;process.env.APIX_LOG_TEST_KEY='fixture-private-log-secret';
  try{const before=projectFingerprint(h.root),r=await h.commands.execute(h.service.details(h.id),'run_command',{executable:'node',args:['-e',"process.stdout.write('fixture-private-');setImmediate(()=>{process.stdout.write('log-secret\\n'+'x'.repeat(25000)+'\\nLATE_REAL_ERROR');process.stderr.write('STDERR_END')})"]},new AbortController().signal);

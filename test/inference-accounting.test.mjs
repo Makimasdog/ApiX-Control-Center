@@ -1,9 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createScheduling} from '../dist/src/scheduling.js';
-import {createAssistantInference} from '../dist/src/assistant-inference.js';
-import {ModelCleanupUnknownError} from '../dist/src/model-backend.js';
+import {createScheduling} from '../dist/src/coordination/scheduling.js';
+import {createAssistantInference} from '../dist/src/assistant/assistant-inference.js';
+import {ModelCleanupUnknownError} from '../dist/src/models/model-backend.js';
 
 function fixture(work){
  const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES ('p');CREATE TABLE employees(id TEXT);CREATE TABLE tasks(id TEXT);CREATE TABLE runs(id TEXT,status TEXT)");

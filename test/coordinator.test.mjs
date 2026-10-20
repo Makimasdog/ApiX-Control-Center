@@ -10,10 +10,10 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
-import { createTaskScheduler } from '../src/task-scheduler.mjs';
-import { createRuntimeAdapters } from '../dist/src/runtime-adapters.js';
-import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
-import { createCodeHandoffs } from '../src/code-handoffs.mjs';
+import { createTaskScheduler } from '../src/coordination/task-scheduler.mjs';
+import { createRuntimeAdapters } from '../dist/src/agents/runtime-adapters.js';
+import { BUILTIN_PROVIDERS } from '../dist/src/models/model-providers.js';
+import { createCodeHandoffs } from '../src/projects/code-handoffs.mjs';
 import {startModelFixture} from './fake-model-http.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');

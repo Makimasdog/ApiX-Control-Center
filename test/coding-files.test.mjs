@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,readFileSync,rmSync,mkdirSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
-import {fileTool} from '../dist/src/assistant-tools.js';
+import {fileTool} from '../dist/src/assistant/assistant-tools.js';
 const sha=text=>createHash('sha256').update(text).digest('hex');
 function fixture(work){const root=mkdtempSync(join(tmpdir(),'apix-coding-files-'));try{return work(root);}finally{assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true});}}
 test('literal search paginates stable matches, excludes credentials and reports staleness',()=>fixture(root=>{

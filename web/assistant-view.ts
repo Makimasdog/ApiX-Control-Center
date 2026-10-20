@@ -1,4 +1,4 @@
-import {hostResultSucceeded} from '../src/assistant-result.js';
+import {hostResultSucceeded} from '../src/assistant/assistant-result.js';
 export function escapeAssistant(value:unknown){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));}
 function outputLink(value:unknown){if(!value||typeof value!=='object'||!('outputRef' in value))return '';return `<button type="button" class="text-action" data-output-reference="${escapeAssistant(value.outputRef)}">分段查看已保存结果</button>`;}
 function logLinks(operationId:unknown){return operationId?`<div class="assistant-evidence-actions">${(['stdout','stderr'] as const).map(channel=>(['head','tail'] as const).map(mode=>`<button type="button" class="text-action" data-command-log="${escapeAssistant(operationId)}" data-log-channel="${channel}" data-log-mode="${mode}">${channel} ${mode==='head'?'头部':'尾部'}</button>`).join('')).join('')}</div>`:'';}

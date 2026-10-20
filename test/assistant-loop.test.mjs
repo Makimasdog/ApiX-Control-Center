@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createAssistantLoop} from '../dist/src/assistant-loop.js';
-import {inferModel} from '../dist/src/model-backend.js';
+import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
+import {inferModel} from '../dist/src/models/model-backend.js';
 import {createServer} from 'node:http';
 const tool=(name,args={})=>({action:'tool',tool:name,args:{...({read_file:{path:'README.md'},write_file:{path:'a.txt',content:'fixture'},verify:{executable:'node'},run_command:{executable:'node'},delegate:{requirements:{scope:'fixture',constraints:'fixture',deliverable:'fixture',acceptance:'fixture'}},configure_agents:{checks:[{id:'test',args:['test.mjs']} ]}}[name]??{}),...args},message:'执行 '+name});
 const finish={action:'finish',outcome:'completed',message:'已完成并核对证据'};

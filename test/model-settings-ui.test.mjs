@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUILTIN_PROVIDERS } from '../dist/src/model-providers.js';
+import { BUILTIN_PROVIDERS } from '../dist/src/models/model-providers.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest } from '../dist/web/model-settings.js';
 const providers=BUILTIN_PROVIDERS;
 const defaults={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};

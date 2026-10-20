@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createApiXAgent} from '../dist/src/apix-agent.js';
-import {emptyRequirements} from '../dist/src/requirement-engine.js';
+import {createApiXAgent} from '../dist/src/coordination/apix-agent.js';
+import {emptyRequirements} from '../dist/src/coordination/requirement-engine.js';
 
 test('planning distinguishes inference failure from invalid dependencies and accepts whitespace around JSON fences',async()=>{
   const requirements={goal:'实现',scope:'现有模块',constraints:'保留功能',deliverable:'代码',acceptance:'测试通过'},employees=[{id:'one'}];

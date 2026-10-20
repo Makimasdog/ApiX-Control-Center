@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { recoveryForm } from '../dist/web/execution-view.js';
-import {taskAcceptanceRequest} from '../dist/src/task-review.js';
+import {taskAcceptanceRequest} from '../dist/src/coordination/task-review.js';
 
 test('only explicit acceptance commands authorize task review, never questions or quoted instructions',()=>{
   for(const phrase of ['确认验收','请验收通过。','通过验收！'])assert.deepEqual(taskAcceptanceRequest(phrase),{});

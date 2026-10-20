@@ -6,8 +6,8 @@ import {join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
-import {commandTool} from '../dist/src/assistant-tools.js';
-import {inspectCommand,inspectCommandSync} from '../dist/src/command-lifecycle.js';
+import {commandTool} from '../dist/src/assistant/assistant-tools.js';
+import {inspectCommand,inspectCommandSync} from '../dist/src/execution/command-lifecycle.js';
 
 function fixture(){
  const root=mkdtempSync(join(tmpdir(),'apix-command-life-'));

@@ -4,10 +4,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
-import {createAutonomy} from '../dist/src/autonomy.js';
-import {parseArchitecture,autonomyDefaults} from '../dist/src/architecture.js';
-import {taskProfile} from '../dist/src/scheduling.js';
-import {createApiXAgent} from '../dist/src/apix-agent.js';
+import {createAutonomy} from '../dist/src/coordination/autonomy.js';
+import {parseArchitecture,autonomyDefaults} from '../dist/src/coordination/architecture.js';
+import {taskProfile} from '../dist/src/coordination/scheduling.js';
+import {createApiXAgent} from '../dist/src/coordination/apix-agent.js';
 async function fixture(work){
   const dir=await mkdtemp(join(tmpdir(),'apix-autonomy-unit-'));const db=new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY);CREATE TABLE plans(id TEXT PRIMARY KEY,project_id TEXT);CREATE TABLE coordination_sessions(id TEXT PRIMARY KEY,plan_id TEXT,revision INTEGER,confirmed_revision INTEGER,status TEXT);CREATE TABLE tasks(id TEXT PRIMARY KEY,project_id TEXT,plan_id TEXT,employee_id TEXT,runtime TEXT,prompt TEXT,status TEXT,workspace_path TEXT,result TEXT,updated_at TEXT);CREATE TABLE runs(id TEXT PRIMARY KEY,task_id TEXT,status TEXT,started_at TEXT,ended_at TEXT);CREATE TABLE agent_messages(id TEXT PRIMARY KEY,task_id TEXT,target_task_id TEXT,target_run_id TEXT,from_agent TEXT,to_agent TEXT,type TEXT,payload TEXT,status TEXT,created_at TEXT);CREATE TABLE task_dependencies(task_id TEXT,depends_on_id TEXT);CREATE TABLE code_handoffs(task_id TEXT,status TEXT);

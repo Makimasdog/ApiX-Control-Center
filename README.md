@@ -268,6 +268,18 @@ ali_model_name=<你的模型 ID>
 
 ## 技术栈与开发
 
+源码、文档和验证资料按目录分开维护：
+
+| 内容 | 位置 |
+| --- | --- |
+| 后端业务 | `src/`；根目录保留服务与装配入口 |
+| 页面、交互、样式 | `web/`、`web/styles/` |
+| 自动测试、手工验证 | `test/`、`test/manual/` |
+| 当前说明、历史补充 | [docs](docs/README.md)、[归档](docs/归档/历史补充/README.md) |
+| 开发审查、验收证据 | [协作](协作/README.md) |
+
+完整文件归属和维护规则见[目录结构](docs/目录结构.md)。
+
 | 层次 | 技术 |
 | --- | --- |
 | 界面 | HTML、CSS、JavaScript 与严格 TypeScript 模块 |
@@ -293,7 +305,7 @@ npm test
 ```powershell
 # 管理者无需 CLI；Pi 员工才需要 APIX_PI_ENTRY（或加入 PATH）
 npm run build
-node scripts/verify-real-collaboration.mjs --approve-cost
+node scripts/verification/verify-real-collaboration.mjs --approve-cost
 ```
 
 验收记录保存在 `.tmp-real-collaboration/run-*/result.json` 和隔离工作区，不纳入 Git。失败不会算作闭环通过；如果记录中 `workersStopped` 为 false，应检查保留的运行状态及进程。

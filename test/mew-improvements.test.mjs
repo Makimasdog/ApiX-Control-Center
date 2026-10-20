@@ -4,10 +4,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {createMcpManager} from '../dist/src/mcp-manager.js';
-import {createToolRegistry} from '../dist/src/tool-registry.js';
-import {createContextOutputs,compactPrefix} from '../dist/src/assistant-context.js';
-import {recallNotes} from '../dist/src/assistant-memory.js';
+import {createMcpManager} from '../dist/src/assistant/mcp-manager.js';
+import {createToolRegistry} from '../dist/src/assistant/tool-registry.js';
+import {createContextOutputs,compactPrefix} from '../dist/src/assistant/assistant-context.js';
+import {recallNotes} from '../dist/src/assistant/assistant-memory.js';
 import {toolResultSucceeded} from '../dist/web/assistant-view.js';
 const store=db=>({db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()});
 test('registry supplies complete schemas, rejects bad parameters and refuses collisions and external refs',()=>{

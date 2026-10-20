@@ -1,7 +1,7 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';import {mkdtempSync,readFileSync,rmSync} from 'node:fs';import {join,resolve,sep,dirname} from 'node:path';import {tmpdir} from 'node:os';import http from 'node:http';import {spawn} from 'node:child_process';import {once} from 'node:events';
-import {configuredModel,validateApproval} from '../scripts/evaluate-coding-real.mjs';import * as evaluation from '../scripts/evaluate-coding-real.mjs';import {createHash} from 'node:crypto';
-import {taskSetSha256} from '../scripts/coding-evaluation-tasks.mjs';
+import {configuredModel,validateApproval} from '../scripts/evaluation/evaluate-coding-real.mjs';import * as evaluation from '../scripts/evaluation/evaluate-coding-real.mjs';import {createHash} from 'node:crypto';
+import {taskSetSha256} from '../scripts/evaluation/coding-evaluation-tasks.mjs';
 const approved={schemaVersion:2,taskSetSha256,taskIds:['smoke'],approveSpend:true,approveWorkspace:true,approveChecks:true,providerBudgetConfirmed:true,settingsSha256:'sha',currency:'USD',maxMinor:30,perRequestUpperBoundMinor:1,maxRequests:12,maxMinutes:1,perTaskMaxRequests:12,perTaskMaxMinutes:1,perTaskMaxMinor:30};
 const action=(tool,args={})=>({action:'tool',tool,args,message:tool});
 test('evaluation artifacts redact string values before JSON escaping, including explicitly selected credential names',()=>{
@@ -14,7 +14,7 @@ test('production decision redaction normalizes accepted fences and fails closed 
  assert.throws(()=>evaluation.redactModelDecision('{"message":"protected","deep":'+('{"x":'.repeat(10000))+'null'+('}'.repeat(10000))+'}',['protected']),RangeError);
  assert.equal(evaluation.redactModelDecision('invalid '+secret,[secret]),'invalid <redacted>');
 });
-async function entry(args){const child=spawn(process.execPath,['scripts/evaluate-coding-real.mjs',...args],{windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>err+=x);let watchdog=false;const timer=setTimeout(()=>{watchdog=true;child.kill();},45000);try{const [code]=await once(child,'close');assert.equal(watchdog,false,'entry watchdog fired');return {code,out,err};}finally{clearTimeout(timer);}}
+async function entry(args){const child=spawn(process.execPath,['scripts/evaluation/evaluate-coding-real.mjs',...args],{windowsHide:true,stdio:['ignore','pipe','pipe']});let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>err+=x);let watchdog=false;const timer=setTimeout(()=>{watchdog=true;child.kill();},45000);try{const [code]=await once(child,'close');assert.equal(watchdog,false,'entry watchdog fired');return {code,out,err};}finally{clearTimeout(timer);}}
 test('real evaluation entry sends no request without explicit approval; bounds and settings version fail closed',async()=>{
  const r=await entry([]);assert.equal(r.code,2);assert.deepEqual(JSON.parse(r.out),{status:'not_run',requests:0,reason:'explicit_approval_required'});
  assert.equal(validateApproval(approved,'sha'),approved);for(const patch of [{approveSpend:false},{providerBudgetConfirmed:false},{settingsSha256:'stale'},{maxRequests:145},{perTaskMaxRequests:25},{maxMinor:0},{perRequestUpperBoundMinor:31},{maxMinutes:31}])assert.throws(()=>validateApproval({...approved,...patch},'sha'));

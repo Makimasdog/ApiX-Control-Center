@@ -1,11 +1,11 @@
-import {createNpmValidation} from '../dist/src/npm-validation.js';
+import {createNpmValidation} from '../dist/src/validation/npm-validation.js';
 // Offline decisions, real host tools/SQLite/contracts/processes. This is not a model success-rate evaluation.
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';import {mkdtempSync,mkdirSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve,sep} from 'node:path';
-import {createAssistantLoop} from '../dist/src/assistant-loop.js';
-import {createAssistantCommands} from '../dist/src/assistant-commands.js';
-import {createAssistantCoding} from '../dist/src/assistant-coding.js';
-import {projectFingerprint} from '../dist/src/assistant-tools.js';
+import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
+import {createAssistantCommands} from '../dist/src/assistant/assistant-commands.js';
+import {createAssistantCoding} from '../dist/src/assistant/assistant-coding.js';
+import {projectFingerprint} from '../dist/src/assistant/assistant-tools.js';
 export const action=(tool,args={})=>({action:'tool',tool,args,message:tool});
 export const finish={action:'finish',outcome:'completed',message:'delivery evidence available; not formally accepted'};
 export async function codingFixture(work,{idleMs=20000,retain=false}={}){

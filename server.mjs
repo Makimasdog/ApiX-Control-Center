@@ -1,7 +1,8 @@
 import {assistantProjectDiagnosis,assistantNpmProposal,assistantApproveNpm} from './control-plane.mjs';
 import {conversationModel,saveConversationModel} from './control-plane.mjs';
 import { createServer } from "node:http";
-import {browseFolders} from './src/project-folders.mjs';
+import {staticFilePath} from './src/infrastructure/static-files.mjs';
+import {browseFolders} from './src/projects/project-folders.mjs';
 import {inspectEmployeeRuntime} from './control-plane.mjs';
 import {mcpServers,saveMcpServer,discoverMcpTools,closeMcpConnections} from './control-plane.mjs';
 import {assistantOutput,assistantLogOutput} from './control-plane.mjs';
@@ -14,9 +15,9 @@ import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, 
 import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from "./control-plane.mjs";
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, testManagerConnection, searchCoordinationMemory, employeeDetails } from "./control-plane.mjs";
 import { registerRuntimeAdapter, authenticateAgent, agentTeam, instructCoordinationEmployee, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, taskDelivery, freezeHistoricalDelivery,executionSettings,saveExecutionSettings,changeRuntimePause,recoverTask } from './control-plane.mjs';
-import { BUILTIN_PROVIDERS } from './dist/src/model-providers.js';
+import { BUILTIN_PROVIDERS } from './dist/src/models/model-providers.js';
 import { schedulingAccount,resumeSchedulingAccount,employeeCapability,saveEmployeeCapability,schedulingView,saveSchedulingPolicy,settleSchedulingCost,runPlanningMeeting,applyPlanningMeeting } from './control-plane.mjs';
-import { readLocalModels } from './dist/src/local-models.js';
+import { readLocalModels } from './dist/src/models/local-models.js';
 import {workflowSettings,saveWorkflow,stopCoordinationSession,readiness,inspectTaskDelivery} from './control-plane.mjs';
 import {autonomySettings,saveAutonomySettings,resumeAutonomySession} from './control-plane.mjs';
 import {createAssistantSession,assistantSession,assistantSessions,assistantMessage,assistantReply,assistantStop,assistantResume,assistantEditMemory,assistantEvents} from './control-plane.mjs';
@@ -247,9 +248,9 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
     return;
   }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
-  const publicFiles = new Set(['index.html','agent-os.js','styles.css','phase4.css','director.css','coordinator.css','overview.css','desktop.css','assistant.css']);
-  if (!publicFiles.has(relativePath) && relativePath!=='dist/src/assistant-result.js' && !/^dist\/web\/[a-zA-Z0-9_-]+\.js$/.test(relativePath)) { response.writeHead(404); response.end('Not found'); return; }
-  const filePath = normalize(join(root, relativePath));
+  const publicPath = staticFilePath(root, relativePath);
+  if (!publicPath) { response.writeHead(404); response.end('Not found'); return; }
+  const filePath = normalize(publicPath);
   if (!filePath.startsWith(`${root}${sep}`) || !["GET", "HEAD"].includes(request.method ?? "")) {
     response.writeHead(403);
     response.end("Forbidden");

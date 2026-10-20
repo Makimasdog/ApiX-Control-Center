@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createMemory} from '../dist/src/memory.js';
+import {createMemory} from '../dist/src/coordination/memory.js';
 test('history stays bounded, older pages retain snapshots and searches preserve Unicode literal matching',()=>{
   const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES ('p'),('other')");
   try{

@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createScheduling,taskProfile,overlaps} from '../dist/src/scheduling.js';
-import {createPlanningMeetings} from '../dist/src/planning-meetings.js';
-import {createEmployeeInsights} from '../dist/src/employee-insights.js';
-import {createRuntimeAdapters} from '../dist/src/runtime-adapters.js';
+import {createScheduling,taskProfile,overlaps} from '../dist/src/coordination/scheduling.js';
+import {createPlanningMeetings} from '../dist/src/coordination/planning-meetings.js';
+import {createEmployeeInsights} from '../dist/src/agents/employee-insights.js';
+import {createRuntimeAdapters} from '../dist/src/agents/runtime-adapters.js';
 test('cost routing specifies the selected model using argv without shell interpolation',()=>{
   const db=new DatabaseSync(':memory:');const store={db,row:(s,...p)=>db.prepare(s).get(...p),rows:(s,...p)=>db.prepare(s).all(...p),now:()=>''};try{const adapters=createRuntimeAdapters(store,()=>null);for(const id of ['pi','codex','claude'])assert.deepEqual(adapters.modelArgs(id,'model with spaces'),['--model','model with spaces']);assert.throws(()=>adapters.modelArgs('custom','model'),/尚未验证/);assert.deepEqual(adapters.modelArgs('custom',''),[]);}finally{db.close();}
 });

@@ -6,9 +6,9 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtemp,rm,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {inferModel} from '../dist/src/model-backend.js';
-import {createAssistantInference,managerInferenceError} from '../dist/src/assistant-inference.js';
-import {createAssistantLoop} from '../dist/src/assistant-loop.js';
+import {inferModel} from '../dist/src/models/model-backend.js';
+import {createAssistantInference,managerInferenceError} from '../dist/src/assistant/assistant-inference.js';
+import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
 
 const deferred=()=>{let resolve,reject;return {promise:new Promise((r,j)=>{resolve=r;reject=j;}),resolve:v=>resolve(v),reject:error=>reject(error)};};
 const finish={action:'finish',outcome:'completed',message:'read only done'};

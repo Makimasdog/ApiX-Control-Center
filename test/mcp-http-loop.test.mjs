@@ -10,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {ListToolsRequestSchema,CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
-import {createMcpManager} from '../dist/src/mcp-manager.js';
+import {createMcpManager} from '../dist/src/assistant/mcp-manager.js';
 import {startModelFixture} from './fake-model-http.mjs';
 const store=db=>({db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()});
 const port=()=>new Promise(r=>{const s=netServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>r(p));});});

@@ -6,12 +6,12 @@ import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {codingFixture,action,finish} from './coding-harness.mjs';
 import {npmProjectFiles} from './npm-project-fixture.mjs';
-import {diagnoseNodeProject} from '../dist/src/node-project.js';
-import {createToolRegistry} from '../dist/src/tool-registry.js';
-import {fileTool} from '../dist/src/assistant-tools.js';
-import {reviewSnapshot} from '../dist/src/assistant-delivery.js';
-import {sourceManifest} from '../dist/src/node-project.js';
-import {verificationContract,contractCurrent} from '../dist/src/assistant-verification.js';
+import {diagnoseNodeProject} from '../dist/src/validation/node-project.js';
+import {createToolRegistry} from '../dist/src/assistant/tool-registry.js';
+import {fileTool} from '../dist/src/assistant/assistant-tools.js';
+import {reviewSnapshot} from '../dist/src/assistant/assistant-delivery.js';
+import {sourceManifest} from '../dist/src/validation/node-project.js';
+import {verificationContract,contractCurrent} from '../dist/src/assistant/assistant-verification.js';
 
 function approve(h){const c=h.service.npmProposal(h.id,{network:false,writablePaths:['src']});const s=h.service.details(h.id);h.service.approveNpm(h.id,{version:s.version,approved:true,contractVersion:c.version,network:false,writablePaths:['src']});return c;}
 const fix=h=>action('edit_file',{path:'src/add.cjs',expectedSha256:h.result('read_file').sha256,edits:[{oldText:'number(a)-number(b)',newText:'number(a)+number(b)'}]});

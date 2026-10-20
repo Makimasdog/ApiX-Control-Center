@@ -4,10 +4,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,writeFileSync,existsSync,rmSync,watch,readFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {createAssistantCommands} from '../dist/src/assistant-commands.js';
-import {createAssistantLoop} from '../dist/src/assistant-loop.js';
-import {fileTool,projectFingerprint} from '../dist/src/assistant-tools.js';
-import {checkPassed} from '../dist/src/assistant-verification.js';
+import {createAssistantCommands} from '../dist/src/assistant/assistant-commands.js';
+import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
+import {fileTool,projectFingerprint} from '../dist/src/assistant/assistant-tools.js';
+import {checkPassed} from '../dist/src/assistant/assistant-verification.js';
 
 const action=(tool,args)=>({action:'tool',tool,args,message:tool});
 const finish={action:'finish',outcome:'completed',message:'done'};

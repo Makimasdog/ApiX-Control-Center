@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseArchitecture,bindArchitecture,parseAutonomyPolicy,autonomyDefaults} from '../dist/src/architecture.js';
+import {parseArchitecture,bindArchitecture,parseAutonomyPolicy,autonomyDefaults} from '../dist/src/coordination/architecture.js';
 import {autonomySummary} from '../dist/web/autonomy-view.js';
 const checks=[{id:'tests',args:['verify.mjs'],timeoutMs:1000}];
 const module=(id='core',paths=['src/core'])=>({id,name:id,paths,dependsOn:[],risk:'high',difficulty:3,workload:{inputTokens:2000,outputTokens:1000,calls:2},interfaces:[{name:'read',consumer:'external',protocol:'HTTP',request:{type:'object'},response:{type:'string'}}],dataStructures:[{name:'value',schema:{type:'string'}}],acceptance:['返回字符串并覆盖错误路径'],checkIds:['tests']});
