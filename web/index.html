@@ -16,11 +16,13 @@
     <script type="module" src="./dist/web/project-picker.js"></script>
     <script type="module" src="./dist/web/mcp-settings.js"></script>
     <link rel="stylesheet" href="./assistant.css" />
+    <link rel="stylesheet" href="./design-system.css" />
     <script type="module" src="./dist/web/assistant.js"></script>
     <script type="module" src="./dist/web/chat-history.js"></script>
     <script type="module" src="./agent-os.js"></script>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
     <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <symbol id="icon-spark" viewBox="0 0 24 24"><path d="m12 2 1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9L12 2Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/></symbol>
       <symbol id="icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
@@ -43,17 +45,18 @@
     </svg>
 
     <div class="app-shell">
-      <aside class="sidebar">
+      <button class="navigation-backdrop" id="navigation-backdrop" aria-label="关闭导航" hidden tabindex="-1"></button>
+      <aside class="sidebar" id="main-navigation" aria-label="工作区导航">
         <button class="brand" id="brand-home" aria-label="ApiX 工作台">
           <span class="brand-mark"><svg class="icon"><use href="#icon-spark"/></svg></span>
-          <span class="brand-copy"><strong>ApiX</strong><small>Intelligence, refined.</small></span>
+          <span class="brand-copy"><strong>ApiX</strong><small>你的 Agent 工作空间</small></span>
         </button>
 
         <div class="sidebar-section nav-section">
           <div class="section-caption">工作空间</div>
           <nav class="nav-list" aria-label="主导航">
             <button class="nav-item" data-page-target="assistant" aria-label="与 ApiX 对话"><svg class="icon"><use href="#icon-spark"/></svg><span>与 ApiX 对话</span></button>
-            <button class="nav-item active" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
+            <button class="nav-item" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
             <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
             <details class="assistant-more"><summary>更多设置</summary><button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
             <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
@@ -79,9 +82,10 @@
         </div>
       </aside>
 
-      <div class="main-shell">
+      <div class="main-shell" id="main-content" tabindex="-1">
         <header class="topbar">
-          <div class="breadcrumb"><span>ApiX</span><svg class="icon"><use href="#icon-chevron"/></svg><strong id="breadcrumb-page">工作台</strong></div>
+          <button class="icon-button navigation-toggle" id="navigation-toggle" aria-label="打开导航" aria-controls="main-navigation" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#icon-grid"/></svg></button>
+          <div class="breadcrumb"><span>ApiX</span><svg class="icon" aria-hidden="true"><use href="#icon-chevron"/></svg><strong id="breadcrumb-page">对话</strong></div>
           <div class="topbar-actions"><span class="preview-chip"><span class="preview-dot"></span>本地预览</span><span class="topbar-divider"></span><button id="top-model-button" class="top-model-button"><span class="top-model-icon"><svg class="icon"><use href="#icon-spark"/></svg></span><span id="top-model-name">选择模型</span><svg class="icon chevron-down"><use href="#icon-chevron"/></svg></button></div>
         </header>
 
@@ -114,9 +118,9 @@
       </div>
     </div>
 
-    <dialog id="task-details-dialog" class="editor-dialog task-details-dialog"><div class="dialog-top"><h2>任务与 Agent 事件</h2><button type="button" class="icon-button" id="task-details-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="task-details-content"></div></dialog>
-    <dialog id="editor-dialog" class="editor-dialog"><form id="editor-form" method="dialog"><div class="dialog-top"><div><span class="card-kicker" id="dialog-kicker">新建</span><h2 id="dialog-title">添加项目</h2></div><button type="button" class="icon-button" id="dialog-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="dialog-fields" class="stacked-form"></div><div class="dialog-actions"><button type="button" class="outline-button" id="dialog-cancel">取消</button><button type="submit" class="primary-button" id="dialog-submit">保存</button></div></form></dialog>
-    <dialog id="confirm-dialog" class="editor-dialog confirm-dialog"><div class="dialog-top"><div><span class="card-kicker">请确认</span><h2 id="confirm-title">确认操作</h2></div><button type="button" class="icon-button" id="confirm-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><p id="confirm-message"></p><div class="dialog-actions"><button type="button" class="outline-button" id="confirm-cancel">取消</button><button type="button" class="primary-button" id="confirm-accept">确认</button></div></dialog>
+    <dialog id="task-details-dialog" class="editor-dialog task-details-dialog" aria-label="任务与 Agent 事件"><div class="dialog-top"><h2>任务与 Agent 事件</h2><button type="button" class="icon-button" id="task-details-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="task-details-content"></div></dialog>
+    <dialog id="editor-dialog" class="editor-dialog" aria-labelledby="dialog-title"><form id="editor-form" method="dialog"><div class="dialog-top"><div><span class="card-kicker" id="dialog-kicker">新建</span><h2 id="dialog-title">添加项目</h2></div><button type="button" class="icon-button" id="dialog-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><div id="dialog-fields" class="stacked-form"></div><div class="dialog-actions"><button type="button" class="outline-button" id="dialog-cancel">取消</button><button type="submit" class="primary-button" id="dialog-submit">保存</button></div></form></dialog>
+    <dialog id="confirm-dialog" class="editor-dialog confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message"><div class="dialog-top"><div><span class="card-kicker">请确认</span><h2 id="confirm-title">确认操作</h2></div><button type="button" class="icon-button" id="confirm-close" aria-label="关闭"><svg class="icon"><use href="#icon-close"/></svg></button></div><p id="confirm-message"></p><div class="dialog-actions"><button type="button" class="outline-button" id="confirm-cancel">取消</button><button type="button" class="primary-button" id="confirm-accept">确认</button></div></dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
 </html>

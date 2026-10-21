@@ -1,6 +1,6 @@
 .conversation-switcher {
   padding: 10px 38px 12px;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--border);
 }
 
 .conversation-switcher-heading {
@@ -9,12 +9,12 @@
   gap: 12px;
   margin-bottom: 8px;
   font-size: 11px;
-  color: #CBD5E1;
+  color: var(--text-primary);
 }
 
 .conversation-switcher-heading span {
   font-size: 10px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .conversation-list {
@@ -30,19 +30,19 @@
   align-items: center;
   gap: 6px;
   max-width: 230px;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 11px;
-  background: #111827;
+  background: var(--surface);
   padding: 3px 8px;
   transition: all 0.2s;
 }
 
 .conversation-pill:hover {
-  border-color: #334155;
+  border-color: var(--border);
 }
 
 .conversation-pill.selected {
-  border-color: #38BDF8;
+  border-color: var(--accent);
   background: rgba(56, 189, 248, 0.1);
 }
 
@@ -54,7 +54,7 @@
   background: none;
   border: 0;
   padding: 5px 2px;
-  color: #E2E8F0;
+  color: var(--text-primary);
 }
 
 .conversation-pill strong {
@@ -62,12 +62,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .conversation-pill span {
   font-size: 9px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .conversation-pill .text-action {
@@ -75,7 +75,7 @@
 }
 
 .conversation-empty {
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 10px;
   padding: 7px 0;
 }
@@ -99,22 +99,22 @@
 .memory-search input {
   flex: 1;
   min-width: 0;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 9px;
   padding: 8px 11px;
-  background: #111827;
+  background: var(--surface);
   font-size: 11px;
-  color: #F8FAFC;
+  color: var(--text-primary);
   transition: all 0.2s;
 }
 
 .memory-search input:focus {
-  border-color: #38BDF8;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
 }
 
 .memory-search input::placeholder {
-  color: #475569;
+  color: var(--text-secondary);
 }
 
 .memory-list {
@@ -124,15 +124,15 @@
 
 .memory-card {
   padding: 17px 19px;
-  background: #111827;
-  border: 1px solid #1E293B;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: all 0.2s;
 }
 
 .memory-card:hover {
-  border-color: #334155;
+  border-color: var(--border);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
 }
 
@@ -141,21 +141,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 10px;
 }
 
 .memory-card h3 {
   margin: 12px 0 7px;
   font-size: 13px;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .memory-card p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin: 0;
-  color: #94A3B8;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.6;
 }
@@ -163,13 +163,13 @@
 .memory-card small {
   display: block;
   margin-top: 10px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .memory-actions {
   display: flex;
   gap: 14px;
-  border-top: 1px solid #1E293B;
+  border-top: 1px solid var(--border);
   margin-top: 14px;
   padding-top: 7px;
 }

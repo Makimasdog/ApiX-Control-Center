@@ -15,12 +15,12 @@
   font-size: 34px;
   letter-spacing: -1.2px;
   margin: 9px 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-header p,
 .overview-section-head p {
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
   margin: 6px 0 0;
@@ -36,18 +36,18 @@
 .overview-filters label {
   display: grid;
   gap: 7px;
-  color: #94A3B8;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .overview-header-actions select,
 .overview-filters input,
 .overview-filters select {
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #111827;
-  color: #F8FAFC;
+  background: var(--surface);
+  color: var(--text-primary);
   font: inherit;
   min-height: 42px;
   transition: all 0.2s;
@@ -56,7 +56,7 @@
 .overview-header-actions select:focus,
 .overview-filters input:focus,
 .overview-filters select:focus {
-  border-color: #38BDF8;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
 }
 
@@ -70,7 +70,7 @@
 }
 
 .overview-empty p {
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .overview-metrics {
@@ -91,24 +91,24 @@
 .overview-metrics .surface-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  border-color: #334155;
+  border-color: var(--border);
 }
 
 .overview-metrics span {
   font-size: 12px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .overview-metrics strong {
   font-size: 30px;
   line-height: 1.1;
   letter-spacing: -1px;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-metrics small {
   font-size: 11px;
-  color: #94A3B8;
+  color: var(--text-secondary);
 }
 
 .overview-grid {
@@ -134,7 +134,7 @@
 .overview-section-head h2 {
   font-size: 18px;
   margin: 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-action,
@@ -145,10 +145,10 @@
   gap: 12px;
   text-align: left;
   border: 0;
-  border-top: 1px solid #1E293B;
+  border-top: 1px solid var(--border);
   background: transparent;
   padding: 14px 2px;
-  color: #F8FAFC;
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
 }
@@ -168,13 +168,13 @@
 .overview-action strong,
 .overview-person strong {
   font-size: 13px;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-action small,
 .overview-person small {
   font-size: 11px;
-  color: #64748B;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
@@ -182,14 +182,14 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #38BDF8;
+  background: var(--accent-subtle);
   flex: none;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
 }
 
 .overview-placeholder {
   padding: 28px 8px;
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.7;
   text-align: center;
@@ -202,7 +202,7 @@
   height: 34px;
   border-radius: 11px;
   background: rgba(56, 189, 248, 0.15);
-  color: #38BDF8;
+  color: var(--accent);
   font-size: 13px;
   font-weight: 700;
   flex: none;
@@ -210,17 +210,17 @@
 
 .overview-person-state {
   font-size: 11px;
-  color: #64748B;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
 .overview-person-state.working {
-  color: #22C55E;
+  color: var(--success);
 }
 
 .overview-department-title {
   font-size: 11px;
-  color: #64748B;
+  color: var(--text-secondary);
   margin: 15px 0 9px;
   font-weight: 600;
   text-transform: uppercase;
@@ -238,15 +238,15 @@
   gap: 8px;
   align-items: center;
   background: rgba(30, 41, 59, 0.5);
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 9px;
-  color: #94A3B8;
+  color: var(--text-secondary);
   font-size: 11px;
 }
 
 .overview-department-list strong {
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-board-section {
@@ -281,7 +281,7 @@
 
 .overview-lane {
   background: rgba(17, 24, 39, 0.5);
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 13px;
   min-height: 245px;
 }
@@ -291,26 +291,26 @@
   justify-content: space-between;
   align-items: center;
   padding: 13px 13px;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--border);
 }
 
 .overview-lane-head h3 {
   margin: 0;
   font-size: 12px;
-  color: #CBD5E1;
+  color: var(--text-primary);
 }
 
 .overview-lane-head span {
   font-size: 11px;
   background: rgba(100, 116, 139, 0.2);
-  color: #94A3B8;
+  color: var(--text-secondary);
   border-radius: 8px;
   padding: 3px 7px;
   font-weight: 700;
 }
 
 .overview-lane.lane-active .overview-lane-head {
-  border-top: 3px solid #38BDF8;
+  border-top: 3px solid var(--accent);
 }
 
 .overview-lane.lane-review .overview-lane-head {
@@ -318,11 +318,11 @@
 }
 
 .overview-lane.lane-attention .overview-lane-head {
-  border-top: 3px solid #F59E0B;
+  border-top: 3px solid var(--warning);
 }
 
 .overview-lane.lane-done .overview-lane-head {
-  border-top: 3px solid #22C55E;
+  border-top: 3px solid var(--success);
 }
 
 .overview-lane-cards {
@@ -337,18 +337,18 @@
   gap: 9px;
   width: 100%;
   text-align: left;
-  background: #111827;
-  border: 1px solid #1E293B;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: pointer;
-  color: #F8FAFC;
+  color: var(--text-primary);
   transition: all 0.2s;
 }
 
 .overview-task:hover {
-  border-color: #38BDF8;
+  border-color: var(--accent);
   box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
   transform: translateY(-1px);
 }
@@ -360,28 +360,28 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .overview-task small {
   font-size: 11px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .overview-task-status {
   font-size: 10px;
-  color: #38BDF8;
+  color: var(--accent);
 }
 
 .overview-lane-empty {
-  color: #64748B;
+  color: var(--text-secondary);
   text-align: center;
   font-size: 11px;
   padding: 24px 0;
 }
 
 .overview-updated {
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 11px;
   text-align: right;
   margin: 15px 2px;

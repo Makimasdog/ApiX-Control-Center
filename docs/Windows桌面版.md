@@ -23,7 +23,7 @@ npm run desktop:dist
 产物：
 
 - `.tmp-desktop/release/win-unpacked/ApiX Control Center.exe`：直接启动；复制给其他目录时必须复制整个 `win-unpacked` 文件夹。
-- `.tmp-desktop/release/ApiX-Setup-0.1.0-x64.exe`：当前用户安装包，可选择目录并生成桌面快捷方式；不需要管理员安装。
+- `.tmp-desktop/release/ApiX-Setup-0.1.1-x64.exe`：当前用户安装包，可选择目录并生成桌面快捷方式；不需要管理员安装。
 
 本版未配置代码签名或自动更新。安装包版本来自根 `package.json`。构建资源和产物使用已有 `.tmp*/` 忽略规则，不提交 Git。桌面前后端在 `.tmp-desktop` 暂存，修改源码后重跑上述命令即可。
 

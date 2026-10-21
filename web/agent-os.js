@@ -67,11 +67,46 @@ function confirmAction(title, message) {
 function project() { return data.projects.find((item) => item.id === selectedProjectId); }
 function task() { return data.tasks.find((item) => item.id === selectedTaskId); }
 function runFor(taskId) { return data.runs.find((item) => item.task_id === taskId); }
+const navigation = $("#main-navigation");
+const navigationToggle = $("#navigation-toggle");
+const compactNavigation = matchMedia("(max-width: 760px)");
+function setNavigation(open, restoreFocus = false) {
+  const expanded = compactNavigation.matches && open;
+  document.body.toggleAttribute("data-navigation-open", expanded);
+  navigation.inert = compactNavigation.matches && !expanded;
+  $("#main-content").inert = expanded;
+  navigationToggle.setAttribute("aria-expanded", String(expanded));
+  navigationToggle.setAttribute("aria-label", expanded ? "关闭导航" : "打开导航");
+  $("#navigation-backdrop").hidden = !expanded;
+  if (restoreFocus) navigationToggle.focus();
+}
+navigationToggle.addEventListener("click", () => {
+  const open = !document.body.hasAttribute("data-navigation-open");
+  setNavigation(open);
+  if (open) navigation.querySelector("button")?.focus();
+});
+$("#navigation-backdrop").addEventListener("click", () => setNavigation(false, true));
+document.addEventListener("keydown", event => {
+  if (!document.body.hasAttribute("data-navigation-open")) return;
+  if (document.querySelector("dialog[open]")) return;
+  if (event.key === "Escape") { event.preventDefault(); setNavigation(false, true); }
+  if (event.key === "Tab") {
+    const controls = [...navigation.querySelectorAll("button, a, summary, input, select, textarea")].filter(element => !element.disabled && element.checkVisibility({visibilityProperty:true}) && (!element.closest("details:not([open])") || element.tagName === "SUMMARY"));
+    const first = controls[0], last = controls.at(-1);
+    const index = controls.indexOf(document.activeElement);
+    if (event.shiftKey && index <= 0) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && (index < 0 || document.activeElement === last)) { event.preventDefault(); first?.focus(); }
+  }
+});
+compactNavigation.addEventListener("change", () => setNavigation(false));
+setNavigation(false);
 function go(page) {
   if (["workspace", "director"].includes(page)) page = "coordinator";
   currentPage = page;
   $$(".page").forEach((item) => item.classList.toggle("active-page", item.id === `page-${page}`));
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
+  $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
+  if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
   $("#breadcrumb-page").textContent = { assistant: "对话", overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }

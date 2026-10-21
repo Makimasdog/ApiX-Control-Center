@@ -10,12 +10,12 @@
   font-size: 34px;
   letter-spacing: -1.3px;
   margin: 12px 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-header p,
 .coord-muted {
-  color: #64748B;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -35,7 +35,7 @@
 .coord-rail h2 {
   font-size: 17px;
   margin: 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-layout form {
@@ -48,7 +48,7 @@
   display: grid;
   gap: 6px;
   font-size: 12px;
-  color: #94A3B8;
+  color: var(--text-secondary);
 }
 
 .coord-layout textarea,
@@ -57,11 +57,11 @@
 .coord-header select {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
-  background: #111827;
-  color: #F8FAFC;
+  background: var(--surface);
+  color: var(--text-primary);
   font: inherit;
   font-size: 13px;
   line-height: 1.6;
@@ -71,7 +71,7 @@
 .coord-layout textarea:focus,
 .coord-layout input:focus,
 .coord-layout select:focus {
-  border-color: #38BDF8;
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
 }
 
@@ -95,19 +95,19 @@
   text-align: left;
   padding: 14px;
   width: 100%;
-  color: #F8FAFC;
+  color: var(--text-primary);
   margin-bottom: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .coord-session:hover {
-  background: #1E293B;
+  background: var(--surface);
 }
 
 .coord-session.selected {
   background: rgba(56, 189, 248, 0.15);
-  color: #38BDF8;
+  color: var(--accent);
   border: 1px solid rgba(56, 189, 248, 0.3);
 }
 
@@ -135,7 +135,7 @@
 .coord-layout h3 {
   margin: 0 0 14px;
   font-size: 17px;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-title {
@@ -149,19 +149,19 @@
 .coord-title h2 {
   font-size: 23px;
   margin: 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-title h3 {
   margin: 0;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-pill {
   display: inline-block;
   white-space: nowrap;
   background: rgba(56, 189, 248, 0.15);
-  color: #38BDF8;
+  color: var(--accent);
   padding: 6px 9px;
   border-radius: 8px;
   font-size: 11px;
@@ -177,16 +177,16 @@
 
 .coord-turn {
   padding: 14px 0;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--border);
 }
 
 .coord-turn strong {
   font-size: 12px;
-  color: #38BDF8;
+  color: var(--accent);
 }
 
 .coord-turn.from-user strong {
-  color: #CBD5E1;
+  color: var(--text-primary);
 }
 
 .coord-turn p {
@@ -194,7 +194,7 @@
   font-size: 13px;
   line-height: 1.85;
   margin: 6px 0;
-  color: #E2E8F0;
+  color: var(--text-primary);
 }
 
 .coord-section {
@@ -209,12 +209,12 @@
 
 .coord-plan-step {
   padding: 14px;
-  border: 1px solid #1E293B;
+  border: 1px solid var(--border);
   border-radius: 12px;
   display: grid;
   gap: 10px;
   margin-bottom: 12px;
-  background: #111827;
+  background: var(--surface);
 }
 
 .coord-task {
@@ -222,7 +222,7 @@
   gap: 14px;
   align-items: start;
   padding: 16px 0;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
 
@@ -232,7 +232,7 @@
 
 .coord-task p {
   white-space: pre-wrap;
-  color: #64748B;
+  color: var(--text-secondary);
   line-height: 1.7;
   margin: 6px 0;
 }
@@ -254,12 +254,12 @@
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .coord-settings p {
   font-size: 12px;
-  color: #64748B;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
@@ -268,13 +268,13 @@
   word-break: break-word;
   max-height: 400px;
   overflow: auto;
-  background: #0B0E14;
-  border: 1px solid #1E293B;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
   font-size: 12px;
   line-height: 1.65;
-  color: #E2E8F0;
+  color: var(--text-primary);
 }
 
 .coord-empty {
@@ -284,20 +284,20 @@
 }
 
 .coord-empty p {
-  color: #64748B;
+  color: var(--text-secondary);
   line-height: 1.8;
 }
 
 #coord-notice {
   min-height: 24px;
   font-size: 12px;
-  color: #38BDF8;
+  color: var(--accent);
   margin-bottom: 10px;
 }
 
 #coord-notice.error,
 #coord-conflicts {
-  color: #EF4444;
+  color: var(--danger);
 }
 
 #coord-confirm {
@@ -366,14 +366,14 @@
 
 .coord-stream {
   white-space: pre-wrap;
-  border-left: 3px solid #38BDF8;
+  border-left: 3px solid var(--accent);
   background: rgba(56, 189, 248, 0.05);
   border-radius: 8px;
   padding: 12px 14px;
   margin: 12px 0;
   font-size: 13px;
   line-height: 1.8;
-  color: #E2E8F0;
+  color: var(--text-primary);
 }
 
 .employee-link {
@@ -390,7 +390,7 @@
 
 .employee-link:hover {
   text-decoration: underline;
-  color: #38BDF8;
+  color: var(--accent);
 }
 
 .employee-metrics {
@@ -406,17 +406,17 @@
 
 .employee-metrics strong {
   font-size: 22px;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .employee-metrics span {
   font-size: 12px;
-  color: #64748B;
+  color: var(--text-secondary);
 }
 
 .employee-task {
   padding: 16px 0;
-  border-bottom: 1px solid #1E293B;
+  border-bottom: 1px solid var(--border);
 }
 
 .employee-task > div {
@@ -429,17 +429,17 @@
 .employee-task strong {
   font-size: 14px;
   line-height: 1.6;
-  color: #F8FAFC;
+  color: var(--text-primary);
 }
 
 .employee-task p {
   font-size: 12px;
-  color: #64748B;
+  color: var(--text-secondary);
   line-height: 1.7;
 }
 
 .employee-task small {
-  color: #38BDF8;
+  color: var(--accent);
 }
 
 @media (max-width: 800px) {
@@ -534,7 +534,7 @@
 #coord-conversation .coord-composer {
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid #1E293B;
+  border-top: 1px solid var(--border);
 }
 
 #coord-conversation .coord-composer textarea {
@@ -549,7 +549,7 @@
 #coord-conversation .coord-stream {
   background: rgba(56, 189, 248, 0.05);
   border: 0;
-  border-left: 3px solid #38BDF8;
+  border-left: 3px solid var(--accent);
   border-radius: 6px;
   padding: 12px 14px;
   margin: 8px 0;
@@ -572,7 +572,7 @@
 .field-hint {
   display: block;
   font-size: 10px;
-  color: #64748B;
+  color: var(--text-secondary);
   margin-top: -2px;
   font-weight: 400;
   line-height: 1.4;
@@ -587,7 +587,7 @@
   display: grid;
   gap: 13px;
   padding: 10px 0 0;
-  border-top: 1px solid #1E293B;
+  border-top: 1px solid var(--border);
   margin-top: 5px;
 }
 
@@ -598,13 +598,13 @@
 }
 
 #api-key-hint {
-  color: #22D3EE;
+  color: var(--accent);
   font-size: 9px;
 }
 
 .coord-settings select option {
-  background: #111827;
-  color: #F8FAFC;
+  background: var(--surface);
+  color: var(--text-primary);
 }
 
 #coord-conversation .coord-stream p {
@@ -613,15 +613,15 @@
 
 .coord-turn-error {
   background: rgba(239, 68, 68, 0.05) !important;
-  border-left-color: #EF4444 !important;
+  border-left-color: var(--danger) !important;
 }
 
 .coord-turn-error .stream-text {
-  color: #EF4444;
+  color: var(--danger);
 }
 
 .stream-error-note {
-  color: #EF4444;
+  color: var(--danger);
   font-size: 12px;
   margin-top: 8px;
   padding-top: 8px;
@@ -634,7 +634,7 @@
   bottom: 80px;
   right: 20px;
   background: rgba(56, 189, 248, 0.9);
-  color: #0F172A;
+  color: var(--text-secondary);
   border: 0;
   border-radius: 50%;
   width: 40px;
@@ -648,7 +648,7 @@
 }
 
 #coord-scroll-bottom:hover {
-  background: #38BDF8;
+  background: var(--accent-subtle);
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
 }
