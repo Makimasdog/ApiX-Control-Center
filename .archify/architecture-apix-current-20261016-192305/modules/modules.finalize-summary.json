@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\candidate.json",
+    "sha256": "5a062f337d3adea649fcf506535760e181243a8a54519c128aa5b9d7a0c8c3cc",
+    "bytes": 7021
+  },
+  "artifact": {
+    "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.html",
+    "sha256": "508d5a1ddf8e0400bf32cd4c6b12f1c8f6c1ccace907e17d694ee4ca3d125684",
+    "bytes": 759873
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools read pipe failed: stream ended\nChrome process: still running.\nChrome transport: Node v24.19.0, libuv 1.52.1, win32; pid=25448, exitCode=null, signalCode=null.\nChrome read pipe: readable=false, ended=true, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=false, ended=true, destroyed=false, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.finalize.json",
+    "summaryReceipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.finalize-summary.json",
+    "browserCheckReceipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\modules\\modules.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 7609
+}

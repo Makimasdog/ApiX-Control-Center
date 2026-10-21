@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
-import {readLocalModels} from '../dist/src/local-models.js';
+import {readLocalModels} from '../dist/src/models/local-models.js';
 
 async function fixture(handler,work){
   const server=createServer(handler);server.listen(0,'127.0.0.1');await once(server,'listening');

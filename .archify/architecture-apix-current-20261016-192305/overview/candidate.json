@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "ApiX · 当前系统框架",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": ".archify/architecture-apix-current-20261016-192305/overview/overview.html",
+    "repository": {
+      "url": "https://github.com/Makimasdog/ApiX-Control-Center.git",
+      "revision": "3f5f22c62d3b072c88af2ef91ef7963e86d4fcb5",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "桌面对话界面",
+      "sublabel": "对话 · 选择 · 批准 · 工作详情",
+      "pos": [
+        40,
+        50
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "web/assistant.ts",
+          "line": 33,
+          "end_line": 65
+        },
+        {
+          "path": "index.html",
+          "line": 102
+        }
+      ]
+    },
+    {
+      "id": "host",
+      "type": "backend",
+      "label": "本机控制宿主",
+      "sublabel": "HTTP · 模块装配 · SQLite",
+      "pos": [
+        410,
+        50
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "server.mjs",
+          "line": 24,
+          "end_line": 45
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 38
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 328,
+          "end_line": 354
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "ApiX 主 Agent loop",
+      "sublabel": "观察 → 决策 → 工具 → 证据",
+      "pos": [
+        780,
+        50
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "src/assistant-loop.ts",
+          "line": 90,
+          "end_line": 114
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 1264,
+          "end_line": 1315
+        }
+      ]
+    },
+    {
+      "id": "model",
+      "type": "cloud",
+      "label": "独立模型 API",
+      "sublabel": "三种协议 · 流式传输 · 可取消",
+      "pos": [
+        780,
+        270
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "src/model-backend.ts",
+          "line": 35,
+          "end_line": 86
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 990,
+          "end_line": 999
+        }
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "宿主工具执行桥",
+      "sublabel": "文件 · 命令 · 记忆 · Skill",
+      "pos": [
+        410,
+        270
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 1270,
+          "end_line": 1285
+        },
+        {
+          "path": "src/assistant-tools.ts",
+          "line": 43,
+          "end_line": 82
+        }
+      ]
+    },
+    {
+      "id": "team",
+      "type": "backend",
+      "label": "委派与自动协作子系统",
+      "sublabel": "契约 · 成本路由 · 监督 · 验收",
+      "pos": [
+        40,
+        270
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 1300,
+          "end_line": 1312
+        },
+        {
+          "path": "src/coordinator.ts",
+          "line": 204,
+          "end_line": 258
+        },
+        {
+          "path": "src/autonomy.ts",
+          "line": 134,
+          "end_line": 170
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "external",
+      "label": "可选本机 Agent 员工",
+      "sublabel": "Pi · Codex · Claude 等 CLI",
+      "pos": [
+        40,
+        490
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "src/runtime-adapters.ts",
+          "line": 8,
+          "end_line": 15
+        },
+        {
+          "path": "control-plane.mjs",
+          "line": 488,
+          "end_line": 505
+        }
+      ]
+    },
+    {
+      "id": "git",
+      "type": "database",
+      "label": "托管 Git 工作区",
+      "sublabel": "隔离执行 · 冻结交付 · 依赖交接",
+      "pos": [
+        410,
+        490
+      ],
+      "size": [
+        260,
+        82
+      ],
+      "sources": [
+        {
+          "path": "control-plane.mjs",
+          "line": 412,
+          "end_line": 449
+        },
+        {
+          "path": "src/code-handoffs.mjs",
+          "line": 50,
+          "end_line": 103
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "web-host",
+      "from": "web",
+      "to": "host",
+      "label": "本机 HTTP"
+    },
+    {
+      "id": "host-loop",
+      "from": "host",
+      "to": "loop",
+      "label": "会话 API"
+    },
+    {
+      "id": "loop-model",
+      "from": "loop",
+      "to": "model",
+      "label": "JSON 决策"
+    },
+    {
+      "id": "loop-tools",
+      "from": "loop",
+      "to": "tools",
+      "label": "调用工具"
+    },
+    {
+      "id": "tools-team",
+      "from": "tools",
+      "to": "team",
+      "label": "delegate"
+    },
+    {
+      "id": "team-cli",
+      "from": "team",
+      "to": "cli",
+      "label": "授权后执行"
+    },
+    {
+      "id": "cli-git",
+      "from": "cli",
+      "to": "git",
+      "label": "写入产物"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "ApiX 的定位",
+      "items": [
+        "主循环由 ApiX 宿主实现，直接调用配置的模型 API。",
+        "Pi、Codex、Claude 等均为可选执行 Agent；不需要 Pi 才能对话。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "两层循环",
+      "items": [
+        "主循环用 delegate 进入协作子流程，并进入 waiting_agents。",
+        "协作调度和质量监督由独立定时器与任务事件推进；完成后回到主循环。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "状态与边界",
+      "items": [
+        "SQLite 保存会话、事件、项目记忆、权限、预算、契约与验收证据。",
+        "已验收表示托管工作区交付已冻结；不代表已合并原分支或推送 GitHub。",
+        "主循环工具是固定目录，当前不包含通用 MCP 调用工具。"
+      ]
+    }
+  ]
+}

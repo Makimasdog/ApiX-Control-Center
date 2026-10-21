@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {createExecutionControl,quotaFailure} from '../src/execution-control.mjs';
+import {createExecutionControl,quotaFailure} from '../src/execution/execution-control.mjs';
 
 function fixture(work) {
   const db=new DatabaseSync(':memory:');
