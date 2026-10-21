@@ -10,3 +10,5 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 .DS_Store
+.qoder/
+__pycache__/
