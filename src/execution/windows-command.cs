@@ -67,7 +67,7 @@ public static class ApiXCommandJob {
      Emit("end|"+reason+"|"+child.ExitCode+"|"+active);if(reason=="exit")control.Wait(2000);else Thread.Sleep(2000);return;
     }
     if(control.IsCompleted){Emit("end|aborted||"+Active(job));Thread.Sleep(2000);return;}
-    if(watch.ElapsedMilliseconds>=timeout){Emit("end|timeout||"+Active(job));Thread.Sleep(2000);return;}
+    if(timeout>0&&watch.ElapsedMilliseconds>=timeout){Emit("end|timeout||"+Active(job));Thread.Sleep(2000);return;}
     Thread.Sleep(10);
    }
   }catch(Exception e){Emit("error|"+Encode(e.Message)+"|"+(child==null?"no_worker":"worker"));}

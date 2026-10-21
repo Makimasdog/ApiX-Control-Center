@@ -1,5 +1,7 @@
 <h1 align="center">ApiX Control Center</h1>
 
+Windows 自用桌面版：复用现有前后端，支持双击启动和生成 exe 安装包，见 [Windows 桌面版说明](docs/Windows桌面版.md)。
+
 <p align="center">
   <strong>直接说出目标，让 ApiX 协调你的 AI 开发团队。</strong><br>
   面向本机项目的多 Agent 协作工作台，将对话、规划、任务执行与代码验收放在一起。

@@ -9,6 +9,12 @@
     "node": ">=22.19.0"
   },
   "scripts": {
+    "desktop:prepare": "npm run build && node scripts/prepare-desktop.mjs",
+    "desktop:dev": "npm run desktop:prepare && electron .tmp-desktop/shell",
+    "desktop:pack": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --dir",
+    "desktop:dist": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --publish never",
+    "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs",
+    "test:desktop:app": "node scripts/verify-desktop.mjs",
     "build": "tsc",
     "prestart": "npm run build",
     "start": "node server.mjs",
@@ -32,6 +38,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
     "typescript": "^5.9.3"
   },
   "dependencies": {
