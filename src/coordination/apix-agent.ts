@@ -1,9 +1,9 @@
-import { type ModelBackend, type InferenceContext, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text } from './contracts.js';
+import { type ModelBackend, type InferenceContext, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text, parseJsonObject } from './contracts.js';
 import { nextQuestion, requirementFields, requirementBrief } from './requirement-engine.js';
 import { taskProfile } from './scheduling.js';
 import {parseArchitecture,type Architecture,type CheckCommand} from './architecture.js';
 
-function parse(raw: string) { try{return object(JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '')));}catch(error){if(error instanceof SyntaxError)throw new Error('模型未返回有效 JSON 契约（DSML/XML 工具调用不受支持），未执行其中的操作；请检查模型协议兼容性，工具与额度查询请使用“与 ApiX 对话”');throw error;} }
+function parse(raw: string) { try{return parseJsonObject(raw);}catch(error){if(error instanceof SyntaxError)throw new Error('模型未返回有效 JSON 契约（DSML/XML 工具调用不受支持），未执行其中的操作；请检查模型协议兼容性，工具与额度查询请使用“与 ApiX 对话”');throw error;} }
 
 // Optional context can omit whole records, never splice serialized JSON.
 function boundedContext(value: unknown, limit: number): string {

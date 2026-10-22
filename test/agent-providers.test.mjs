@@ -21,7 +21,7 @@ function fixture(work){
 }
 test('CRUD persists private key references, never echoes secrets, rejects stale edits and endpoint credential reuse',()=>fixture(({service,save,restart})=>{
   const p=save();assert(!JSON.stringify(service.list()).includes('fixture-secret'));assert.equal(p.hasKey,true);assert(!('keyRef' in p));assert.deepEqual(restart().list(),service.list());
-  assert.throws(()=>service.save({...p,version:0}),/变化/);assert.throws(()=>service.save({...p,baseUrl:'https://elsewhere.invalid'}),/重新填写密钥/);
+  assert.throws(()=>service.save({...p,version:0}),/变化/);assert.throws(()=>service.save({...p,baseUrl:'https://elsewhere.invalid'}),/重新填写密钥/);assert.throws(()=>service.save({...p,baseUrl:'http://127.0.0.1:11434/v1'}),/重新填写密钥/);
   const edited=service.save({...p,name:'renamed'});assert.equal(edited.version,2);assert.throws(()=>service.remove(p),/变化/);service.remove(edited);assert.equal(service.list().providers.length,0);
 }));
 test('bindings enforce protocols, preserve run boundaries and clear old cost assumptions atomically',()=>fixture(({db,deps,service,save,bind})=>{
@@ -52,6 +52,14 @@ test('ApiX binding uses existing model settings and tracks profile edits without
   const p=save('openai-completions');bind('apix',p);assert.equal(service.list().agents[0].providerId,p.id);assert.equal(deps.managerSettings().baseUrl,p.baseUrl);
   const edited=service.save({...p,model:'new-model'});assert.equal(deps.managerSettings().model,'new-model');assert.equal(service.list().agents[0].providerId,p.id);assert.throws(()=>service.remove(edited),/正在使用/);
   assert.throws(()=>bind('apix',save('codex-login',{apiKey:''})),/不兼容/);
+}));
+test('existing ApiX settings are adopted once and loopback providers work without a key',()=>fixture(({service,deps,save,bind,env})=>{
+  deps.saveManager({provider:'apix-custom',model:'legacy-local',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
+  const adopted=service.adopt();assert.equal(adopted.providers.length,1);assert.equal(adopted.agents[0].providerId,adopted.providers[0].id);assert.equal(adopted.providers[0].hasKey,false);assert.equal(adopted.agents[0].adoptable,false);
+  assert.equal(service.adopt().providers.length,1);assert.throws(()=>service.remove(adopted.providers[0]),/正在使用/);
+  const local=save('openai-responses',{baseUrl:'http://127.0.0.1:11434/v1',apiKey:''});bind('codex',local);
+  const prepared=service.prepare('codex','codex',{PATH:'keep'},service.keyNames());assert.equal(prepared.env.APIX_PROVIDER_KEY,'');
+  assert.throws(()=>save('openai-completions',{apiKey:''}),/API Key/);
 }));
 test('invalid URLs, keys and unsupported protocols cannot alter existing settings',()=>fixture(({save})=>{
   for(const baseUrl of ['file:///secret','https://user:pass@example.com','https://example.com?api_key=secret','bad'])assert.throws(()=>save('openai-responses',{baseUrl}));

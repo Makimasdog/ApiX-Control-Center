@@ -166,6 +166,25 @@ test('supervision wake limits persist across restart and block runaway reasoning
   assert.equal(h.prompts.length,7);const restored=createAssistantLoop(h.deps);n=7;await restored.tick();assert.equal(h.prompts.length,7);assert.equal(restored.details(h.id).status,'waiting_agents');blocked=true;await restored.tick();assert.equal(restored.details(h.id).status,'attention');
 }));
 
+test('Markdown or prose around the action object is parsed without a protocol repair',()=>fixture(async h=>{
+  h.answer(()=>'先核对额度。\n```json\n'+JSON.stringify(tool('inspect_quota',{employeeId:'employee'}))+'\n```\n以上是本次动作。',finish);
+  h.service.message(h.id,{content:'查询员工额度'});const s=await wait(h.service,h.id);
+  assert.equal(s.status,'completed');assert.deepEqual(h.calls.map(c=>c.name),['inspect_quota']);assert(!s.events.some(e=>e.kind==='protocol_repair'));assert.equal(h.prompts.length,2);
+}));
+test('non-object JSON triggers one repair carrying the malformed reply and parser reason',()=>fixture(async h=>{
+  h.answer(()=>'["inspect_quota"]',finish);
+  h.service.message(h.id,{content:'查询员工额度'});const s=await wait(h.service,h.id);
+  assert.equal(s.status,'completed');assert.deepEqual(h.calls,[]);assert.equal(h.prompts.length,2);
+  assert(h.prompts[1].includes('上次回复片段'));assert(h.prompts[1].includes('inspect_quota'));assert(h.prompts[1].includes('JSON 对象'));
+  assert.equal(s.events.filter(e=>e.kind==='protocol_repair').length,1);assert(!JSON.stringify(s.events).includes('Unexpected token'));
+}));
+test('an unsupported action is never executed and gets one corrective request',()=>fixture(async h=>{
+  h.answer(()=>JSON.stringify({action:'shell',command:'whoami'}),finish);
+  h.service.message(h.id,{content:'运行命令'});const s=await wait(h.service,h.id);
+  assert.equal(s.status,'completed');assert.deepEqual(h.calls,[]);assert.equal(h.prompts.length,2);
+  assert(h.prompts[1].includes('action'));assert(h.prompts[1].includes('shell'));
+  assert.equal(s.events.filter(e=>e.kind==='protocol_repair').length,1);
+}));
 test('DSML is never executed and one budgeted protocol repair can select the host quota tool',()=>fixture(async h=>{
   h.answer(()=>'<｜DSML｜tool_calls><invoke name="shell">bad</invoke></｜DSML｜tool_calls>',tool('inspect_quota',{employeeId:'employee'}),finish);h.service.message(h.id,{content:'查询员工额度'});const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.deepEqual(h.calls.map(c=>c.name),['inspect_quota']);assert(s.events.some(e=>e.kind==='protocol_repair'));assert.equal(s.steps,3);assert(h.prompts[1].includes('不要输出 DSML'));
 }));

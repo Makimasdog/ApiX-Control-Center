@@ -67,8 +67,9 @@ test('HTTP conversations route their own models, reject active changes, persist 
  }finally{await stop();await model.close();assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
-test('conversation picker has a separate mount from the global settings form',async()=>{
- const source=await readFile('web/coordinator.ts','utf8'),settings=await readFile('web/application-settings.ts','utf8');assert.equal(source.split('id="coord-model"').length-1,0);assert.equal(settings.split('id="coord-model"').length-1,1);assert.equal(source.split('id="coord-conversation-model"').length-1,1);
+test('provider center is the only model configuration form',async()=>{
+ const source=await readFile('web/coordinator.ts','utf8'),settings=await readFile('web/application-settings.ts','utf8');assert.equal(source.split('id="coord-model"').length-1,0);assert.equal(settings.split('id="coord-model"').length-1,0);
+ assert(settings.includes('providerCenter'));assert.equal(source.split('id="coord-conversation-model"').length-1,1);
 });
 
 test('employee supervision carries the conversation identity to its inference backend',async()=>{

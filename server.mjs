@@ -6,7 +6,7 @@
 // 下面这些 import 就是把控制面导出的函数逐个引进来给路由使用(名字都在花括号里,仅来源文件不同)。
 import {assistantProjectDiagnosis,assistantNpmProposal,assistantApproveNpm} from './control-plane.mjs';
 import {conversationModel,saveConversationModel} from './control-plane.mjs';
-import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider} from './control-plane.mjs';
+import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider,adoptAgentProvider} from './control-plane.mjs';
 import { createServer } from "node:http";
 import {staticFilePath} from './src/infrastructure/static-files.mjs';
 import {browseFolders} from './src/projects/project-folders.mjs';
@@ -251,6 +251,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
       else if (pathname === '/api/agent-providers') result=saveAgentProvider(input);
       else if (pathname === '/api/agent-providers/bind') result=bindAgentProvider(input);
+      else if (pathname === '/api/agent-providers/adopt') result=adoptAgentProvider(input);
       else if (pathname === '/api/agent-providers/remove') result=removeAgentProvider(input);
       else if (pathname === '/api/manager/test') result = await testManagerConnection(input);
       else if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname)) result=saveWorkflow(pathname.split('/')[3],input);

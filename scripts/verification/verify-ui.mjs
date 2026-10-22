@@ -24,7 +24,7 @@ try {
   browser = await chromium.launch({headless:true});
   const page = await browser.newPage();
   page.on('pageerror', error => report.errors.push(error.message));
-  const routes = ['assistant','overview','settings','coordinator','missions','memory','models','projects','resources'];
+  const routes = ['assistant','overview','settings','coordinator','missions','memory','projects','resources'];
   for (const theme of ['light','dark']) {
     await page.emulateMedia({colorScheme:theme,reducedMotion:'reduce'});
     for (const width of [1440,1024,768,390]) {
@@ -33,6 +33,7 @@ try {
       await page.goto(fixture.origin, {waitUntil:'load'});
       await page.waitForSelector('#assistant-input');
       await page.waitForSelector('.sidebar-project', {state:'attached'});
+      await page.waitForSelector('.provider-center [data-provider-form]', {state:'attached'});
       await page.waitForFunction(() => document.querySelector('[aria-current="page"]')?.dataset.pageTarget === 'assistant');
       if (width === 1440) {
         const tokens = await page.evaluate(()=>Object.fromEntries(['text-primary','text-secondary','text-muted','surface','app-bg','on-accent','accent','success','success-subtle','warning','warning-subtle','danger','danger-subtle'].map(name=>[name,getComputedStyle(document.documentElement).getPropertyValue('--'+name)])));

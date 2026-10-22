@@ -25,10 +25,8 @@ let streamProjectId = null;
 const localKey = "apix.settings.v1";
 let settings;
 try { settings = JSON.parse(localStorage.getItem(localKey)) ?? {}; } catch { settings = {}; }
-settings.models ??= [];
 settings.skills ??= [];
 settings.mcps ??= [];
-settings.selectedModelId ??= null;
 const saveSettings = () => localStorage.setItem(localKey, JSON.stringify(settings));
 
 async function api(path, body) {
@@ -107,7 +105,7 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
-  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "多 Agent 任务（高级）", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "多 Agent 任务（高级）", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();
@@ -257,14 +255,7 @@ function summary(event) {
   return value.text ?? value.message ?? value.toolName ?? value.error ?? (value.status ? `状态：${value.status}` : JSON.stringify(value).slice(0, 160));
 }
 function renderSettings() {
-  const model = settings.models.find((item) => item.id === settings.selectedModelId);
-  $("#top-model-name").textContent = "ApiX 推理模型";
-  $("#active-model-title").textContent = model?.name ?? "尚未选择模型";
-  $("#active-model-subtitle").textContent = model?.modelId ?? "仅保存偏好；具体运行模型由 Agent 自身配置决定";
-  $("#active-provider").textContent = model?.provider ?? "—";
-  $("#active-thinking").textContent = model?.thinking ?? "—";
-  $("#model-total").textContent = `${settings.models.length} 个模型`;
-  $("#model-grid").innerHTML = settings.models.map((item) => `<article class="model-card"><div class="item-card-top"><span class="item-icon model">${icon("cube")}</span><span class="type-label">${escapeHtml(item.provider)}</span></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-subtitle">${escapeHtml(item.modelId)}</p><div class="item-card-bottom"><button class="text-action" data-model="${item.id}">${item.id === settings.selectedModelId ? "已选择" : "设为偏好"}</button><button class="text-action danger" data-remove-model="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">尚无模型偏好；运行时使用 Agent 自身配置。</div>`;
+  $("#top-model-name").textContent = "供应商中心";
   $("#skill-tab-count").textContent = String(settings.skills.length);
 
   $("#skill-grid").innerHTML = settings.skills.map((item) => `<article class="resource-card"><div class="item-card-top"><span class="item-icon skill">${icon("spark")}</span><button class="toggle ${item.enabled ? "on" : ""}" data-toggle-skill="${item.id}" role="switch" aria-checked="${item.enabled}"></button></div><h3 class="item-card-title">${escapeHtml(item.name)}</h3><p class="item-card-description">${escapeHtml(item.description)}</p><div class="item-card-bottom"><span class="type-label">本地配置 · 未注入运行时</span><button class="text-action danger" data-remove-skill="${item.id}">移除</button></div></article>`).join("") || `<div class="empty-card">暂无 Skill 配置。</div>`;
@@ -292,7 +283,7 @@ function openEditor(kind, id = null) {
 async function mutate(path, body) { try { await api(path, body); await refresh(); } catch (error) { toast(error.message); } }
 
 document.addEventListener("click", async (event) => {
-  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-open-employee],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-model],[data-remove-model],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
+  const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-open-employee],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
   if (!target) return;
   const d = target.dataset;
   if (d.pageTarget) go(d.pageTarget);
@@ -350,8 +341,6 @@ document.addEventListener("click", async (event) => {
   } else if (d.reject) await mutate(`/api/approvals/${d.reject}`, { approved: false });
   else if (d.stop) await mutate(`/api/runs/${d.stop}/stop`, {});
   else if (d.accept || d.revise) await mutate(`/api/tasks/${d.accept ?? d.revise}/review`, { accepted: !!d.accept });
-  else if (d.model) { settings.selectedModelId = d.model; saveSettings(); renderSettings(); toast("模型偏好已保存；Agent 运行模型由其自身配置决定"); }
-  else if (d.removeModel) { settings.models = settings.models.filter((item) => item.id !== d.removeModel); if (settings.selectedModelId === d.removeModel) settings.selectedModelId = null; saveSettings(); renderSettings(); }
   else if (d.toggleSkill || d.toggleMcp) { const collection = d.toggleSkill ? settings.skills : settings.mcps; const item = collection.find((entry) => entry.id === (d.toggleSkill ?? d.toggleMcp)); if (item) item.enabled = !item.enabled; saveSettings(); renderSettings(); }
   else if (d.removeSkill || d.removeMcp) { const key = d.removeSkill ? "skills" : "mcps"; settings[key] = settings[key].filter((item) => item.id !== (d.removeSkill ?? d.removeMcp)); saveSettings(); renderSettings(); }
   else if (d.resourceTab) { $$(".resource-tab").forEach((item) => { item.classList.toggle("active", item === target); item.setAttribute("aria-selected", String(item === target)); }); $("#skills-panel").classList.toggle("hidden", d.resourceTab !== "skills"); $("#mcp-panel").classList.toggle("hidden", d.resourceTab !== "mcp"); }
@@ -386,7 +375,6 @@ $("#editor-form").addEventListener("submit", async (event) => {
   else { settings[editing.kind === "skill" ? "skills" : "mcps"].push({ id: crypto.randomUUID(), ...values, enabled: false }); saveSettings(); renderSettings(); toast("配置已保存；尚未连接 Agent 运行时"); }
   $("#editor-dialog").close();
 });
-$("#model-form").addEventListener("submit", (event) => { event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget)); const id = crypto.randomUUID(); settings.models.push({ id, ...values }); settings.selectedModelId = id; saveSettings(); event.currentTarget.reset(); renderSettings(); toast("模型偏好已保存；Agent 运行模型由其自身配置决定"); });
 $("#sidebar-add-project").addEventListener("click", () => openEditor("project"));
 $("#add-project").addEventListener("click", () => openEditor("project"));
 $("#add-skill").addEventListener("click", () => openEditor("skill"));
@@ -503,16 +491,7 @@ document.addEventListener("click", async (event) => {
   const released = event.target.closest("[data-release-lock]");
   if (released && await confirmAction("释放资源锁", "先确认持有该锁的 Agent 不再使用该资源。")) await mutate(`/api/locks/${released.dataset.releaseLock}/release`, { agentId: "apix-director" });
 });
-// Keep saved browser preferences, but make the actual manager configuration the primary entry.
-const modelPage=$("#page-models");
-modelPage.querySelector('.page-intro h1').textContent='模型设置';
-modelPage.querySelector('.page-intro p').textContent='配置 ApiX 管理者的真实推理连接；员工模型和登录仍由各自 CLI 配置。';
-const modelArchive=document.createElement('details');modelArchive.className='preferences-archive';modelArchive.innerHTML='<summary>浏览器模型收藏（不影响执行）</summary>';
-for(const child of [...modelPage.children])if(!child.classList.contains('page-intro'))modelArchive.append(child);
-const modelEntry=document.createElement('section');modelEntry.className='surface-card model-runtime-entry';modelEntry.innerHTML='<h2>ApiX 推理模型</h2><p>在项目工作区配置模型、保存连接并进行显式费用批准的连接测试。模型收藏不会切换管理者或员工模型。</p><button class="primary-button" id="open-real-model-settings">配置真实模型连接</button>';
-modelPage.append(modelEntry,modelArchive);
-$('#open-real-model-settings').addEventListener('click',()=>{go('settings');document.dispatchEvent(new Event('apix:manager-settings'));});
-const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
+// The real model configuration lives in the provider center on the settings page.
 $('#page-resources .page-intro p').textContent='Skills 按需加载项目和用户技能；MCP 按项目保存到本地服务，明确启用后可发现工具，并由 ApiX 在对话中调用。';
 go("assistant");
 refresh();

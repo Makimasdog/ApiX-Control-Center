@@ -137,13 +137,13 @@ function renderFailedReply(id:string) {
   article.innerHTML='<strong>ApiX</strong><p>'+esc(failed.text || '尚未收到回复')+'</p><div class="stream-error-note">'+esc('[生成中断] '+failed.error)+'</div>';
   $('#coord-stream').before(article);
 }
-root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
+root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>把目标拆成可审批的步骤，安排员工并跟踪交付。日常单 Agent 执行请返回“与 ApiX 对话”。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
 </aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
-<div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
+<div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">任务对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
 <section id="coord-requirements" class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">${fields.map(([key,label])=>`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')}<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
 <section class="surface-card coord-section"><h3>权限由你决定</h3><p class="coord-muted">ApiX 与员工分别授权。请求批准会等待你审查计划；只读规划不会启动员工。更改权限将使已有执行授权失效。</p><div id="coord-permissions"></div></section>
 <section class="surface-card coord-section"><div class="coord-title"><h3>任务安排</h3><button id="coord-add-step" class="text-action">新增步骤</button></div><div id="coord-plan"></div><div class="coord-actions"><button id="coord-save-plan" class="outline-button">保存计划修改</button><button id="coord-dispatch" class="primary-button">批准此计划并执行</button></div><div id="coord-tasks"></div></section>
@@ -186,12 +186,13 @@ const interactionDetails=document.createElement('details');interactionDetails.cl
 layout.replaceChildren(main,inspector);
 // Settings have their own route; the advanced conversation retains only task details.
 const settings=document.querySelector<HTMLElement>('#application-settings')!;
-const modelSettings=applicationModelSettings(settings,()=>projectId,notice);
+applicationModelSettings(settings,()=>projectId);
 settings.append($('#desktop-workflow'),executionSection,schedulingSection,autonomySection);
 rail.hidden=true;root.append(rail);
 layout.classList.add('inspector-closed');
-$('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-mobile-new" class="outline-button desktop-mobile-new">新建对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
+$('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-back-assistant" class="outline-button">返回与 ApiX 对话</button><button id="desktop-mobile-new" class="outline-button desktop-mobile-new">新建对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
 $('.coord-header h1').textContent='多 Agent 任务（高级）';
+$('#desktop-back-assistant').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="assistant"]')?.click());
 $('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
 $('.coord-header').insertAdjacentHTML('afterend','<section id="desktop-readiness" aria-label="首次使用与配置检查"></section>');
 let setupUpdated=0;let setupRequest=0;
@@ -261,7 +262,7 @@ function render(s: Session) {
   }
   root.dataset.interactionMode=s.interaction_mode;
   $('#coord-title').textContent=s.title; $('#coord-status').textContent=statuses[s.derivedStatus] ?? s.derivedStatus;
-  $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'与 ApiX 对话':'需求澄清记录';
+  $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'任务对话':'需求澄清记录';
   $('#coord-message-label').textContent=s.interaction_mode==='conversational'?'给 ApiX 发消息':'补充需求或询问进展';
   $<HTMLSelectElement>('#coord-interaction-mode').value=s.interaction_mode;
   $<HTMLSelectElement>('#coord-interaction-mode').disabled=!['clarifying','ready'].includes(s.status);
@@ -344,7 +345,7 @@ async function reload() {
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   const changed=projectId!==event.detail.projectId;
-  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';modelSettings.projectChanged();setupUpdated=0;}
+  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';setupUpdated=0;}
   void refreshReadiness();
   updateStreamingControls();
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
@@ -433,4 +434,4 @@ document.querySelector('#adapter-form')!.addEventListener('submit',async event=>
   event.preventDefault(); const form=event.target as HTMLFormElement; const output=document.querySelector('#adapter-notice')!;
   try {const values=Object.fromEntries(new FormData(form)); await api('/api/adapters',{...values,args:JSON.parse(String(values.args))}); output.textContent='适配器已注册，可以在运行时列表注册员工。';}catch(e){output.textContent=String(e instanceof Error ? e.message : e);}
 });
-document.addEventListener('apix:manager-settings',()=>{ document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();const panel=$<HTMLDetailsElement>('.coord-settings'); panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'center'});$<HTMLInputElement>('#coord-model [name="provider"]').focus(); });
+document.addEventListener('apix:manager-settings',()=>{ document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click(); });

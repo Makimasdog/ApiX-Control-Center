@@ -1443,6 +1443,7 @@ export function saveEmployeeCapability(id,input){agentProviders.assertModel(id,i
 export const listAgentProviders=agentProviders.list;
 export const saveAgentProvider=agentProviders.save;
 export const bindAgentProvider=agentProviders.bind;
+export const adoptAgentProvider=agentProviders.adopt;
 export const removeAgentProvider=agentProviders.remove;
 export const schedulingView=scheduling.view;
 export function saveSchedulingPolicy(projectId,input){const result=scheduling.savePolicy(projectId,input);pumpTasks();return result;}

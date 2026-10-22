@@ -1267,53 +1267,6 @@ svg.icon {
   font-weight: 700;
 }
 
-.active-model-display {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 30px;
-  margin-bottom: 30px;
-}
-
-.large-model-icon {
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 14px;
-  background: rgba(56, 189, 248, 0.15);
-  color: var(--accent);
-}
-
-.large-model-icon .icon {
-  width: 24px;
-  height: 24px;
-  fill: #38BDF8;
-  stroke-width: 0;
-}
-
-.active-model-display div {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.active-model-display strong {
-  font-size: 14px;
-  color: var(--text-primary);
-}
-
-.active-model-display span:last-child {
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-.card-divider {
-  height: 1px;
-  background: var(--surface);
-  margin-bottom: 10px;
-}
-
 .info-row {
   display: flex;
   justify-content: space-between;

@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {mkdirSync,writeFileSync,readFileSync,renameSync,unlinkSync} from 'node:fs';
 import {join} from 'node:path';
 import {workerEnvironment} from '../infrastructure/environment.mjs';
+const loopback=baseUrl=>{try{return ['localhost','127.0.0.1','[::1]'].includes(new URL(baseUrl).hostname.toLowerCase());}catch{return false;}};
 
 export const providerProtocols={apix:['openai-completions','openai-responses','anthropic-messages'],codex:['openai-responses','codex-login'],claude:['anthropic-messages'],pi:['openai-completions','openai-responses','anthropic-messages','google-generative-ai'],gemini:['google-generative-ai'],opencode:['openai-completions','anthropic-messages','google-generative-ai'],kimi:['openai-completions','anthropic-messages']};
 const routingVariable=/^(?:OPENAI_|CODEX_API_KEY$|ANTHROPIC_|CLAUDE_CODE_(?:OAUTH_TOKEN|USE_|PROVIDER_MANAGED)|GEMINI_API_KEY$|GOOGLE_(?:API_KEY|GEMINI_BASE_URL|GENAI_USE_)|KIMI_(?:API_KEY|BASE_URL|MODEL_)|MOONSHOT_API_KEY$|OPENCODE_CONFIG(?:_CONTENT)?$|APIX_PROVIDER_KEY$)/i;
@@ -20,7 +21,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   function idle(id){if(row("SELECT id FROM tasks WHERE employee_id=? AND status IN ('running','starting','stopping','unknown','queued','awaiting_approval','completed') LIMIT 1",id)||row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.employee_id=? AND (r.status IN ('running','starting','stopping','unknown') OR r.ended_at IS NULL) LIMIT 1",id))throw Error('该员工有运行中、待执行或待验收任务，请先停止或处理后再切换供应商');}
   function compatible(runtime,p){if(!providerProtocols[runtime]?.includes(p.apiType)||(p.authHeader==='bearer'&&runtime!=='claude'))throw Error(`供应商协议或认证方式与 ${runtime} 不兼容`);}
   function managerMatch(p,s){return p.apiType!=='codex-login'&&['custom','apix-custom'].includes(s.provider)&&s.model===p.model&&s.baseUrl===p.baseUrl&&s.apiType===p.apiType&&s.apiKeyEnv===(p.keyRef??'');}
-  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings();return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:providers.find(p=>managerMatch(p,current))?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,source:'应用默认；已有对话需使用当前应用配置'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
+  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；已有对话需使用当前应用配置'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
   function transaction(work){db.exec('SAVEPOINT agent_provider');try{const value=work();db.exec('RELEASE agent_provider');return value;}catch(e){db.exec('ROLLBACK TO agent_provider;RELEASE agent_provider');throw e;}}
   function save(input){
     const previous=input.id?get(input.id):null;if(input.version!==(previous?.version??0))throw Error('供应商配置已变化，请刷新');
@@ -33,16 +34,26 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     const bound=previous?rows('SELECT b.employee_id FROM agent_provider_bindings b JOIN employees e ON e.id=b.employee_id WHERE b.provider_id=? AND e.deleted_at IS NULL',previous.id):[];
     for(const e of bound){idle(e.employee_id);compatible(row('SELECT runtime FROM employees WHERE id=?',e.employee_id).runtime,{apiType,authHeader});}
     const managerBound=previous&&managerMatch(previous,managerSettings());if(managerBound)compatible('apix',{apiType,authHeader});
-    if(previous && (previous.baseUrl!==baseUrl || previous.apiType!==apiType) && !input.apiKey && apiType!=='codex-login')throw Error('更换地址或协议必须重新填写密钥，防止旧密钥发往其他服务');
+    if(previous && (previous.baseUrl!==baseUrl || previous.apiType!==apiType) && !input.apiKey && apiType!=='codex-login' && (!!previous.keyRef || !loopback(baseUrl)))throw Error('更换地址或协议必须重新填写密钥，防止旧密钥发往其他服务');
     let keyRef=apiType==='codex-login'?null:previous?.keyRef??null;
     if(input.apiKey!==undefined && typeof input.apiKey!=='string')throw Error('API Key 必须为文本');
     if(apiType!=='codex-login' && input.apiKey)keyRef=credentials.save(input.apiKey);
-    if(apiType!=='codex-login'&&!keyRef)throw Error('请直接填写 API Key；密钥不会回显');
+    if(apiType!=='codex-login'&&!keyRef&&!loopback(baseUrl))throw Error('请直接填写 API Key；本地回环服务可留空');
     const p={id:previous?.id??randomUUID(),version:(previous?.version??0)+1,name,model,baseUrl,apiType,authHeader,keyRef};
     return transaction(()=>{const {id,version,...body}=p;db.prepare('INSERT INTO agent_providers VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,body=excluded.body').run(id,version,JSON.stringify(body));for(const e of bound)updateModel(e.employee_id,p.model);if(managerBound)applyManager(p);return publicProfile(p);});
   }
   function updateModel(id,model){const old=profile(id);saveProfile(id,{...old,model,pricing:null,accountId:null});}
-  function applyManager(p){compatible('apix',p);saveManager({provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef});}
+  function applyManager(p){compatible('apix',p);saveManager({provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef??''});}
+  function adopt(){
+    const current=managerSettings();
+    if(!current.model||!current.baseUrl)throw Error('当前没有可导入的 ApiX 模型配置');
+    const providers=rows('SELECT id FROM agent_providers').map(r=>get(r.id));
+    if(providers.some(p=>managerMatch(p,current)))return list();
+    const apiType=String(current.apiType||'openai-completions');compatible('apix',{apiType,authHeader:'default'});
+    const p={id:randomUUID(),version:1,name:'ApiX 当前配置',model:current.model,baseUrl:current.baseUrl,apiType,authHeader:'default',keyRef:current.apiKeyEnv||null};
+    db.prepare('INSERT INTO agent_providers VALUES (?,?,?)').run(p.id,p.version,JSON.stringify({name:p.name,model:p.model,baseUrl:p.baseUrl,apiType:p.apiType,authHeader:p.authHeader,keyRef:p.keyRef}));
+    return list();
+  }
   function bind(input){
     if(input.agentId==='apix'){if(input.version!==managerVersion())throw Error('ApiX 配置已变化，请刷新');const p=get(input.providerId);if(input.providerVersion!==p.version)throw Error('供应商配置已变化，请刷新');applyManager(p);return list();}
     const employee=row('SELECT * FROM employees WHERE id=? AND deleted_at IS NULL',input.agentId);if(!employee)throw Error('员工不存在');
@@ -57,7 +68,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     const clean=Object.fromEntries(Object.entries(source).filter(([name])=>!routingVariable.test(name)));
     const env=workerEnvironment(clean,runtime,managerKeys),args=[];
     if(p.apiType==='codex-login'){args.push('-c','model_provider="openai"','-c','forced_login_method="chatgpt"','--model',p.model);return {env,args,provider:publicProfile(p)};}
-    const key=environment[p.keyRef];if(!key)throw Error('供应商密钥不可用，请重新保存');
+    const key=p.keyRef?environment[p.keyRef]:'';if(p.keyRef&&!key)throw Error('供应商密钥不可用，请重新保存');
     if(runtime==='codex'){env.APIX_PROVIDER_KEY=key;args.push('-c','model_provider="apix"','-c','forced_login_method="api"','-c',`model_providers.apix.name="ApiX"`,'-c',`model_providers.apix.base_url=${JSON.stringify(p.baseUrl)}`,'-c','model_providers.apix.env_key="APIX_PROVIDER_KEY"','-c','model_providers.apix.wire_api="responses"','-c','model_providers.apix.requires_openai_auth=false','--model',p.model);}
     let consultSettings;
     if(runtime==='claude'){
@@ -75,5 +86,5 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     if(runtime==='pi'){const dir=join(dataDir,'provider-runtimes',p.id,String(p.version));mkdirSync(dir,{recursive:true});runtimeConfig(join(dir,'models.json'),{providers:{apix:{baseUrl:p.baseUrl,api:p.apiType,apiKey:'$APIX_PROVIDER_KEY',models:[{id:p.model}]}}});env.PI_CODING_AGENT_DIR=dir;env.APIX_PROVIDER_KEY=key;args.push('--provider','apix','--model',p.model);}
     return {env,args,provider:publicProfile(p),consultSettings};
   }
-  return {list,save,bind,remove,prepare,supports:id=>!!(id&&binding(id).provider_id),keyNames:()=>rows('SELECT id FROM agent_providers').map(r=>get(r.id).keyRef).filter(Boolean),assertModel:(id,model)=>{const b=binding(id);if(b.provider_id&&model!==get(b.provider_id).model)throw Error('模型由供应商中心管理，请在那里切换');}};
+  return {list,save,bind,remove,adopt,prepare,supports:id=>!!(id&&binding(id).provider_id),keyNames:()=>rows('SELECT id FROM agent_providers').map(r=>get(r.id).keyRef).filter(Boolean),assertModel:(id,model)=>{const b=binding(id);if(b.provider_id&&model!==get(b.provider_id).model)throw Error('模型由供应商中心管理，请在那里切换');}};
 }

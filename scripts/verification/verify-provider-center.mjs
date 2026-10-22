@@ -12,12 +12,14 @@ try{
   page.on('pageerror',e=>errors.push(e.message));await page.goto(fixture.origin,{waitUntil:'load'});await page.locator('[data-page-target="settings"]').first().click();
   const root=page.locator('.provider-center');await root.locator('[data-agent="'+employee.id+'"]').waitFor();
   const form=root.locator('[data-provider-form]');await form.locator('[name="name"]').fill('独立 Codex API');await form.locator('[name="apiType"]').selectOption('openai-responses');await form.locator('[name="model"]').fill('fixture-model');await form.locator('[name="baseUrl"]').fill('https://provider.invalid/v1');await form.locator('[name="apiKey"]').fill('fixture-ui-private-key');await form.getByRole('button',{name:'保存供应商',exact:true}).click();
-  await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.startsWith('已保存'));
+  await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.includes('供应商已保存'));
   const p=(await fixture.request('/api/agent-providers')).providers[0];assert(p);assert.equal(await form.locator('[name="apiKey"]').inputValue(),'');assert(!(await root.innerText()).includes('fixture-ui-private-key'));
   const row=root.locator('[data-agent="'+employee.id+'"]');await row.locator('select').selectOption(p.id);await row.getByRole('button',{name:'应用到 测试需求分析员'}).click();
-  await page.waitForFunction(id=>document.querySelector(`[data-agent="${id}"] select`)?.value!=='' ,employee.id);
+  await page.waitForFunction(async id=>(await (await fetch('/api/agent-providers')).json()).agents.find(a=>a.id===id)?.providerId,employee.id);
   await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.startsWith('已保存'));
   assert.equal((await fixture.request('/api/agent-providers')).agents.find(a=>a.id===employee.id).providerId,p.id);
+  await page.locator('[data-provider-refresh]').click();await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.startsWith('已刷新'));
+  assert.equal(await page.locator('[data-provider-refresh]').isEnabled(),true,'刷新按钮应保持可用');
   await root.locator('[data-provider-editor]').selectOption(p.id);assert.equal(await form.locator('[name="apiKey"]').inputValue(),'');await form.locator('[name="baseUrl"]').fill('https://different.invalid/v1');await form.getByRole('button',{name:'保存供应商',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.includes('重新填写密钥'));
   await form.locator('[name="apiType"]').selectOption('codex-login');assert.equal(await form.locator('[name="baseUrl"]').isEnabled(),false);assert.equal(await form.locator('[name="apiKey"]').isEnabled(),false);

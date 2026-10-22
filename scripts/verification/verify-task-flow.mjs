@@ -35,8 +35,8 @@ try {
  await page.locator('#assistant-model [data-use-global-model]').click();
  await page.waitForFunction(()=>document.querySelector('#assistant-model input')?.value==='updated-local-model');
  await page.locator('.nav-item[data-page-target=settings]').click();
- await page.waitForSelector('#page-settings.active-page');await page.waitForSelector('#project-execution');
- assert(await page.locator('#coord-model').isVisible());assert(!await page.locator('#assistant-input').isVisible());assert(!await page.locator('#desktop-start textarea').isVisible());
+ await page.waitForSelector('#page-settings.active-page');await page.waitForSelector('#project-execution');await page.waitForSelector('.provider-center [data-provider-form]',{state:'attached'});
+ assert(await page.locator('.provider-center').isVisible());assert(await page.locator('.provider-center [data-agent="apix"] select').isVisible());assert.equal(await page.locator('#coord-model').count(),0);assert(!await page.locator('#assistant-input').isVisible());assert(!await page.locator('#desktop-start textarea').isVisible());
  await page.screenshot({path:join(output,'settings.png')});assert.deepEqual(errors,[]);
  await page.locator('.nav-item[data-page-target=assistant]').click();await page.locator('#assistant-new').click();
  await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='等待消息');
