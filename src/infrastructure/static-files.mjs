@@ -4,7 +4,7 @@ import {join} from 'node:path';
 const assets = new Map([
   ['index.html', 'web/index.html'],
   ['agent-os.js', 'web/agent-os.js'],
-  ...['styles', 'phase4', 'director', 'coordinator', 'overview', 'desktop', 'assistant', 'design-system']
+  ...['styles', 'phase4', 'director', 'coordinator', 'overview', 'desktop', 'assistant', 'design-system', 'workflow-graph']
     .map(name => [`${name}.css`, `web/styles/${name}.css`]),
 ]);
 

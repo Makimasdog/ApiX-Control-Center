@@ -20,7 +20,7 @@ try{
   assert(await page.locator('#assistant-input').isVisible());await page.locator('#assistant-input').fill('保留主对话草稿');
   const first=await fixture.request('/api/coordination/sessions',{projectId:fixture.projectId,goal:'已有协作一'});
   const second=await fixture.request('/api/coordination/sessions',{projectId:fixture.projectId,goal:'已有协作二'});
-  await openBoard();await page.locator(`.coord-process-list [data-session="${first.id}"]`).waitFor();
+  await openBoard();await page.locator('.coord-process-list summary').click();await page.locator(`.coord-process-list [data-session="${first.id}"]`).waitFor();
   await page.locator(`.coord-process-list [data-session="${first.id}"]`).focus();await page.keyboard.press('Enter');
   await page.waitForFunction(()=>document.querySelector('#coord-title')?.textContent==='已有协作一');
   assert.equal(await page.locator(`.coord-process-list [data-session="${first.id}"]`).getAttribute('aria-pressed'),'true');

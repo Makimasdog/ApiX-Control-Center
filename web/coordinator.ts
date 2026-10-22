@@ -1,3 +1,4 @@
+import {createWorkflowGraph} from './workflow-graph.js';
 import {conversationModelPicker} from './conversation-model.js';
 import { readConversation } from './conversation-stream.js';
 import {readinessView,type Readiness} from './readiness.js';
@@ -46,6 +47,7 @@ const unsynced = new Set<string>();
 const deliveryFingerprints = new Map<string,string>();
 let executionPolicy:ExecutionPolicy|null=null;
 let inspectedDelivery:Delivery|null=null;
+let deliveryRequest=0;
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
 const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -53,12 +55,12 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   const data = await r.json(); if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`); return data as T;
 }
 function notice(message: string, error = false) { for(const target of [$('#coord-notice'),$('#settings-notice')]){target.textContent=message;target.classList.toggle('error',error);} }
-async function action(work:()=>Promise<void>) {
+async function action(work:()=>Promise<void>,success='已保存') {
   if (loading) return; loading=true; root.classList.add('is-busy'); updateStreamingControls();
   const originProject=projectId; const originSession=sessionId;
   const originFocus=document.activeElement;
   notice('ApiX 正在处理…');
-  try { await work(); if(document.activeElement===originFocus && originFocus instanceof HTMLButtonElement)originFocus.blur();if(projectId===originProject && sessionId===originSession)notice('已保存'); await reload(); }
+  try { await work(); if(document.activeElement===originFocus && originFocus instanceof HTMLButtonElement)originFocus.blur();if(projectId===originProject && sessionId===originSession)notice(success); await reload(); }
   catch(e) { if(projectId===originProject && sessionId===originSession)notice(e instanceof Error ? e.message : String(e),true); }
   finally { loading=false; root.classList.remove('is-busy'); if(projectId!==originProject || sessionId!==originSession)notice('');updateStreamingControls(); }
 }
@@ -72,7 +74,7 @@ function updateStreamingControls() {
 function selectSession(id:string) {
   const input=$<HTMLTextAreaElement>('#coord-message textarea');
   if(sessionId)messageDrafts.set(sessionId,input.value);
-  sessionId=id;current=null;reloadVersion++;editingBrief=false;planKey='';
+  workflowGraph.reset();sessionId=id;current=null;reloadVersion++;editingBrief=false;planKey='';
   if(id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id,kind:'coordination'}}));
   if(id)localStorage.setItem('apix.chat.'+projectId,id);
   input.value=messageDrafts.get(id) ?? '';
@@ -165,15 +167,15 @@ const meetingSection=document.createElement('section');meetingSection.className=
 const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coord-empty');const rail=$('.coord-rail');
 const inspector=document.createElement('aside');inspector.className='desktop-inspector';inspector.id='desktop-inspector';
 const main=document.createElement('div');main.className='desktop-main';main.append(empty,body);
-const chats=$('#coord-sessions');const processList=document.createElement('section');processList.className='coord-process-list surface-card';processList.setAttribute('aria-label','项目协作流程');processList.innerHTML='<h2>协作流程</h2><p>查看 ApiX 委派的流程及已有任务。新需求统一在“与 ApiX 对话”中提出。</p>';processList.append(chats);layout.before(processList);
+const chats=$('#coord-sessions');const processList=document.createElement('details');processList.className='coord-process-list surface-card';processList.setAttribute('aria-label','项目协作流程');processList.innerHTML='<summary>切换协作流程</summary><p>查看 ApiX 委派的流程及已有任务。新需求统一在“与 ApiX 对话”中提出。</p>';processList.append(chats);layout.before(processList);
 chats.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLButtonElement>('button[data-session]');if(button && chats.contains(button) && button.dataset.session!==sessionId){selectSession(button.dataset.session!);void reload().catch(e=>notice(String(e),true));}});
 inspector.innerHTML='<div class="desktop-inspector-head"><strong>工作详情</strong><button class="outline-button" id="desktop-close-details" aria-label="关闭工作详情">关闭</button></div><section id="desktop-workflow" class="surface-card"></section><details class="desktop-detail"><summary>ApiX 工具活动</summary><div id="desktop-tools"></div></details>';
 for(const section of [...body.children])if(section.classList.contains('coord-section') || section.id==='coord-execution'){
   if(section.querySelector('#coord-tasks')){
-    section.querySelector('h3')!.textContent='Agent 活动';
+    section.querySelector('h3')!.textContent='协作流程';
     const plan=document.createElement('details');plan.className='desktop-plan';plan.innerHTML='<summary>任务安排与审查</summary>';
     plan.append(section.querySelector('#coord-plan')!,section.querySelector('.coord-actions')!,section.querySelector('#coord-add-step')!);
-    section.querySelector('#coord-tasks')!.before(plan);body.querySelector('.coord-goal-head')!.after(section);continue;
+    section.querySelector('#coord-tasks')!.after(plan);section.querySelector('h3')!.parentElement!.remove();body.querySelector('.coord-goal-head')!.after(section);continue;
   }
   const details=document.createElement('details');details.className='desktop-detail';const summary=document.createElement('summary');summary.textContent=section.querySelector('h3')?.textContent??'工作记录';details.append(summary,section);inspector.append(details);
 }
@@ -235,6 +237,11 @@ $('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
 meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 const updateModel=conversationModelPicker(root.querySelector<HTMLElement>('#coord-conversation-model')!);
+const workflowGraph=createWorkflowGraph($('#coord-tasks'),{
+  inspect:id=>{void action(()=>inspectDelivery(id),'节点检查完成');},
+  overview:()=>{toggleInspector(true);const details=$('#coord-requirements').closest('details');if(details)details.open=true;$('#coord-requirements').scrollIntoView({block:'nearest'});},
+  select:()=>{inspectedDelivery=null;deliveryRequest++;},
+});
 function render(s: Session) {
   updateModel('coordination',s.id,s.busy||s.tasks.some(t=>['running','queued','stopping'].includes(t.status)));
   if(inspectedDelivery&&s.tasks.find(t=>t.id===inspectedDelivery!.taskId)?.status!==inspectedDelivery.status){root.querySelector('#coord-delivery-panel')?.remove();inspectedDelivery=null;}
@@ -293,12 +300,7 @@ function render(s: Session) {
   if (s.autonomyPolicy)autonomyUI.render(projectId,s.autonomyPolicy,{id:s.id,revision:s.revision,autonomy:s.autonomy??null,autonomyRecoveryFingerprint:s.autonomyRecoveryFingerprint});
   if (key!==planKey) { planKey=key; draft=s.tasks.map(t=>({moduleId:s.autonomy?.tasks.find(a=>a.task_id===t.id)?.module_id,prompt:t.prompt,employeeId:t.employee_id,dependsOn:s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(x=>x.id===d.depends_on_id)),scheduling:s.schedulingTasks?.find(p=>p.taskId===t.id)?.profile})); renderPlan(); }
   for(const id of ['coord-save-plan','coord-dispatch','coord-add-step']) $( '#'+id).hidden=s.status!=='plan_review';
-  $('#coord-tasks').innerHTML=s.tasks.map((t,i)=>{
-    const waiting=s.dependencies.filter(d=>d.task_id===t.id).map(d=>s.tasks.findIndex(task=>task.id===d.depends_on_id)).filter(index=>index>=0 && s.tasks[index]!.status!=='accepted');
-    const hint=waiting.length ? `前置步骤 ${waiting.map(index=>index+1).join('、')} 尚未验收` : '无待验收的前置步骤';
-    const handoff=s.handoffs?.find(h=>h.task_id===t.id);
-    return `<article class="coord-task"><span>${i+1}</span><div><strong>${esc(snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? '历史员工')}</strong><p>${esc(t.prompt)}</p><small>${esc(t.queue_reason || hint)}${handoff ? ' · '+esc(handoff.status==='ready'?(handoff.report.sources.length?`已交接 ${handoff.report.files.length} 个文件`:'工作区就绪'):'代码交接需要处理') : ''}</small>${t.result?`<details><summary>最近保存的运行报告</summary><pre>${esc(t.result)}</pre></details>`:''}</div><span class="coord-pill">${esc(t.status==='completed'?(s.autonomy?'等待自动质量检查':'待验收'):statuses[t.status] ?? t.status)}</span>${['queued','completed','accepted','blocked','unknown','failed','needs_revision','cancelled'].includes(t.status)?`<button class="text-action" data-delivery="${esc(t.id)}">检查代码与恢复</button>`:''}${t.status==='completed'?`<button class="text-action" data-coord-reject="${t.id}">要求修改</button>`:''}</article>`;
-  }).join('')||'<p class="coord-muted">尚未安排员工步骤。可在工作详情中处理当前流程的需求与验收标准。</p>';
+  workflowGraph.update({id:s.id,title:s.title,derivedStatus:s.derivedStatus,requirements:s.requirements,tasks:s.tasks.map(t=>({...t,statusLabel:t.status==='completed'&&automaticQuality?'等待自动检查':undefined,employeeName:snapshot.employees.find(e=>e.id===t.employee_id)?.name??'历史员工',runtime:snapshot.employees.find(e=>e.id===t.employee_id)?.runtime})),dependencies:s.dependencies});
   const active=s.tasks.filter(t=>t.status==='running');
   $('#coord-guidance-section').hidden=!active.length && !s.instructions?.length;
   $('#coord-instruction').hidden=!active.length;
@@ -395,12 +397,12 @@ $('#coord-revise').addEventListener('submit',event=>{event.preventDefault();void
 $('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const originSession=sessionId;const originProject=projectId;const input=form.querySelector<HTMLTextAreaElement>('textarea')!;const content=input.value;await api(`/api/coordination/sessions/${originSession}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});if(originSession===sessionId && originProject===projectId && input.value===content)input.value='';});});
 $('#coord-permissions').addEventListener('change',event=>{const select=event.target as HTMLSelectElement;const subject=select.dataset.permission!;void action(async()=>{const policy=subject==='apix'?current!.policy:current!.workerPolicies[subject] ?? {version:0};await api('/api/permissions',{projectId,subject,mode:select.value,version:policy.version});});});
 function renderDelivery(d:Delivery) {
-  inspectedDelivery=d;
+  const inspectionHost=workflowGraph.inspectionHost(d.taskId);inspectedDelivery=d;
   root.querySelector('#coord-delivery-panel')?.remove();
   const panel=document.createElement('section');panel.id='coord-delivery-panel';panel.className='surface-card coord-section';
   if(d.inspection?.fingerprint)deliveryFingerprints.set(d.taskId,d.inspection.fingerprint);else deliveryFingerprints.delete(d.taskId);
   panel.innerHTML=`<h3>代码差异与交接检查</h3><p>任务 ${esc(current!.tasks.findIndex(t=>t.id===d.taskId)+1)} · ${esc(d.status==='completed'?'待验收':statuses[d.status] ?? d.status)}</p><p>${esc(d.error ?? d.handoff?.report.error ?? '')}</p><p>输入版本：${esc(d.inputCommit ?? '未知')}<br>冻结交付：${esc(d.deliveryCommit ?? '尚未冻结')}</p>${d.inspection ? `<p>变更文件：${esc(d.inspection.files.join('、') || '无代码变更')}</p><pre>${esc(d.inspection.preview)}</pre>${d.inspection.previewTruncated?'<p>预览已截断，请同时检查本地完整差异。</p>':''}` : ''}${d.status==='completed'?`<p>核对代码、运行结果与验收证据后，通过验收会冻结当前 Git 内容并允许后续步骤取得该版本。</p><button class="outline-button" data-coord-accept="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>通过验收</button>`:''}${d.status==='accepted' && !d.deliveryCommit?`<button class="outline-button" data-freeze-delivery="${esc(d.taskId)}" ${d.inspection?.fingerprint?'':'disabled'}>冻结已审查的历史交付</button>`:''}`;
-  $('#coord-tasks').parentElement!.after(panel);
+  inspectionHost.append(panel);
   panel.querySelector('h3')!.insertAdjacentHTML('afterend',`<p>工作区：${esc(d.workspacePath ?? '尚未创建')}</p>`);
   if(d.sourceHead) panel.querySelector('p')!.insertAdjacentHTML('afterend',`<p>源基线：${esc(d.sourceHead)}</p>`);
   if(['queued','failed','cancelled','unknown','needs_revision','blocked'].includes(d.status)) {
@@ -408,10 +410,9 @@ function renderDelivery(d:Delivery) {
     const dependenciesAccepted=current!.dependencies.filter(dep=>dep.task_id===d.taskId).every(dep=>current!.tasks.some(t=>t.id===dep.depends_on_id && t.status==='accepted'));
     panel.insertAdjacentHTML('beforeend',recoveryForm(d,task,snapshot.employees,dependenciesAccepted));
   }
-  toggleInspector(true);
   panel.tabIndex=-1;panel.scrollIntoView({block:'start',behavior:'smooth'});panel.focus({preventScroll:true});
 }
-async function inspectDelivery(id:string){const originProject=projectId,originSession=sessionId;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(projectId===originProject&&sessionId===originSession)renderDelivery(d);}
+async function inspectDelivery(id:string){const originProject=projectId,originSession=sessionId,request=++deliveryRequest;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(request===deliveryRequest&&projectId===originProject&&sessionId===originSession&&current?.tasks.some(t=>t.id===id)){if(current.tasks.find(t=>t.id===id)!.status!==d.status)throw new Error('任务状态已变化，请重新检查当前节点');renderDelivery(d);}}
 root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
 root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('button[data-remove],button[data-coord-accept],button[data-coord-reject],button[data-delivery],button[data-freeze-delivery]');if(!el || !root.contains(el))return;
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}

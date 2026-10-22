@@ -13,6 +13,7 @@ test('static asset mapping keeps public URLs and rejects private paths', () => {
   const root = resolve('.');
   assert.equal(staticFilePath(root, 'index.html'), join(root, 'web/index.html'));
   assert.equal(staticFilePath(root, 'assistant.css'), join(root, 'web/styles/assistant.css'));
+  assert.equal(staticFilePath(root, 'workflow-graph.css'), join(root, 'web/styles/workflow-graph.css'));
   assert.equal(staticFilePath(root, 'dist/web/assistant.js'), join(root, 'dist/web/assistant.js'));
   assert.equal(staticFilePath(root, 'dist/src/assistant/assistant-result.js'), join(root, 'dist/src/assistant/assistant-result.js'));
   assert.equal(staticFilePath(root, 'dist/src/assistant-result.js'), join(root, 'dist/src/assistant/assistant-result.js'));
