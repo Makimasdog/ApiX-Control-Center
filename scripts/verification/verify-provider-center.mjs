@@ -20,11 +20,22 @@ try{
   assert.equal((await fixture.request('/api/agent-providers')).agents.find(a=>a.id===employee.id).providerId,p.id);
   await page.locator('[data-provider-refresh]').click();await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.startsWith('已刷新'));
   assert.equal(await page.locator('[data-provider-refresh]').isEnabled(),true,'刷新按钮应保持可用');
+  await root.locator('[data-provider-editor]').selectOption('');
+  await root.locator(`[data-provider-edit="${p.id}"]`).click();
+  assert.equal(await root.locator('[data-provider-editor]').inputValue(),p.id,'卡片编辑应选择对应供应商');
+  assert.equal(await form.locator('[name="name"]').inputValue(),p.name);
+  assert.equal(await form.locator('[name="model"]').inputValue(),p.model);
+  assert.equal(await form.locator('[name="name"]').evaluate(el=>el===document.activeElement),true,'编辑后应聚焦名称');
+  await form.locator('[name="name"]').fill('已通过卡片编辑');
+  await form.getByRole('button',{name:'保存供应商',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.includes('供应商已保存'));
+  const updated=(await fixture.request('/api/agent-providers')).providers;
+  assert.equal(updated.length,1,'卡片编辑不能新建重复供应商');assert.equal(updated[0].id,p.id);assert.equal(updated[0].name,'已通过卡片编辑');assert.equal(updated[0].version,p.version+1);assert.equal(updated[0].hasKey,true);
   await root.locator('[data-provider-editor]').selectOption(p.id);assert.equal(await form.locator('[name="apiKey"]').inputValue(),'');await form.locator('[name="baseUrl"]').fill('https://different.invalid/v1');await form.getByRole('button',{name:'保存供应商',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.includes('重新填写密钥'));
   await form.locator('[name="apiType"]').selectOption('codex-login');assert.equal(await form.locator('[name="baseUrl"]').isEnabled(),false);assert.equal(await form.locator('[name="apiKey"]').isEnabled(),false);
   await form.locator('[name="apiType"]').selectOption('anthropic-messages');assert.equal(await form.locator('[name="authHeader"]').isVisible(),true);await form.locator('[name="authHeader"]').selectOption('bearer');
   await root.locator('[data-provider-editor]').selectOption(p.id);
   for(const width of [1440,390]){await page.setViewportSize({width,height:1100});await root.screenshot({path:join(out,`providers-${width}.png`)});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'provider settings overflow');}
-  assert.deepEqual(errors,[]);assert.equal(fixture.calls.length,0);console.log(JSON.stringify({passed:true,cases:['create','masked-key','bind','endpoint-change-guard','desktop-layout','mobile-layout'],modelCalls:0,screenshots:out}));
+  assert.deepEqual(errors,[]);assert.equal(fixture.calls.length,0);console.log(JSON.stringify({passed:true,cases:['create','masked-key','bind','card-edit-and-save','endpoint-change-guard','desktop-layout','mobile-layout'],modelCalls:0,screenshots:out}));
 }finally{await browser?.close();await fixture.close();}

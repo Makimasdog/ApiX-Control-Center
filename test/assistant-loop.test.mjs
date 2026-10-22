@@ -178,6 +178,13 @@ test('non-object JSON triggers one repair carrying the malformed reply and parse
   assert(h.prompts[1].includes('上次回复片段'));assert(h.prompts[1].includes('inspect_quota'));assert(h.prompts[1].includes('JSON 对象'));
   assert.equal(s.events.filter(e=>e.kind==='protocol_repair').length,1);assert(!JSON.stringify(s.events).includes('Unexpected token'));
 }));
+
+test('array-wrapped actions are corrected before any contained tool can execute',()=>fixture(async h=>{
+  h.answer(()=>'说明\n```json\n'+JSON.stringify([tool('write_file',{path:'unsafe',content:'bad'})])+'\n```',finish);
+  h.service.message(h.id,{content:'检查项目'});const s=await wait(h.service,h.id);
+  assert.equal(s.status,'completed');assert.deepEqual(h.calls,[]);assert.equal(h.prompts.length,2);
+  assert.equal(s.events.filter(e=>e.kind==='protocol_repair').length,1);
+}));
 test('an unsupported action is never executed and gets one corrective request',()=>fixture(async h=>{
   h.answer(()=>JSON.stringify({action:'shell',command:'whoami'}),finish);
   h.service.message(h.id,{content:'运行命令'});const s=await wait(h.service,h.id);

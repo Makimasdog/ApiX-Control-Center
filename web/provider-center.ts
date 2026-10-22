@@ -66,6 +66,11 @@ export function providerCenter(container:HTMLElement,options:Options={}){
     const auth=()=>{const login=field('apiType').value==='codex-login';content.querySelector<HTMLElement>('[data-provider-auth-header]')!.hidden=field('apiType').value!=='anthropic-messages';content.querySelector<HTMLElement>('[data-provider-url]')!.hidden=login;content.querySelector<HTMLElement>('[data-provider-key]')!.hidden=login;field('baseUrl').required=!login;field('baseUrl').disabled=login;field('apiKey').disabled=login;field('authHeader').disabled=field('apiType').value!=='anthropic-messages';content.querySelector<HTMLElement>('[data-provider-auth-hint]')!.textContent=login?'仅供 Codex 员工使用，读取已有 ChatGPT 登录；请填写该订阅支持的模型。不会执行登录、充值或更改本机配置。':'';syncDiscovery();};
     restoreControls=()=>{auth();const test=content.querySelector<HTMLButtonElement>('[data-test-connection]');if(test)test.disabled=!manager!.model||!manager!.baseUrl||testPending;};
     editor.addEventListener('change',()=>{editingId=editor.value;render();});
+    for(const button of content.querySelectorAll<HTMLButtonElement>('[data-provider-edit]'))button.addEventListener('click',()=>{
+      editingId=button.dataset.providerEdit!;render();
+      const name=content.querySelector<HTMLInputElement>('[data-provider-form] [name="name"]')!;
+      name.focus();name.scrollIntoView({block:'nearest'});
+    });
     field('apiType').addEventListener('change',auth);field('baseUrl').addEventListener('input',syncDiscovery);auth();
     content.querySelector<HTMLSelectElement>('[data-provider-preset]')!.addEventListener('change',event=>{
       const preset=presets.find(p=>p.id===(event.target as HTMLSelectElement).value);if(!preset)return;

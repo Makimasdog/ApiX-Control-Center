@@ -2,6 +2,14 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createApiXAgent} from '../dist/src/coordination/apix-agent.js';
 import {emptyRequirements} from '../dist/src/coordination/requirement-engine.js';
+import {parseJsonObject} from '../dist/src/coordination/contracts.js';
+
+test('JSON extraction accepts only one whole object and never selects children or competing actions',()=>{
+  const action={action:'tool',tool:'inspect_quota',args:{items:[{text:'braces } [ and "quotes" \\'}]}};
+  const json=JSON.stringify(action);
+  for(const raw of [json,'\uFEFF'+json,'说明\n'+json+'\n结束','说明\n```json\n'+json+'\n```'])assert.deepEqual(parseJsonObject(raw),action);
+  for(const raw of [JSON.stringify([action]),'说明\n```json\n'+JSON.stringify([action])+'\n```','说明 '+JSON.stringify([action]),JSON.stringify(json),'null','42','{"broken": '+json,json+'\n'+json,'```json\n'+json+'\n```\n```json\n'+json+'\n```','{bad '+json+'}'])assert.throws(()=>parseJsonObject(raw),SyntaxError,raw);
+});
 
 test('planning distinguishes inference failure from invalid dependencies and accepts whitespace around JSON fences',async()=>{
   const requirements={goal:'实现',scope:'现有模块',constraints:'保留功能',deliverable:'代码',acceptance:'测试通过'},employees=[{id:'one'}];

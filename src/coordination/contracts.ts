@@ -38,35 +38,35 @@ export function object(value: unknown): Record<string, unknown> {
 export function parseJsonObject(raw: string): Record<string, unknown> {
   if (typeof raw !== 'string' || !raw.trim()) throw new SyntaxError('模型回复为空');
   const source = raw.replace(/^\uFEFF/, '').trim();
-  const attempt = (value: string): Record<string, unknown> | null => {
-    try { return object(JSON.parse(value)); } catch { return null; }
-  };
-  const direct = attempt(source);
-  if (direct) return direct;
-  for (const match of source.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
-    const fenced = attempt((match[1] ?? '').trim());
-    if (fenced) return fenced;
+  let direct: unknown;
+  let complete = false;
+  try { direct = JSON.parse(source); complete = true; } catch {}
+  if (complete) {
+    try { return object(direct); } catch { throw new SyntaxError('模型回复必须是单个 JSON 对象'); }
   }
-  for (let start = source.indexOf('{'); start >= 0; start = source.indexOf('{', start + 1)) {
-    let depth = 0, inString = false, escaped = false;
-    for (let index = start; index < source.length; index++) {
-      const char = source[index];
-      if (inString) {
-        if (escaped) escaped = false;
-        else if (char === '\\') escaped = true;
-        else if (char === '"') inString = false;
-        continue;
-      }
-      if (char === '"') inString = true;
-      else if (char === '{') depth++;
-      else if (char === '}' && --depth === 0) {
-        const found = attempt(source.slice(start, index + 1));
-        if (found) return found;
-        break;
-      }
+  // Scan whole containers, never their children; ambiguous replies need correction.
+  const candidates: string[] = [], stack: string[] = [];
+  let start = -1, inString = false, escaped = false;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"' && stack.length) { inString = true; continue; }
+    if (char === '{' || char === '[') {
+      if (!stack.length) start = index;
+      stack.push(char);
+    } else if ((char === '}' || char === ']') && stack.length) {
+      if (stack.pop() !== (char === '}' ? '{' : '[')) throw new SyntaxError('模型回复的 JSON 括号不匹配');
+      if (!stack.length) candidates.push(source.slice(start, index + 1));
     }
   }
-  throw new SyntaxError('模型回复中没有可解析的 JSON 对象');
+  if (stack.length || candidates.length !== 1) throw new SyntaxError('模型回复必须包含单个完整 JSON 对象');
+  try { return object(JSON.parse(candidates[0]!)); }
+  catch { throw new SyntaxError('模型回复中没有有效的单个 JSON 对象'); }
 }
 export function text(value: unknown, max = 10000): string {
   if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Error(`内容不能为空且不能超过 ${max} 字符`);
