@@ -52,6 +52,21 @@ body:has(#page-coordinator.active-page) .content-area { overflow:hidden; }
 #page-coordinator .coord-layout.inspector-closed { grid-template-columns:minmax(0,1fr); }
 .inspector-closed .desktop-inspector { display:none; }
 .desktop-main { min-height:0; min-width:0; }
+#page-coordinator .desktop-main { overflow:auto; }
+.coord-process-list { margin:0 0 12px; padding:16px; }
+.coord-process-list h2 { margin:0 0 8px; font-size:15px; }
+.coord-process-list p,.coord-records>p { color:var(--text-secondary); }
+.coord-process-list #coord-sessions { display:flex; gap:8px; overflow:auto; max-height:140px; }
+.coord-process-list .coord-session { min-width:160px; max-width:280px; flex-shrink:0; text-align:left; padding:12px; }
+.coord-process-list .coord-session strong,.coord-process-list .coord-session span { display:block; overflow-wrap:anywhere; }
+.coord-progress-empty { padding:32px 20px; text-align:left; }
+.coord-progress-empty h2 { font-size:20px; }
+.coord-progress-empty p { max-width:60ch; line-height:1.7; color:var(--text-secondary); }
+.coord-records { padding:16px; }
+.coord-records summary { cursor:pointer; font-weight:600; }
+#page-coordinator .coord-records #coord-conversation { height:auto; }
+#page-coordinator .coord-records .coord-turns { max-height:400px; flex:none; padding:12px; }
+#page-coordinator #coord-body { height:auto; min-height:100%; }
 #coord-body { height:100%; display:flex; flex-direction:column; gap:12px; }
 #coord-body[hidden],#coord-empty[hidden],#desktop-stop[hidden] { display:none; }
 #page-coordinator .coord-goal-head { margin:0; padding:0 4px; flex-wrap:wrap; }

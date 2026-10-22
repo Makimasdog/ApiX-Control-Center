@@ -16,6 +16,7 @@
     "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs",
     "test:desktop:app": "node scripts/verify-desktop.mjs",
     "test:ui:providers": "node scripts/verification/verify-provider-center.mjs",
+    "test:ui:navigation": "node scripts/verification/verify-coordination-navigation.mjs",
     "test:ui:task-flow": "node scripts/verification/verify-task-flow.mjs",
     "test:ui:browser": "node scripts/verification/verify-ui.mjs",
     "build": "tsc",
