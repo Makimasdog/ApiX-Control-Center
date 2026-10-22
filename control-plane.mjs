@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { externalAgents, scanExternalAgents } from "./agent-discovery.mjs";
 import { createMailboxService } from "./src/messaging/mailbox.mjs";
 import { createTaskScheduler } from "./src/coordination/task-scheduler.mjs";
+import {createWorkflowRecovery} from './src/coordination/workflow-recovery.mjs';
 import { createCodeHandoffs } from "./src/projects/code-handoffs.mjs";
 import {projectBaseline,projectSourceVersion} from './src/projects/project-baseline.mjs';
 import { createExecutionControl, quotaFailure } from './src/execution/execution-control.mjs';
@@ -357,12 +358,23 @@ const autonomy=createAutonomy({...store,permissions,scheduling,
   inspect:async task=>{const result=await inspectTaskDelivery(task.id,true);if(result.error || !result.inspection)throw new Error(result.error??'交付无法检查');return result.inspection;},workspace:task=>codeHandoffs.workspace(task).path,
   accept:(id,fingerprint)=>acceptTask(id,true,fingerprint,'apix'),
   review:(...args)=>coordinator.qualityReview(...args),
-  retry:async(task,employeeId,prompt)=>{const checked=await inspectTaskDelivery(task.id);const bound=row('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id);const session=coordinator.sessionDetails(bound.session_id);const result=await recoverTask(task.id,{revision:session.revision,employeeId,runId:checked.latestRun?.id??null,fingerprint:checked.recoveryFingerprint,reviewed:true},'policy',prompt);if(result.failure)throw new Error(result.failure);},
+  retry:retryAutomatically,
   stop:id=>stopRun(id),sendMessage:input=>sendMessage(input),record:(...args)=>coordinator.recordTask(...args),
   reassignPending:(taskId,employeeId)=>{coordinator.reassignPending(taskId,employeeId);pumpTasks();},
   activatePending:planId=>{for(const approval of rows("SELECT a.id FROM approvals a JOIN tasks t ON t.id=a.task_id WHERE t.plan_id=? AND t.status='awaiting_approval' AND a.status='pending'",planId))resolveApproval(approval.id,true);pumpTasks();},
   delivered:(sessionId,planId)=>coordinator.delivered(sessionId,planId)
 });
+
+async function retryAutomatically(task,employeeId,prompt){
+  const checked=await inspectTaskDelivery(task.id);
+  const fresh=row('SELECT status,prompt,employee_id FROM tasks WHERE id=?',task.id);
+  if(!fresh || fresh.status!==task.status || fresh.prompt!==task.prompt || fresh.employee_id!==task.employee_id)throw new Error('恢复检查期间任务已变化');
+  const bound=row('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id);
+  const session=coordinator.sessionDetails(bound.session_id);
+  const result=await recoverTask(task.id,{revision:session.revision,employeeId,runId:checked.latestRun?.id??null,fingerprint:checked.recoveryFingerprint,reviewed:true},'policy',prompt);
+  if(result.failure)throw new Error(result.failure);
+}
+const workflowRecovery=createWorkflowRecovery({...store,permissions,scheduling,workflow:projectId=>coordinator.workflowSettings(projectId),retry:retryAutomatically,record:(...args)=>coordinator.recordTask(...args)});
 
 const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
@@ -394,7 +406,7 @@ function admission(task) {
   }
   return scheduling.admission(task);
 }
-const { scheduleDependents,pump:pumpTasks } = createTaskScheduler({ db, row, rows, now, launch, admission,onWaiting:(task,reason)=>db.prepare('UPDATE tasks SET queue_reason=? WHERE id=?').run(reason,task.id), recordTask: (...args) => coordinator.recordTask(...args) });
+const { scheduleDependents,pump:pumpTasks,resumeBlocked } = createTaskScheduler({ db, row, rows, now, launch, admission,recoverable:task=>workflowRecovery.pending(task),onWaiting:(task,reason)=>db.prepare('UPDATE tasks SET queue_reason=? WHERE id=?').run(reason,task.id), recordTask: (...args) => coordinator.recordTask(...args) });
 
 function textFromMessage(message) {
   return (message?.content ?? []).filter((block) => block.type === "text").map((block) => block.text).join("\n");
@@ -1284,6 +1296,7 @@ const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TI
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
 setInterval(() => coordinator.superviseActiveRuns(supervisionAfterMs), supervisionTickMs).unref();
 setInterval(() => {void autonomy.tick().catch(()=>process.stderr.write('自主交付监督发生错误，请检查当前目标状态。\n'));},supervisionTickMs).unref();
+setInterval(() => {void workflowRecovery.tick().catch(()=>process.stderr.write('自动协作恢复发生错误，请检查任务记录。\n'));},supervisionTickMs).unref();
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
@@ -1432,6 +1445,7 @@ export async function recoverTask(id,input,source='user',repairPrompt) {
   coordinator.assertRetry(id,input);
   if(input.reviewed!==true || !checked.recoveryFingerprint || input.fingerprint!==checked.recoveryFingerprint || input.runId!== (checked.latestRun?.id ?? null))throw new Error('请先检查最新进程、代码与交付记录，再重新批准');
   if(checked.managedActive)throw new Error('原进程仍由本服务运行，请先停止并等待结束');
+  if(source==='policy' && (checked.latestRun && (!checked.latestRun.ended_at || !['failed','completed','cancelled'].includes(checked.latestRun.status)) || checked.handoff?.status==='conflict'))throw new Error('原运行或代码交接状态不允许自动恢复');
   if(task.status==='unknown' && input.confirmedStopped!==true)throw new Error('原进程状态未知，须人工确认已停止；PID 可能已被复用');
   const resolution=checked.handoff?.status==='conflict'?codeHandoffs.approveResolution(task,checked.inspection.fingerprint):null;
   const fresh=row('SELECT * FROM tasks WHERE id=?',id);
@@ -1442,13 +1456,9 @@ export async function recoverTask(id,input,source='user',repairPrompt) {
   if(checked.latestRun?.status==='unknown'){db.prepare("UPDATE runs SET status='cancelled',status_source='user-recovery-confirmed',ended_at=? WHERE id=?").run(now(),checked.latestRun.id);scheduling.settle(checked.latestRun.id,null);}
   db.prepare("UPDATE agent_messages SET status='rejected',error='旧运行已结束，恢复时不重放旧指导',completed_at=? WHERE target_task_id=? AND status IN ('queued','delivered','processing')").run(now(),id);
   const approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint},source,repairPrompt);
-  for(let pass=0;pass<8;pass++)for(const blocked of rows("SELECT id FROM tasks WHERE plan_id=? AND status='blocked'",task.plan_id)) {
-    if(row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",blocked.id))continue;
-    const bad=row("SELECT t.id FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=? AND t.status IN ('failed','cancelled','blocked','unknown','rejected','needs_revision') LIMIT 1",blocked.id);
-    if(!bad && row("SELECT id FROM approvals WHERE task_id=? AND status='approved'",blocked.id))db.prepare("UPDATE tasks SET status='queued',queue_reason='等待恢复任务验收',updated_at=? WHERE id=?").run(now(),blocked.id);
-  }
   let failure=null;
   try{resolveApproval(approved.approvalId,true);}catch(e){failure=String(e.message);}
+  resumeBlocked(task.plan_id);
   pumpTasks();
   return {session:coordinator.sessionDetails(approved.sessionId),failure};
 }

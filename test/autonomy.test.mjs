@@ -131,3 +131,9 @@ test('waiting for repair resources keeps only clean never-run dependencies waiti
 test('repair migration preserves old evidence without binding unconfirmed waiting work to a run',()=>fixture(async({db,restart,counts})=>{
   db.exec("INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at) VALUES ('old','t',1,'a','old evidence','waiting','2026-10-14');ALTER TABLE autonomy_repairs DROP COLUMN run_id;UPDATE tasks SET status='needs_revision';UPDATE runs SET status='completed'");const restored=restart();assert.equal(restored.details('plan').repairs[0].instruction,'old evidence');assert.equal(restored.details('plan').repairs[0].run_id,null);await restored.tick();assert.equal(counts().retries,0);assert.equal(restored.details('plan').state,'attention');
 }));
+
+test('dispatched repair keeps clean blocked descendants waiting instead of halting the entire plan',()=>fixture(async({db,service,counts})=>{
+  db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed';INSERT INTO tasks SELECT 'child',project_id,plan_id,employee_id,runtime,'integration','blocked',NULL,'',updated_at FROM tasks WHERE id='t';INSERT INTO task_dependencies VALUES ('child','t');INSERT INTO autonomy_tasks(task_id,module_id,original_prompt) VALUES ('child','integration','integration')");
+  await service.tick();assert.equal(counts().retries,1);assert.equal(service.details('plan').state,'running');
+  await service.tick();assert.equal(service.details('plan').state,'running');assert.equal(counts().retries,1);
+}));

@@ -469,7 +469,7 @@ export function createCoordinator(deps: Dependencies) {
       db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id=? AND status IN ('pending','approved')").run(now(),task.id);
       db.prepare("UPDATE tasks SET prompt=?,employee_id=?,runtime=?,status='awaiting_approval',queue_reason=NULL,recovery_fingerprint=?,delivery_commit=NULL,delivery_fingerprint=NULL,updated_at=? WHERE id=?").run(prompt,employee.id,employee.runtime,typeof input.workspaceFingerprint==='string'?input.workspaceFingerprint:null,now(),task.id);
       db.prepare('INSERT INTO approvals(id,task_id,action,status,created_at,target_path,prompt_hash) VALUES (?,?,?,?,?,?,?)').run(approvalId,task.id,'start-agent-in-project','pending',now(),repository?.path ?? project.path,createHash('sha256').update(prompt).digest('hex'));
-      turn(s,source==='user'?'user':'apix','retry_approved',source==='policy'?`ApiX 已安排 ${employee.name} 修复当前模块，保留已有代码；具体问题、修复指令和实际验证结果见“自主交付”详情。`:`检查工作区和原进程后，用户重新批准员工 ${employee.name} 执行修复：${prompt}`);checkpoint(s.id);
+      turn(s,source==='user'?'user':'apix','retry_approved',source==='policy'?`ApiX 已安排 ${employee.name} 修复当前任务，保留已有代码；修复进度、运行记录和验证结果见工作详情。`:`检查工作区和原进程后，用户重新批准员工 ${employee.name} 执行修复：${prompt}`);checkpoint(s.id);
     });
     return {approvalId,sessionId:s.id};
   }

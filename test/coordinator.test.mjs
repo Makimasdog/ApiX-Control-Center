@@ -834,6 +834,22 @@ test('structured provider error fails a run even when its process exits zero',as
   assert.equal(state.runs[0].status,'failed');
   assert.match(state.tasks[0].result,/gemini fixture error/);
 },{APIX_GEMINI_ENTRY:join(root,'test/fake-provider.mjs'),APIX_FIXTURE_FAIL_RUNTIME:'gemini'}));
+
+test('ordinary workflow recovery replaces a failed worker without manual approval and continues accepted dependencies',async()=>harness(async h=>{
+  const {s,projectId,employeeId}=await setup(h,'gemini');
+  const replacement=(await h.request('/api/employees',{name:'recovery worker',runtime:'pi',role:'开发与验证'})).id;
+  let plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+  plan=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:plan.revision,planVersion:plan.planVersion,steps:[{prompt:'first report',employeeId,dependsOn:[]},{prompt:'dependent report',employeeId:replacement,dependsOn:[0]}]});
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0},{id:replacement,version:0}]});
+  await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+  let recovered;
+  for(let i=0;i<300;i++){const current=await h.request(`/api/coordination/sessions/${s.id}`);if(current.tasks[0].status==='completed' && current.tasks[0].employee_id===replacement){recovered=current;break;}await delay(100);}
+  assert(recovered,'automatic retry did not complete');assert.equal(recovered.autonomy,null);assert.equal(recovered.tasks[1].status,'queued');
+  const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.runs.filter(r=>r.task_id===recovered.tasks[0].id).length,2);
+  const delivery=await h.request(`/api/tasks/${recovered.tasks[0].id}/delivery`);
+  await h.request(`/api/tasks/${recovered.tasks[0].id}/review`,{accepted:true,fingerprint:delivery.inspection.fingerprint});
+  await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);return state.tasks[1].status==='completed';});
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_GEMINI_ENTRY:join(root,'test/fake-provider.mjs'),APIX_FIXTURE_FAIL_RUNTIME:'gemini'}));
 test('structured quota error with only a message pauses new launches even on exit zero',async()=>harness(async h=>{
   const worker=join(h.dir,'structured-quota.mjs');
   await writeFile(worker,"process.stdin.resume();process.stdin.on('end',()=>process.stdout.write(JSON.stringify({type:'turn.failed',error:{message:'insufficient_quota'}})+'\\n'));");

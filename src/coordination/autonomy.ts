@@ -85,8 +85,10 @@ export function createAutonomy(deps:Dependencies) {
   function waitingRepair(taskId:string){return row<{id:string;instruction:string}>("SELECT id,instruction FROM autonomy_repairs WHERE task_id=? AND status='waiting' AND run_id IS (SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1) ORDER BY rowid DESC LIMIT 1",taskId,taskId);}
   function waitingDependency(task:ManagedTask){
     const ancestors=rows<{id:string;status:string}>("WITH RECURSIVE ancestors(id) AS (SELECT depends_on_id FROM task_dependencies WHERE task_id=? UNION SELECT d.depends_on_id FROM task_dependencies d JOIN ancestors a ON d.task_id=a.id) SELECT t.id,t.status FROM tasks t JOIN ancestors a ON a.id=t.id",task.id);
-    const blocked=[task,...ancestors.filter(t=>t.status==='blocked')];if(blocked.some(t=>row('SELECT id FROM runs WHERE task_id=? LIMIT 1',t.id)||row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",t.id)))return false;
-    const failures=ancestors.filter(t=>['failed','cancelled','unknown','rejected','needs_revision'].includes(t.status));return failures.length>0&&failures.every(t=>t.status==='needs_revision'&&waitingRepair(t.id));
+    const blocked=[task,...ancestors.filter(t=>t.status==='blocked')];if(blocked.some(t=>row<{result:string|null}>('SELECT result FROM tasks WHERE id=?',t.id)?.result||row('SELECT id FROM runs WHERE task_id=? LIMIT 1',t.id)||row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",t.id)))return false;
+    const failures=ancestors.filter(t=>['failed','cancelled','unknown','rejected','needs_revision'].includes(t.status));
+    if(failures.length)return failures.every(t=>t.status==='needs_revision'&&waitingRepair(t.id));
+    return ancestors.some(t=>row("SELECT id FROM autonomy_repairs WHERE task_id=? AND status='dispatched' LIMIT 1",t.id));
   }
   async function repair(plan:PlanRecord,task:ManagedTask,findings:string[],policy:AutonomyPolicy) {
     taskCurrent(plan,task,policy);const binding=row<{module_id:string;original_prompt:string;repairs:number}>('SELECT * FROM autonomy_tasks WHERE task_id=?',task.id)!;

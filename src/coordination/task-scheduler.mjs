@@ -1,11 +1,16 @@
 // Advances approved DAG tasks when their dependencies finish or fail.
-export function createTaskScheduler({ db, row, rows, now, launch, recordTask = () => {}, admission=()=>null, onWaiting=()=>{} }) {
+export function createTaskScheduler({ db, row, rows, now, launch, recordTask = () => {}, admission=()=>null, onWaiting=()=>{}, recoverable=()=>false }) {
   let pumping=false;
   function advance(id) {
     const candidate=row('SELECT * FROM tasks WHERE id=?',id);
     if(!candidate || !['queued','awaiting_approval'].includes(candidate.status))return;
-      const dependencies = rows("SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?", candidate.id);
+      const dependencies = rows("SELECT t.* FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?", candidate.id);
       if (dependencies.some((dependency) => ["failed", "cancelled", "blocked", "unknown", "rejected", "needs_revision"].includes(dependency.status))) {
+        const failed=dependencies.filter(d=>!["accepted","completed","queued","running","awaiting_approval"].includes(d.status));
+        if(failed.every(d=>d.status==='failed' && recoverable(d))){
+          db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);
+          onWaiting(candidate,'前置步骤失败，ApiX 正在自动恢复');return;
+        }
         db.prepare("UPDATE tasks SET status='blocked',updated_at=? WHERE id=? AND status IN ('queued','awaiting_approval')").run(now(), candidate.id);
         scheduleDependents(candidate.id);
         return;
@@ -34,5 +39,15 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
     pumping=true;
     try {for(const task of rows("SELECT id FROM tasks WHERE status='queued' ORDER BY rowid"))advance(task.id);}finally{pumping=false;}
   }
-  return { scheduleDependents,pump };
+  function resumeBlocked(planId) {
+    let changed;
+    do {changed=false;for(const task of rows("SELECT * FROM tasks WHERE plan_id=? AND status='blocked'",planId)){
+      if(task.result || row('SELECT id FROM runs WHERE task_id=? LIMIT 1',task.id) || row("SELECT task_id FROM code_handoffs WHERE task_id=? AND status='conflict'",task.id))continue;
+      const approval=row("SELECT status FROM approvals WHERE task_id=? AND action='start-agent-in-project' ORDER BY created_at DESC,rowid DESC LIMIT 1",task.id);
+      const dependencies=rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',task.id);
+      if(approval?.status!=='approved' || !dependencies.length || dependencies.some(t=>!['accepted','completed','queued','running','awaiting_approval'].includes(t.status)))continue;
+      db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),task.id);onWaiting(task,'等待恢复任务验收');changed=true;
+    }}while(changed);
+  }
+  return { scheduleDependents,pump,resumeBlocked };
 }
