@@ -15,6 +15,7 @@ import {taskAcceptanceRequest} from './task-review.js';
 import {historyColumns} from '../assistant/chat-history.js';
 
 interface Dependencies extends Store {
+  saveModelKey?(key:string):string;
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
   employees(): Employee[];
   capabilities(): AgentCapabilities[];
@@ -477,9 +478,12 @@ export function createCoordinator(deps: Dependencies) {
   function saveSettings(input: Record<string, unknown>) {
     if(busy.has('manager-connection-test'))throw new Error('模型连接测试进行中，请完成后再保存配置');
     const provider = String(input.provider ?? '').trim(); const model = String(input.model ?? '').trim();
-    const baseUrl = String(input.baseUrl ?? '').trim(); const apiType = String(input.apiType ?? 'openai-completions').trim(); const apiKeyEnv = String(input.apiKeyEnv ?? '').trim();
-    const validation = validateModelConfig({provider, model, baseUrl, apiType, apiKeyEnv});
+    const baseUrl = String(input.baseUrl ?? '').trim(); const apiType = String(input.apiType ?? 'openai-completions').trim(); let apiKeyEnv = String(input.apiKeyEnv ?? '').trim();
+    const apiKey=typeof input.apiKey==='string'?input.apiKey.trim():'';
+    if(input.apiKey!==undefined && typeof input.apiKey!=='string')throw new Error('API Key 必须是文本');
+    const validation = validateModelConfig({provider, model, baseUrl, apiType, apiKeyEnv:apiKey?'APIX_MANAGER_KEY_PENDING':apiKeyEnv});
     if (!validation.valid) throw new Error(validation.error);
+    if(apiKey){if(!deps.saveModelKey)throw new Error('模型密钥存储不可用');apiKeyEnv=deps.saveModelKey(apiKey);}
     db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
     return getSettings();
   }

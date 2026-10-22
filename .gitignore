@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+model-credentials.json
+model-credentials.json.*.tmp
 .env.*
 !.env.example
 *.log

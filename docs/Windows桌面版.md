@@ -23,7 +23,7 @@ npm run desktop:dist
 产物：
 
 - `.tmp-desktop/release/win-unpacked/ApiX Control Center.exe`：直接启动；复制给其他目录时必须复制整个 `win-unpacked` 文件夹。
-- `.tmp-desktop/release/ApiX-Setup-0.1.1-x64.exe`：当前用户安装包，可选择目录并生成桌面快捷方式；不需要管理员安装。
+- `.tmp-desktop/release/ApiX-Setup-0.1.2-x64.exe`：当前用户安装包，可选择目录并生成桌面快捷方式；不需要管理员安装。
 
 本版未配置代码签名或自动更新。安装包版本来自根 `package.json`。构建资源和产物使用已有 `.tmp*/` 忽略规则，不提交 Git。桌面前后端在 `.tmp-desktop` 暂存，修改源码后重跑上述命令即可。
 
@@ -53,3 +53,5 @@ npm run test:desktop:app
 后端进程测试覆盖外部配置、路径含中文和空格、启动失败、停止整棵进程树、监督进程异常退出、重启端口复用和端口占用回退。应用验收会先核对分发包的生产依赖、npm 和密钥排除，再把整包复制到仓库之外的临时目录启动，防止误用仓库里的依赖；验收后清理临时程序副本。
 
 `--smoke-test` 参数仅用于自动验收：隐藏窗口，加载真实网页并请求 `/api/snapshot`，将结果写入隔离数据目录的 `smoke-result.json` 并保存 `window.png` 后退出；不调用模型或派发员工。
+
+模型设置支持直接填写 API Key。保存后立即生效，密码框清空且不会回显密钥；留空保留原配置。现有环境变量引用继续兼容。密钥以本机明文文件 `model-credentials.json` 保存于应用数据目录（与 `.env` 相同信任边界），不写入项目、模型设置接口或 Git。修改服务地址后需要重新填写密钥；旧会话继续引用其原有凭据。

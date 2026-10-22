@@ -1,6 +1,7 @@
 import {createNpmValidation} from './dist/src/validation/npm-validation.js';
 import {createConversationModels} from './dist/src/models/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/infrastructure/environment.mjs';
+import {modelCredentials} from './src/infrastructure/model-credentials.mjs';
 import {projectDirectory,sameProjectDirectory} from './src/projects/project-folders.mjs';
 import {inspectCodex,executionArgs} from './dist/src/agents/agent-settings.js';
 import { createHash, randomUUID } from "node:crypto";
@@ -44,6 +45,7 @@ import {fileTool,projectFingerprint,projectInstructions,skillsFor} from './dist/
 loadEnvironment();
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
 mkdirSync(dataDir, { recursive: true });
+const credentials=modelCredentials(dataDir);
 const db = new DatabaseSync(join(dataDir, "apix.sqlite"));
 db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON");
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY);
@@ -1271,7 +1273,7 @@ export function applyIntegration(id) {
 export function closeStore() { db.close(); }
 
 let notifyAssistant=()=>{};
-const coordinator = createCoordinator({ ...store,onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+const coordinator = createCoordinator({ ...store,saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),

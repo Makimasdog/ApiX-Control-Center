@@ -140,7 +140,7 @@ function renderFailedReply(id:string) {
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
-<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 独立调用模型 API；Pi、Codex、Claude 等是可选执行 Agent。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">请选择模型 API</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key 环境变量<input name="apiKeyEnv" id="api-key-input" placeholder="例如 DEEPSEEK_API_KEY"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key 环境变量<input name="customApiKeyEnv" placeholder="例如 CUSTOM_API_KEY"></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
+<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 独立调用模型 API；Pi、Codex、Claude 等是可选执行 Agent。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">请选择模型 API</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key<input type="hidden" name="apiKeyEnv"><input type="password" name="apiKey" id="api-key-input" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；留空保留已保存的密钥"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key<input type="hidden" name="customApiKeyEnv"><input type="password" name="customApiKey" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；本地无密钥服务可留空"><small class="field-hint">密钥仅保存在本机应用数据目录，不回显。修改服务地址后请重新填写密钥。</small></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
@@ -424,6 +424,12 @@ $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void
 
 // Model form uses the same state/payload functions as its regression tests.
 const modelForm=$<HTMLFormElement>('#coord-model');
+for(const name of ['apiKey','customApiKey']) {
+  const input=modelForm.elements.namedItem(name) as HTMLInputElement;
+  const toggle=document.createElement('button');toggle.type='button';toggle.className='text-action';toggle.textContent='显示密钥';toggle.setAttribute('aria-pressed','false');
+  toggle.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';toggle.textContent=show?'隐藏密钥':'显示密钥';toggle.setAttribute('aria-pressed',String(show));});
+  input.insertAdjacentElement('afterend',toggle);
+}
 modelForm.insertAdjacentHTML('beforeend','<button type="button" id="model-discover" class="outline-button" hidden>读取本地模型</button><p id="model-discovery-status" class="coord-muted" role="status"></p><datalist id="local-model-options"></datalist>');
 modelForm.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="model-test-approved">批准一次连接测试，可能产生模型费用，使用当前项目的推理预算</label><button type="button" id="model-test" class="outline-button">测试已保存的模型连接</button><p class="coord-muted">无项目工具、不启动员工。90 秒后请求终止；离开页面不会取消调用，结果不证明工具或员工可用。</p><p id="model-test-status" role="status"></p>');
 for(const name of ['customModel','customModelName'])(modelForm.elements.namedItem(name) as HTMLInputElement).setAttribute('list','local-model-options');
@@ -445,11 +451,12 @@ function updateLocalLookup() {
 }
 function applyModelDraft(draft:ModelDraft) {
   const config=providers.find(p=>p.id===draft.provider);
+  for(const name of ['apiKey','customApiKey']){const input=modelForm.elements.namedItem(name) as HTMLInputElement;input.value='';input.type='password';const toggle=input.nextElementSibling!;toggle.textContent='显示密钥';toggle.setAttribute('aria-pressed','false');}
   modelSelect.innerHTML=config?.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('') || '<option value="">请先选择平台</option>';
   for(const [name,value] of Object.entries(draft)) (modelForm.elements.namedItem(name) as HTMLInputElement).value=value;
   $('#model-preset-config').hidden=!config;$('#model-custom-config').hidden=draft.provider!=='custom';
   $('#api-key-label').hidden=!!config && !config.requiresApiKey;
-  $('#api-key-hint').textContent=config?.requiresApiKey?'请在启动前设置环境变量 '+draft.apiKeyEnv:'';
+  $('#api-key-hint').textContent=config?.requiresApiKey?'直接填写密钥，保存后立即生效；留空保留原配置。密钥保存在本机，不回显。':'';
   updateLocalLookup();
 }
 providerSelect.addEventListener('change',()=>{try{applyModelDraft(selectProvider(providerSelect.value,providers));}catch(e){notice(String(e),true);}});
@@ -490,6 +497,8 @@ modelForm.addEventListener('submit',event=>{event.preventDefault();void action(a
   const draft=Object.fromEntries(new FormData(modelForm)) as ModelDraft;
   const payload=settingsPayload(draft,providers,savedSettings,modelReady);
   savedSettings=await api<ModelSettings>('/api/manager/settings',payload);
+  applyModelDraft(settingsDraft(savedSettings,providers));
+  notice('模型配置已保存，密钥无需重启即可生效');
   updateLocalLookup();
 });});
 modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=true);

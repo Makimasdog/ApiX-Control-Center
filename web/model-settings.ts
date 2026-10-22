@@ -1,6 +1,6 @@
-export type ModelSettings = { provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string };
+export type ModelSettings = { provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string; apiKey?:string };
 export type ProviderConfig = { id: string; name: string; baseUrl: string; apiType: string; requiresApiKey: boolean; defaultApiKeyEnv?: string; models: { id: string; name: string }[] };
-export type ModelDraft = { provider: string; model: string; customModelName: string; baseUrl: string; customModel: string; apiType: string; apiKeyEnv: string; customApiKeyEnv: string };
+export type ModelDraft = { provider: string; model: string; customModelName: string; baseUrl: string; customModel: string; apiType: string; apiKeyEnv: string; customApiKeyEnv: string; apiKey?:string; customApiKey?:string };
 export function selectProvider(provider: string, providers: ProviderConfig[]): ModelDraft {
   const config = providers.find(p => p.id === provider);
   if (provider && provider !== 'custom' && !config) throw new Error('未知的平台配置');
@@ -22,14 +22,18 @@ export function settingsDraft(settings: ModelSettings, providers: ProviderConfig
 export function settingsPayload(draft: ModelDraft, providers: ProviderConfig[], saved: ModelSettings | null, ready: boolean): ModelSettings {
   if (!ready || !saved) throw new Error('模型配置尚未加载成功，请刷新后再保存');
   if (!draft.provider) return { provider: '', model: '', baseUrl: '', apiType: 'openai-completions', apiKeyEnv: '' };
+  const apiKey=(draft.provider==='custom'?draft.customApiKey:draft.apiKey)?.trim();
+  const credential=apiKey?{apiKey,apiKeyEnv:''}:{};
   if (draft.provider === 'custom') {
     const legacy = !draft.baseUrl && saved.provider && saved.provider !== 'apix-custom' && !saved.baseUrl;
     if (!draft.baseUrl && !legacy) throw new Error('自定义配置需要 API URL');
-    return { provider: legacy ? saved.provider : 'apix-custom', model: draft.customModel.trim(), baseUrl: draft.baseUrl.trim(), apiType: draft.apiType, apiKeyEnv: draft.customApiKeyEnv.trim() };
+    const keyEnv=draft.customApiKeyEnv.trim();
+    const changedService=keyEnv.startsWith('APIX_MANAGER_KEY_') && (draft.baseUrl.trim()!==saved.baseUrl || draft.apiType!==saved.apiType);
+    return { provider: legacy ? saved.provider : 'apix-custom', model: draft.customModel.trim(), baseUrl: draft.baseUrl.trim(), apiType: draft.apiType, apiKeyEnv:changedService?'':keyEnv, ...credential };
   }
   const config = providers.find(p => p.id === draft.provider);
   if (!config) throw new Error('未知的平台配置，请重新加载目录');
-  return { provider: 'apix-custom', model: draft.customModelName.trim() || draft.model, baseUrl: config.baseUrl, apiType: config.apiType, apiKeyEnv: draft.apiKeyEnv.trim() };
+  return { provider: 'apix-custom', model: draft.customModelName.trim() || draft.model, baseUrl: config.baseUrl, apiType: config.apiType, apiKeyEnv: draft.apiKeyEnv.trim(), ...credential };
 }
 
 export function localLookupRequest(draft:ModelDraft, providers:ProviderConfig[]): {baseUrl:string;apiKeyEnv:string}|null {

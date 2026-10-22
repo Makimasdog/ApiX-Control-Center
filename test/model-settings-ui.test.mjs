@@ -4,6 +4,16 @@ import { BUILTIN_PROVIDERS } from '../dist/src/models/model-providers.js';
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest } from '../dist/web/model-settings.js';
 const providers=BUILTIN_PROVIDERS;
 const defaults={provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
+
+test('direct key is sent separately, cleared from loaded drafts, and not reused for another endpoint',()=>{
+  const draft={...selectProvider('custom',providers),baseUrl:'https://example.invalid/v1',customModel:'fixture',customApiKey:'fixture-direct-secret'};
+  const payload=settingsPayload(draft,providers,defaults,true);assert.equal(payload.apiKey,'fixture-direct-secret');assert.equal(payload.apiKeyEnv,'');
+  const saved={...payload,apiKeyEnv:'APIX_MANAGER_KEY_FIXTURE'};delete saved.apiKey;
+  const loaded=settingsDraft(saved,providers);assert.equal(loaded.customApiKey,undefined);
+  assert.equal(settingsPayload(loaded,providers,saved,true).apiKeyEnv,saved.apiKeyEnv);
+  assert.equal(settingsPayload({...loaded,baseUrl:'https://other.invalid/v1'},providers,saved,true).apiKeyEnv,'');
+  assert.throws(()=>connectionTestRequest(draft,providers,saved,true,'p',true),/先保存/);
+});
 test('connection test requires loaded, saved configuration, project and explicit fee approval',()=>{
   const draft=selectProvider('',providers);
   assert.throws(()=>connectionTestRequest(draft,providers,defaults,false,'p',true),/尚未加载/);
