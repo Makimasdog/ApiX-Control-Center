@@ -31,6 +31,12 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
   function initialize(kind:string,id:string,settings=defaults()){if(!settings.model)return;db.prepare('INSERT OR IGNORE INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,1,?)').run(kind,id,JSON.stringify(settings),now());}
   function save(kind:string,id:string,input:Record<string,unknown>){
     const previous=get(kind,id);if(input.version!==previous.version)throw new Error('对话模型配置已变化，请刷新后重试');
+    if(input.useGlobal===true){
+      const settings=defaults(),validation=validateModelConfig(settings);
+      if(!settings.model||(!settings.baseUrl&&!getProviderConfig(settings.provider)?.baseUrl)||!validation.valid)throw new Error('请先保存有效的应用模型配置');
+      db.prepare('INSERT INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(kind,session_id) DO UPDATE SET settings=excluded.settings,version=excluded.version,updated_at=excluded.updated_at').run(kind,id,JSON.stringify(settings),previous.version+1,now());
+      return get(kind,id);
+    }
     if(!previous.settings.baseUrl&&!getProviderConfig(previous.settings.provider)?.baseUrl)throw new Error('请先在模型设置中配置供应商 API，再选择对话模型');
     if(typeof input.model!=='string'||input.reasoningEffort!==undefined&&typeof input.reasoningEffort!=='string')throw new Error('模型与思考强度必须为字符串');
     const model=String(input.model??'').trim(),reasoningEffort=String(input.reasoningEffort??'').trim();

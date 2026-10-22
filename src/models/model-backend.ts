@@ -3,6 +3,7 @@ import {getProviderConfig,isLoopbackModelUrl,validateModelConfig} from './model-
 import {request as httpRequest, type ClientRequest, type IncomingMessage} from 'node:http';
 import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
+import {modelEndpoint} from './model-endpoint.js';
 
 export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string}
 // Only host-created instances may retain this code across inference boundaries.
@@ -43,8 +44,7 @@ function finalText(data:Json,api:string):string {
 export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(delta:string)=>void,options:{signal?:AbortSignal;timeoutMs?:number}={}):Promise<string>{
   const settings=directModelSettings(saved),api=settings.apiType,key=settings.apiKeyEnv?process.env[settings.apiKeyEnv]:undefined;
   if(Buffer.byteLength(prompt)>512*1024)throw new Error('模型上下文超过 512 KiB，请整理或拆分任务');
-  const endpoint=new URL(settings.baseUrl);const suffix=api==='openai-completions'?'/chat/completions':api==='openai-responses'?'/responses':'/messages';
-  let path=endpoint.pathname.replace(/\/+$/,'');if(!path.endsWith(suffix))path+=(api==='anthropic-messages'&&!path.endsWith('/v1')?'/v1':'')+suffix;endpoint.pathname=path;
+  const endpoint=modelEndpoint(settings.baseUrl,api);
   // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
   const stream=true;
   const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
@@ -104,7 +104,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
           incoming.on('error',failed);
           incoming.on('aborted',failed);
           const status=incoming.statusCode??0;
-          if(status<200||status>=300){finish(new Error(status===429?'模型服务额度不足或触发速率限制 (HTTP 429)':`模型服务返回 HTTP ${status}，请检查地址、模型、认证和账户额度`));return;}
+          if(status<200||status>=300){finish(new Error(status===429?'模型服务额度不足或触发速率限制 (HTTP 429)':status===404?`模型服务返回 HTTP 404：接口路径或模型不存在。当前请求 ${endpoint.origin}${endpoint.pathname}；模型 ${settings.model}。请核对服务地址、协议与模型 ID；旧对话可点击“使用当前应用配置”更新。未自动重试。`:status===401||status===403?`模型服务返回 HTTP ${status}：认证或访问权限失败，请核对当前服务对应的 API Key。`:`模型服务返回 HTTP ${status}，请检查服务配置或稍后重试（未自动重试）`));return;}
           phase='body';const sse=incoming.headers['content-type']?.includes('text/event-stream');
           incoming.on('data',(value:Buffer)=>guarded(()=>{
             bytes+=value.byteLength;if(bytes>2*1024*1024)throw new Error('模型响应超过 2 MiB');

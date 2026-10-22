@@ -107,7 +107,7 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
-  $("#breadcrumb-page").textContent = { assistant: "对话", overview: "管理总览", coordinator: "ApiX 目标", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "多 Agent 任务（高级）", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", models: "模型配置", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();
@@ -397,7 +397,7 @@ $("#dialog-close").addEventListener("click", () => $("#editor-dialog").close());
 $("#task-details-close").addEventListener("click", () => $("#task-details-dialog").close());
 $("#dialog-cancel").addEventListener("click", () => $("#editor-dialog").close());
 $("#brand-home").addEventListener("click", () => go("assistant"));
-$("#top-model-button").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:manager-settings")); });
+$("#top-model-button").addEventListener("click", () => { go("settings"); document.dispatchEvent(new Event("apix:manager-settings")); });
 $("#workspace-project-button").addEventListener("click", () => go("projects"));
 $("#talk-to-director").addEventListener("click", () => go("director"));
 $("#new-conversation").addEventListener("click", () => { go("coordinator"); document.dispatchEvent(new Event("apix:new-chat")); });
@@ -511,7 +511,7 @@ const modelArchive=document.createElement('details');modelArchive.className='pre
 for(const child of [...modelPage.children])if(!child.classList.contains('page-intro'))modelArchive.append(child);
 const modelEntry=document.createElement('section');modelEntry.className='surface-card model-runtime-entry';modelEntry.innerHTML='<h2>ApiX 推理模型</h2><p>在项目工作区配置模型、保存连接并进行显式费用批准的连接测试。模型收藏不会切换管理者或员工模型。</p><button class="primary-button" id="open-real-model-settings">配置真实模型连接</button>';
 modelPage.append(modelEntry,modelArchive);
-$('#open-real-model-settings').addEventListener('click',()=>{go('coordinator');document.dispatchEvent(new Event('apix:manager-settings'));});
+$('#open-real-model-settings').addEventListener('click',()=>{go('settings');document.dispatchEvent(new Event('apix:manager-settings'));});
 const modelNav=document.querySelector('[data-page-target="models"]');modelNav.setAttribute('aria-label','模型设置');modelNav.querySelector('span').textContent='模型设置';
 $('#page-resources .page-intro p').textContent='Skills 按需加载项目和用户技能；MCP 按项目保存到本地服务，明确启用后可发现工具，并由 ApiX 在对话中调用。';
 go("assistant");

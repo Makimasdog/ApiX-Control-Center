@@ -4,10 +4,11 @@ import {join,dirname,relative,resolve,isAbsolute,delimiter} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {commandCapabilities} from '../execution/command-capabilities.js';
 import {projectPath} from '../assistant/assistant-tools.js';
+import {projectScanLimits} from '../infrastructure/project-scan.js';
 
-export const nodeProjectLimits={sourceFiles:3000,sourceBytes:8*1024*1024,dependencyFiles:40000,dependencyBytes:256*1024*1024,artifactFiles:6000,artifactBytes:32*1024*1024};
+export const nodeProjectLimits={sourceFiles:projectScanLimits.items,sourceBytes:projectScanLimits.bytes,dependencyFiles:40000,dependencyBytes:256*1024*1024,artifactFiles:6000,artifactBytes:32*1024*1024};
 export const digest=(v:string|Buffer)=>createHash('sha256').update(v).digest('hex');
-export const credentialName=(n:string)=>n.toLowerCase()==='.npmrc'||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(n);
+export const credentialName=(n:string)=>['.npmrc','model-credentials.json'].includes(n.toLowerCase())||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(n);
 export function boundedNames(path:string,limit:number){const dir=opendirSync(path),names:string[]=[];try{let entry;while((entry=dir.readSync())){if(names.length>=limit)throw new Error('目录扫描超过项目文件预算，扫描未完成');names.push(entry.name);}}finally{dir.closeSync();}return names.sort();}
 export interface NpmProfile {schemaVersion:1;artifacts:string[];trustedPaths:string[];installArgs:string[];scripts:{id:string;sequence:string[];commands:{name:string;command:string;npmArgs:string[]}[]}[];network:boolean;runtime:ReturnType<typeof npmRuntime>;installPolicy:'ci-ignore-scripts-v1';environmentPolicy:'minimal-v1'}
 // No project code, npm configuration or user startup file is evaluated during discovery.
@@ -15,7 +16,7 @@ export function npmRuntime(){
  const candidates=[join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),...(process.env.PATH??'').split(delimiter).filter(p=>isAbsolute(p)).map(p=>join(p,'node_modules/npm/bin/npm-cli.js'))];
  const cli=candidates.find(p=>existsSync(p));if(!cli)throw new Error('未发现固定 npm CLI 入口');
  const path=realpathSync.native(cli),pkg=JSON.parse(readFileSync(join(dirname(path),'../package.json'),'utf8'));
- if(!/^22\./.test(process.versions.node)||Number(process.versions.node.split('.')[1])<19||!/^10\./.test(pkg.version))throw new Error('首版支持 Node 22.19–22.x / npm 10.x');
+ const [major,minor]=process.versions.node.split('.').map(Number);if(!(major===22&&minor!>=19||major===24)||!/^1[01]\./.test(pkg.version))throw new Error('支持 Node 22.19–22.x / 24.x 和 npm 10.x / 11.x');
  return {node:realpathSync.native(process.execPath),nodeVersion:process.version,npm:path,npmVersion:String(pkg.version),npmSha256:digest(readFileSync(path))};
 }
 function projectGitStatus(root:string){
@@ -33,10 +34,10 @@ export function sourceManifest(root:string,artifacts:string[]=[],mutable:string[
  function visit(dir:string){for(const name of boundedNames(dir,nodeProjectLimits.sourceFiles-items)){
   const path=join(dir,name),rel=relative(root,path).replaceAll('\\','/');
   if(name==='.git'||name==='node_modules'||credentialName(name)||contains(artifacts,rel))continue;
-  if(++items>nodeProjectLimits.sourceFiles)throw new Error('源码扫描超过 3000 项，扫描未完成');
+  if(++items>nodeProjectLimits.sourceFiles)throw new Error('源码扫描超过 20000 项，扫描未完成');
   const stat=lstatSync(path);if(stat.isSymbolicLink())throw new Error('源码范围包含链接，不支持');
   if(stat.isDirectory()){visit(path);continue;}if(!stat.isFile())throw new Error('不支持的源码文件类型');
-  if((bytes+=stat.size)>nodeProjectLimits.sourceBytes)throw new Error('源码扫描超过 8 MiB，扫描未完成');
+  if((bytes+=stat.size)>nodeProjectLimits.sourceBytes)throw new Error('源码扫描超过 256 MiB，扫描未完成');
   if(!contains(mutable,rel))files.push({path:rel,size:stat.size,sha256:hashFile(path,stat.size)});
  }}visit(root);return {files,items,bytes,hash:digest(JSON.stringify(files))};
 }

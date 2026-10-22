@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFileSync,readFileSync,existsSync,mkdirSync,appendFileSync,symlinkSync} from 'node:fs';
+import {writeFileSync,readFileSync,existsSync,mkdirSync,appendFileSync,symlinkSync,truncateSync} from 'node:fs';
 import {join,isAbsolute,relative} from 'node:path';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
@@ -58,7 +58,7 @@ test('npm plans bind package, lock, runtime, script policy and source scope; no 
 }));
 
 test('read-only diagnosis reports source budgets and refuses linked artifact roots',async()=>codingFixture(async h=>{
- npmProjectFiles(h.root);writeFileSync(join(h.root,'src/huge.txt'),Buffer.alloc(8*1024*1024));let d=diagnoseNodeProject(h.root);assert.equal(d.status,'scan_incomplete');assert.equal(d.scanComplete,false);
+ npmProjectFiles(h.root);writeFileSync(join(h.root,'src/huge.txt'),'');truncateSync(join(h.root,'src/huge.txt'),257*1024*1024);let d=diagnoseNodeProject(h.root);assert.equal(d.status,'scan_incomplete');assert.equal(d.scanComplete,false);
  writeFileSync(join(h.root,'src/huge.txt'),'small');const outside=join(h.dir,'external-artifacts');mkdirSync(outside);writeFileSync(join(outside,'do-not-read.txt'),'EXTERNAL_MARKER');symlinkSync(outside,join(h.root,'dist'),'junction');d=diagnoseNodeProject(h.root);assert.equal(d.status,'unsupported');assert.match(d.blocks[0],/链接/);assert(!JSON.stringify(d).includes('EXTERNAL_MARKER'));
 }));
 

@@ -57,8 +57,8 @@
           <nav class="nav-list" aria-label="主导航">
             <button class="nav-item" data-page-target="assistant" aria-label="与 ApiX 对话"><svg class="icon"><use href="#icon-spark"/></svg><span>与 ApiX 对话</span></button>
             <button class="nav-item" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
-            <button class="nav-item" data-page-target="coordinator" aria-label="ApiX 目标工作台"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
-            <details class="assistant-more"><summary>更多设置</summary><button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
+            <button class="nav-item" data-page-target="settings" aria-label="应用与协作设置"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
+            <details class="assistant-more"><summary>更多设置</summary><button class="nav-item" data-page-target="coordinator" aria-label="多 Agent 任务（高级）"><svg class="icon"><use href="#icon-terminal"/></svg><span>多 Agent 任务（高级）</span></button><button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
             <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
             <button class="nav-item" data-page-target="models" aria-label="模型偏好"><svg class="icon"><use href="#icon-cube"/></svg><span>模型偏好</span></button>
             <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
@@ -91,6 +91,7 @@
 
         <main id="page-overview" class="page settings-page"></main>
         <main id="page-assistant" class="page"></main>
+        <main id="page-settings" class="page settings-page"><div class="page-intro"><h1>应用与协作设置</h1><p>配置模型服务和当前项目的执行方式。开始工作请回到“与 ApiX 对话”。</p><label>当前项目<select id="settings-project" aria-label="设置所属项目"></select></label><p id="settings-notice" role="status" aria-live="polite"></p></div><div id="application-settings" class="application-settings"></div></main>
         <main id="page-coordinator" class="page settings-page"></main>
         <main id="page-workspace" class="page workspace-page active-page">
           <section class="conversation-area">

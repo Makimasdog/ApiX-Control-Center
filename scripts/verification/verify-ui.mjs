@@ -24,7 +24,7 @@ try {
   browser = await chromium.launch({headless:true});
   const page = await browser.newPage();
   page.on('pageerror', error => report.errors.push(error.message));
-  const routes = ['assistant','overview','coordinator','missions','memory','models','projects','resources'];
+  const routes = ['assistant','overview','settings','coordinator','missions','memory','models','projects','resources'];
   for (const theme of ['light','dark']) {
     await page.emulateMedia({colorScheme:theme,reducedMotion:'reduce'});
     for (const width of [1440,1024,768,390]) {

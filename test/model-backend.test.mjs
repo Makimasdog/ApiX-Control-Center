@@ -1,5 +1,10 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createServer} from 'node:http';
 import {inferModel,directModelSettings} from '../dist/src/models/model-backend.js';
+
+test('404 identifies endpoint/model configuration without leaking response text or retrying',async()=>fixture(async(settings,calls)=>{
+ await assert.rejects(inferModel(settings,'fixture'),error=>error.message.includes('HTTP 404')&&error.message.includes('/proxy/v1/chat/completions')&&error.message.includes('使用当前应用配置')&&!error.message.includes('PRIVATE_BODY'));
+ assert.equal(calls.length,1);
+},(_req,res)=>{res.writeHead(404);res.end('PRIVATE_BODY');}));
 async function fixture(work,handler){const calls=[];const server=createServer(async(req,res)=>{let raw='';for await(const chunk of req)raw+=chunk;calls.push({url:req.url,headers:req.headers,body:JSON.parse(raw)});await handler(req,res,calls.at(-1));});await new Promise(r=>server.listen(0,'127.0.0.1',r));const settings={provider:'apix-custom',model:'qwen3.8-27b',baseUrl:`http://127.0.0.1:${server.address().port}/proxy/v1`,apiType:'openai-completions',apiKeyEnv:''};try{await work(settings,calls);}finally{server.closeAllConnections();await new Promise(r=>server.close(r));}}
 const finals={
   'openai-completions':text=>({choices:[{finish_reason:'stop',message:{content:text}}]}),

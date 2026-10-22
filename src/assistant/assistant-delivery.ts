@@ -1,12 +1,13 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {lstatSync,readdirSync,realpathSync,openSync,closeSync,readSync,fstatSync} from 'node:fs';
+import {lstatSync,readdirSync,realpathSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
 import {type Store,text} from '../coordination/contracts.js';
 import {projectFingerprint} from './assistant-tools.js';
 import {logLimits} from '../execution/command-logs.js';
 import {sourceManifest} from '../validation/node-project.js';
+import {projectScanLimits,scanProjectFile} from '../infrastructure/project-scan.js';
 
-export const reviewLimits={items:3000,bytes:8*1024*1024,textBytes:256*1024,artifactBytes:24*1024*1024,totalBytes:128*1024*1024,days:30,diffCharacters:16000,totalDiffCharacters:64000};
+export const reviewLimits={items:projectScanLimits.items,bytes:projectScanLimits.bytes,textBytes:256*1024,artifactBytes:24*1024*1024,totalBytes:128*1024*1024,days:30,diffCharacters:16000,totalDiffCharacters:64000};
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 interface Session {id:string;project_id:string;status:string;version:number;needs_verification:number}
 interface File {path:string;sha256:string;size:number;detail:string;content?:string}
@@ -14,15 +15,15 @@ interface Snapshot {scopeVersion:1;manifest:string;files:File[];scope:{included:
 interface Task {id:string;description:string;startedEventId:number;createdAt:string}
 interface Verification {verificationStatus:string;contract?:{version:string}|null;checks?:any[]}
 export interface Delivery {id:string;version:number;taskId:string;sessionId:string;projectId:string;description:string;createdAt:string;baselineRef:string|null;finalRef:string|null;baselineVersion:string|null;manifest:string|null;fingerprint:string|null;netChanges:any[];scope:unknown;requiresVerification:boolean;verification:Verification;modelSummary:string;execution:unknown}
-const excluded=(name:string)=>name.toLowerCase()==='.npmrc'||name==='.git'||name==='node_modules'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(name);
+const excluded=(name:string)=>['.npmrc','model-credentials.json'].includes(name.toLowerCase())||name==='.git'||name==='node_modules'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(name);
 export function reviewSnapshot(root:string,artifacts:string[]=[]):Snapshot{
- root=realpathSync.native(root);const fingerprint=()=>artifacts.length?sourceManifest(root,artifacts).hash:projectFingerprint(root);const before=fingerprint(),files:File[]=[];let items=0,bytes=0;
+ root=realpathSync.native(root);const fingerprint=()=>artifacts.length?sourceManifest(root,artifacts).hash:projectFingerprint(root);const before=fingerprint(),files:File[]=[];let items=0,bytes=0,captured=0;
  function visit(dir:string){for(const name of readdirSync(dir).sort()){
-  if((excluded(name)&&!(artifacts.length&&name.startsWith('.tmp')))||artifacts.includes(relative(root,join(dir,name)).replaceAll('\\','/')))continue;const path=join(dir,name),stat=lstatSync(path);if(++items>reviewLimits.items)throw new Error('审阅超过 3000 项范围');if(stat.isSymbolicLink())throw new Error('审阅范围包含链接，不能冻结');
-  if(stat.isDirectory()){visit(path);continue;}if(!stat.isFile())throw new Error('审阅不支持此文件类型');if((bytes+=stat.size)>reviewLimits.bytes)throw new Error('审阅超过 8 MiB 范围');
-  const fd=openSync(path,'r'),chunks:Buffer[]=[];let total=0;try{const buffer=Buffer.alloc(65536);let n;while((n=readSync(fd,buffer,0,buffer.length,null))>0){if((total+=n)>stat.size||total>reviewLimits.bytes)throw new Error('冻结期间文件超出预算');chunks.push(Buffer.from(buffer.subarray(0,n)));}const after=fstatSync(fd);if(stat.ino!==after.ino||stat.mtimeMs!==after.mtimeMs||stat.ctimeMs!==after.ctimeMs)throw new Error('冻结期间文件变化');}finally{closeSync(fd);}const data=Buffer.concat(chunks),after=lstatSync(path);if(data.length!==stat.size||stat.ino!==after.ino||stat.mtimeMs!==after.mtimeMs||stat.ctimeMs!==after.ctimeMs)throw new Error('冻结期间文件变化，请重新审阅');
-  let content:string|undefined,detail='oversize';if(data.length<=reviewLimits.textBytes){try{if(data.includes(0))throw new Error();content=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(data);detail='text';}catch{detail='binary';}}
-  files.push({path:relative(root,path).replaceAll('\\','/'),sha256:sha(data),size:data.length,detail,...(content===undefined?{}:{content})});
+  if((excluded(name)&&!(artifacts.length&&name.startsWith('.tmp')))||artifacts.includes(relative(root,join(dir,name)).replaceAll('\\','/')))continue;const path=join(dir,name),stat=lstatSync(path);if(++items>reviewLimits.items)throw new Error('审阅超过 20000 项范围');if(stat.isSymbolicLink())throw new Error('审阅范围包含链接，不能冻结');
+  if(stat.isDirectory()){visit(path);continue;}if(!stat.isFile())throw new Error('审阅不支持此文件类型');if((bytes+=stat.size)>reviewLimits.bytes)throw new Error('审阅超过 256 MiB 范围');
+  const scanned=scanProjectFile(path,stat,Math.min(reviewLimits.textBytes,Math.max(0,8*1024*1024-captured)));const data=scanned.data;
+  let content:string|undefined,detail='oversize';if(data){captured+=data.length;try{if(data.includes(0))throw new Error();content=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(data);detail='text';}catch{detail='binary';}}
+  files.push({path:relative(root,path).replaceAll('\\','/'),sha256:scanned.sha256,size:scanned.bytes,detail,...(content===undefined?{}:{content})});
  }}visit(root);if(fingerprint()!==before)throw new Error('冻结期间工作区变化，请重新审阅');
  return {scopeVersion:1,manifest:sha(JSON.stringify(files.map(({path,sha256,size})=>({path,sha256,size})))),files,fingerprint:before,scope:{included:'项目内普通文件；文件字节，不包含目录属性',excluded:['.git','node_modules',...(artifacts.length?[]:['.tmp*']),'凭据文件','符号链接（拒绝）',...artifacts]}};
 }

@@ -308,3 +308,21 @@ dialog::backdrop { background: #131b2b66; }
 }
 @media (prefers-contrast: more) { :root { --border: var(--border-control); } }
 @media (prefers-reduced-transparency: reduce) { * { backdrop-filter: none !important; } }
+
+/* Distinct settings and task surfaces. */
+.application-settings { display: grid; gap: 24px; max-width: 1000px; }
+.application-settings > .coord-settings { border: 1px solid var(--border); background: var(--surface); border-radius: 12px; padding: 22px; }
+.application-settings .coord-settings > summary { font-size: 18px; font-weight: 600; cursor: pointer; }
+.application-settings .coord-settings form, #project-execution { display: grid; gap: 14px; margin-top: 16px; }
+.application-settings label { display: grid; gap: 6px; }
+.application-settings label:has(input[type="checkbox"]) { display: flex; align-items: flex-start; gap: 8px; }
+.application-settings input:not([type="checkbox"]), .application-settings select { width: 100%; }
+.application-settings #desktop-workflow > details { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+.assistant-mode { display: flex; align-items: center; gap: 8px; flex: none; }
+.assistant-mode select { min-height: 32px; padding: 4px 8px; }
+#assistant-mode-hint { color: var(--text-secondary); font-size: 11px; flex: 1; }
+.assistant-composer > div { flex-wrap: wrap; }
+#page-settings .error { color: var(--danger); }
+
+.assistant-run-records { margin: 16px 0; border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; color: var(--text-secondary); font-size: 12px; }
+.assistant-run-records > summary { cursor: pointer; min-height: 24px; }

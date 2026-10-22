@@ -1,6 +1,6 @@
 {
   "name": "apix-control-center",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Local control center for coordinating Pi, Codex and other agents",
@@ -15,6 +15,7 @@
     "desktop:dist": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --publish never",
     "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs",
     "test:desktop:app": "node scripts/verify-desktop.mjs",
+    "test:ui:task-flow": "node scripts/verification/verify-task-flow.mjs",
     "test:ui:browser": "node scripts/verification/verify-ui.mjs",
     "build": "tsc",
     "prestart": "npm run build",

@@ -6,8 +6,9 @@ import {managedCommand,type CommandHooks} from '../execution/command-lifecycle.j
 import {object,text} from '../coordination/contracts.js';
 import {commandCapabilities} from '../execution/command-capabilities.js';
 import {readSource,sourceBuffer,fileSha,prepareEdit,commitEdit,searchSource} from './coding-files.js';
+import {projectScanLimits,scanProjectFile} from '../infrastructure/project-scan.js';
 
-const excluded=(name:string)=>name.toLowerCase()==='.npmrc'||name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
+const excluded=(name:string)=>['.npmrc','model-credentials.json'].includes(name.toLowerCase())||name==='node_modules'||name==='.git'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(?:rsa|ed25519)$|\.(?:pem|key|pfx|p12)$/i.test(name);
 function within(root:string,path:string){const rel=relative(root,path);return rel!== '..'&&!rel.startsWith('..\\')&&!rel.startsWith('../')&&!isAbsolute(rel);}
 export function projectPath(root:string,input:unknown,write=false):string {
   root=realpathSync.native(root);const name=text(input,1000);
@@ -21,13 +22,13 @@ export function projectPath(root:string,input:unknown,write=false):string {
 export function projectFingerprint(root:string,mutablePaths:string[]=[],protectChecks=false):string {
   root=realpathSync.native(root);const hash=createHash('sha256');let count=0,bytes=0;
   function visit(dir:string){for(const name of readdirSync(dir).sort()){
-    if(protectChecks?name==='.git':excluded(name))continue;const path=join(dir,name),stat=lstatSync(path);if(++count>3000)throw new Error('项目超过完整验证范围，请拆分任务或使用委派工作区');
+    if(protectChecks?name==='.git':excluded(name))continue;const path=join(dir,name),stat=lstatSync(path);if(++count>projectScanLimits.items)throw new Error('项目超过 20000 项完整扫描范围，请缩小工作区');
     if(stat.isSymbolicLink())throw new Error('验证范围包含链接，请使用可核对的工作区');
     const rel=relative(root,path).replaceAll('\\','/');
     const key=(p:string)=>process.platform==='win32'?p.toLowerCase():p;
     if(mutablePaths.some(p=>key(rel)===key(p)||key(rel).startsWith(key(p)+'/')))continue;
     if(!protectChecks)hash.update(JSON.stringify([relative(root,path),stat.isDirectory(),stat.size]));
-    if(stat.isDirectory()){visit(path);}else if(stat.isFile()){if(protectChecks)hash.update(JSON.stringify([rel,stat.size]));if((bytes+=stat.size)>8*1024*1024)throw new Error('项目超过 8 MiB 完整验证范围');hash.update(readFileSync(path));}
+    if(stat.isDirectory()){visit(path);}else if(stat.isFile()){if(protectChecks)hash.update(JSON.stringify([rel,stat.size]));if((bytes+=stat.size)>projectScanLimits.bytes)throw new Error('项目超过 256 MiB 完整扫描范围，请缩小工作区');hash.update(scanProjectFile(path,stat).sha256);}else throw new Error('扫描不支持此文件类型');
   }}visit(root);return hash.digest('hex');
 }
 export function projectInstructions(root:string){

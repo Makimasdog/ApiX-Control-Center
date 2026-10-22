@@ -7,7 +7,7 @@ import { schedulingView } from './scheduling-view.js';
 import {autonomyView,type AutonomyState} from './autonomy-view.js';
 import type {AutonomyPolicy} from '../src/coordination/architecture.js';
 import type { TaskProfile } from '../src/coordination/scheduling.js';
-import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
+import {applicationModelSettings} from './application-settings.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
@@ -54,7 +54,7 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(path,body === undefined ? undefined : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await r.json(); if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`); return data as T;
 }
-function notice(message: string, error = false) { $('#coord-notice').textContent=message; $('#coord-notice').classList.toggle('error',error); }
+function notice(message: string, error = false) { for(const target of [$('#coord-notice'),$('#settings-notice')]){target.textContent=message;target.classList.toggle('error',error);} }
 async function action(work:()=>Promise<void>) {
   if (loading) return; loading=true; root.classList.add('is-busy'); updateStreamingControls();
   const originProject=projectId; const originSession=sessionId;
@@ -140,7 +140,7 @@ function renderFailedReply(id:string) {
 root.innerHTML = `<div class="coord-header"><div><div class="eyebrow">APIX · MANAGER AGENT</div><h1>一起把目标变成行动。</h1><p>与 ApiX 澄清需求，由它安排员工、跟进进度。你可以随时调整。</p></div><select id="coord-project" aria-label="当前项目"></select></div>
 <div id="coord-notice" role="status" aria-live="polite"></div>
 <div class="coord-layout"><aside class="coord-rail"><h2>我的目标</h2><form id="coord-create"><label>新的目标<textarea name="goal" required maxlength="4000" placeholder="描述你希望达成的目标…"></textarea></label><label>交互方式<select name="interactionMode">${interactionOptions('conversational')}</select></label><button class="primary-button">交给 ApiX 梳理</button></form><div id="coord-sessions"></div>
-<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>ApiX 独立调用模型 API；Pi、Codex、Claude 等是可选执行 Agent。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">请选择模型 API</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key<input type="hidden" name="apiKeyEnv"><input type="password" name="apiKey" id="api-key-input" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；留空保留已保存的密钥"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key<input type="hidden" name="customApiKeyEnv"><input type="password" name="customApiKey" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；本地无密钥服务可留空"><small class="field-hint">密钥仅保存在本机应用数据目录，不回显。修改服务地址后请重新填写密钥。</small></label></div><button class="outline-button">保存模型配置</button></form></details></aside>
+</aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
 <section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">${interactionOptions('conversational')}</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">与 ApiX 对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="告诉 ApiX 你的想法或补充需求…"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
@@ -181,13 +181,17 @@ for(const section of [...body.children])if(section.classList.contains('coord-sec
   }
   const details=document.createElement('details');details.className='desktop-detail';const summary=document.createElement('summary');summary.textContent=section.querySelector('h3')?.textContent??'工作记录';details.append(summary,section);inspector.append(details);
 }
-const requirements=body.querySelector<HTMLElement>('#coord-requirements')!;const briefDetails=document.createElement('details');briefDetails.className='desktop-detail';briefDetails.innerHTML='<summary>需求与验收</summary>';briefDetails.append(requirements);inspector.append(briefDetails,rail.querySelector('.coord-settings')!);
+const requirements=body.querySelector<HTMLElement>('#coord-requirements')!;const briefDetails=document.createElement('details');briefDetails.className='desktop-detail';briefDetails.innerHTML='<summary>需求与验收</summary>';briefDetails.append(requirements);inspector.append(briefDetails);
 const interactionDetails=document.createElement('details');interactionDetails.className='desktop-detail';interactionDetails.innerHTML='<summary>对话方式</summary>';interactionDetails.append(body.querySelector('.coord-mode')!);inspector.append(interactionDetails);
 layout.replaceChildren(main,inspector);
+// Settings have their own route; the advanced conversation retains only task details.
+const settings=document.querySelector<HTMLElement>('#application-settings')!;
+const modelSettings=applicationModelSettings(settings,()=>projectId,notice);
+settings.append($('#desktop-workflow'),executionSection,schedulingSection,autonomySection);
 rail.hidden=true;root.append(rail);
 layout.classList.add('inspector-closed');
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-mobile-new" class="outline-button desktop-mobile-new">新建对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
-$('.coord-header h1').textContent='对话工作区';
+$('.coord-header h1').textContent='多 Agent 任务（高级）';
 $('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
 $('.coord-header').insertAdjacentHTML('afterend','<section id="desktop-readiness" aria-label="首次使用与配置检查"></section>');
 let setupUpdated=0;let setupRequest=0;
@@ -202,11 +206,11 @@ $('#desktop-readiness').addEventListener('click',event=>{
   if(el.hasAttribute('data-setup-refresh')){void refreshReadiness(true);return;}
   const target=el.dataset.setupAction;
   if(target==='model'){toggleInspector(true);document.dispatchEvent(new Event('apix:manager-settings'));}
-  else if(target==='budget' || target==='permissions'){toggleInspector(true);const section=target==='budget'?schedulingSection:$('#desktop-workflow');section.closest('details')?.setAttribute('open','');section.scrollIntoView({block:'nearest'});}
+  else if(target==='budget' || target==='permissions'){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();const section=target==='budget'?schedulingSection:$('#desktop-workflow');section.closest('details')?.setAttribute('open','');section.scrollIntoView({block:'nearest'});}
   else document.querySelector<HTMLButtonElement>(`[data-page-target="${target}"]`)?.click();
 });
 function toggleInspector(open:boolean){layout.classList.toggle('inspector-closed',!open);$('#desktop-details').setAttribute('aria-expanded',String(open));$('#desktop-project-settings').setAttribute('aria-expanded',String(open));}
-$('#desktop-project-settings').addEventListener('click',()=>toggleInspector(layout.classList.contains('inspector-closed')));
+$('#desktop-project-settings').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click());
 $('#desktop-close-details').addEventListener('click',()=>toggleInspector(false));
 document.addEventListener('keydown',event=>{if(root.classList.contains('active-page') && event.key==='Escape' && !layout.classList.contains('inspector-closed')){toggleInspector(false);$('#desktop-project-settings').focus();}});
 for(const details of inspector.querySelectorAll<HTMLDetailsElement>('.desktop-detail')){const section=details.querySelector('section');if(section===executionSection)details.querySelector('summary')!.textContent='执行与暂停';if(section===schedulingSection)details.querySelector('summary')!.textContent='能力与预算';if(section===meetingSection)details.querySelector('summary')!.textContent='规划会议';}
@@ -225,13 +229,13 @@ $('#desktop-stop').addEventListener('click',()=>void action(async()=>{await api(
 $('#desktop-details').setAttribute('aria-expanded','false');$('#desktop-project-settings').setAttribute('aria-expanded','false');
 $('#desktop-details').addEventListener('click',()=>toggleInspector(layout.classList.contains('inspector-closed')));
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-capabilities" class="desktop-capabilities" title="查看工具权限和自动协作设置"></button>');
-$('#desktop-capabilities').addEventListener('click',()=>{toggleInspector(true);$('#desktop-workflow').scrollIntoView({block:'nearest'});});
+$('#desktop-capabilities').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click());
 function renderWorkflow(){
   if(!workflow || $('#desktop-workflow').contains(document.activeElement))return;
   $('#desktop-capabilities').textContent=`${workflow.manager.mode==='full_access'?'工具已开启':workflow.manager.mode==='read_only'?'只读工具':'工具待授权'} · ${workflow.enabled?'自动协作':'计划待审'}`;
-  $('#desktop-workflow').innerHTML=`<h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发；自主交付开启时按授权实测、自审及返工，其他目标完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">${workflow.enabled?'':`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>${workflow.employees.map(e=>`<label><input type="checkbox" name="employee" value="${esc(e.id)}" checked>${esc(e.name)} · ${esc(e.runtime)}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>'}`}<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form>`;
+  $('#desktop-workflow').innerHTML=`<h3>项目执行方式</h3><p>普通任务和测试直接在“与 ApiX 对话”中运行，无需先配置员工或开启多 Agent 协作。自动执行允许当前项目文件修改、命令和测试；现有预算继续生效。更改方式会使旧执行授权失效。</p><form id="project-execution"><label>执行方式<select name="mode">${modeOptions(workflow.manager.mode)}</select></label><button class="outline-button">保存执行方式</button></form><details><summary>多 Agent 自动协作（高级，可选）</summary><h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发；自主交付开启时按授权实测、自审及返工，其他目标完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">${workflow.enabled?'':`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>${workflow.employees.map(e=>`<label><input type="checkbox" name="employee" value="${esc(e.id)}" checked>${esc(e.name)} · ${esc(e.runtime)}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>'}`}<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form></details>`;
 }
-$('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});});});
+$('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;if(form.id==='project-execution'){await api('/api/permissions',{projectId,subject:'apix',mode:new FormData(form).get('mode'),version:workflow!.manager.version});return;}const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});});});
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
 meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 const updateModel=conversationModelPicker(root.querySelector<HTMLElement>('#coord-conversation-model')!);
@@ -326,11 +330,11 @@ async function reload() {
   let version = ++reloadVersion; const selectedProject = projectId; reloading=true;
   try {
     if(!projectId) { $('#coord-body').hidden=true; $('#coord-empty').hidden=false; return; }
-    const [list,policy,automatic,autonomous]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`),api<Workflow>(`/api/projects/${encodeURIComponent(projectId)}/workflow`),api<AutonomyPolicy>(`/api/projects/${encodeURIComponent(projectId)}/autonomy`)]);
+    const [list,policy,automatic,autonomous,budget]=await Promise.all([api<Pick<Session,'id'|'title'|'derivedStatus'>[]>(`/api/coordination/sessions?projectId=${encodeURIComponent(projectId)}&summary=1`),api<ExecutionPolicy>(`/api/projects/${encodeURIComponent(projectId)}/execution`),api<Workflow>(`/api/projects/${encodeURIComponent(projectId)}/workflow`),api<AutonomyPolicy>(`/api/projects/${encodeURIComponent(projectId)}/autonomy`),api<Parameters<ReturnType<typeof schedulingView>['render']>[1]>(`/api/projects/${encodeURIComponent(projectId)}/scheduling`)]);
     if(version!==reloadVersion || selectedProject!==projectId) return;
     if(!newChat && !list.some(s=>s.id===sessionId)) {const remembered=localStorage.getItem('apix.chat.'+projectId);selectSession(list.find(s=>s.id===remembered)?.id ?? list[0]?.id ?? '');version=reloadVersion;}
     workflow=automatic;renderWorkflow();
-    autonomyPolicy=autonomous;if(!sessionId)autonomyUI.render(projectId,autonomous,null);
+    autonomyPolicy=autonomous;if(!sessionId){autonomyUI.render(projectId,autonomous,null);schedulingUI.render(projectId,budget,snapshot.employees);}
     $('#coord-sessions').innerHTML=list.map(s=>`<button class="coord-session ${s.id===sessionId?'selected':''}" data-session="${s.id}"><strong>${esc(s.title)}</strong><span>${esc(statuses[s.derivedStatus] ?? s.derivedStatus)}</span></button>`).join('');
     executionPolicy=policy;renderExecutionPolicy();
     const selected=list.find(s=>s.id===sessionId);
@@ -340,16 +344,18 @@ async function reload() {
 document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;projectId:string}>)=>{
   snapshot=event.detail.data;
   const changed=projectId!==event.detail.projectId;
-  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';updateLocalLookup();setupUpdated=0;}
+  if(changed) {newMessageDrafts.set(projectId,$<HTMLTextAreaElement>('#desktop-start textarea').value);selectSession('');projectId=event.detail.projectId;$<HTMLTextAreaElement>('#desktop-start textarea').value=newMessageDrafts.get(projectId)??'';modelSettings.projectChanged();setupUpdated=0;}
   void refreshReadiness();
   updateStreamingControls();
   const select=$<HTMLSelectElement>('#coord-project'); select.innerHTML=snapshot.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');select.value=projectId;
-  if(root.classList.contains('active-page') && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
+  const settingSelect=$<HTMLSelectElement>('#settings-project');settingSelect.innerHTML=select.innerHTML;settingSelect.value=projectId;
+  if((root.classList.contains('active-page')||$('#page-settings').classList.contains('active-page')) && (changed || (!loading && !reloading))) void reload().catch(e=>notice(String(e),true));
 }) as EventListener);
-document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(event.detail==='coordinator' && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
+document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(['coordinator','settings'].includes(event.detail) && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
 document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{selectSession(event.detail);void reload().catch(e=>notice(String(e),true));document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
 document.addEventListener('apix:history-changed',((event:CustomEvent<{id:string;kind:string;action:string}>)=>{if(event.detail.kind==='coordination'&&event.detail.id===sessionId&&event.detail.action!=='restore'){newChat=true;selectSession('');localStorage.removeItem('apix.chat.'+projectId);}if(root.classList.contains('active-page'))void reload();}) as EventListener);
-root.addEventListener('click',event=>{if((event.target as Element).closest('[data-queue-settings]')){toggleInspector(true);executionSection.closest('details')?.setAttribute('open','');schedulingSection.closest('details')?.setAttribute('open','');executionSection.scrollIntoView({block:'nearest'});}});
+root.addEventListener('click',event=>{if((event.target as Element).closest('[data-queue-settings]')){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();executionSection.closest('details')?.setAttribute('open','');schedulingSection.closest('details')?.setAttribute('open','');executionSection.scrollIntoView({block:'nearest'});}});
+$('#settings-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#settings-project').value})));
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 $('#coord-create').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{if(!projectId)throw new Error('请先添加或选择项目');const form=event.target as HTMLFormElement;const values=new FormData(form);const created=await api<Session>('/api/coordination/sessions',{projectId,goal:values.get('goal'),interactionMode:values.get('interactionMode')});selectSession(created.id);form.reset();});});
 $('#coord-message').addEventListener('submit',event=>{event.preventDefault();if(!current || $<HTMLButtonElement>('#coord-message button').disabled)return;void action(async()=>{const content=$<HTMLTextAreaElement>('#coord-message textarea').value.trim();if(!content)return;const id=sessionId;messageDrafts.set(id,content);const reviewedDeliveries=current!.tasks.filter(t=>t.status==='completed'&&deliveryFingerprints.has(t.id)).map(t=>({taskId:t.id,fingerprint:deliveryFingerprints.get(t.id)!}));await streamMessage(id,{revision:current!.revision,content,reviewedDeliveries},content);});});
@@ -422,97 +428,9 @@ $('#coord-history').addEventListener('submit',event=>{event.preventDefault();voi
 $('#coord-history-earlier').addEventListener('click',()=>{($<HTMLFormElement>('#coord-history').elements.namedItem('at') as HTMLInputElement).value=$('#coord-history-earlier').dataset.at??'';$<HTMLFormElement>('#coord-history').requestSubmit();});
 $('#coord-search').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const q=new FormData(event.target as HTMLFormElement).get('q');$('#coord-history-output').textContent=JSON.stringify(await api(`/api/coordination/memory?projectId=${projectId}&q=${encodeURIComponent(String(q))}`),null,2);});});
 
-// Model form uses the same state/payload functions as its regression tests.
-const modelForm=$<HTMLFormElement>('#coord-model');
-for(const name of ['apiKey','customApiKey']) {
-  const input=modelForm.elements.namedItem(name) as HTMLInputElement;
-  const toggle=document.createElement('button');toggle.type='button';toggle.className='text-action';toggle.textContent='显示密钥';toggle.setAttribute('aria-pressed','false');
-  toggle.addEventListener('click',()=>{const show=input.type==='password';input.type=show?'text':'password';toggle.textContent=show?'隐藏密钥':'显示密钥';toggle.setAttribute('aria-pressed',String(show));});
-  input.insertAdjacentElement('afterend',toggle);
-}
-modelForm.insertAdjacentHTML('beforeend','<button type="button" id="model-discover" class="outline-button" hidden>读取本地模型</button><p id="model-discovery-status" class="coord-muted" role="status"></p><datalist id="local-model-options"></datalist>');
-modelForm.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="model-test-approved">批准一次连接测试，可能产生模型费用，使用当前项目的推理预算</label><button type="button" id="model-test" class="outline-button">测试已保存的模型连接</button><p class="coord-muted">无项目工具、不启动员工。90 秒后请求终止；离开页面不会取消调用，结果不证明工具或员工可用。</p><p id="model-test-status" role="status"></p>');
-for(const name of ['customModel','customModelName'])(modelForm.elements.namedItem(name) as HTMLInputElement).setAttribute('list','local-model-options');
-const providerSelect=$<HTMLSelectElement>('#model-provider-select');
-const modelSelect=$<HTMLSelectElement>('#model-select');
-let providers:ProviderConfig[]=[];let savedSettings:ModelSettings|null=null;let modelReady=false;
-let lookupVersion=0;let lookupSignature='';let lookupPending=false;
-let testPending=false;let testSignature='';
-function modelDraft(){return Object.fromEntries(new FormData(modelForm)) as ModelDraft;}
-function updateLocalLookup() {
-  const request=modelReady?localLookupRequest(modelDraft(),providers):null;
-  const signature=JSON.stringify([providerSelect.value,request]);
-  if(signature!==lookupSignature){lookupSignature=signature;lookupVersion++;lookupPending=false;$('#model-discovery-status').textContent='';$('#local-model-options').innerHTML='';}
-  const button=$<HTMLButtonElement>('#model-discover');button.hidden=!request;button.disabled=!request || lookupPending;
-  const signatureTest=JSON.stringify([projectId,modelDraft(),savedSettings]);
-  if(signatureTest!==testSignature){testSignature=signatureTest;$('#model-test-status').textContent='';$<HTMLInputElement>('#model-test-approved').checked=false;}
-  $<HTMLButtonElement>('#model-test').disabled=!modelReady || !projectId || testPending;
-  $<HTMLButtonElement>('#coord-model button').disabled=!modelReady || testPending;
-}
-function applyModelDraft(draft:ModelDraft) {
-  const config=providers.find(p=>p.id===draft.provider);
-  for(const name of ['apiKey','customApiKey']){const input=modelForm.elements.namedItem(name) as HTMLInputElement;input.value='';input.type='password';const toggle=input.nextElementSibling!;toggle.textContent='显示密钥';toggle.setAttribute('aria-pressed','false');}
-  modelSelect.innerHTML=config?.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('') || '<option value="">请先选择平台</option>';
-  for(const [name,value] of Object.entries(draft)) (modelForm.elements.namedItem(name) as HTMLInputElement).value=value;
-  $('#model-preset-config').hidden=!config;$('#model-custom-config').hidden=draft.provider!=='custom';
-  $('#api-key-label').hidden=!!config && !config.requiresApiKey;
-  $('#api-key-hint').textContent=config?.requiresApiKey?'直接填写密钥，保存后立即生效；留空保留原配置。密钥保存在本机，不回显。':'';
-  updateLocalLookup();
-}
-providerSelect.addEventListener('change',()=>{try{applyModelDraft(selectProvider(providerSelect.value,providers));}catch(e){notice(String(e),true);}});
-modelForm.addEventListener('input',updateLocalLookup);
-modelForm.addEventListener('change',updateLocalLookup);
-$('#model-discover').addEventListener('click',async()=>{
-  const request=localLookupRequest(modelDraft(),providers);if(!modelReady || !request || lookupPending)return;
-  const version=++lookupVersion;lookupPending=true;updateLocalLookup();
-  const status=$('#model-discovery-status');status.textContent='正在读取本地模型目录…';
-  try {
-    const result=await api<{models:{id:string;name:string}[]}>('/api/manager/models',request);
-    if(version!==lookupVersion)return;
-    $('#local-model-options').innerHTML=result.models.map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('');
-    if(providerSelect.value!=='custom'){
-      const selected=modelSelect.value;
-      modelSelect.innerHTML=mergeLocalModels(result.models,selected).map(m=>'<option value="'+esc(m.id)+'">'+esc(m.name)+'</option>').join('');
-      modelSelect.value=selected;
-    }
-    status.textContent=result.models.length?'读取到 '+result.models.length+' 个模型；请自行选择并保存。目录不保证模型已加载或能够对话。':'服务目录为空；已保留当前模型，请先在本地服务安装或加载模型。';
-  } catch(e){if(version===lookupVersion)status.textContent='读取失败：'+(e instanceof Error?e.message:String(e))+'。已保留当前配置，可继续手动输入。';}
-  finally {if(version===lookupVersion){lookupPending=false;updateLocalLookup();}}
-});
-$('#model-test').addEventListener('click',async()=>{
-  if(testPending)return;
-  const status=$('#model-test-status');
-  try{
-    const request=connectionTestRequest(modelDraft(),providers,savedSettings,modelReady,projectId,$<HTMLInputElement>('#model-test-approved').checked);
-    testPending=true;updateLocalLookup();const signature=testSignature;
-    status.textContent='正在测试已保存的模型…';
-    try{
-      const result=await api<{projectId:string;durationMs:number}>('/api/manager/test',request);
-      if(signature===testSignature)status.textContent=`推理连接成功，用时 ${(result.durationMs/1000).toFixed(1)} 秒；未执行项目工具或员工任务。`;
-    }catch(e){if(signature===testSignature)status.textContent=e instanceof Error?e.message:String(e);}
-    finally{testPending=false;$<HTMLInputElement>('#model-test-approved').checked=false;updateLocalLookup();}
-  }catch(e){status.textContent=e instanceof Error?e.message:String(e);}
-});
-modelForm.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{
-  const draft=Object.fromEntries(new FormData(modelForm)) as ModelDraft;
-  const payload=settingsPayload(draft,providers,savedSettings,modelReady);
-  savedSettings=await api<ModelSettings>('/api/manager/settings',payload);
-  applyModelDraft(settingsDraft(savedSettings,providers));
-  notice('模型配置已保存，密钥无需重启即可生效');
-  updateLocalLookup();
-});});
-modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=true);
-void Promise.all([api<{providers:ProviderConfig[]}>('/api/manager/providers'),api<ModelSettings>('/api/manager/settings')]).then(([catalog,settings])=>{
-  providers=catalog.providers;savedSettings=settings;
-  providerSelect.innerHTML='<option value="">请选择模型 API</option>'+providers.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('')+'<option value="custom">自定义 API URL</option>';
-  applyModelDraft(settingsDraft(settings,providers));modelReady=true;
-  modelForm.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement>('input,button,select').forEach(el=>el.disabled=false);
-  updateLocalLookup();
-}).catch(e=>notice('模型目录或设置加载失败，已禁止保存以保护原配置。请刷新重试：'+String(e),true));
-
 document.querySelector('#page-missions')!.insertAdjacentHTML('beforeend', `<section class="surface-card coord-section"><h3>接入自定义 CLI</h3><p class="coord-muted">适用于提供非交互 CLI 的 Agent。通过标准输入接收任务，通过标准输出返回结果；注册后可在运行时列表中添加员工。</p><p class="coord-muted">Pi、Codex、Claude Code、Gemini、OpenCode、Kimi 已内置支持，请直接点击上方“注册员工”选择运行时，无需在此注册。不可用时请检查对应 CLI 的安装和路径，再点击“重新扫描”。这些 CLI 均为可选，ApiX 自身通过模型 API 独立运行。</p><form id="adapter-form" class="stacked-form"><label>适配器 ID<input name="id" required maxlength="50" pattern="[a-z][a-z0-9\\-]*" aria-describedby="adapter-id-help" title="以小写英文字母开头，只能包含小写字母、数字和连字符（-），最多 50 字符" placeholder="qoder-cli"></label><p id="adapter-id-help" class="coord-muted">例如 qoder-cli；仅使用小写字母、数字和连字符，以小写字母开头。pi、codex、claude、gemini、opencode、kimi 为内置保留 ID。</p><label>名称<input name="name" required placeholder="Qoder CLI"></label><label>可执行文件绝对路径<input name="executable" required placeholder="C:\\Program Files\\nodejs\\node.exe"></label><label>启动参数（JSON 字符串数组）<input name="args" required value="[]"></label><label>输出格式<select name="format"><option value="plain">纯文本</option><option value="jsonl">JSONL 事件</option></select></label><button class="outline-button">注册适配器</button><p id="adapter-notice" role="status"></p></form></section>`);
 document.querySelector('#adapter-form')!.addEventListener('submit',async event=>{
   event.preventDefault(); const form=event.target as HTMLFormElement; const output=document.querySelector('#adapter-notice')!;
   try {const values=Object.fromEntries(new FormData(form)); await api('/api/adapters',{...values,args:JSON.parse(String(values.args))}); output.textContent='适配器已注册，可以在运行时列表注册员工。';}catch(e){output.textContent=String(e instanceof Error ? e.message : e);}
 });
-document.addEventListener('apix:manager-settings',()=>{ toggleInspector(true);const panel=$<HTMLDetailsElement>('.coord-settings'); panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'center'});$<HTMLInputElement>('#coord-model [name="provider"]').focus(); });
+document.addEventListener('apix:manager-settings',()=>{ document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();const panel=$<HTMLDetailsElement>('.coord-settings'); panel.open=true;panel.scrollIntoView({behavior:'smooth',block:'center'});$<HTMLInputElement>('#coord-model [name="provider"]').focus(); });

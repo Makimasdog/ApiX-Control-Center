@@ -5,7 +5,8 @@ function logLinks(operationId:unknown){return operationId?`<div class="assistant
 function fileCard(tool:unknown,value:Record<string,unknown>){return `<details class="assistant-tool-detail assistant-file-result"><summary>${value.conflict?'!':'✓'} ${escapeAssistant(tool)} · ${escapeAssistant(value.path??'本会话文件')} ${value.added!==undefined?`+${escapeAssistant(value.added)} / −${escapeAssistant(value.removed)}`:''}</summary><p>版本 ${escapeAssistant(value.beforeSha256??'新建')} → ${escapeAssistant(value.afterSha256??value.sha256??'见结果')}</p>${value.startLine!==undefined?`<p>行 ${escapeAssistant(value.startLine)}–${escapeAssistant(value.endLine)} · ${escapeAssistant(value.bytesReturned??'')} 字节</p>`:''}${value.diffTruncated?'<p class="assistant-evidence-warning">差异受预算限制，未完整展示。</p>':''}<pre>${escapeAssistant(value.diff??value.content??JSON.stringify(value,null,2))}</pre>${outputLink(value)}</details>`;}
 export function approvalLabel(kind:string,tool?:string){return kind==='approval'?(tool==='configure_agents'?'授权此项目并继续':tool==='configure_verification'?'批准此验收契约':'仅批准这一次'):'提交选择';}
 export function toolResultSucceeded(body:Record<string,unknown>){return body.ok!==false&&hostResultSucceeded(body.result);}
-export function assistantTimeline(events:{id:number;role:string;kind:string;body:Record<string,unknown>}[]){return events.map(e=>{
+type TimelineEvent={id:number;role:string;kind:string;body:Record<string,unknown>};
+function timelineEvent(e:TimelineEvent){
   const content=e.body.content??e.body.error??e.body.question;
   if(content)return `<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?'你':e.role==='system'?'系统':'ApiX'}</small><div>${escapeAssistant(content)}</div></article>`;
   if(e.kind==='tool_started')return `<details class="assistant-tool-detail"><summary>↗ ${escapeAssistant(e.body.tool)}</summary><pre>${escapeAssistant(JSON.stringify(e.body.args,null,2))}</pre>${outputLink(e.body.args)}</details>`;
@@ -29,5 +30,11 @@ export function assistantTimeline(events:{id:number;role:string;kind:string;body
     return `<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${escapeAssistant(e.body.tool??'员工验收结果')} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${escapeAssistant(JSON.stringify(e.body.result??e.body,null,2))}</pre>${outputLink(e.body.result)}</details>`;
   }
   if(e.kind==='request_answer')return `<p class="assistant-system-note">已收到你的${'approved'in e.body?(e.body.approved?'批准':'拒绝'):'选择'}，ApiX 将继续处理。</p>`;
-  return `<p class="assistant-system-note">${escapeAssistant(({compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新'} as Record<string,string>)[e.kind]??e.kind)}</p>`;
-}).join('');}
+  return `<p class="assistant-system-note">${escapeAssistant(({compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind)}</p>`;
+}
+export function assistantTimeline(events:TimelineEvent[]){
+ let result='',records:TimelineEvent[]=[];
+ const flush=()=>{if(!records.length)return;result+=`<details class="assistant-run-records" data-execution-record="${records[0]!.id}"><summary>执行记录 · ${records.length} 项</summary>${records.map(timelineEvent).join('')}</details>`;records=[];};
+ for(const event of events){if(event.body.content||event.body.error||event.body.question){flush();result+=timelineEvent(event);}else records.push(event);}
+ flush();return result;
+}

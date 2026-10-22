@@ -22,6 +22,7 @@ test('conversation models isolate sessions, freeze provider settings, survive re
  assert.throws(()=>models.save('assistant','a',{version:1,model:'deepseek-flash'}),/已变化/);assert.throws(()=>models.save('assistant','a',{version:2,model:'unknown',reasoningEffort:'max'}),/不支持/);
  current={...defaults,baseUrl:'http://localhost:9000',model:'other'};models=createConversationModels(deps,()=>current);assert.equal(models.get('assistant','a').settings.baseUrl,defaults.baseUrl);assert.equal(models.get('assistant','a').settings.model,'deepseek-v4-pro');assert.equal(models.get('assistant','new').settings.model,'other');
  const v=models.get('assistant','a').version;assert.throws(()=>models.save('assistant','a',{version:v,model:'-invalid'}),/无效/);assert.equal(models.get('assistant','a').version,v);
+ const adopted=models.save('assistant','a',{version:v,useGlobal:true});assert.equal(adopted.settings.baseUrl,current.baseUrl);assert.equal(adopted.settings.model,current.model);assert.equal(models.get('assistant','b').settings.baseUrl,defaults.baseUrl);assert.throws(()=>models.save('assistant','a',{version:v,useGlobal:true}),/已变化/);
  }finally{db.close();}
 });
 test('only documented provider capabilities are offered, and no reasoning parameter is sent by default',()=>{
@@ -67,7 +68,7 @@ test('HTTP conversations route their own models, reject active changes, persist 
 });
 
 test('conversation picker has a separate mount from the global settings form',async()=>{
- const source=await readFile('web/coordinator.ts','utf8');assert.equal(source.split('id="coord-model"').length-1,1);assert.equal(source.split('id="coord-conversation-model"').length-1,1);
+ const source=await readFile('web/coordinator.ts','utf8'),settings=await readFile('web/application-settings.ts','utf8');assert.equal(source.split('id="coord-model"').length-1,0);assert.equal(settings.split('id="coord-model"').length-1,1);assert.equal(source.split('id="coord-conversation-model"').length-1,1);
 });
 
 test('employee supervision carries the conversation identity to its inference backend',async()=>{
