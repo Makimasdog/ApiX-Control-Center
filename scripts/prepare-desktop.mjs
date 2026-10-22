@@ -28,7 +28,7 @@ const backend = join(stage, 'backend');
 for (const name of ['src', 'dist', 'web']) {
   cpSync(join(root, name), join(backend, name), { recursive: true, filter: path => {
     if (lstatSync(path).isSymbolicLink()) throw new Error('运行资源不能包含符号链接：' + path);
-    return !/^(?:\.env(?:\..*)?|node_modules|\.git)$/.test(path.split(/[\\/]/).at(-1));
+    return !/^(?:\.env(?:\..*)?|node_modules|\.git|provider-runtimes|model-credentials\.json(?:\..*)?)$/.test(path.split(/[\\/]/).at(-1));
   } });
 }
 for (const name of ['server.mjs', 'control-plane.mjs', 'agent-discovery.mjs']) cpSync(join(root, name), join(backend, name));

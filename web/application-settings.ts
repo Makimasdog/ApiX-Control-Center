@@ -1,5 +1,6 @@
 import { selectProvider, settingsDraft, settingsPayload, localLookupRequest, mergeLocalModels, connectionTestRequest, type ModelDraft, type ModelSettings, type ProviderConfig } from './model-settings.js';
 import {escapeAssistant as esc} from './assistant-view.js';
+import {providerCenter} from './provider-center.js';
 export function applicationModelSettings(container:HTMLElement,project:()=>string,notice:(message:string,error?:boolean)=>void){
 container.insertAdjacentHTML('afterbegin',`<details class="coord-settings"><summary>ApiX 的推理模型</summary><p>应用默认模型供新对话使用；已有对话可在模型栏点击“使用当前应用配置”更新服务地址、模型和密钥引用。ApiX 独立调用模型 API；Pi、Codex、Claude 等是可选执行 Agent。支持 DeepSeek、阿里云百炼、火山引擎豆包等平台。</p><form id="coord-model"><label>模型平台<select name="provider" id="model-provider-select"><option value="">请选择模型 API</option><option value="custom">自定义 URL</option></select></label><div id="model-preset-config" hidden><label>选择模型<select name="model" id="model-select"><option value="">请先选择平台</option></select></label><label>或自定义模型名称 <span class="field-optional">(可选)</span><input name="customModelName" id="custom-model-name-input" placeholder="留空使用上方选中的模型"><small class="field-hint">用于该平台的其他模型，如新版本或特殊模型</small></label><label id="api-key-label">API Key<input type="hidden" name="apiKeyEnv"><input type="password" name="apiKey" id="api-key-input" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；留空保留已保存的密钥"><small class="field-hint" id="api-key-hint"></small></label></div><div id="model-custom-config" hidden><label>自定义 API URL<input name="baseUrl" type="url" placeholder="http://127.0.0.1:11434/v1"></label><label>模型 ID<input name="customModel" placeholder="例如 qwen-max"></label><label>API 类型<select name="apiType"><option value="openai-completions">OpenAI Chat Completions</option><option value="openai-responses">OpenAI Responses</option><option value="anthropic-messages">Anthropic Messages</option></select></label><label>API Key<input type="hidden" name="customApiKeyEnv"><input type="password" name="customApiKey" autocomplete="new-password" spellcheck="false" placeholder="直接粘贴 API Key；本地无密钥服务可留空"><small class="field-hint">密钥仅保存在本机应用数据目录，不回显。修改服务地址后请重新填写密钥。</small></label></div><button class="outline-button">保存模型配置</button></form></details>`);
 const root=container.querySelector<HTMLDetailsElement>('.coord-settings')!;root.open=true;
@@ -94,5 +95,7 @@ void Promise.all([api<{providers:ProviderConfig[]}>('/api/manager/providers'),ap
   updateLocalLookup();
 }).catch(e=>notice('模型目录或设置加载失败，已禁止保存以保护原配置。请刷新重试：'+String(e),true));
 
+document.addEventListener('apix:provider-manager-changed',()=>{void api<ModelSettings>('/api/manager/settings').then(settings=>{savedSettings=settings;applyModelDraft(settingsDraft(settings,providers));updateLocalLookup();}).catch(error=>notice(String(error),true));});
+providerCenter(container);
 return {projectChanged:updateLocalLookup};
 }

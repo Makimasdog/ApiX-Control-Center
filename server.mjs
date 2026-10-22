@@ -6,6 +6,7 @@
 // 下面这些 import 就是把控制面导出的函数逐个引进来给路由使用(名字都在花括号里,仅来源文件不同)。
 import {assistantProjectDiagnosis,assistantNpmProposal,assistantApproveNpm} from './control-plane.mjs';
 import {conversationModel,saveConversationModel} from './control-plane.mjs';
+import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider} from './control-plane.mjs';
 import { createServer } from "node:http";
 import {staticFilePath} from './src/infrastructure/static-files.mjs';
 import {browseFolders} from './src/projects/project-folders.mjs';
@@ -125,6 +126,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       // 下面几条是助手工作台的读取接口:会话列表、单个会话、历史事件、输出片段(支持 offset 分页)、
       // 运行日志、交付物以及交付物里的文件、项目诊断。URL 里的查询参数统一用 new URL(...).searchParams 取。
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
+      if (pathname === '/api/agent-providers' && request.method === 'GET') {send(200,listAgentProviders());return;}
       if(pathname==='/api/chat-history'&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,chatHistory(q.get('projectId')??'',q.get('view')??'active'));return;}
       if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
       if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
@@ -247,6 +249,9 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       // 配置类写接口:权限策略、管理模型设置、连接测试、项目工作流与自主模式开关(含自主会话恢复)。
       else if (pathname === '/api/permissions') result = changePermission(input.projectId, input);
       else if (pathname === '/api/manager/settings') result = saveManagerSettings(input);
+      else if (pathname === '/api/agent-providers') result=saveAgentProvider(input);
+      else if (pathname === '/api/agent-providers/bind') result=bindAgentProvider(input);
+      else if (pathname === '/api/agent-providers/remove') result=removeAgentProvider(input);
       else if (pathname === '/api/manager/test') result = await testManagerConnection(input);
       else if (/^\/api\/projects\/[^/]+\/workflow$/.test(pathname)) result=saveWorkflow(pathname.split('/')[3],input);
       else if (/^\/api\/projects\/[^/]+\/autonomy$/.test(pathname)) result=saveAutonomySettings(pathname.split('/')[3],input);

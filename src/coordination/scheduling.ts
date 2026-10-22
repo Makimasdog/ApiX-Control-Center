@@ -65,7 +65,7 @@ export function overlaps(a: string[], b: string[]) { if(process.platform==='win3
 export function createScheduling(store: Store, dependencies: {
   employees(): Employee[]; available(runtime: string): boolean; denied(projectId: string, employeeId: string, drafting?:boolean): boolean;
   waiting(task: {id:string;project_id:string;employee_id:string;runtime:string}): string | null;
-  supportsModel?(runtime:string):boolean;
+  supportsModel?(runtime:string,employeeId?:string):boolean;
 }) {
   const {db,row,rows,now}=store;
   const activeManagers=new Set<string>();
@@ -151,7 +151,7 @@ export function createScheduling(store: Store, dependencies: {
     if(spec.tools.some(t=>!profileValue.tools.includes(t)))reasons.push('缺少必要工具声明');
     if(spec.contextTokens!==null && (profileValue.contextTokens===null || profileValue.contextTokens<spec.contextTokens))reasons.push('上下文容量不足或未知');
     if(spec.difficulty!=null && (profileValue.reasoningLevel==null || profileValue.reasoningLevel<spec.difficulty))reasons.push('声明的推理能力不足或未知');
-    if(spec.difficulty!=null && profileValue.model && e && dependencies.supportsModel?.(e.runtime)===false)reasons.push('适配器尚未验证显式模型选择，不能依据该档案路由');
+    if(spec.difficulty!=null && profileValue.model && e && dependencies.supportsModel?.(e.runtime,e.id)===false)reasons.push('适配器尚未验证显式模型选择，不能依据该档案路由');
     const predicted=forecast(profileValue,spec);if(predicted!==null && spec.estimateMinor!==null && predicted>spec.estimateMinor)reasons.push('预测费用超过用户批准的执行上界');
     const q=quota(account,p);
     if(q==='insufficient')reasons.push('剩余额度已触及保留线');

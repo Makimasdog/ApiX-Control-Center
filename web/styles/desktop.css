@@ -1,4 +1,18 @@
 /* Desktop workspace: projects and chats at left, conversation in the center. */
+ #application-settings .provider-center { margin-bottom:24px; }
+ #application-settings .provider-center label { display:grid; gap:8px; margin:12px 0; }
+ #application-settings .provider-center input,#application-settings .provider-center select { width:100%; min-height:44px; box-sizing:border-box; }
+ #application-settings .provider-center button { min-height:44px; white-space:normal; }
+ #application-settings .provider-center p,#application-settings .provider-center small { overflow-wrap:anywhere; }
+ #application-settings [data-provider-form] { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+ #application-settings [data-provider-form] label { margin:0; }
+ [data-provider-key],[data-provider-auth-hint],.provider-actions { grid-column:1 / -1; }
+ [data-provider-auth-hint]:empty { display:none; }
+ @media(max-width:650px) { #application-settings [data-provider-form] { grid-template-columns:minmax(0,1fr); } }
+ .provider-agents { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:16px; }
+ .provider-agent { padding:16px; border:1px solid var(--desktop-line); border-radius:12px; min-width:0; }
+ .provider-agent h4 { margin:0; }
+ .provider-actions { display:flex; gap:12px; flex-wrap:wrap; }
 :root { color:var(--text-primary); background:var(--surface); --desktop-line:#343434; }
 body,.app-shell { background:var(--surface); }
 .sidebar { background:var(--surface); border-color:var(--desktop-line); width:236px; }

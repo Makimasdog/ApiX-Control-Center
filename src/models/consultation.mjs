@@ -2,9 +2,9 @@ import {spawn} from 'node:child_process';
 import {workerEnvironment} from '../infrastructure/environment.mjs';
 
 // No execution sandbox claim: this adapter removes CLI tools, hooks and project discovery.
-export function consultClaude(command,prompt,cwd,model='',managerKey='') {
-  const args=['--bare','--restricted','-p','--tools','','--disallowedTools','*','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings','{"disableAllHooks":true}','--setting-sources','','--no-session-persistence','--output-format','stream-json','--verbose',...(model?['--model',model]:[])];
-  const env=workerEnvironment(process.env,'claude',managerKey);
+export function consultClaude(command,prompt,cwd,model='',managerKey='',prepared=null) {
+  const args=['--bare','--restricted','-p','--tools','','--disallowedTools','*','--strict-mcp-config','--mcp-config','{"mcpServers":{}}','--settings',prepared?.consultSettings??'{"disableAllHooks":true}','--setting-sources','','--no-session-persistence','--output-format','stream-json','--verbose',...(model?['--model',model]:[])];
+  const env=prepared?.env??workerEnvironment(process.env,'claude',managerKey);
   return new Promise((resolve,reject)=>{
     const child=spawn(command.executable,[...command.prefix,...args],{cwd,env,stdio:['pipe','pipe','pipe'],windowsHide:true});
     let buffer='';let answer='';let failed=false;let stderr='';let finished=false;let size=0;

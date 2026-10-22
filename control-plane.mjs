@@ -2,6 +2,7 @@ import {createNpmValidation} from './dist/src/validation/npm-validation.js';
 import {createConversationModels} from './dist/src/models/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/infrastructure/environment.mjs';
 import {modelCredentials} from './src/infrastructure/model-credentials.mjs';
+import {createAgentProviders} from './src/models/agent-providers.mjs';
 import {projectDirectory,sameProjectDirectory} from './src/projects/project-folders.mjs';
 import {inspectCodex,executionArgs} from './dist/src/agents/agent-settings.js';
 import { createHash, randomUUID } from "node:crypto";
@@ -350,8 +351,9 @@ const codeHandoffs = createCodeHandoffs({...store,dataDir,recordTask:(...args)=>
 const executionControl=createExecutionControl({...store,recordEvent:(projectId,kind,payload)=>memory.append(projectId,projectId,kind,payload)});
 const scheduling=createScheduling(store,{
   employees:()=>rows('SELECT * FROM employees WHERE deleted_at IS NULL'),available:id=>runtimes().some(r=>r.id===id && r.available && r.managed),
-  denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task),supportsModel:runtimeAdapters.supportsModel
+  denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task),supportsModel:(runtime,id)=>runtimeAdapters.supportsModel(runtime)||agentProviders.supports(id)
 });
+const agentProviders=createAgentProviders({...store,dataDir,credentials,profile:scheduling.profile,saveProfile:scheduling.saveProfile,managerSettings:()=>coordinator.getSettings(),saveManager:input=>coordinator.saveSettings(input)});
 const autonomy=createAutonomy({...store,permissions,scheduling,
   employees:()=>rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL'),
   workflow:projectId=>coordinator.workflowSettings(projectId),
@@ -471,7 +473,8 @@ function launch(task) {
   const project = row("SELECT * FROM projects WHERE id=?", task.project_id);
   const command = commandFor(task.runtime);
   if (!project || !command) throw new Error("Agent 不可用或项目不存在");
-  const environment=workerEnvironment(process.env,task.runtime,managerApiKeys());
+  const providerConfig=agentProviders.prepare(task.employee_id,task.runtime,process.env,managerApiKeys());
+  const environment=providerConfig.env;
   environment.PYTHONUTF8='1';environment.PYTHONIOENCODING='utf-8';
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
@@ -515,7 +518,7 @@ function launch(task) {
   const skipGitRepoCheck = task.runtime === "codex" && !gitRoot(cwd);
   const fullAccess = permissions.decision(task.project_id, task.employee_id) === "allow";
   const args = runtimeAdapters.args(task.runtime, fullAccess, skipGitRepoCheck);
-  try { if(task.employee_id)args.push(...executionArgs(task.runtime,scheduling.profile(task.employee_id),scheduling.taskSpec(task.id).difficulty,runtimeAdapters.modelArgs)); }
+  try { if(task.employee_id)args.push(...executionArgs(task.runtime,scheduling.profile(task.employee_id),scheduling.taskSpec(task.id).difficulty,providerConfig.provider?()=>[]:runtimeAdapters.modelArgs));args.push(...providerConfig.args); }
   catch(error){setRun(runId,'failed','configuration');throw error;}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
   try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
@@ -531,6 +534,7 @@ function launch(task) {
   }
   db.prepare("UPDATE runs SET status='running',status_source='process',pid=? WHERE id=?").run(child.pid ?? null, runId);
   event(runId, "apix", "run_started", { pid: child.pid ?? null, runtime: task.runtime, cwd, gitRepoCheckSkipped: skipGitRepoCheck, executionArgs:args });
+  if(providerConfig.provider)event(runId,'apix','provider.selected',{id:providerConfig.provider.id,version:providerConfig.provider.version,name:providerConfig.provider.name,baseUrl:providerConfig.provider.baseUrl,model:providerConfig.provider.model,apiType:providerConfig.provider.apiType,authHeader:providerConfig.provider.authHeader});
   appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: task.id, runId, status: "running", runtime: task.runtime });
   let buffer = "";
   child.stdout.setEncoding("utf8");
@@ -1021,7 +1025,7 @@ function directorPrompt(project, history, employees, progress, message) {
 function managerApiKeys(){
   const settings=[row('SELECT provider,base_url AS baseUrl,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1')];
   if(row("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_models'"))settings.push(...rows('SELECT settings FROM conversation_models').map(r=>JSON.parse(r.settings)));
-  return [...new Set(settings.filter(Boolean).map(s=>s.apiKeyEnv||(!s.baseUrl?getProviderConfig(s.provider)?.defaultApiKeyEnv:'')).filter(Boolean))];
+  return [...new Set([...agentProviders.keyNames(),...settings.filter(Boolean).map(s=>s.apiKeyEnv||(!s.baseUrl?getProviderConfig(s.provider)?.defaultApiKeyEnv:'')).filter(Boolean)])];
 }
 
 async function inferManager(prompt,onDelta,context) {
@@ -1038,8 +1042,9 @@ async function inferManager(prompt,onDelta,context) {
 async function askPiEmployee(prompt,consultation) {
   const command=commandFor('pi');if(!command)throw new Error('Pi 员工未安装或不可用，请检查 APIX_PI_ENTRY 或 Pi CLI 安装');
   return await new Promise((resolve,reject)=>{
-    const env=piShellEnvironment(workerEnvironment(process.env,'pi',managerApiKeys()));
-    const child=spawn(command.executable,[...command.prefix,'--mode','rpc','--no-session','--no-extensions','--no-tools','--no-skills','--no-prompt-templates','--no-context-files',...(consultation.model?['--model',consultation.model]:[])],{cwd:consultation.cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
+    const prepared=agentProviders.prepare(consultation.employeeId,'pi',process.env,managerApiKeys());
+    const env=piShellEnvironment(prepared.env);
+    const child=spawn(command.executable,[...command.prefix,'--mode','rpc','--no-session','--no-extensions','--no-tools','--no-skills','--no-prompt-templates','--no-context-files',...(prepared.provider?prepared.args:consultation.model?['--model',consultation.model]:[])],{cwd:consultation.cwd,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
     let raw='',answer='',stderr='',settled=false,failed=false,finished=false;const decoder=new TextDecoder();
     child.stderr.setEncoding('utf8');
     const timer=setTimeout(()=>{failed=true;child.kill();},90000);
@@ -1290,7 +1295,7 @@ const coordinator = createCoordinator({ ...store,saveModelKey:key=>credentials.s
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),
   reportManagerFailure:(projectId,sourceId,error)=>{if(quotaFailure(error))scheduling.pauseAccountId(scheduling.policy(projectId).managerAccountId,sourceId);},
-  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model,managerApiKeys()):askPiEmployee(prompt,{cwd,model}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
+  consult:async(employeeId,prompt)=>{const e=row('SELECT runtime FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL',employeeId);if(!['pi','claude'].includes(e?.runtime))throw new Error('此员工没有支持的无工具规划适配器');const command=commandFor(e.runtime);if(!command)throw new Error('规划员工运行时不可用');const cwd=join(dataDir,'consultations',randomUUID());mkdirSync(cwd,{recursive:true});const model=scheduling.profile(employeeId).model;try{return await (e.runtime==='claude'?consultClaude(command,prompt,cwd,model,managerApiKeys(),agentProviders.prepare(employeeId,e.runtime,process.env,managerApiKeys())):askPiEmployee(prompt,{cwd,model,employeeId}));}catch(error){if(quotaFailure(error.message))scheduling.pauseAccount(employeeId,'consultation');throw error;}},
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
@@ -1434,7 +1439,11 @@ export function changeRuntimePause(projectId,input){const result=executionContro
 export const schedulingAccount=scheduling.saveAccount;
 export function resumeSchedulingAccount(input){const result=scheduling.resumeAccount(input);pumpTasks();return result;}
 export const employeeCapability=scheduling.profile;
-export const saveEmployeeCapability=scheduling.saveProfile;
+export function saveEmployeeCapability(id,input){agentProviders.assertModel(id,input.model??'');return scheduling.saveProfile(id,input);}
+export const listAgentProviders=agentProviders.list;
+export const saveAgentProvider=agentProviders.save;
+export const bindAgentProvider=agentProviders.bind;
+export const removeAgentProvider=agentProviders.remove;
 export const schedulingView=scheduling.view;
 export function saveSchedulingPolicy(projectId,input){const result=scheduling.savePolicy(projectId,input);pumpTasks();return result;}
 export function settleSchedulingCost(projectId,input){const result=scheduling.settleReported(projectId,input);memory.append(projectId,projectId,'budget.manually_settled',{id:input.id,actualMinor:input.actualMinor,source:'user_reported'});pumpTasks();return result;}
@@ -1504,11 +1513,16 @@ export function employeeDetails(id){
 const runtimeInfoPending=new Map();
 export async function inspectEmployeeRuntime(id){
   const employee=row('SELECT runtime FROM employees WHERE id=? AND deleted_at IS NULL',id);if(!employee)throw new Error('员工不存在');
+  const catalog=agentProviders.list(),selected=catalog.agents.find(a=>a.id===id);
+  const selectedProvider=catalog.providers.find(p=>p.id===selected?.providerId);
+  if(selectedProvider && selectedProvider.apiType!=='codex-login')return {source:'ApiX API 供应商：'+selectedProvider.name,observedAt:null,quota:{state:'unknown',windows:[],message:'该员工使用独立 API 通道；ChatGPT 订阅额度不代表此通道余额，请查看供应商控制台。'},models:[]};
   if(employee.runtime!=='codex')return {source:'unsupported',observedAt:null,quota:{state:'unknown',windows:[],message:'此运行时尚无已接入的官方额度查询接口；请维护共享账户快照'},models:[]};
-  if(runtimeInfoPending.has('codex'))return runtimeInfoPending.get('codex');
+  const cacheKey=selectedProvider?'codex:'+selectedProvider.id:'codex';
+  if(runtimeInfoPending.has(cacheKey))return runtimeInfoPending.get(cacheKey);
   const command=commandFor('codex');if(!command)throw new Error('Codex 未安装或不可用');
-  const env=workerEnvironment(process.env,'codex',managerApiKeys());
-  const pending=inspectCodex(command,env).finally(()=>runtimeInfoPending.delete('codex'));runtimeInfoPending.set('codex',pending);return pending;
+  const prepared=agentProviders.prepare(id,'codex',process.env,managerApiKeys());
+  const prefix=prepared.args.includes('--model')?prepared.args.slice(0,prepared.args.indexOf('--model')):prepared.args;
+  const pending=inspectCodex({...command,prefix:[...command.prefix,...prefix]},prepared.env).finally(()=>runtimeInfoPending.delete(cacheKey));runtimeInfoPending.set(cacheKey,pending);return pending;
 }
 export function agentTeam(projectId, taskId) {
   const source=taskId ? row('SELECT plan_id FROM tasks WHERE id=? AND project_id=?',taskId,projectId) : null;
