@@ -41,7 +41,7 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
     if(typeof input.model!=='string'||input.reasoningEffort!==undefined&&typeof input.reasoningEffort!=='string')throw new Error('模型与思考强度必须为字符串');
     const model=String(input.model??'').trim(),reasoningEffort=String(input.reasoningEffort??'').trim();
     if(!model||model.length>200||/[\x00-\x1f]/.test(model))throw new Error('模型 ID 无效');
-    const settings={...previous.settings,model,reasoningEffort};const validation=validateModelConfig(settings);if(!validation.valid)throw new Error(validation.error);
+    const settings={...previous.settings,model,reasoningEffort,contextWindow:model===previous.settings.model?previous.settings.contextWindow:null};const validation=validateModelConfig(settings);if(!validation.valid)throw new Error(validation.error);
     reasoningParameters(settings);
     db.prepare('INSERT INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(kind,session_id) DO UPDATE SET settings=excluded.settings,version=excluded.version,updated_at=excluded.updated_at').run(kind,id,JSON.stringify(settings),previous.version+1,now());
     return get(kind,id);

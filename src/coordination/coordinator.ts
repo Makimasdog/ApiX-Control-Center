@@ -15,6 +15,7 @@ import {taskAcceptanceRequest} from './task-review.js';
 import {historyColumns} from '../assistant/chat-history.js';
 
 interface Dependencies extends Store {
+  projectContext?(projectId:string,query:string,sessionId:string):unknown;
   saveModelKey?(key:string):string;
   agent: ApiXAgent; memory: Memory; permissions: Permissions;
   employees(): Employee[];
@@ -47,6 +48,7 @@ export function createCoordinator(deps: Dependencies) {
     CREATE INDEX IF NOT EXISTS apix_guidance_task ON apix_guidance(task_id,updated_at);`);
   const sessionColumns = rows<{name:string}>('PRAGMA table_info(coordination_sessions)');
   if (!sessionColumns.some(column => column.name === 'interaction_mode')) db.exec("ALTER TABLE coordination_sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'conversational'");
+  if(!rows<{name:string}>('PRAGMA table_info(apix_manager_settings)').some(c=>c.name==='context_window'))db.exec('ALTER TABLE apix_manager_settings ADD COLUMN context_window INTEGER');
   const settingsColumns = rows<{name:string}>('PRAGMA table_info(apix_manager_settings)');
   if (!settingsColumns.some(column => column.name === 'base_url')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN base_url TEXT NOT NULL DEFAULT ''");
   if (!settingsColumns.some(column => column.name === 'api_type')) db.exec("ALTER TABLE apix_manager_settings ADD COLUMN api_type TEXT NOT NULL DEFAULT 'openai-completions'");
@@ -171,7 +173,7 @@ export function createCoordinator(deps: Dependencies) {
       transaction(() => { turn(s, 'user', 'message', content); checkpoint(id); });
       const history = rows('SELECT role,kind,content FROM coordination_turns WHERE session_id=? ORDER BY rowid DESC LIMIT 12', id).reverse();
       const priorBriefs = rows<{id:string;title:string;requirements_json:string}>('SELECT id,title,requirements_json FROM coordination_sessions WHERE project_id=? AND id<>? AND confirmed_revision IS NOT NULL ORDER BY updated_at DESC LIMIT 3',s.project_id,id);
-      const projectMemories = rows('SELECT id,title,content,source FROM memories WHERE project_id=? AND scope=\'project\' ORDER BY updated_at DESC LIMIT 5',s.project_id);
+      const projectMemories = deps.projectContext?.(s.project_id,content,s.id);
       history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
       const progress = details(id);
       const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,managerPermission:permissions.get(s.project_id).mode,availableEmployees:deps.employees().map(e=>({id:e.id,name:e.name,runtime:e.runtime})),status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion,{sessionId:s.id,projectId:s.project_id,purpose:'discussion',onTool:event=>{memory.append(s.project_id,id,'manager.tool',event);onTool?.(event);}}));
@@ -474,7 +476,7 @@ export function createCoordinator(deps: Dependencies) {
     return {approvalId,sessionId:s.id};
   }
   function timeline(id: string, at?: number) { const s = session(id); return memory.stateAt(s.project_id,id,at); }
-  function getSettings() { return row<{provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string}>("SELECT provider,model,base_url AS baseUrl,api_type AS apiType,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1") ?? { provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'' }; }
+  function getSettings() { return row<{provider: string; model: string; baseUrl: string; apiType: string; apiKeyEnv: string;contextWindow:number|null}>("SELECT context_window AS contextWindow,provider,model,base_url AS baseUrl,api_type AS apiType,api_key_env AS apiKeyEnv FROM apix_manager_settings WHERE id=1") ?? { provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'' }; }
   function saveSettings(input: Record<string, unknown>) {
     if(busy.has('manager-connection-test'))throw new Error('模型连接测试进行中，请完成后再保存配置');
     const provider = String(input.provider ?? '').trim(); const model = String(input.model ?? '').trim();
@@ -483,8 +485,9 @@ export function createCoordinator(deps: Dependencies) {
     if(input.apiKey!==undefined && typeof input.apiKey!=='string')throw new Error('API Key 必须是文本');
     const validation = validateModelConfig({provider, model, baseUrl, apiType, apiKeyEnv:apiKey?'APIX_MANAGER_KEY_PENDING':apiKeyEnv});
     if (!validation.valid) throw new Error(validation.error);
+    const window=input.contextWindow==null?null:Number(input.contextWindow);if(window!==null&&(!Number.isSafeInteger(window)||window<4096||window>1000000))throw new Error('上下文窗口无效');
     if(apiKey){if(!deps.saveModelKey)throw new Error('模型密钥存储不可用');apiKeyEnv=deps.saveModelKey(apiKey);}
-    db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env) VALUES (1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv);
+    db.prepare('INSERT INTO apix_manager_settings(id,provider,model,base_url,api_type,api_key_env,context_window) VALUES (1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider=excluded.provider,model=excluded.model,base_url=excluded.base_url,api_type=excluded.api_type,api_key_env=excluded.api_key_env,context_window=excluded.context_window').run(baseUrl ? 'apix-custom' : provider,model,baseUrl,apiType,apiKeyEnv,window);
     return getSettings();
   }
   async function testModelConnection(input:Record<string,unknown>) {

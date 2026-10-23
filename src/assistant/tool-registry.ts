@@ -24,7 +24,7 @@ export const builtinTools:ToolDefinition[]=[
   {name:'run_check',description:'运行已获用户批准的检查 ID，宿主保存真实证据；失败须修复重验，未知状态必须人工处理',readOnly:false,inputSchema:schema({checkId:{type:'string',minLength:1,maxLength:60}},['checkId'])},
   {name:'load_skill',description:'加载技能，仅作为参考，不授予权限',readOnly:true,inputSchema:schema({id:string},['id'])},
   {name:'read_memory',description:'读取本项目一条记忆及来源状态',readOnly:true,inputSchema:schema({title:string,id:string})},
-  {name:'remember',description:'提出项目记忆候选，待用户确认后才自动召回',readOnly:false,inputSchema:schema({title:{...string,maxLength:120},content:{...string,maxLength:3000},kind:{enum:['user','feedback','project','reference']}},['title','content'])},
+  {name:'remember',description:'仅保存明确偏好、纠正、项目约定或可复用经验。evidence 必须引用本轮用户原话或已观察工具结果；普通对话不保存，禁止凭据和隐私',readOnly:false,inputSchema:schema({title:{...string,maxLength:120},content:{...string,maxLength:3000},evidence:{...string,minLength:2,maxLength:300},kind:{enum:['user','feedback','project','reference']}},['title','content','evidence'])},
   {name:'inspect_agents',description:'查看员工能力、当前委派、进度与验收状态',readOnly:true,inputSchema:schema({})},
   {name:'inspect_quota',description:'查询一位已注册员工的实际运行时额度及关联账户快照；先 inspect_agents 获取 employeeId，缺少官方接口时明确返回未知，不运行任意命令，不自动恢复暂停',readOnly:true,inputSchema:schema({employeeId:string},['employeeId'])},
   {name:'configure_agents',description:'申请持续项目协作授权，始终需要用户批准',readOnly:false,inputSchema:schema({runtimes:{type:'array',minItems:1,maxItems:6,items:string},profiles:{type:'array',maxItems:6,items:{type:'object'}},checks:{type:'array',minItems:1,maxItems:20,items:{type:'object'}}},['runtimes','checks'])},

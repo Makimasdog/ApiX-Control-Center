@@ -20,7 +20,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   const managerVersion=()=>createHash('sha256').update(JSON.stringify(managerSettings())).digest('hex');
   function idle(id){if(row("SELECT id FROM tasks WHERE employee_id=? AND status IN ('running','starting','stopping','unknown','queued','awaiting_approval','completed') LIMIT 1",id)||row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.employee_id=? AND (r.status IN ('running','starting','stopping','unknown') OR r.ended_at IS NULL) LIMIT 1",id))throw Error('该员工有运行中、待执行或待验收任务，请先停止或处理后再切换供应商');}
   function compatible(runtime,p){if(!providerProtocols[runtime]?.includes(p.apiType)||(p.authHeader==='bearer'&&runtime!=='claude'))throw Error(`供应商协议或认证方式与 ${runtime} 不兼容`);}
-  function managerMatch(p,s){return p.apiType!=='codex-login'&&['custom','apix-custom'].includes(s.provider)&&s.model===p.model&&s.baseUrl===p.baseUrl&&s.apiType===p.apiType&&s.apiKeyEnv===(p.keyRef??'');}
+  function managerMatch(p,s){return p.apiType!=='codex-login'&&['custom','apix-custom'].includes(s.provider)&&s.model===p.model&&s.baseUrl===p.baseUrl&&s.apiType===p.apiType&&s.apiKeyEnv===(p.keyRef??'')&&(s.contextWindow??null)===(p.contextWindow??null);}
   function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；已有对话需使用当前应用配置'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
   function transaction(work){db.exec('SAVEPOINT agent_provider');try{const value=work();db.exec('RELEASE agent_provider');return value;}catch(e){db.exec('ROLLBACK TO agent_provider;RELEASE agent_provider');throw e;}}
   function save(input){
@@ -35,23 +35,25 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     for(const e of bound){idle(e.employee_id);compatible(row('SELECT runtime FROM employees WHERE id=?',e.employee_id).runtime,{apiType,authHeader});}
     const managerBound=previous&&managerMatch(previous,managerSettings());if(managerBound)compatible('apix',{apiType,authHeader});
     if(previous && (previous.baseUrl!==baseUrl || previous.apiType!==apiType) && !input.apiKey && apiType!=='codex-login' && (!!previous.keyRef || !loopback(baseUrl)))throw Error('更换地址或协议必须重新填写密钥，防止旧密钥发往其他服务');
+    const contextWindow=input.contextWindow===undefined?previous?.contextWindow??null:input.contextWindow===''||input.contextWindow===null?null:Number(input.contextWindow);
+    if(contextWindow!==null&&(!Number.isSafeInteger(contextWindow)||contextWindow<4096||contextWindow>1000000))throw Error('上下文窗口应为 4096–1000000 Token');
     let keyRef=apiType==='codex-login'?null:previous?.keyRef??null;
     if(input.apiKey!==undefined && typeof input.apiKey!=='string')throw Error('API Key 必须为文本');
     if(apiType!=='codex-login' && input.apiKey)keyRef=credentials.save(input.apiKey);
     if(apiType!=='codex-login'&&!keyRef&&!loopback(baseUrl))throw Error('请直接填写 API Key；本地回环服务可留空');
-    const p={id:previous?.id??randomUUID(),version:(previous?.version??0)+1,name,model,baseUrl,apiType,authHeader,keyRef};
+    const p={contextWindow,id:previous?.id??randomUUID(),version:(previous?.version??0)+1,name,model,baseUrl,apiType,authHeader,keyRef};
     return transaction(()=>{const {id,version,...body}=p;db.prepare('INSERT INTO agent_providers VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,body=excluded.body').run(id,version,JSON.stringify(body));for(const e of bound)updateModel(e.employee_id,p.model);if(managerBound)applyManager(p);return publicProfile(p);});
   }
   function updateModel(id,model){const old=profile(id);saveProfile(id,{...old,model,pricing:null,accountId:null});}
-  function applyManager(p){compatible('apix',p);saveManager({provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef??''});}
+  function applyManager(p){compatible('apix',p);saveManager({contextWindow:p.contextWindow??null,provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef??''});}
   function adopt(){
     const current=managerSettings();
     if(!current.model||!current.baseUrl)throw Error('当前没有可导入的 ApiX 模型配置');
     const providers=rows('SELECT id FROM agent_providers').map(r=>get(r.id));
     if(providers.some(p=>managerMatch(p,current)))return list();
     const apiType=String(current.apiType||'openai-completions');compatible('apix',{apiType,authHeader:'default'});
-    const p={id:randomUUID(),version:1,name:'ApiX 当前配置',model:current.model,baseUrl:current.baseUrl,apiType,authHeader:'default',keyRef:current.apiKeyEnv||null};
-    db.prepare('INSERT INTO agent_providers VALUES (?,?,?)').run(p.id,p.version,JSON.stringify({name:p.name,model:p.model,baseUrl:p.baseUrl,apiType:p.apiType,authHeader:p.authHeader,keyRef:p.keyRef}));
+    const p={id:randomUUID(),version:1,name:'ApiX 当前配置',contextWindow:current.contextWindow??null,model:current.model,baseUrl:current.baseUrl,apiType,authHeader:'default',keyRef:current.apiKeyEnv||null};
+    db.prepare('INSERT INTO agent_providers VALUES (?,?,?)').run(p.id,p.version,JSON.stringify({contextWindow:p.contextWindow,name:p.name,model:p.model,baseUrl:p.baseUrl,apiType:p.apiType,authHeader:p.authHeader,keyRef:p.keyRef}));
     return list();
   }
   function bind(input){

@@ -1,3 +1,4 @@
+import {loadInstructions,type InstructionOptions} from './instruction-memory.js';
 import {createHash} from 'node:crypto';
 import {existsSync,lstatSync,readdirSync,readFileSync,realpathSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,relative,isAbsolute,dirname,join} from 'node:path';
@@ -31,12 +32,7 @@ export function projectFingerprint(root:string,mutablePaths:string[]=[],protectC
     if(stat.isDirectory()){visit(path);}else if(stat.isFile()){if(protectChecks)hash.update(JSON.stringify([rel,stat.size]));if((bytes+=stat.size)>projectScanLimits.bytes)throw new Error('项目超过 256 MiB 完整扫描范围，请缩小工作区');hash.update(scanProjectFile(path,stat).sha256);}else throw new Error('扫描不支持此文件类型');
   }}visit(root);return hash.digest('hex');
 }
-export function projectInstructions(root:string){
-  return ['AGENTS.md','APIX.md','CLAUDE.md'].filter(name=>existsSync(join(root,name))).map(name=>{
-    const path=projectPath(root,name);if(lstatSync(realpathSync.native(path)).size>16000)throw new Error(`${name} 超过规则预算，请精简后继续`);
-    return {path:name,content:readFileSync(path,'utf8')};
-  });
-}
+export function projectInstructions(root:string,options:InstructionOptions={}){return loadInstructions(root,options);}
 export function skillsFor(root:string){
   const result:{id:string;name:string;path:string;root:string}[]=[];
   for(const base of [join(root,'.apix','skills'),join(root,'.claude','skills'),join(root,'.agents','skills'),join(homedir(),'.apix','skills')]){

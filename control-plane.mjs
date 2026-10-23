@@ -1,3 +1,4 @@
+import {createProjectMemory,sensitiveMemory} from './dist/src/assistant/project-memory.js';
 import {createNpmValidation} from './dist/src/validation/npm-validation.js';
 import {createConversationModels} from './dist/src/models/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/infrastructure/environment.mjs';
@@ -342,6 +343,7 @@ export async function scanRuntimes() { executableCache.clear(); await scanExtern
 const rows = (sql, ...params) => db.prepare(sql).all(...params);
 const row = (sql, ...params) => db.prepare(sql).get(...params);
 const store = { db, row, rows, now };
+const projectMemory=createProjectMemory(store);
 const employeeInsights = createEmployeeInsights(store);
 const memory = createEventMemory(store);
 const permissions = createPermissions(store, memory);
@@ -485,16 +487,12 @@ function launch(task) {
   }
   const context = [];
   if(process.platform==='win32' && task.runtime==='codex')context.push('Windows 编码约定：文件、标准输入输出与报告均使用 UTF-8。通过 PowerShell 执行含中文的命令前，设置 $OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)；读取和写入文件显式使用 UTF-8，避免中文经管道变为问号。');
-  const profile = row("SELECT * FROM project_profiles WHERE project_id=?", task.project_id);
+  const profile = safeProfile(row("SELECT * FROM project_profiles WHERE project_id=?", task.project_id));
   if (profile) context.push(`项目档案（用户维护，仅供参考）：\n${[profile.summary, profile.goals, profile.constraints, profile.decisions].filter(Boolean).join("\n").slice(0, 5000)}`);
-  const projectMemories = rows("SELECT title,content FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 5", task.project_id);
-  if (projectMemories.length) context.push(`项目记忆（用户维护，仅供参考）：\n${projectMemories.map((item) => `${item.title}: ${item.content.slice(0, 1200)}`).join("\n")}`);
-  if (task.conversation_id) {
-    const history = rows("SELECT id,prompt,result,status FROM tasks WHERE conversation_id=? AND rowid<(SELECT rowid FROM tasks WHERE id=?) ORDER BY rowid DESC LIMIT 6", task.conversation_id, task.id).reverse();
-    if (history.length) context.push(`本对话此前任务（请核对实际文件状态）：\n${history.map((item) => `用户：${item.prompt.slice(0, 1500)}\nAgent [${item.status}]：${item.result.slice(0, 2500)}`).join("\n---\n")}`);
-    const taskMemories = rows("SELECT m.title,m.content FROM memories m JOIN tasks t ON t.id=m.task_id WHERE t.conversation_id=? AND m.scope='task' ORDER BY m.updated_at DESC LIMIT 5", task.conversation_id);
-    if (taskMemories.length) context.push(`本对话任务记忆：\n${taskMemories.map((item) => `${item.title}: ${item.content.slice(0, 1000)}`).join("\n")}`);
-  }
+  const workerMemory=projectMemory.context(task.project_id,task.prompt,task.id,'worker',task.id);
+  if(workerMemory.index.lines>2||workerMemory.recalled.length)context.push(JSON.stringify(workerMemory));
+  const workerInstructions=projectInstructions(sourcePath,projectMemory.settings(task.project_id));
+  if(workerInstructions.length)context.push(JSON.stringify(workerInstructions));
   const inputs = rows("SELECT s.id,s.task_id,s.content FROM shared_artifacts s JOIN task_dependencies d ON d.depends_on_id=s.task_id WHERE d.task_id=? ORDER BY s.created_at", task.id).map((item) => `前置交付物 ${item.id}（来源任务 ${item.task_id}，须自行验证）：\n${item.content}`);
   context.unshift(...inputs);
   const coordinated = task.plan_id ? row("SELECT requirements_json,revision FROM coordination_plan_briefs WHERE plan_id=?", task.plan_id) : null;
@@ -638,8 +636,8 @@ export function snapshot(ifNoneMatch) {
     employees: rows("SELECT * FROM employees WHERE deleted_at IS NULL ORDER BY created_at DESC"),
     projects: rows("SELECT * FROM projects ORDER BY created_at DESC"),
     conversations: rows("SELECT c.*,(SELECT COUNT(*) FROM tasks t WHERE t.conversation_id=c.id) AS task_count FROM conversations c ORDER BY c.updated_at DESC"),
-    profiles: rows("SELECT * FROM project_profiles"),
-    memories: rows("SELECT * FROM memories ORDER BY updated_at DESC"),
+    profiles: rows("SELECT * FROM project_profiles").map(safeProfile),
+    memories: projectMemory.list(),
     directorThreads: rows("SELECT * FROM director_threads ORDER BY updated_at DESC"),
     directorMessages: rows("SELECT * FROM director_messages ORDER BY created_at,id"),
     directorProposals: rows("SELECT * FROM director_proposals ORDER BY created_at DESC").map((item) => ({ ...item, steps: JSON.parse(item.steps_json) })),
@@ -882,65 +880,28 @@ export function resumeTask(id, input) {
   return createTask({ projectId: previous.project_id, conversationId: previous.conversation_id, employeeId: input.employeeId ?? previous.employee_id, prompt, resumesTaskId: previous.id });
 }
 
+function safeProfile(profile){if(!profile)return profile;return Object.fromEntries(Object.entries(profile).map(([key,value])=>[key,typeof value==='string'&&sensitiveMemory(value)?'[敏感资料已隔离]':value]));}
 export function saveProjectProfile(projectId, input) {
   if (!row("SELECT id FROM projects WHERE id=?", projectId)) throw new Error("项目不存在");
   const existing = row("SELECT version FROM project_profiles WHERE project_id=?", projectId);
   const expectedVersion = Number(input.version);
   if (!Number.isInteger(expectedVersion) || expectedVersion !== (existing?.version ?? 0)) throw new Error("项目档案已变化，请刷新后再保存");
   const fields = ["summary", "goals", "constraints", "decisions"].map((key) => String(input[key] ?? "").trim().slice(0, 5000));
+  if(fields.some(sensitiveMemory))throw new Error('项目档案不能包含敏感内容');
   const version = expectedVersion + 1;
   db.prepare("INSERT INTO project_profiles(project_id,summary,goals,constraints,decisions,version,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET summary=excluded.summary,goals=excluded.goals,constraints=excluded.constraints,decisions=excluded.decisions,version=excluded.version,updated_at=excluded.updated_at").run(projectId, ...fields, version, now());
   return { version };
 }
 
 export function createMemory(input) {
-  const project = row("SELECT id FROM projects WHERE id=?", input.projectId);
-  const scope = input.scope;
-  const task = scope === "task" ? row("SELECT id FROM tasks WHERE id=? AND project_id=?", input.taskId, input.projectId) : null;
-  const category = String(input.category ?? "").trim().slice(0, 50);
-  const title = String(input.title ?? "").trim().slice(0, 120);
-  const content = String(input.content ?? "").trim().slice(0, 10000);
-  if (!project || !["task", "project"].includes(scope) || (scope === "task" && !task) || !category || !title || !content) throw new Error("请填写有效的项目、范围、类别、标题和内容");
-  if (row("SELECT id FROM memories WHERE project_id=? AND scope=? AND category=? AND title=?", project.id, scope, category, title)) throw new Error("同范围已有同名记忆，请编辑现有记录");
-  const id = randomUUID();
-  db.exec("BEGIN");
-  try {
-    db.prepare("INSERT INTO memories(id,project_id,task_id,scope,category,title,content,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, project.id, task?.id ?? null, scope, category, title, content, "user", now(), now());
-    db.prepare("INSERT INTO memory_revisions(memory_id,version,title,content,created_at) VALUES (?,?,?,?,?)").run(id, 1, title, content, now());
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return id;
+  if(projectMemory.list(input.projectId).some(n=>n.title===String(input.title).trim()))throw new Error('同范围已有同名记忆');
+  return projectMemory.save(input.projectId,{...input,version:0}).id;
 }
-
-export function updateMemory(id, input) {
-  const existing = row("SELECT * FROM memories WHERE id=?", id);
-  const title = String(input.title ?? "").trim().slice(0, 120);
-  const content = String(input.content ?? "").trim().slice(0, 10000);
-  if (!existing || Number(input.version) !== existing.version || !title || !content) throw new Error("记忆不存在、版本已变化或内容为空");
-  if (row("SELECT id FROM memories WHERE project_id=? AND scope=? AND category=? AND title=? AND id<>?", existing.project_id, existing.scope, existing.category, title, id)) throw new Error("同范围已有同名记忆，请更换标题或编辑现有记录");
-  const version = existing.version + 1;
-  db.exec("BEGIN");
-  try {
-    db.prepare("UPDATE memories SET title=?,content=?,version=?,updated_at=? WHERE id=?").run(title, content, version, now(), id);
-    db.prepare("INSERT INTO memory_revisions(memory_id,version,title,content,created_at) VALUES (?,?,?,?,?)").run(id, version, title, content, now());
-    db.exec("COMMIT");
-  } catch (error) { db.exec("ROLLBACK"); throw error; }
-  return { version };
-}
-
-export function deleteMemory(id, input) {
-  const existing = row("SELECT version FROM memories WHERE id=?", id);
-  if (!existing || Number(input.version) !== existing.version) throw new Error("记忆不存在或版本已变化，请刷新后再删除");
-  db.prepare("DELETE FROM memories WHERE id=?").run(id);
-}
-
-export function searchMemories(projectId, query) {
-  if (!row("SELECT id FROM projects WHERE id=?", projectId)) throw new Error("项目不存在");
-  const term = String(query ?? "").trim().slice(0, 100);
-  if (!term) return [];
-  if ([...term].length < 3) return rows("SELECT * FROM memories WHERE project_id=? AND (instr(lower(title),lower(?))>0 OR instr(lower(content),lower(?))>0) ORDER BY updated_at DESC LIMIT 50", projectId, term, term);
-  return rows("SELECT m.* FROM memory_fts f JOIN memories m ON m.rowid=f.rowid WHERE memory_fts MATCH ? AND m.project_id=? ORDER BY bm25(memory_fts),m.updated_at DESC LIMIT 50", `"${term.replaceAll('"', '""')}"`, projectId);
-}
+export function updateMemory(id,input){const old=projectMemory.list().find(n=>n.id===id);if(!old)throw new Error('记忆不存在');return projectMemory.save(old.project_id,{...input,id});}
+export function deleteMemory(id,input){const old=projectMemory.list().find(n=>n.id===id);if(!old)throw new Error('记忆不存在');projectMemory.remove(old.project_id,id,Number(input.version));}
+export function searchMemories(projectId,query){projectMemory.settings(projectId);const term=String(query??'').trim().toLowerCase();return term?projectMemory.list(projectId).filter(n=>(n.title+' '+n.content).toLowerCase().includes(term)).slice(0,50):[];}
+export function projectMemoryState(projectId){const project=assistantProject(projectId);const settings=projectMemory.settings(projectId);let instructions=[],instructionError='';try{instructions=projectInstructions(project.path,settings).map(({content,...info})=>info);}catch{instructionError='指令文件不可加载：请检查文件路径、导入循环、敏感内容和 16KB/64KB 上限。';}return {settings,notes:projectMemory.list(projectId),usage:projectMemory.usage(projectId),instructions,instructionError};}
+export function saveProjectMemorySettings(projectId,input){projectMemory.saveSettings(projectId,input);return projectMemoryState(projectId);}
 
 export function createDepartment(input) {
   const name = String(input.name ?? "").trim().slice(0, 100);
@@ -1106,10 +1067,8 @@ export async function sendDirectorMessage(input) {
       const category = String(candidate.category ?? "需求").trim().slice(0, 50);
       const title = String(candidate.title ?? "").trim().slice(0, 120);
       const memoryContent = String(candidate.content ?? "").trim().slice(0, 10000);
-      if (!evidence || !content.includes(evidence) || !category || !title || !memoryContent || row("SELECT id FROM memories WHERE project_id=? AND scope='project' AND category=? AND title=?", project.id, category, title)) continue;
-      const memoryId = randomUUID();
-      db.prepare("INSERT INTO memories(id,project_id,scope,category,title,content,source,source_message_id,created_at,updated_at) VALUES (?,?,'project',?,?,?,'director',?,?,?)").run(memoryId, project.id, category, title, memoryContent, userMessageId, now(), now());
-      db.prepare("INSERT INTO memory_revisions(memory_id,version,title,content,created_at) VALUES (?,?,?,?,?)").run(memoryId, 1, title, memoryContent, now());
+      if (!/记住|偏好|约定|以后|始终|总是|纠正|习惯|不要|remember|prefer|always|convention|from now on/i.test(content) || !evidence || !content.includes(evidence) || !category || !title || !memoryContent || sensitiveMemory(memoryContent+' '+title)||projectMemory.list(project.id).some(n=>n.title===title)||!projectMemory.settings(project.id).enabled) continue;
+      projectMemory.save(project.id,{title,content:memoryContent,category},'director');
     }
     db.exec("COMMIT");
     return { threadId: thread.id, proposalId, mode: fallbackReason ? "rules" : "pi" };
@@ -1290,7 +1249,7 @@ export function applyIntegration(id) {
 export function closeStore() { db.close(); }
 
 let notifyAssistant=()=>{};
-const coordinator = createCoordinator({ ...store,saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+const coordinator = createCoordinator({ ...store,projectContext:(projectId,query,id)=>projectMemory.context(projectId,query,id,'coordinator'),saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),
@@ -1315,11 +1274,11 @@ const conversationModels=createConversationModels(store,()=>coordinator.getSetti
 const assistantCommands=createAssistantCommands({...store,root:projectId=>assistantProject(projectId).path,env:()=>workerEnvironment(process.env,'assistant-tool',managerApiKeys()),protectedValues:()=>managerApiKeys().map(key=>process.env[key]).filter(Boolean),policy:projectId=>permissions.get(projectId)});
 const npmValidation=createNpmValidation({...store,directory:join(dataDir,'npm-validation'),root:projectId=>assistantProject(projectId).path,command:(s,args,signal,context)=>assistantCommands.execute(s,'npm_validation',args,signal,context)});
 const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(projectId).path);
-const assistant=createAssistantLoop({...store,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
-  toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:()=>Number(process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768),
+const assistant=createAssistantLoop({...store,memory:projectMemory,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
+  toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:id=>{const config=conversationModels.get('assistant',id).settings;return Number(config.contextWindow??getProviderConfig(config.provider)?.models.find(m=>m.id===config.model)?.contextWindow??process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768);},
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
-  describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id),legacyMemoryIndex:rows("SELECT id,title,category,source FROM memories WHERE project_id=? AND scope='project' ORDER BY updated_at DESC LIMIT 20",s.project_id),instructions:projectInstructions(project.path),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
+  describe:s=>{const project=assistantProject(s.project_id);return {environment:{platform:process.platform,node:process.execPath,commandsUseImplicitShell:false},project:{id:project.id,name:project.name,path:project.path},projectProfile:safeProfile(row('SELECT summary,goals,constraints,decisions FROM project_profiles WHERE project_id=?',s.project_id)),instructions:projectInstructions(project.path,{...projectMemory.settings(s.project_id),paths:rows("SELECT body FROM assistant_events WHERE session_id=? AND kind='tool_result' ORDER BY id DESC LIMIT 10",s.id).map(e=>JSON.parse(e.body).result?.path).filter(p=>typeof p==='string'&&existsSync(resolve(project.path,p)))}),skills:skillsFor(project.path).map(({id,name})=>({id,name})),employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),autonomy:autonomy.settings(s.project_id),workflow:coordinator.workflowSettings(s.project_id),child:s.child_session_id?{id:s.child_session_id,status:coordinator.sessionDetails(s.child_session_id).derivedStatus}:null};},
   infer:createAssistantInference({settings:sessionId=>conversationModels.get('assistant',sessionId).settings,account:projectId=>scheduling.policy(projectId).managerAccountId,reserve:(id,projectId)=>scheduling.reserveManager(id,projectId),settle:(id,cost)=>scheduling.settle(id,cost),pause:(accountId,id)=>scheduling.pauseAccountId(accountId,id),quotaFailure,recordFailure:record=>db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','inference_accounting_failure',?,?)").run(record.sessionId,JSON.stringify(record),now()),infer:inferManager}),
   commandState:(s,phase)=>{if(phase==='resume'){assistantCommands.recover(s);assistantCoding.recover(s);}else{assistantCommands.assertClear(s,phase==='message');assistantCoding.assertClear(s,phase==='message');}},
   fingerprint:projectId=>projectFingerprint(assistantProject(projectId).path),
@@ -1329,7 +1288,7 @@ const assistant=createAssistantLoop({...store,npmCheck:(s,c,id,signal)=>npmValid
     if(tool==='read_output')return assistantCommands.readOutput(s.id,args);
     if(['read_file','list_files','write_file','edit_file','search_files','get_diff','load_skill'].includes(tool))return assistantCoding.execute(s,tool,args,signal);
     if(tool==='run_command'||tool==='verify')return assistantCommands.execute(s,tool,args,signal);
-    if(tool==='read_memory'){const memory=args.id?row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND id=?",s.project_id,String(args.id)):row("SELECT id,title,content,source FROM memories WHERE project_id=? AND scope='project' AND title=? ORDER BY updated_at DESC LIMIT 1",s.project_id,String(args.title));if(!memory)throw new Error('记忆不存在');return memory;}
+    if(tool==='read_memory')return projectMemory.read(s.project_id,String(args.title??''),args.id?String(args.id):undefined,undefined,s.id);
     if(tool==='inspect_agents')return {employees:rows('SELECT id,name,runtime,role FROM employees WHERE enabled=1 AND deleted_at IS NULL').map(e=>({...e,capabilityProfile:scheduling.profile(e.id)})),runtimes:runtimes(),execution:executionControl.get(s.project_id),child:s.child_session_id?coordinator.sessionDetails(s.child_session_id):null};
     if(tool==='inspect_quota'){const employee=row('SELECT id,name,runtime FROM employees WHERE id=? AND deleted_at IS NULL',String(args.employeeId));if(!employee)throw new Error('员工不存在');const view=scheduling.view(s.project_id),accountId=scheduling.profile(employee.id).accountId;return {employee,observedAt:now(),runtime:await inspectEmployeeRuntime(employee.id),account:accountId?view.accounts.find(a=>a.id===accountId)??null:null,execution:executionControl.get(s.project_id),note:'运行时额度与手工账户快照分别展示，未知不等于零；查询不会恢复暂停或启动任务'};}
     if(tool==='send_agent_message'){
@@ -1379,6 +1338,8 @@ export const assistantReply=assistant.reply;
 export const assistantStop=assistant.stop;
 export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
+export const assistantContext=assistant.contextInfo;
+export const assistantCompact=assistant.compact;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;
 export const assistantProjectDiagnosis=assistant.projectDiagnosis;

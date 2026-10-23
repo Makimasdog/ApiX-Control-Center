@@ -370,8 +370,8 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     await post(port, `/api/approvals/${followUp.approvalId}`, { approved: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === followUp.taskId)?.status === "completed");
     const followUpResult = (await snapshot(port)).tasks.find((item) => item.id === followUp.taskId).result;
-    assert.match(followUpResult, /alpha secret context/);
-    assert.match(followUpResult, /Private thread decision/);
+    assert.doesNotMatch(followUpResult, /alpha secret context/);
+    assert.doesNotMatch(followUpResult, /Private thread decision/);
     assert.match(followUpResult, /Project continuity/);
     assert.doesNotMatch(followUpResult, /beta task/);
     const crossProject = await post(port, "/api/tasks", { projectId: otherProjectId, employeeId: secondEmployee, prompt: "other project" });
@@ -438,7 +438,7 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
     assert.equal(unavailable.status, 400);
     const runtimes = (await snapshot(port)).runtimes;
     assert(runtimes.some((item) => item.id === "qoder" && !item.managed));
-    const drafted = await post(port, "/api/director/messages", { projectId, content: "请实现多语言支持" });
+    const drafted = await post(port, "/api/director/messages", { projectId, content: "请记住项目约定：支持多语言，并实现多语言支持" });
     assert.equal(drafted.mode, "pi");
     const draftSnapshot = await snapshot(port);
     assert.equal(draftSnapshot.directorMessages.filter((item) => item.thread_id === drafted.threadId).length, 2);

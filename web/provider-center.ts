@@ -1,5 +1,5 @@
 import {escapeAssistant as esc} from './assistant-view.js';
-type Provider={id:string;version:number;name:string;model:string;baseUrl:string;apiType:string;authHeader?:string;hasKey:boolean};
+type Provider={contextWindow?:number|null;id:string;version:number;name:string;model:string;baseUrl:string;apiType:string;authHeader?:string;hasKey:boolean};
 type Agent={id:string;name:string;runtime:string;providerId:string|null;version:number|string;model:string;baseUrl?:string;source:string;configured?:boolean;adoptable?:boolean};
 type Catalog={providers:Provider[];agents:Agent[];protocols:Record<string,string[]>};
 type Preset={id:string;name:string;baseUrl:string;apiType:string;requiresApiKey:boolean;models:{id:string;name:string}[]};
@@ -51,6 +51,7 @@ export function providerCenter(container:HTMLElement,options:Options={}){
           <label>接口与认证<select name="apiType">${Object.entries(protocolNames).map(([value,label])=>`<option value="${value}" ${editing?.apiType===value?'selected':''}>${esc(label)}</option>`).join('')}</select></label>
           <label data-provider-auth-header ${editing?.apiType==='anthropic-messages'?'':'hidden'}>Anthropic 认证方式<select name="authHeader"><option value="default" ${authHeader==='default'?'selected':''}>API Key（x-api-key，标准协议）</option><option value="bearer" ${authHeader==='bearer'?'selected':''}>Bearer Token（仅 Claude 员工）</option></select></label>
           <label data-provider-url ${editing?.apiType==='codex-login'?'hidden':''}>Base URL<input name="baseUrl" type="url" value="${esc(editing?.baseUrl??'')}" placeholder="供应商控制台提供的 API 基础地址"></label>
+          <label>声明的上下文窗口 (Token)<input name="contextWindow" type="number" min="4096" max="1000000" value="${editing?.contextWindow??''}" placeholder="留空使用模型目录或全局值"></label>
           <label>模型 ID<input name="model" maxlength="200" required list="provider-local-models" value="${esc(editing?.model??'')}" placeholder="该通道支持的完整模型 ID"></label>
           <label data-provider-key ${editing?.apiType==='codex-login'?'hidden':''}>API Key<input name="apiKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="${editing?.hasKey?'留空保留已保存的密钥':'本地回环服务可留空'}"><small>${editing?.hasKey?'密钥仅保存在本机应用数据目录，不回显；更换地址或协议需要重新填写。':'远程服务必须填写；本地回环服务可留空。'}</small></label>
           <button type="button" class="text-action" data-provider-discover hidden>读取本地模型</button><datalist id="provider-local-models"></datalist>

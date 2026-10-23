@@ -141,13 +141,14 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
       continue;
     }
-    if (command.message === "hold" || process.env.APIX_FIXTURE_HOLD === '1') continue;
+    const taskDirective=command.message.split(/\r?\n/)[0];
+    if (taskDirective === "hold" || process.env.APIX_FIXTURE_HOLD === '1') continue;
     if (command.message.startsWith("write-file:")) {
-      const [filename, content] = command.message.slice(11).split(":", 2);
+      const [filename, content] = taskDirective.slice(11).split(":", 2);
       if (!/^[a-z]\.txt$/.test(filename)) throw new Error("Invalid test filename");
       writeFileSync(filename, content);
     }
-    if (command.message === "many-events") for (let number = 0; number < 350; number++) process.stdout.write(JSON.stringify({ type: "tool_execution_start", toolName: "read", args: { number } }) + "\n");
+    if (taskDirective === "many-events") for (let number = 0; number < 350; number++) process.stdout.write(JSON.stringify({ type: "tool_execution_start", toolName: "read", args: { number } }) + "\n");
     process.stdout.write(JSON.stringify({ type: "message_end", message: { role: "assistant", stopReason: command.message.startsWith("provider-error") ? "error" : "stop", content: [{ type: "text", text: `Pi result: ${command.message}` }] } }) + "\n");
     process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');
   }

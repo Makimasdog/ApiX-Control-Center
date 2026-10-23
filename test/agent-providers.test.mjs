@@ -19,6 +19,12 @@ function fixture(work){
   const bind=(id,p)=>service.bind({agentId:id,version:service.list().agents.find(a=>a.id===id).version,providerId:p?.id??null,providerVersion:p?.version});
   try{return work({db,dir,env,deps,service,store,save,bind,restart:()=>createAgentProviders(deps)});}finally{db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true});}
 }
+
+test('declared context window is validated, applied to ApiX and retained through edits',()=>fixture(({service,save,bind,deps})=>{
+  const provider=save('openai-completions',{contextWindow:64000});bind('apix',provider);assert.equal(deps.managerSettings().contextWindow,64000);
+  const changed=service.save({...provider,name:'Changed',contextWindow:128000});assert.equal(deps.managerSettings().contextWindow,128000);assert.equal(service.list().agents.find(a=>a.id==='apix').providerId,provider.id);
+  assert.throws(()=>service.save({...changed,contextWindow:1000}),/上下文窗口/);assert.equal(deps.managerSettings().contextWindow,128000);
+}));
 test('CRUD persists private key references, never echoes secrets, rejects stale edits and endpoint credential reuse',()=>fixture(({service,save,restart})=>{
   const p=save();assert(!JSON.stringify(service.list()).includes('fixture-secret'));assert.equal(p.hasKey,true);assert(!('keyRef' in p));assert.deepEqual(restart().list(),service.list());
   assert.throws(()=>service.save({...p,version:0}),/变化/);assert.throws(()=>service.save({...p,baseUrl:'https://elsewhere.invalid'}),/重新填写密钥/);assert.throws(()=>service.save({...p,baseUrl:'http://127.0.0.1:11434/v1'}),/重新填写密钥/);

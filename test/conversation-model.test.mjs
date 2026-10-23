@@ -15,6 +15,11 @@ import http from 'node:http';
 import https from 'node:https';
 import {syncBuiltinESMExports} from 'node:module';
 const defaults={provider:'apix-custom',model:'deepseek-flash',baseUrl:'https://api.deepseek.com/v1',apiType:'openai-completions',apiKeyEnv:'DEEPSEEK_API_KEY'};
+
+test('declared windows are frozen per conversation and reset when a different model is selected',()=>{
+ const db=new DatabaseSync(':memory:'),store={db,row:(q,...p)=>db.prepare(q).get(...p),now:()=>new Date().toISOString()};let current={...defaults,contextWindow:64000};
+ try{const models=createConversationModels(store,()=>current);models.initialize('assistant','a');current={...current,contextWindow:128000};assert.equal(models.get('assistant','a').settings.contextWindow,64000);const changed=models.save('assistant','a',{version:1,model:'deepseek-v4-pro',reasoningEffort:''});assert.equal(changed.settings.contextWindow,null);assert.equal(models.save('assistant','a',{version:2,useGlobal:true}).settings.contextWindow,128000);}finally{db.close();}
+});
 test('conversation models isolate sessions, freeze provider settings, survive reopen and reject stale updates',()=>{
  const db=new DatabaseSync(':memory:');const deps={db,row:(q,...p)=>db.prepare(q).get(...p),now:()=>new Date().toISOString()};let current={...defaults};let models=createConversationModels(deps,()=>current);
  try{models.initialize('assistant','a');models.initialize('assistant','b');models.initialize('coordination','a');

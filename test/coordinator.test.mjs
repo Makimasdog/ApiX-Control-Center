@@ -935,7 +935,7 @@ test('ApiX actively requests progress from a silent worker and records the super
 },{APIX_SUPERVISION_TICK_MS:'100',APIX_SUPERVISION_AFTER_MS:'300'}));
 test('provider catalog and manager validation preserve old settings on every failure',async()=>harness(async h=>{
   assert.deepEqual((await h.request('/api/manager/providers')).providers,BUILTIN_PROVIDERS);
-  const local={provider:'apix-custom',model:'qwen-test',baseUrl:'http://[::1]:11434/v1',apiType:'openai-completions',apiKeyEnv:''};
+  const local={provider:'apix-custom',model:'qwen-test',baseUrl:'http://[::1]:11434/v1',apiType:'openai-completions',apiKeyEnv:'',contextWindow:null};
   await h.request('/api/manager/settings',local);
   const invalid=[
     [{baseUrl:'invalid-url'},/URL 格式无效/],
@@ -959,10 +959,10 @@ test('provider catalog and manager validation preserve old settings on every fai
   }
   const remote={...local,baseUrl:'https://example.invalid/v1',apiKeyEnv:'APIX_TEST_NOT_SET'};
   assert.deepEqual(await h.request('/api/manager/settings',remote),remote,'save validates the variable name, not its value');
-  const old={provider:'old-pi-provider',model:'old-model',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''};
+  const old={provider:'old-pi-provider',model:'old-model',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'',contextWindow:null};
   assert.deepEqual(await h.request('/api/manager/settings',old),old);
   await h.restart();assert.deepEqual(await h.request('/api/manager/settings'),old);
-  assert.deepEqual(await h.request('/api/manager/settings',{}),{provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:''});
+  assert.deepEqual(await h.request('/api/manager/settings',{}),{provider:'',model:'',baseUrl:'',apiType:'openai-completions',apiKeyEnv:'',contextWindow:null});
 }));
 
 test('local model discovery API is read-only, authenticated by environment and origin protected',async()=>harness(async h=>{
@@ -1303,4 +1303,17 @@ test('restart recovery requires explicit stop confirmation and a fresh workspace
   const state=await h.request('/api/snapshot');
   assert.equal(state.tasks.find(t=>t.id===first.id).result,'recovered checked after restart');
   assert.equal(state.runs.length,2);assert(state.runs.some(r=>r.status_source==='user-recovery-confirmed'));
+}));
+
+test('coordinator reads canonical confirmed memory and never revives legacy or foreign references',async()=>harness(async h=>{
+  const projectId=(await h.request('/api/projects',{name:'memory project',path:h.project})).id;
+  await h.request('/api/memories',{projectId,scope:'project',category:'project',title:'测试记忆',content:'canonical-memory-evidence'});
+  const database=new DatabaseSync(join(h.dir,'data','apix.sqlite'));
+  try{database.prepare("INSERT INTO memories(id,project_id,scope,category,title,content,source,created_at,updated_at) VALUES('stale-legacy',?,'project','project','obsolete','legacy-should-never-return','user','now','now')").run(projectId);}finally{database.close();}
+  let s=await h.request('/api/coordination/sessions',{projectId,goal:'讨论测试记忆'});
+  s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'这个项目的测试记忆是什么？'});
+  const prompts=JSON.stringify(h.model.calls);assert(prompts.includes('canonical-memory-evidence'));assert(!prompts.includes('legacy-should-never-return'));
+  const state=await h.request('/api/projects/'+projectId+'/memory-state');assert(state.usage.some(u=>u.agent==='coordinator'&&u.session_id===s.id));
+  const before=h.model.calls.length;await h.request('/api/projects/'+projectId+'/memory-settings',{version:0,enabled:false});
+  await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'这个项目的测试记忆是什么？'});assert(!JSON.stringify(h.model.calls.slice(before)).includes('canonical-memory-evidence'));
 }));

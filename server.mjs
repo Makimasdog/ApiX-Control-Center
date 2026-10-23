@@ -1,3 +1,4 @@
+import {projectMemoryState,saveProjectMemorySettings,assistantContext,assistantCompact} from './control-plane.mjs';
 // 【这个文件是什么】ApiX 的 Web 服务入口:`npm start` 实际执行的就是 `node server.mjs`。
 // 它只承担两件事:① 接收浏览器发来的 /api/* 请求,判断该调用哪个业务函数,把结果转成 JSON 返回;
 // ② 把 index.html / css / js 这些前端文件发给浏览器。
@@ -146,6 +147,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       if (pathname === "/api/permissions" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, permissionPolicy(q.get('projectId'), q.get('subject') ?? 'apix')); return; }
       // 再往下是“看板上读数据”的接口:权限策略、协作记忆检索、协作会话列表与详情、时间线、
       // 记忆搜索、信箱列表、待收消息、消息线程与单条消息详情。它们都只读,不会改状态。
+      if(/^\/api\/projects\/[^/]+\/memory-state$/.test(pathname)&&request.method==='GET'){send(200,projectMemoryState(pathname.split('/')[3]));return;}
+      if(/^\/api\/assistant\/sessions\/[^/]+\/context$/.test(pathname)&&request.method==='GET'){send(200,assistantContext(pathname.split('/')[4]));return;}
       if (pathname === "/api/coordination/memory" && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, searchCoordinationMemory(q.get('projectId'), q.get('q') ?? '')); return; }
       if (pathname === "/api/coordination/sessions" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listCoordinationSessions(query.get("projectId"),query.get('summary')==='1')); return; }
       if (/^\/api\/coordination\/sessions\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, coordinationSessionDetails(pathname.split("/")[4])); return; }
@@ -238,6 +241,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else if(/^\/api\/assistant\/sessions\/[^/]+\/reply$/.test(pathname))result=await assistantReply(pathname.split('/')[4],input);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/stop$/.test(pathname))result=assistantStop(pathname.split('/')[4]);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/resume$/.test(pathname))result=assistantResume(pathname.split('/')[4],input);
+      else if(/^\/api\/projects\/[^/]+\/memory-settings$/.test(pathname))result=saveProjectMemorySettings(pathname.split('/')[3],input);
+      else if(/^\/api\/assistant\/sessions\/[^/]+\/compact$/.test(pathname))result=await assistantCompact(pathname.split('/')[4],input);
       else if(/^\/api\/assistant\/sessions\/[^/]+\/memory$/.test(pathname))result=assistantEditMemory(pathname.split('/')[4],input);
       // 运行时相关:扫描本机可驱动的执行器、登记自定义适配器、查看某员工的运行时信息、项目的 MCP 服务与工具发现。
       // 带 await 的这几条真的要启动进程或连接外部服务,耗时比普通常规读写长得多。

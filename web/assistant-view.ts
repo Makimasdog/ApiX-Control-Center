@@ -30,7 +30,7 @@ function timelineEvent(e:TimelineEvent){
     return `<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${escapeAssistant(e.body.tool??'员工验收结果')} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${escapeAssistant(JSON.stringify(e.body.result??e.body,null,2))}</pre>${outputLink(e.body.result)}</details>`;
   }
   if(e.kind==='request_answer')return `<p class="assistant-system-note">已收到你的${'approved'in e.body?(e.body.approved?'批准':'拒绝'):'选择'}，ApiX 将继续处理。</p>`;
-  return `<p class="assistant-system-note">${escapeAssistant(({compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind)}</p>`;
+  return `<p class="assistant-system-note">${escapeAssistant(({context_budget:'已记录本次上下文占用与指令版本',compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind)}</p>`;
 }
 export function assistantTimeline(events:TimelineEvent[]){
  let result='',records:TimelineEvent[]=[];

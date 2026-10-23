@@ -5,7 +5,7 @@ import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
 import {modelEndpoint} from './model-endpoint.js';
 
-export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string}
+export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string;contextWindow?:number|null}
 // Only host-created instances may retain this code across inference boundaries.
 export class ModelCleanupUnknownError extends Error {
   readonly code='MODEL_CLEANUP_UNKNOWN';
