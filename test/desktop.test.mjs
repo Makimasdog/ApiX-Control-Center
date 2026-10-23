@@ -72,3 +72,10 @@ test('desktop keeps its origin on restart and falls back when its saved port is 
     try { assert.notEqual(third.url, first.url); } finally { await third.stop(); }
   } finally { await new Promise(done => occupied.close(done)); }
 }));
+
+
+test('development backend uses an explicit Node runtime without a staged runtime copy', { skip: process.platform !== 'win32', timeout: 25000 }, () => fixture(async context => {
+  writeFileSync(join(context.root,'server.mjs'),server);
+  const backend=await startBackend({...context,node:process.execPath});
+  try{assert.equal((await (await fetch(backend.url)).json()).node,process.execPath);}finally{await backend.stop();}
+}));

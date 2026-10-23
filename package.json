@@ -10,10 +10,11 @@
   },
   "scripts": {
     "desktop:prepare": "npm run build && node scripts/prepare-desktop.mjs",
-    "desktop:dev": "npm run desktop:prepare && electron .tmp-desktop/shell",
+    "desktop:dev": "node scripts/desktop-dev.mjs",
     "desktop:pack": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --dir",
     "desktop:dist": "npm run desktop:prepare && electron-builder --config desktop/electron-builder.cjs --win --x64 --publish never",
-    "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs",
+    "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs test/desktop-dev.test.mjs",
+    "test:desktop:dev": "node scripts/verification/verify-desktop-dev.mjs",
     "test:desktop:app": "node scripts/verify-desktop.mjs",
     "test:ui:providers": "node scripts/verification/verify-provider-center.mjs",
     "test:ui:memory": "node scripts/verification/verify-memory-context.mjs",

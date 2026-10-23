@@ -1,6 +1,6 @@
 const { spawn } = require('node:child_process');
 const { createServer } = require('node:net');
-const { join, delimiter } = require('node:path');
+const { join, dirname, delimiter } = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { StringDecoder } = require('node:string_decoder');
 const { readFileSync, writeFileSync } = require('node:fs');
@@ -19,7 +19,7 @@ async function freePort(preferred = 0) {
 }
 
 // Reuse the command supervisor's Windows Job Object so descendants also die on a desktop crash.
-async function startBackend({ root, dataDir, log, onExit = () => {} }) {
+async function startBackend({ root, dataDir, log, onExit = () => {}, node = join(root, 'runtime/node.exe') }) {
   const portFile = join(dataDir, 'desktop-port.json');
   let preferred = 0;
   try { const value = JSON.parse(readFileSync(portFile)); if (Number.isInteger(value) && value >= 1024 && value <= 65535) preferred = value; } catch { /* First launch or invalid saved port. */ }
@@ -30,7 +30,7 @@ async function startBackend({ root, dataDir, log, onExit = () => {} }) {
   delete env.NODE_PATH;
   delete env.ELECTRON_RUN_AS_NODE;
   const pathKey = Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'PATH';
-  env[pathKey] = join(root, 'runtime') + delimiter + (env[pathKey] ?? '');
+  env[pathKey] = dirname(node) + delimiter + (env[pathKey] ?? '');
   const supervisor = spawn(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), [
     '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
     join(root, 'src/execution/windows-command.ps1'), '-JobName', 'Local\\ApiX-Desktop-' + randomUUID(),
@@ -87,7 +87,7 @@ async function startBackend({ root, dataDir, log, onExit = () => {} }) {
       }
     });
     supervisor.stdin.write(JSON.stringify({
-      executable: join(root, 'runtime/node.exe'),
+      executable: node,
       args: ['--env-file-if-exists=' + join(dataDir, '.env'), join(root, 'server.mjs')],
       cwd: dataDir, timeoutMs: 0, env,
     }) + '\n');

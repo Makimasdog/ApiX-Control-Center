@@ -6,10 +6,12 @@ const { spawn } = require('node:child_process');
 
 let window;
 let backend;
+let development;
+const dev = !app.isPackaged && !!process.env.APIX_DEV_ROOT;
 let quitting = false;
 let exitReady = false;
 const smoke = process.argv.includes('--smoke-test');
-const dataDir = resolve(process.env.APIX_DESKTOP_DATA_DIR || join(app.getPath('appData'), 'ApiX-Control-Center'));
+const dataDir = resolve(process.env.APIX_DESKTOP_DATA_DIR || join(app.getPath('appData'), dev?'ApiX-Control-Center-Dev':'ApiX-Control-Center'));
 mkdirSync(dataDir, { recursive: true });
 app.setPath('userData', dataDir);
 
@@ -22,7 +24,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     if (quitting) return;
     quitting = true;
-    void (async () => { await backend?.stop(); exitReady = true; app.quit(); })();
+    void (async () => { await development?.stop(); await backend?.stop(); exitReady = true; app.quit(); })();
   });
   app.on('window-all-closed', () => app.quit());
   void app.whenReady().then(start).catch(error => {
@@ -35,14 +37,15 @@ if (!app.requestSingleInstanceLock()) {
 async function start() {
   if (process.platform !== 'win32') throw new Error('本桌面版本仅支持 Windows。');
   mkdirSync(dataDir, { recursive: true });
-  const root = app.isPackaged ? join(process.resourcesPath, 'backend') : join(app.getAppPath(), '../backend');
+  const root = dev ? resolve(process.env.APIX_DEV_ROOT) : app.isPackaged ? join(process.resourcesPath, 'backend') : join(app.getAppPath(), '../backend');
   const envFile = join(dataDir, '.env');
   if (!existsSync(envFile)) copyFileSync(join(root, '.env.example'), envFile);
   const log = createWriteStream(join(dataDir, 'desktop.log'), { flags: 'w' });
   log.on('error', error => { dialog.showErrorBox('ApiX 日志写入失败', error.message); app.quit(); });
-  backend = await startBackend({ root, dataDir, log, onExit: () => {
+  const backendOptions={ root, dataDir, log, ...(dev?{node:process.env.APIX_DEV_NODE}:{}), onExit: () => {
     if (!quitting) { dialog.showErrorBox('ApiX 后端已停止', `请重新启动应用。日志目录：${dataDir}`); app.quit(); }
-  } });
+  } };
+  backend=await startBackend(backendOptions);
   if (quitting) { await backend.stop(); return; }
   window = new BrowserWindow({
     title: 'ApiX Control Center', width: 1440, height: 960, minWidth: 960, minHeight: 640, show: false,
@@ -54,11 +57,12 @@ async function start() {
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   window.webContents.session.setPermissionCheckHandler(() => false);
-  window.webContents.session.webRequest.onHeadersReceived({ urls: [backend.url + '/*'] }, (details, callback) => callback({
+  const secureResponses=()=>window.webContents.session.webRequest.onHeadersReceived({ urls: [backend.url + '/*'] }, (details, callback) => callback({
     responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'",
     ] },
   }));
+  secureResponses();
   window.webContents.on('render-process-gone', () => {
     if (!quitting) { dialog.showErrorBox('ApiX 窗口已停止', '请重新启动应用，运行记录保留在数据目录。'); app.quit(); }
   });
@@ -84,6 +88,12 @@ async function start() {
     { label: '视图', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
   ]));
   await window.loadURL(backend.url);
+  if(dev){
+    window.on('page-title-updated',(event,title)=>{event.preventDefault();window.setTitle(title+' · 开发版');});window.setTitle(window.getTitle()+' · 开发版');
+    development=require('./dev-watch.cjs').startDevelopment({root,node:process.env.APIX_DEV_NODE,log,
+      restart:async()=>{await backend.stop();if(quitting)return;backend=await startBackend(backendOptions);if(quitting){await backend.stop();return;}secureResponses();await window.loadURL(backend.url);},
+      reload:async()=>{if(!quitting)window.webContents.reloadIgnoringCache();}});
+  }
   if (!smoke) window.show();
   else {
     const report = await window.webContents.executeJavaScript(`(async () => {
