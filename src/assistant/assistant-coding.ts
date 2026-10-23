@@ -1,3 +1,4 @@
+import {PreflightError} from '../recovery/fault-policy.js';
 import {existsSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {type Store} from '../coordination/contracts.js';
@@ -19,10 +20,12 @@ export function createAssistantCoding(store:Store,rootFor:(project:string)=>stri
  function execute(s:Session,tool:string,args:Record<string,unknown>,signal:AbortSignal){
   if(signal.aborted)throw new Error('执行已停止');if(tool==='get_diff')return diff(s,args);
   const root=rootFor(s.project_id);if(!['edit_file','write_file'].includes(tool))return fileTool(root,tool,args);
-  assertClear(s);const path=projectPath(root,args.path,true);let prepared:PreparedEdit|undefined,before:Buffer|null=null;
+  assertClear(s);let path:string,prepared:PreparedEdit|undefined,before:Buffer|null=null;
+  try{path=projectPath(root,args.path,true);
   // All conflicts are determined before recording an intent or touching the file.
   if(tool==='edit_file'){prepared=prepareEdit(path,args);before=prepared.before;}
   else{if(typeof args.content!=='string'||args.content.includes('\0')||args.content.length>20000)throw new Error('写入内容无效或过大');if(existsSync(path))before=sourceBuffer(path,20000);}
+  }catch(error){throw new PreflightError(error);}
   const operationId=randomUUID(),beforeSha256=before?fileSha(before):null,afterSha256=prepared?.afterSha256??fileSha(String(args.content));
   event(s,'file_edit_intent',{operationId,path:args.path,beforeSha256,plannedAfterSha256:afterSha256,tool});
   try{

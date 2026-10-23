@@ -7,6 +7,7 @@ export function approvalLabel(kind:string,tool?:string){return kind==='approval'
 export function toolResultSucceeded(body:Record<string,unknown>){return body.ok!==false&&hostResultSucceeded(body.result);}
 type TimelineEvent={id:number;role:string;kind:string;body:Record<string,unknown>};
 function timelineEvent(e:TimelineEvent){
+  if(e.kind==='model_retry')return `<article class="assistant-message"><small>系统</small><div>模型临时故障，将在 ${escapeAssistant(e.body.delayMs)} ms 后进行第 ${escapeAssistant(e.body.attempt)} 次请求；尚未执行工具。</div></article>`;
   const content=e.body.content??e.body.error??e.body.question;
   if(content)return `<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?'你':e.role==='system'?'系统':'ApiX'}</small><div>${escapeAssistant(content)}</div></article>`;
   if(e.kind==='tool_started')return `<details class="assistant-tool-detail"><summary>↗ ${escapeAssistant(e.body.tool)}</summary><pre>${escapeAssistant(JSON.stringify(e.body.args,null,2))}</pre>${outputLink(e.body.args)}</details>`;
@@ -27,7 +28,7 @@ function timelineEvent(e:TimelineEvent){
     if(e.body.ok===false&&['edit_file','write_file'].includes(String(e.body.tool)))return `<article class="assistant-evidence-warning">文件编辑未提交 / 冲突：${escapeAssistant(e.body.error)}</article>`;
     if(e.body.tool==='search_files'&&e.body.ok!==false)return `<details class="assistant-tool-detail"><summary>代码搜索 · ${Array.isArray(r.matches)?r.matches.length+' 处':'见引用'} · ${r.scanComplete===false?'扫描不完整':'扫描状态见结果'}</summary>${r.scanComplete===false?'<p class="assistant-evidence-warning">部分扫描，不能据此断言全项目无匹配。</p>':''}${Array.isArray(r.matches)?r.matches.map((m:Record<string,unknown>)=>`<p>${escapeAssistant(m.path)}:${escapeAssistant(m.line)}:${escapeAssistant(m.column)}</p><pre>${escapeAssistant(m.snippet)}</pre>`).join(''):''}${outputLink(r)}</details>`;
     if(e.body.tool==='get_diff'&&e.body.ok!==false)return `<details class="assistant-tool-detail assistant-file-result"><summary>本会话实际差异 · 不包含原有改动</summary>${Array.isArray(r.files)?r.files.map((f:Record<string,unknown>)=>`<h4>${escapeAssistant(f.path)}</h4><p>${escapeAssistant(f.beforeSha256??'新建')} → ${escapeAssistant(f.afterSha256)}</p>${f.workspaceChangedSinceEdit?'<p class="assistant-evidence-warning">文件在本次编辑后又有外部变化，未归为 Agent 修改。</p>':''}<pre>${escapeAssistant(JSON.stringify(f.edits,null,2))}</pre>`).join(''):''}${r.historyComplete===false?'<p>有更早变更，请继续读取下一页。</p>':''}${outputLink(r)}</details>`;
-    return `<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${escapeAssistant(e.body.tool??'员工验收结果')} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${escapeAssistant(JSON.stringify(e.body.result??e.body,null,2))}</pre>${outputLink(e.body.result)}</details>`;
+    return `<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${escapeAssistant(e.body.tool??'员工验收结果')} ${e.body.reused?'· 复用已完成结果，未再次执行':''} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${escapeAssistant(JSON.stringify(e.body.result??e.body,null,2))}</pre>${outputLink(e.body.result)}</details>`;
   }
   if(e.kind==='request_answer')return `<p class="assistant-system-note">已收到你的${'approved'in e.body?(e.body.approved?'批准':'拒绝'):'选择'}，ApiX 将继续处理。</p>`;
   return `<p class="assistant-system-note">${escapeAssistant(({context_budget:'已记录本次上下文占用与指令版本',compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind)}</p>`;
@@ -35,6 +36,6 @@ function timelineEvent(e:TimelineEvent){
 export function assistantTimeline(events:TimelineEvent[]){
  let result='',records:TimelineEvent[]=[];
  const flush=()=>{if(!records.length)return;result+=`<details class="assistant-run-records" data-execution-record="${records[0]!.id}"><summary>执行记录 · ${records.length} 项</summary>${records.map(timelineEvent).join('')}</details>`;records=[];};
- for(const event of events){if(event.body.content||event.body.error||event.body.question){flush();result+=timelineEvent(event);}else records.push(event);}
+ for(const event of events){if(event.kind==='model_retry'||event.body.content||event.body.error||event.body.question){flush();result+=timelineEvent(event);}else records.push(event);}
  flush();return result;
 }

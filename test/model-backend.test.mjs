@@ -35,7 +35,7 @@ test('missing config, missing key and unsafe URL fail before making a request',a
   },(_req,res)=>res.end('{}'));
 });
 test('HTTP errors and redirects never expose provider text or repeat the request',async()=>{
-  for(const status of [401,429,500,302])await fixture(async(settings,calls)=>{await assert.rejects(inferModel(settings,'task'),e=>!e.message.includes('provider-private-secret'));assert.equal(calls.length,1);},(_req,res)=>{res.writeHead(status,{Location:'/other'});res.end('provider-private-secret');});
+  for(const status of [401,429,500,302])await fixture(async(settings,calls)=>{await assert.rejects(inferModel(settings,'task',undefined,{maxAttempts:1}),e=>!e.message.includes('provider-private-secret'));assert.equal(calls.length,1);},(_req,res)=>{res.writeHead(status,{Location:'/other'});res.end('provider-private-secret');});
 });
 test('broken, failed and truncated model replies cannot become successful output',async()=>{
   const bad=[['application/json','{"choices":[{"finish_reason":"length","message":{"content":"partial"}}]}'],['application/json','{"error":{"message":"provider-private-secret"}}'],['application/json','{"choices":[{"finish_reason":"stop","message":{"content":"'+'x'.repeat(100001)+'"}}]}'],['text/event-stream','data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'],['text/event-stream','data: {"type":"error","error":{"message":"private"}}\n\n'],['application/json','x'.repeat(2*1024*1024+1)]];
@@ -45,6 +45,17 @@ test('deadline includes response body and explicit abort cancels the HTTP call',
   await fixture(async(settings)=>{await assert.rejects(inferModel(settings,'task',undefined,{timeoutMs:40}),/超时/);const stop=new AbortController();stop.abort();await assert.rejects(inferModel(settings,'task',undefined,{signal:stop.signal}),/停止/);},(_req,res)=>{res.setHeader('Content-Type','application/json');res.write('{');});
 });
 test('explicit provider quota codes survive sanitization without exposing provider error messages',async()=>{
-  for(const stream of [false,true])await fixture(async(settings)=>assert.rejects(inferModel(settings,'task'),e=>e.message.includes('insufficient_quota')&&!e.message.includes('private-key')),
+  for(const stream of [false,true])await fixture(async(settings)=>assert.rejects(inferModel(settings,'task'),e=>e.fault.category==='rate_limit'&&!e.message.includes('private-key')),
     (_req,res)=>{const value={type:'error',error:{type:'rate_limit_error',message:'private-key'}};res.setHeader('Content-Type',stream?'text/event-stream':'application/json');res.end(stream?'data: '+JSON.stringify(value)+'\n\n':JSON.stringify(value));});
 });
+
+
+test('transient HTTP errors retry at most three attempts before any tools, then return one answer',async()=>{
+ let attempt=0;await fixture(async(settings,calls)=>{const retries=[],answer=await inferModel(settings,'task',undefined,{onRetry:r=>retries.push(r)});assert.equal(answer,'recovered');assert.equal(calls.length,3);assert.deepEqual(retries.map(r=>r.attempt),[2,3]);assert(retries.every(r=>r.delayMs>=375&&r.fault.retryable));},(_req,res)=>{if(++attempt<3){res.writeHead(503,{'Retry-After':'0'});res.end('{}');}else res.end(JSON.stringify(finals['openai-completions']('recovered')));});
+});
+test('quota is not throttling; Retry-After and abort/deadline prevent blind retries',async()=>{
+ await fixture(async(settings,calls)=>{await assert.rejects(inferModel(settings,'task'),e=>e.fault.category==='quota');assert.equal(calls.length,1);},(_req,res)=>{res.writeHead(429);res.end(JSON.stringify({error:{code:'insufficient_quota',message:'private'}}));});
+ await fixture(async(settings,calls)=>{await assert.rejects(inferModel(settings,'task',undefined,{timeoutMs:100}),e=>e.fault.category==='rate_limit');assert.equal(calls.length,1);},(_req,res)=>{res.writeHead(429,{'Retry-After':'120'});res.end('{}');});
+ await fixture(async(settings,calls)=>{const stop=new AbortController();await assert.rejects(inferModel(settings,'task',undefined,{signal:stop.signal,onRetry:()=>stop.abort()}),/停止/);assert.equal(calls.length,1);},(_req,res)=>{res.writeHead(503);res.end('{}');});
+});
+test('partial model output is never appended twice by transport retry',async()=>fixture(async(settings,calls)=>{let text='';await assert.rejects(inferModel(settings,'task',part=>text+=part));assert.equal(text,'partial');assert.equal(calls.length,1);},(_req,res)=>{res.setHeader('Content-Type','text/event-stream');res.end('data: '+JSON.stringify({choices:[{delta:{content:'partial'}}]})+'\n\n');}));

@@ -1317,3 +1317,20 @@ test('coordinator reads canonical confirmed memory and never revives legacy or f
   const before=h.model.calls.length;await h.request('/api/projects/'+projectId+'/memory-settings',{version:0,enabled:false});
   await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'这个项目的测试记忆是什么？'});assert(!JSON.stringify(h.model.calls.slice(before)).includes('canonical-memory-evidence'));
 }));
+
+
+test('silent owned Agent is probed then stopped once without replaying uncertain side effects',async()=>harness(async h=>{
+ const worker=join(h.dir,'unresponsive-worker.mjs');await writeFile(worker,"process.stdin.resume();setInterval(()=>{},1000);");
+ await h.request('/api/adapters',{id:'unresponsive-worker',name:'失联夹具',executable:process.execPath,args:[worker],format:'plain'});
+ const {s}=await setup(h,'unresponsive-worker');const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
+ const stopped=await waitFor(async()=>{const x=await h.request(`/api/coordination/sessions/${s.id}`);return x.tasks[0].status==='unknown'&&x;});
+ assert.match(stopped.tasks[0].result,/副作用待核对/);await delay(500);const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.runs.filter(r=>r.task_id===stopped.tasks[0].id).length,1);
+ const timeline=await h.request(`/api/coordination/sessions/${s.id}/timeline`);assert.equal(timeline.events.filter(e=>e.kind==='agent.unresponsive').length,1);assert(timeline.events.some(e=>e.kind==='agent.probe'));
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_AGENT_PROBE_MS:'200',APIX_AGENT_SILENCE_MS:'800'}));
+
+
+test('authenticated mailbox activity keeps a silent but responsive Agent healthy',async()=>harness(async h=>{
+ const worker=join(h.dir,'mailbox-alive-worker.mjs');await writeFile(worker,`process.stdin.resume();const timer=setInterval(async()=>{try{await fetch(process.env.APIX_MAILBOX_URL+'/messages',{headers:{Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN}});}catch{}},60);setTimeout(()=>{clearInterval(timer);console.log('mailbox heartbeat completed');process.exit(0);},2200);`);
+ await h.request('/api/adapters',{id:'mailbox-alive',name:'心跳夹具',executable:process.execPath,args:[worker],format:'plain'});const {s}=await setup(h,'mailbox-alive');const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
+ const done=await waitFor(async()=>{const x=await h.request(`/api/coordination/sessions/${s.id}`);return x.tasks[0].status==='completed'&&x;});assert.match(done.tasks[0].result,/heartbeat completed/);const timeline=await h.request(`/api/coordination/sessions/${s.id}/timeline`);assert(!timeline.events.some(e=>e.kind==='agent.unresponsive'));assert(timeline.events.some(e=>e.kind==='agent.probe'));
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_AGENT_PROBE_MS:'200',APIX_AGENT_SILENCE_MS:'800'}));

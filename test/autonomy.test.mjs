@@ -137,3 +137,13 @@ test('dispatched repair keeps clean blocked descendants waiting instead of halti
   await service.tick();assert.equal(counts().retries,1);assert.equal(service.details('plan').state,'running');
   await service.tick();assert.equal(service.details('plan').state,'running');assert.equal(counts().retries,1);
 }));
+
+
+test('autonomy does not repair a classified credential or uncertain failure',()=>fixture(async({db,service,deps,counts})=>{
+ db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed',ended_at='ended'");deps.fault=()=>({strategy:'review',category:'unknown_effect'});await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(counts().retries,0);
+}));
+test('restart quarantines an interrupted repair dispatch until explicit checked recovery',()=>fixture(async({db,service,restart,counts})=>{
+ db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed',ended_at='ended';INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at,run_id) VALUES ('prepared','t',1,'a','repair','prepared','now','run')");
+ const restored=restart();assert.equal(restored.details('plan').state,'attention');await restored.tick();assert.equal(counts().retries,0);
+ assert.throws(()=>restored.resume('plan',{reviewed:true,fingerprint:restored.resumeFingerprint('plan')}),/派发结果未知/);
+}));

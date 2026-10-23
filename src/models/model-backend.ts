@@ -1,3 +1,5 @@
+import {setTimeout as sleep} from 'node:timers/promises';
+import {classifyFault,FaultError,retryDelay,retryAfter} from '../recovery/fault-policy.js';
 import {reasoningParameters} from './conversation-models.js';
 import {getProviderConfig,isLoopbackModelUrl,validateModelConfig} from './model-providers.js';
 import {request as httpRequest, type ClientRequest, type IncomingMessage} from 'node:http';
@@ -25,7 +27,8 @@ type Json=Record<string,any>;
 const parts=(value:unknown,type='text'):string=>Array.isArray(value)?value.filter(p=>p?.type===type&&typeof p.text==='string').map(p=>p.text).join(''):'';
 function serviceFailure(data:Json):Error {
   const code=String(data.error?.code??data.error?.type??data.response?.error?.code??'');
-  return new Error(['insufficient_quota','rate_limit_exceeded','rate_limit_error','quota_exceeded'].includes(code)?'模型服务额度不足或触发速率限制 (insufficient_quota)':'模型未返回可用答复（服务返回错误或未完成）');
+  const fault=classifyFault(null,{kind:'model',serviceCode:code});
+  return new FaultError(fault.category==='quota'?'模型服务额度不足 (insufficient_quota)':fault.category==='rate_limit'?'模型服务触发速率限制 (rate_limit_error)':'模型未返回可用答复（服务返回错误或未完成）',fault);
 }
 function finalText(data:Json,api:string):string {
   if(data.error)throw serviceFailure(data);
@@ -41,7 +44,21 @@ function finalText(data:Json,api:string):string {
   return parts(data.content);
 }
 
-export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(delta:string)=>void,options:{signal?:AbortSignal;timeoutMs?:number}={}):Promise<string>{
+interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void}
+export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(delta:string)=>void,options:InferenceOptions={}):Promise<string>{
+  const attempts=options.maxAttempts??3,totalMs=options.timeoutMs??90000;
+  if(!Number.isSafeInteger(totalMs)||totalMs<=0||totalMs>2147483647)throw new Error('模型请求超时配置无效');
+  const deadline=Date.now()+totalMs;
+  if(!Number.isSafeInteger(attempts)||attempts<1||attempts>3)throw new Error('模型重试次数应为 1–3');
+  for(let attempt=1;;attempt++){try{return await inferAttempt(saved,prompt,onDelta,{...options,timeoutMs:Math.max(1,deadline-Date.now())});}catch(error){
+    if(!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
+    const delayMs=Math.ceil(retryDelay(attempt,error.retryAfterMs));if(!Number.isFinite(delayMs)||Date.now()+delayMs>=deadline)throw error;
+    options.onRetry?.({attempt:attempt+1,delayMs,fault:error.fault});
+    try{await sleep(delayMs,undefined,{signal:options.signal});}catch{throw new Error('模型退避等待已停止');}
+    if(Date.now()>=deadline)throw error;
+  }}
+}
+async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:string)=>void)|undefined,options:InferenceOptions):Promise<string>{
   const settings=directModelSettings(saved),api=settings.apiType,key=settings.apiKeyEnv?process.env[settings.apiKeyEnv]:undefined;
   if(Buffer.byteLength(prompt)>512*1024)throw new Error('模型上下文超过 512 KiB，请整理或拆分任务');
   const endpoint=modelEndpoint(settings.baseUrl,api);
@@ -58,7 +75,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
   // Own the transport: destroying it must terminate both pending headers and body reads.
   // No pooled connection or unbounded Web reader.cancel() remains after settlement.
   let request:ClientRequest|undefined,response:IncomingMessage|undefined,socket:Socket|undefined;
-  let settled=false,closed=false,phase='connection',timer:ReturnType<typeof setTimeout>|undefined;
+  let settled=false,closed=false,connected=false,phase='connection',timer:ReturnType<typeof setTimeout>|undefined;
   let close!:()=>void;const transportClosed=new Promise<void>(resolve=>{close=()=>{closed=true;resolve();};});
   let finish!:(error?:unknown,value?:string)=>void;
   const abort=()=>finish(new Error(`模型请求已停止（${phase}）`));
@@ -94,7 +111,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
         if(!request)close();
         if(error)reject(error);else if(!value?.trim())reject(new Error('模型未返回可用答复'));else resolve(value.trim());
       };
-      const failed=()=>finish(new Error(`模型连接或传输失败（${phase}）；没有自动重试`));
+      const failed=(error?:Error)=>finish(new FaultError(`模型连接或传输失败（${phase}）`,classifyFault(error,{kind:'model',safeToRetry:!!socket&&!connected&&!response,outputStarted:answer.length>0})));
       const guarded=(work:()=>void)=>{if(settled)return;try{work();}catch(error){finish(error);}};
       timer=setTimeout(()=>finish(new Error(`模型请求超时（${timeoutMs} ms，${phase}）；没有自动重试`)),timeoutMs);
       options.signal?.addEventListener('abort',abort,{once:true});
@@ -104,7 +121,14 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
           incoming.on('error',failed);
           incoming.on('aborted',failed);
           const status=incoming.statusCode??0;
-          if(status<200||status>=300){finish(new Error(status===429?'模型服务额度不足或触发速率限制 (HTTP 429)':status===404?`模型服务返回 HTTP 404：接口路径或模型不存在。当前请求 ${endpoint.origin}${endpoint.pathname}；模型 ${settings.model}。请核对服务地址、协议与模型 ID；旧对话可点击“使用当前应用配置”更新。未自动重试。`:status===401||status===403?`模型服务返回 HTTP ${status}：认证或访问权限失败，请核对当前服务对应的 API Key。`:`模型服务返回 HTTP ${status}，请检查服务配置或稍后重试（未自动重试）`));return;}
+          if(status<200||status>=300){
+            let errorBody='';const rejected=()=>{let serviceCode='';try{const value=JSON.parse(errorBody);serviceCode=String(value?.error?.code??value?.error?.type??'');}catch{}
+              const fault=classifyFault(null,{kind:'model',status,serviceCode,safeToRetry:true,outputStarted:false});
+              const message=status===404?`模型服务返回 HTTP 404：接口路径或模型不存在。当前请求 ${endpoint.origin}${endpoint.pathname}；模型 ${settings.model}。请核对服务地址、协议与模型 ID；旧对话可点击“使用当前应用配置”更新。`:status===401||status===403?`模型服务返回 HTTP ${status}：认证或访问权限失败，请核对当前服务对应的 API Key。`:fault.category==='quota'?`模型服务额度不足 (insufficient_quota，HTTP ${status})`:`模型服务返回 HTTP ${status}（${fault.category}）`;
+              finish(new FaultError(message,fault,retryAfter(typeof incoming.headers['retry-after']==='string'?incoming.headers['retry-after']:undefined)));
+            };
+            incoming.on('data',(chunk:Buffer)=>{if(Buffer.byteLength(errorBody)+chunk.length>16000){rejected();return;}errorBody+=chunk.toString('utf8');});incoming.on('end',rejected);return;
+          }
           phase='body';const sse=incoming.headers['content-type']?.includes('text/event-stream');
           incoming.on('data',(value:Buffer)=>guarded(()=>{
             bytes+=value.byteLength;if(bytes>2*1024*1024)throw new Error('模型响应超过 2 MiB');
@@ -129,7 +153,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
           }));
           incoming.on('close',()=>{if(!incoming.complete)failed();});
         });
-        request.on('socket',assigned=>{socket=assigned;assigned.once('close',close);if(settled)assigned.destroy();});
+        request.on('socket',assigned=>{socket=assigned;assigned.once('connect',()=>{connected=true;});assigned.once('close',close);if(settled)assigned.destroy();});
         request.on('close',()=>{if(!socket)close();});
         request.on('error',failed);
         request.once('finish',()=>{if(!settled&&phase==='connection')phase='headers';});
@@ -139,7 +163,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
   }catch(error){
     let message=error instanceof Error?error.message:'模型调用失败';
     if(error instanceof SyntaxError||error instanceof TypeError)message='模型服务无法连接或响应格式无效，请检查 API 地址、协议和服务状态';
-    if(key)message=message.split(key).join('<redacted>');throw new Error(message.slice(0,1000));
+    if(key)message=message.split(key).join('<redacted>');throw error instanceof FaultError?new FaultError(message.slice(0,1000),error.fault,error.retryAfterMs):new FaultError(message.slice(0,1000),classifyFault(error,{kind:'model'}));
   }finally{
     clearTimeout(timer);options.signal?.removeEventListener('abort',abort);
     let cleanupTimer:ReturnType<typeof setTimeout>|undefined;

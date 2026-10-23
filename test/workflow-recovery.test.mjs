@@ -77,3 +77,9 @@ test('dependency recovery preserves own failures, executed tasks, conflicts and 
     db.exec('SAVEPOINT example');db.exec("UPDATE tasks SET status='running' WHERE id='a'");db.exec(setup);scheduler.resumeBlocked('plan');assert.equal(store.row("SELECT status FROM tasks WHERE id='b'").status,'blocked',setup);db.exec('ROLLBACK TO example;RELEASE example');
   }
 }));
+
+
+test('authentication, quota and uncertain failures never consume automatic repair attempts',async()=>{
+ for(const message of ['HTTP 401','HTTP 402','insufficient_quota'])await fixture(async({db,service,count,store})=>{db.prepare("UPDATE tasks SET result=? WHERE id='a'").run(message);await service.tick();await service.tick();assert.equal(count(),0);assert.equal(store.row('SELECT attempts FROM workflow_recoveries').attempts,0);assert.equal(store.row('SELECT state FROM workflow_recoveries').state,'attention');});
+ await fixture(async({deps,restart,count})=>{deps.fault=()=>({category:'unknown_effect',strategy:'review'});const service=restart();await service.tick();assert.equal(count(),0);});
+});

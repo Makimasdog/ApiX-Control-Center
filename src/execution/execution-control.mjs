@@ -46,5 +46,5 @@ export function createExecutionControl({db,row,rows,now,recordEvent=()=>{}}) {
 }
 
 export function quotaFailure(value) {
-  return String(value).trim()==='429' || /insufficient_quota|rate_limit_(?:exceeded|error)|quota_exceeded|resource_exhausted|quota exceeded|\b(?:HTTP|status|code)\s*[:=]?\s*429\b|\b429\s+Too Many Requests\b|额度(?:已|已经)?(?:耗尽|不足|用完)/i.test(String(value));
+  return String(value).trim()==='429' || /余额不足|HTTP\s*402|insufficient_quota|rate_limit_(?:exceeded|error)|quota_exceeded|resource_exhausted|quota exceeded|\b(?:HTTP|status|code)\s*[:=]?\s*429\b|\b429\s+Too Many Requests\b|额度(?:已|已经)?(?:耗尽|不足|用完)/i.test(String(value));
 }

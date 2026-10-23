@@ -1,3 +1,5 @@
+import {classifyFault,PreflightError} from '../recovery/fault-policy.js';
+import {createEffectJournal} from './assistant-effects.js';
 import {randomUUID,createHash} from 'node:crypto';
 import {type Store,object,text,parseJsonObject,type Policy} from '../coordination/contracts.js';
 import {createToolRegistry,type ToolDefinition} from './tool-registry.js';
@@ -49,6 +51,7 @@ export function createAssistantLoop(deps:Dependencies){
     CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));`);
   const memory=deps.memory??createProjectMemory(deps);
   db.exec('CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)');
+  const effects=createEffectJournal(deps);
   const outputs=createContextOutputs(deps);let cachedRegistry=createToolRegistry(),registryKey='';
   function registry(s:AssistantSession){const found=new Map(rows<{name:string;version:string}>('SELECT name,version FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>[t.name,t.version]));const extra=(deps.toolDefinitions?.(s.project_id)??[]).filter(t=>found.get(t.name)===t.version),available=commandCapabilities().managedCommands.available;const key=JSON.stringify([extra,available]);if(key!==registryKey){cachedRegistry=createToolRegistry(extra,available);registryKey=key;}return cachedRegistry;}
   historyColumns(deps,'assistant');
@@ -86,16 +89,17 @@ export function createAssistantLoop(deps:Dependencies){
   function remember(projectId:string,title:unknown,content:unknown,source='agent',kind='project',evidence:number|null=null){return memory.save(projectId,{title,content,kind,evidence},source);}
   function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return details(id);}
   function recordSafety(id:string,error:unknown,resource:string){
-    try{event(id,'system','process_unknown',{resource,error:safeError(error)});update(id,'attention');}
+    try{event(id,'system','process_unknown',{resource,error:safeError(error),fault:classifyFault(error,{sideEffects:true})});update(id,'attention');}
     catch(recordError){unsavedSafety.set(id,safeError(error));try{update(id,'attention');}catch(stateError){console.error('安全状态未可靠保存：'+safeError(stateError));}console.error('安全事件未可靠保存：'+safeError(recordError));}
   }
-  function kick(id:string){void run(id).catch(error=>{
+  function kick(id:string){void run(id).catch(error=>{try{
     if(error?.code==='COMMAND_LIFECYCLE_UNKNOWN')recordSafety(id,error,error instanceof CommandSafetyError?error.resource:'command_operation');
     else if(error?.code==='MODEL_CLEANUP_UNKNOWN')recordSafety(id,error,'model_transport');
     else if(error?.code==='INFERENCE_ACCOUNTING_UNKNOWN')recordSafety(id,error,'inference_accounting');
-    else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}
-  });}
-  function message(id:string,input:Record<string,unknown>){const s=get(id);if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');deps.commandState?.(s,'message');const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
+    else if(effects.pending(id)||classifyFault(error).strategy==='review'){recordSafety(id,error,'failure_recovery');}
+    else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error),fault:classifyFault(error)});update(id,'attention');}
+  }catch(recordError){recordSafety(id,recordError,'recovery_state');}});}
+  function message(id:string,input:Record<string,unknown>){const s=get(id);if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');if(effects.pending(id))throw new Error('本会话有副作用结果尚未核对，请先检查后继续');deps.commandState?.(s,'message');const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
     const recovery=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind IN ('restart_interrupted','process_unknown','stopped')",id)?.id??0;
     const confirmed=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind='resumed'",id)?.id??0;
     if(recovery>confirmed)throw new Error('请先检查原进程并点击“检查后继续”，或新建对话；普通消息不会重放中断操作');
@@ -104,10 +108,11 @@ export function createAssistantLoop(deps:Dependencies){
     event(id,'user','message',{content});db.prepare("UPDATE assistant_sessions SET title=CASE WHEN title='新对话' THEN ? ELSE title END,steps=0,status='running',version=version+1,started_at=?,updated_at=? WHERE id=?").run(content.slice(0,80),now(),now(),id);kick(id);return details(id);}
   function request(id:string,pending:Record<string,unknown>){db.prepare("UPDATE assistant_sessions SET pending=?,status='waiting_user',version=version+1,updated_at=? WHERE id=?").run(JSON.stringify({...pending,id:randomUUID()}),now(),id);event(id,'assistant','request',pending);}
   async function execute(id:string,tool:string,args:Record<string,unknown>,approved=false){
-    let s=get(id);const definition=registry(s).get(tool);if(!definition)throw new Error('工具未注册或尚未发现');try{registry(s).validate(tool,args);}catch(error){event(id,'tool','tool_result',{tool,ok:false,error:safeError(error)});return true;}const readonly=definition.readOnly;const policy=deps.policy(s.project_id);if(!readonly&&policy.mode==='read_only')throw new Error('项目只读，不允许此操作');
+    let s=get(id);const definition=registry(s).get(tool);if(!definition)throw new Error('工具未注册或尚未发现');try{registry(s).validate(tool,args);}catch(error){event(id,'tool','tool_result',{tool,ok:false,error:safeError(error),fault:classifyFault(new Error('参数无效'),{kind:'tool'})});return true;}const readonly=definition.readOnly;const policy=deps.policy(s.project_id);if(!readonly&&policy.mode==='read_only')throw new Error('项目只读，不允许此操作');
     if(s.child_session_id&&!readonly&&!['remember','send_agent_message'].includes(tool))throw new Error('委派尚在执行；请使用 inspect_agents 和 send_agent_message 监督，不能同时修改项目或重复委派');
     const declined=rows<{body:string}>("SELECT body FROM assistant_events WHERE session_id=? AND kind='request_answer' AND id>(SELECT COALESCE(MAX(id),0) FROM assistant_events WHERE session_id=? AND role='user' AND kind='message')",id,id).some(e=>{const answer=JSON.parse(e.body);return answer.approved===false&&answer.tool===tool;});
     if(declined){event(id,'tool','tool_result',{tool,ok:false,error:'用户已拒绝本轮的此类操作，请改变方案或说明阻塞；用户发送新的指示后才可重新申请。'});return true;}
+    if(!readonly&&effects.pendingProject(s.project_id))throw new CommandSafetyError('本项目有副作用结果尚未核对，不能通过新对话重复执行');
     if(!readonly&&tool!=='remember'){
       if([...unsavedSafety.keys()].some(id=>get(id).project_id===s.project_id))throw new CommandSafetyError('本项目安全状态未可靠保存，请检查后恢复');
       deps.commandState?.(s,'write');
@@ -124,6 +129,9 @@ export function createAssistantLoop(deps:Dependencies){
       memoryEvidence=explicit?latest?.id??null:experience?.id??null;
       if(!evidence||(!explicit&&!experience)){event(id,'tool','tool_result',{tool,ok:false,error:'只保存有本轮明确约定或已观察工具证据的主题记忆；未保存普通对话'});return true;}
     }
+    const effectFingerprint=()=>tool.startsWith('mcp_')||!definition.changesWorkspace&&tool!=='run_check'?'host_metadata':currentFingerprint(s.project_id);
+    const receipt=!readonly?effects.begin(id,s.task_id??undefined,tool,args,effectFingerprint(),String(definition.version??'builtin')+':'+policy.version+(tool==='run_check'?':'+contract(s)?.version:'')):null;
+    if(receipt?.reused){event(id,'tool','tool_result',{tool,ok:true,result:receipt.result,operationId:receipt.id,reused:true});event(id,'system','operation_reused',{content:'该操作已有已确认结果，已复用记录，未再次执行：'+tool,operationId:receipt.id});return true;}
     const controller=controllers.get(id)!;if(definition.changesWorkspace||['run_command','verify','run_check'].includes(tool))deliveries.ensureBaseline(s);event(id,'assistant','tool_started',{tool,args,taskId:s.task_id,changesWorkspace:definition.changesWorkspace===true});
     let diagnosticBefore:string|undefined;if(!s.needs_verification&&['run_command','verify'].includes(tool)){try{diagnosticBefore=currentFingerprint(s.project_id);}catch{}}
     if(tool==='run_check')db.prepare('UPDATE assistant_sessions SET needs_verification=1 WHERE id=?').run(id);
@@ -168,15 +176,15 @@ export function createAssistantLoop(deps:Dependencies){
       if(diagnosticBefore&&!controller.signal.aborted&&get(id).status==='running'){
         const r=object(result);if(typeof r.exitCode==='number'&&r.unknown===false&&r.timedOut===false&&r.aborted===false&&currentFingerprint(s.project_id)===diagnosticBefore)db.prepare('UPDATE assistant_sessions SET needs_verification=0,verification=NULL WHERE id=?').run(id);
       }
-      try{event(id,'tool','tool_result',{tool,ok:true,result});}catch(error){if(['run_command','verify','run_check'].includes(tool))throw new CommandSafetyError('命令结果事件未可靠保存：'+safeError(error));throw error;}
-      const unsafe=result&&typeof result==='object'&&(('unknown' in result&&result.unknown)||('sideEffectsNeedReview' in result&&result.sideEffectsNeedReview));
+      const unsafe=!!(result&&typeof result==='object'&&(('unknown' in result&&result.unknown)||('sideEffectsNeedReview' in result&&result.sideEffectsNeedReview)));
+      try{const saved=event(id,'tool','tool_result',{tool,ok:true,result,operationId:receipt?.id});if(receipt&&!unsafe)effects.complete(receipt.id,Number(saved.lastInsertRowid),effectFingerprint());}catch(error){if(['run_command','verify','run_check'].includes(tool))throw new CommandSafetyError('命令结果事件未可靠保存：'+safeError(error));throw error;}
       if(unsafe){recordSafety(id,new CommandSafetyError('命令停止情况或部分副作用待核对，必须检查后恢复'),'command_operation');return false;}
       if(get(id).status!=='running')return false;
       if(tool!=='configure_agents'&&deps.policy(s.project_id).version!==policy.version)throw new Error('执行期间项目权限已变化，请检查后恢复');
       if(result&&typeof result==='object'&&'unknown' in result&&result.unknown)throw new Error('子进程停止情况未知，请检查进程后恢复，不能自动重试');
       if(result&&typeof result==='object'&&'childSessionId' in result){const childId=String(result.childSessionId);const digest=createHash('sha256').update(JSON.stringify(deps.child(childId).details)).digest('hex');db.prepare("UPDATE assistant_sessions SET status='waiting_agents',child_session_id=?,version=version+1 WHERE id=?").run(childId,id);db.prepare('INSERT INTO assistant_supervision VALUES (?,?,?,0) ON CONFLICT(session_id) DO UPDATE SET digest=excluded.digest,last_wake_at=excluded.last_wake_at,wakes=0').run(id,digest,Date.now());return false;}
       return true;
-    }catch(error){if((error as {code?:string})?.code==='COMMAND_LIFECYCLE_UNKNOWN')throw error;event(id,'tool','tool_result',{tool,ok:false,error:safeError(error)});if(tool.startsWith('mcp_')){event(id,'system','process_unknown',{error:'MCP 外部副作用需检查，不自动重放'});throw error;}if(safeError(error).includes('停止情况未知')||deps.policy(s.project_id).version!==policy.version)throw error;return get(id).status==='running';}finally{clearInterval(guard);}
+    }catch(error){if((error as {code?:string})?.code==='COMMAND_LIFECYCLE_UNKNOWN')throw error;const fault=classifyFault(error,{kind:'tool',sideEffects:!readonly||tool.startsWith('mcp_')});event(id,'tool','tool_result',{tool,ok:false,error:safeError(error),operationId:receipt?.id,fault});if(fault.strategy==='review'&&receipt){recordSafety(id,error,receipt.id);return false;}if(receipt&&error instanceof PreflightError)effects.rejectPreflight(receipt.id);if(fault.strategy==='stop'){update(id,'attention');return false;}if(tool.startsWith('mcp_')){event(id,'system','process_unknown',{error:'MCP 外部副作用需检查，不自动重放'});throw error;}if(safeError(error).includes('停止情况未知')||deps.policy(s.project_id).version!==policy.version)throw error;return get(id).status==='running';}finally{clearInterval(guard);}
   }
   function assemble(s:AssistantSession,fold=true,record=false){
     const window=contextWindow(deps.contextTokens?.(s.id)??32768),target=Math.floor(window*memory.settings(s.project_id).threshold);
@@ -259,10 +267,10 @@ export function createAssistantLoop(deps:Dependencies){
       if(typeof input.approved!=='boolean')throw new Error('请选择批准或拒绝');if(input.approved&&p.policyVersion!==deps.policy(s.project_id).version)throw new Error('项目权限已变化，请拒绝旧请求或重新开始');if(input.approved&&p.fingerprint!==(p.tool==='configure_verification'&&object(p.args).npm&&deps.projectRoot?verificationFingerprint(deps.projectRoot(s.project_id),verificationContract(deps.projectRoot(s.project_id),object(p.args))):currentFingerprint(s.project_id)))throw new Error('项目文件已变化，请拒绝旧请求并重新检查');
     }else{if(!Array.isArray(input.selected)||input.selected.some(v=>typeof v!=='string'||!(p.options as unknown[]).includes(v))||new Set(input.selected).size!==input.selected.length||!p.multiple&&input.selected.length>1)throw new Error('选择无效');if(!input.selected.length&&!String(input.content??'').trim())throw new Error('请选择或输入回答');text(input.content||'已选择',4000);}
     event(id,'user','request_answer',p.kind==='approval'?{approved:input.approved,tool:p.tool}:{selected:input.selected,content:input.content??''});db.prepare("UPDATE assistant_sessions SET pending=NULL,status='running',version=version+1,started_at=? WHERE id=?").run(now(),id);
-    if(p.kind==='approval'&&input.approved){busy.add(id);controllers.set(id,new AbortController());void (async()=>{try{await execute(id,String(p.tool),object(p.args),true);}catch(error){if((error as {code?:string})?.code==='COMMAND_LIFECYCLE_UNKNOWN'){recordSafety(id,error,error instanceof CommandSafetyError?error.resource:'command_operation');}else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error)});update(id,'attention');}}finally{busy.delete(id);controllers.delete(id);kick(id);}})();}else kick(id);return details(id);
+    if(p.kind==='approval'&&input.approved){busy.add(id);controllers.set(id,new AbortController());void (async()=>{try{await execute(id,String(p.tool),object(p.args),true);}catch(error){if((error as {code?:string})?.code==='COMMAND_LIFECYCLE_UNKNOWN'){recordSafety(id,error,error instanceof CommandSafetyError?error.resource:'command_operation');}else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error),fault:classifyFault(error)});update(id,'attention');}}finally{busy.delete(id);controllers.delete(id);kick(id);}})();}else kick(id);return details(id);
   }
   function stop(id:string){const s=get(id);update(id,'stopped');db.prepare('UPDATE assistant_sessions SET pending=NULL WHERE id=?').run(id);controllers.get(id)?.abort();if(s.child_session_id){try{deps.stopChild(s.child_session_id);}catch(error){event(id,'system','child_stop_error',{error:'已停止主循环；子流程需要检查：'+safeError(error)});}}event(id,'user','stopped',{});return details(id);}
-  function resume(id:string,input:Record<string,unknown>){const s=get(id);if(busy.has(id)||!['attention','stopped'].includes(s.status)&&!unsavedSafety.has(id)||input.version!==s.version||input.confirmed!==true)throw new Error('请检查执行结果、确认原进程已停止并使用最新版本恢复');deps.commandState?.(s,'resume');event(id,'user','resumed',{confirmed:true});db.prepare("UPDATE assistant_sessions SET status=CASE WHEN child_session_id IS NULL THEN 'running' ELSE 'waiting_agents' END,steps=0,started_at=?,version=version+1 WHERE id=?").run(now(),id);unsavedSafety.delete(id);kick(id);return details(id);}
+  function resume(id:string,input:Record<string,unknown>){const s=get(id);if(busy.has(id)||!['attention','stopped'].includes(s.status)&&!unsavedSafety.has(id)||input.version!==s.version||input.confirmed!==true)throw new Error('请检查执行结果、确认原进程已停止并使用最新版本恢复');deps.commandState?.(s,'resume');db.exec('SAVEPOINT recovery_resume');try{effects.reconcile(id);event(id,'user','resumed',{confirmed:true});db.prepare("UPDATE assistant_sessions SET status=CASE WHEN child_session_id IS NULL THEN 'running' ELSE 'waiting_agents' END,steps=0,started_at=?,version=version+1 WHERE id=?").run(now(),id);db.exec('RELEASE recovery_resume');}catch(e){db.exec('ROLLBACK TO recovery_resume;RELEASE recovery_resume');throw e;}unsavedSafety.delete(id);kick(id);return details(id);}
   async function tick(childId?:string){for(const s of childId?rows<AssistantSession>("SELECT * FROM assistant_sessions WHERE status='waiting_agents' AND child_session_id=?",childId):rows<AssistantSession>("SELECT * FROM assistant_sessions WHERE status='waiting_agents'")){
     if(busy.has(s.id)||!s.child_session_id)continue;try{
       const child=deps.child(s.child_session_id),digest=createHash('sha256').update(JSON.stringify(child.details)).digest('hex');

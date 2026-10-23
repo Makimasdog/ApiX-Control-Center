@@ -1,3 +1,5 @@
+import {classifyFault} from './dist/src/recovery/fault-policy.js';
+import {createAgentHealth} from './src/coordination/agent-health.mjs';
 import {createProjectMemory,sensitiveMemory} from './dist/src/assistant/project-memory.js';
 import {createNpmValidation} from './dist/src/validation/npm-validation.js';
 import {createConversationModels} from './dist/src/models/conversation-models.js';
@@ -356,7 +358,7 @@ const scheduling=createScheduling(store,{
   denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task),supportsModel:(runtime,id)=>runtimeAdapters.supportsModel(runtime)||agentProviders.supports(id)
 });
 const agentProviders=createAgentProviders({...store,dataDir,credentials,profile:scheduling.profile,saveProfile:scheduling.saveProfile,managerSettings:()=>coordinator.getSettings(),saveManager:input=>coordinator.saveSettings(input)});
-const autonomy=createAutonomy({...store,permissions,scheduling,
+const autonomy=createAutonomy({...store,fault:taskFault,permissions,scheduling,
   employees:()=>rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL'),
   workflow:projectId=>coordinator.workflowSettings(projectId),
   inspect:async task=>{const result=await inspectTaskDelivery(task.id,true);if(result.error || !result.inspection)throw new Error(result.error??'交付无法检查');return result.inspection;},workspace:task=>codeHandoffs.workspace(task).path,
@@ -378,12 +380,22 @@ async function retryAutomatically(task,employeeId,prompt){
   const result=await recoverTask(task.id,{revision:session.revision,employeeId,runId:checked.latestRun?.id??null,fingerprint:checked.recoveryFingerprint,reviewed:true},'policy',prompt);
   if(result.failure)throw new Error(result.failure);
 }
-const workflowRecovery=createWorkflowRecovery({...store,permissions,scheduling,workflow:projectId=>coordinator.workflowSettings(projectId),retry:retryAutomatically,record:(...args)=>coordinator.recordTask(...args)});
+function taskFault(task){if(['completed','needs_revision'].includes(task.status))return classifyFault(new Error('验收校验失败'),{kind:'agent'});const latest=row('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id);const saved=row("SELECT payload FROM apix_ledger WHERE project_id=? AND aggregate_id=? AND kind='agent.failure' ORDER BY sequence DESC LIMIT 1",task.project_id,task.id);if(saved){const event=JSON.parse(saved.payload);if(event.runId===latest?.id)return event.fault;}return classifyFault(new Error(task.result??''),{kind:'agent'});}
+const agentHealth=createAgentHealth({...store,probeMs:Number(process.env.APIX_AGENT_PROBE_MS??60000),silenceMs:Number(process.env.APIX_AGENT_SILENCE_MS??300000),maxRunMs:Number(process.env.APIX_AGENT_MAX_RUN_MS??1800000),owned:id=>running.has(id),uncertain:id=>setRun(id,'unknown','agent-health'),
+  record:(...args)=>coordinator.recordTask(...args),
+  probe:(taskId,runId,miss)=>{const task=row('SELECT * FROM tasks WHERE id=?',taskId);if(!task?.employee_id)throw new Error('员工身份不可用');const sent=sendMessage({projectId:task.project_id,taskId,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`agent-health:${runId}:${miss}`,timeoutMs:60000,payload:{kind:'progress_request',source:'apix',content:'请报告当前进度、正在执行的操作及阻塞；宿主检测到长时间无输出。'}});if(sent.status==='rejected')throw new Error('进度探测消息未能送达');},
+  stop:id=>{const active=running.get(id);if(active){active.healthStop=true;stopRun(id,'health');}}
+});
+const workflowRecovery=createWorkflowRecovery({...store,fault:taskFault,permissions,scheduling,workflow:projectId=>coordinator.workflowSettings(projectId),retry:retryAutomatically,record:(...args)=>coordinator.recordTask(...args)});
 
 const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
   const taskId = payload.taskId ?? row('SELECT task_id FROM agent_messages WHERE id=?', aggregateId)?.task_id;
   if (taskId) coordinator.recordTask(taskId, kind, { messageId: aggregateId, actor, ...payload });
+  if(['message.created','message.delivered','message.acknowledged','message.completed'].includes(kind)){
+    const observed=row("SELECT r.id FROM agent_messages m JOIN tasks t ON t.id=m.task_id JOIN runs r ON r.task_id=t.id WHERE m.id=? AND t.project_id=? AND r.status='running' AND ((m.from_agent=t.employee_id AND m.created_at>=r.started_at) OR (m.target_run_id=r.id AND t.employee_id=?)) ORDER BY r.rowid DESC LIMIT 1",aggregateId,projectId,actor);
+    if(observed)agentHealth.observe(observed.id);
+  }
 } });
 
 function event(runId, source, kind, payload = {}) {
@@ -536,8 +548,10 @@ function launch(task) {
   appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: task.id, runId, status: "running", runtime: task.runtime });
   let buffer = "";
   child.stdout.setEncoding("utf8");
+  agentHealth.started(runId,task.id);
   child.stderr.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
+    agentHealth.observe(runId);
     if (runtimeAdapters.format(task.runtime) === "plain") { running.get(runId).output += chunk; return; }
     buffer += chunk;
     let index;
@@ -554,6 +568,7 @@ function launch(task) {
     } finally { db.exec('RELEASE runtime_chunk'); }
   });
   child.stderr.on("data", (chunk) => {
+    agentHealth.observe(runId);
     const value = chunk;
     const active = running.get(runId);
     if (active) active.stderr = (active.stderr + value).slice(-4000);
@@ -566,8 +581,11 @@ function launch(task) {
     if (!active) return;
     if (buffer.trim()) { try { handleNative(runId,task.runtime,JSON.parse(buffer)); } catch { event(runId, task.runtime, "trailing_stdout", { text: buffer.slice(0, 3000) }); } }
     const confirmedStop = active.aborted || (active.stopped && (signal !== null || code !== 0));
-    const status = confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed";
+    const status = active.healthStop ? "unknown" : confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed";
     if(status==='failed' && (active.quotaBlocked || quotaFailure(active.stderr))){executionControl.pauseRuntime(task.project_id,task.runtime,'运行时报告额度或速率限制，请检查账户后明确恢复或重新分配',runId);if(task.employee_id)scheduling.pauseAccount(task.employee_id,runId);}
+    agentHealth.finished(runId);
+    const fault=status==='failed'?(active.failure??classifyFault(new Error(active.stderr))):active.healthStop?classifyFault({code:'AGENT_UNRESPONSIVE'}):status==='cancelled'?classifyFault({code:'CANCELLED',message:'cancelled'}):null;
+    if(fault)coordinator.recordTask(task.id,'agent.failure',{schema:1,runId,fault});
     recordOutput(runId, active.output, status);
     if (active.dispatchMessageId) {
       if (!active.output.trim()) {
@@ -577,6 +595,7 @@ function launch(task) {
       completeMessage(active.dispatchMessageId, { agentId: task.employee_id });
     }
     setRun(runId, status, "process-exit", code);
+    if(active.healthStop)db.prepare("UPDATE tasks SET result=result||? WHERE id=?").run('\n员工长时间无响应，已请求停止；副作用待核对，未自动重放。',task.id);
     if (status === "failed" && !active.output.trim() && active.stderr.trim()) db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(active.stderr.trim(), now(), task.id);
     event(runId, "process", "run_exited", { code, signal, status, stopRequested: active.stopped, stopConfirmed: confirmedStop });
     running.delete(runId);
@@ -595,6 +614,7 @@ function handleNative(runId, runtime, item) {
   const type = item.type ?? "unknown";
   if(type==='error' || type==='turn.failed' || type==='result' && item.is_error===true || type==='message_end' && item.message?.stopReason==='error' || type==='response' && item.command==='prompt' && item.success===false) {
     const error=item.error ?? item.message?.error ?? {};
+    active.failure=classifyFault(new Error(typeof error==='string'?error:String(error.message??item.result??'')),{kind:'agent',serviceCode:String(error.code??error.type??''),status:Number(error.status)||undefined});
     if(quotaFailure(String(error.code ?? error.type ?? error.status ?? '')) || quotaFailure(typeof error==='string'?error:error.message ?? item.message?.errorMessage ?? item.result ?? textFromMessage(item.message)))active.quotaBlocked=true;
   }
   if (runtime === "pi") {
@@ -850,8 +870,9 @@ export function resolveApproval(id, approved) {
     throw error;
   }
 }
-export function stopRun(id) {
+export function stopRun(id,source='user') {
   const active = running.get(id);
+  if(source==='user'&&active)active.healthStop=false;
   if (!active) throw new Error("此 Run 已不受当前服务管理，无法确认停止");
   if (active.stopped) return;
   active.stopped = true;
@@ -994,7 +1015,7 @@ async function inferManager(prompt,onDelta,context) {
   const controller=new AbortController(),version=context?permissions.get(context.projectId).version:null;
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
-  try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal});}
+  try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal,onRetry:info=>{if(context?.sessionId){const table=context.purpose==='assistant_loop'?'assistant_events':null;if(table)db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','model_retry',?,?)").run(context.sessionId,JSON.stringify(info),now());else memory.append(context.projectId,context.sessionId,'model.retry',info);}}});}
   catch(error){throw managerInferenceError(error,revoked);}
   finally{if(watch)clearInterval(watch);context?.signal?.removeEventListener('abort',abort);}
 }
@@ -1258,7 +1279,7 @@ const coordinator = createCoordinator({ ...store,projectContext:(projectId,query
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
-setInterval(() => coordinator.superviseActiveRuns(supervisionAfterMs), supervisionTickMs).unref();
+setInterval(() => {try{agentHealth.tick();coordinator.superviseActiveRuns(supervisionAfterMs);}catch{process.stderr.write('Agent 健康检查失败，请核对任务状态。\n');}}, supervisionTickMs).unref();
 setInterval(() => {void autonomy.tick().catch(()=>process.stderr.write('自主交付监督发生错误，请检查当前目标状态。\n'));},supervisionTickMs).unref();
 setInterval(() => {void workflowRecovery.tick().catch(()=>process.stderr.write('自动协作恢复发生错误，请检查任务记录。\n'));},supervisionTickMs).unref();
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});

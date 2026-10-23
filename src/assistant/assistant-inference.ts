@@ -1,3 +1,4 @@
+import {FaultError} from '../recovery/fault-policy.js';
 import {randomUUID} from 'node:crypto';
 import {ModelCleanupUnknownError,type ModelSettings} from '../models/model-backend.js';
 
@@ -9,7 +10,7 @@ interface Dependencies {
   pause(accountId:string|null,id:string):unknown;
   recordFailure?(record:{id:string;projectId:string;sessionId?:string;stage:string;error:string}):void;
   quotaFailure(message:string):boolean;
-  infer(prompt:string,onDelta:undefined,context:{projectId:string;purpose:string;signal?:AbortSignal;modelSettings:ModelSettings}):Promise<string>;
+  infer(prompt:string,onDelta:undefined,context:{projectId:string;purpose:string;sessionId?:string;signal?:AbortSignal;modelSettings:ModelSettings}):Promise<string>;
 }
 export class InferenceAccountingError extends Error {readonly code='INFERENCE_ACCOUNTING_UNKNOWN';}
 
@@ -33,10 +34,10 @@ export function createAssistantInference(deps:Dependencies){
       catch(recordError){failures.push({stage:'record',error:safe(recordError),persisted:false});console.error('ApiX 账本失败记录未可靠保存：'+safe(recordError));}
     };
     let result:string|undefined,primary:Error|undefined;
-    try{result=await deps.infer(prompt,undefined,{projectId,purpose:'assistant_loop',signal,modelSettings:settings});}
+    try{result=await deps.infer(prompt,undefined,{projectId,purpose:'assistant_loop',sessionId,signal,modelSettings:settings});}
     catch(error:unknown){
-      primary=error instanceof ModelCleanupUnknownError?new ModelCleanupUnknownError(safe(error)):new Error(safe(error));
-      if(deps.quotaFailure(error instanceof Error?error.message:'')){try{deps.pause(accountId,id);}catch(pauseError){record('pause',pauseError);}}
+      primary=error instanceof ModelCleanupUnknownError?new ModelCleanupUnknownError(safe(error)):error instanceof FaultError?new FaultError(safe(error),error.fault,error.retryAfterMs):new Error(safe(error));
+      if(error instanceof FaultError?error.fault.category==='quota':deps.quotaFailure(error instanceof Error?error.message:'')){try{deps.pause(accountId,id);}catch(pauseError){record('pause',pauseError);}}
     }finally{if(reserved){try{deps.settle(id,null);}catch(error){record('settle',error);try{deps.pause(accountId,id);}catch(pauseError){record('pause',pauseError);}}}}
     if(failures.length){const message='推理账本状态未确认；'+failures.map(f=>`${f.stage}: ${f.error}${f.persisted?'':'（记录未可靠保存）'}`).join('；');if(primary instanceof ModelCleanupUnknownError)primary.message+='；'+message;else primary=new InferenceAccountingError(message);Object.assign(primary,{accountingFailures:failures});}
     if(primary)throw primary;return result!;
