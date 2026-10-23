@@ -68,7 +68,7 @@ test('existing ApiX settings are adopted once and loopback providers work withou
   assert.throws(()=>save('openai-completions',{apiKey:''}),/API Key/);
 }));
 test('invalid URLs, keys and unsupported protocols cannot alter existing settings',()=>fixture(({save})=>{
-  for(const baseUrl of ['file:///secret','https://user:pass@example.com','https://example.com?api_key=secret','bad'])assert.throws(()=>save('openai-responses',{baseUrl}));
+  for(const baseUrl of ['file:///secret','https://user:pass@example.com','https://example.com?api_key=secret','bad','https://{workspaceid}.example.com/v1','https://example.com/%7Bworkspaceid%7D/v1'])assert.throws(()=>save('openai-responses',{baseUrl}));
   assert.throws(()=>save('openai-responses',{apiKey:'bad\nkey'}));assert.throws(()=>save('openai-responses',{apiKey:''}));assert.throws(()=>save('unknown'));
 }));
 test('deleted employees do not permanently pin unused providers, while uncertain processes still prevent rebinding',()=>fixture(({db,service,save,bind})=>{

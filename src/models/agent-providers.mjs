@@ -30,7 +30,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     if(!['default','bearer'].includes(authHeader))throw Error('认证方式无效');
     if(!name||name.length>100||!model||model.length>200||/[\x00-\x1f]/.test(name+model)||!Object.values(providerProtocols).flat().includes(apiType))throw Error('请填写名称、模型 ID 和受支持的协议');
     let baseUrl=String(input.baseUrl??'').trim();
-    if(apiType==='codex-login')baseUrl='';else {let url;try{url=new URL(baseUrl);}catch{throw Error('供应商地址无效');}if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash)throw Error('地址仅支持 HTTP(S)，不能包含凭据、查询或片段');baseUrl=url.href.replace(/\/$/,'');}
+    if(apiType==='codex-login')baseUrl='';else {if(/[{}<>]|%7[bBdD]|%3[cCeE]/i.test(baseUrl))throw Error('供应商地址仍含占位符，请填写控制台提供的实际 Base URL');let url;try{url=new URL(baseUrl);}catch{throw Error('供应商地址无效');}if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash)throw Error('地址仅支持 HTTP(S)，不能包含凭据、查询或片段');baseUrl=url.href.replace(/\/$/,'');}
     const bound=previous?rows('SELECT b.employee_id FROM agent_provider_bindings b JOIN employees e ON e.id=b.employee_id WHERE b.provider_id=? AND e.deleted_at IS NULL',previous.id):[];
     for(const e of bound){idle(e.employee_id);compatible(row('SELECT runtime FROM employees WHERE id=?',e.employee_id).runtime,{apiType,authHeader});}
     const managerBound=previous&&managerMatch(previous,managerSettings());if(managerBound)compatible('apix',{apiType,authHeader});

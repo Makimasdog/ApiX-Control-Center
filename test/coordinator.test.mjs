@@ -1050,19 +1050,19 @@ test('scheduler propagates launch failure through downstream dependencies',()=>{
   }
 });
 
-test('provider center scopes worker credentials and tracks API channel without reporting subscription balance',async()=>harness(async h=>{
-  const {s,employeeId}=await setup(h,'codex');
-  const p=await h.request('/api/agent-providers',{name:'Scoped worker',version:0,model:'fixture-model',baseUrl:'https://worker.invalid/v1',apiType:'openai-responses',apiKey:'fixture-provider-worker-key'});
+for(const providerRuntime of ['codex','claude'])test('provider center scopes worker credentials and tracks API channel without reporting subscription balance: '+providerRuntime,async()=>harness(async h=>{
+  const {s,employeeId}=await setup(h,providerRuntime);
+  const p=await h.request('/api/agent-providers',{name:'Scoped worker',version:0,model:'fixture-model',baseUrl:'https://worker.invalid/v1',apiType:providerRuntime==='codex'?'openai-responses':'anthropic-messages',apiKey:'fixture-provider-worker-key'});
   assert(!JSON.stringify(p).includes('fixture-provider-worker-key'));
   await h.request('/api/agent-providers/bind',{agentId:employeeId,providerId:p.id,providerVersion:p.version,version:0});
   const quota=await h.request(`/api/employees/${employeeId}/runtime-info`,{});assert.match(quota.source,/API 供应商/);assert.equal(quota.quota.state,'unknown');assert.deepEqual(quota.quota.windows,[]);
   const plan=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:plan.planVersion});
   const final=await waitFor(async()=>{const current=await h.request(`/api/coordination/sessions/${s.id}`);return current.tasks[0].status==='completed'&&current;});
-  const report=JSON.parse(final.tasks[0].result);assert.equal(report.scopedKey,true);assert.equal(report.ambientKeyPresent,false);assert.equal(report.otherAgentKeyPresent,false);assert(report.args.includes('model_provider="apix"'));assert(!report.args.some(a=>a.includes('fixture-provider-worker-key')));
+  const report=JSON.parse(final.tasks[0].result);assert.equal(report.scopedKey,true);assert.equal(report.ambientKeyPresent,false);assert.equal(report.otherAgentKeyPresent,false);if(providerRuntime==='codex')assert(report.args.includes('model_provider="apix"'));else{assert(report.args.includes('--settings'));assert.equal(report.settingsKey,true);}assert(!report.args.some(a=>a.includes('fixture-provider-worker-key')));
   const snapshot=await h.request('/api/snapshot');assert(snapshot.events.some(e=>e.kind==='provider.selected'));assert(!JSON.stringify(snapshot).includes('fixture-provider-worker-key'));
   await h.request('/api/agent-providers/remove',{id:p.id,version:p.version},400);
   await h.restart();const restored=await h.request('/api/agent-providers');assert.equal(restored.agents.find(a=>a.id===employeeId).providerId,p.id);
-},{APIX_CODEX_ENTRY:join(root,'test/fake-provider-worker.mjs'),OPENAI_API_KEY:'ambient-fixture-key',OPENAI_BASE_URL:'https://ambient.invalid',ANTHROPIC_AUTH_TOKEN:'other-fixture-key'}));
+},{APIX_CODEX_ENTRY:join(root,'test/fake-provider-worker.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-provider-worker.mjs'),OPENAI_API_KEY:'ambient-fixture-key',OPENAI_BASE_URL:'https://ambient.invalid',ANTHROPIC_AUTH_TOKEN:'other-fixture-key'}));
 
 test('coordinator dependencies wait for acceptance and rejection blocks downstream work',async()=>harness(async h=>{
   const {s,employeeId}=await setup(h);
