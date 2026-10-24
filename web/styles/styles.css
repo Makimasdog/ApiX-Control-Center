@@ -772,6 +772,11 @@ svg.icon {
   max-width: 80%;
 }
 
+/* 员工/系统气泡统一占满可用宽度，避免相邻气泡随内容伸缩导致宽度不一；用户气泡仍按内容自适应。 */
+.chat-row:not(.user) .message-body {
+  width: 100%;
+}
+
 .message-head {
   display: flex;
   align-items: baseline;

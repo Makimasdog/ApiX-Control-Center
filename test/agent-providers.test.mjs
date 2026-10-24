@@ -17,7 +17,7 @@ function fixture(work){
   const service=createAgentProviders(deps);
   const save=(apiType='openai-responses',extra={})=>service.save({version:0,name:'Test provider',model:'test-model',baseUrl:'https://api.example.invalid/v1',apiKey:'fixture-secret-only',apiType,...extra});
   const bind=(id,p)=>service.bind({agentId:id,version:service.list().agents.find(a=>a.id===id).version,providerId:p?.id??null,providerVersion:p?.version});
-  try{return work({db,dir,env,deps,service,store,save,bind,restart:()=>createAgentProviders(deps)});}finally{db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true});}
+  try{return work({db,dir,env,deps,service,store,save,bind,restart:()=>createAgentProviders(deps)});}finally{db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }
 
 test('declared context window is validated, applied to ApiX and retained through edits',()=>fixture(({service,save,bind,deps})=>{

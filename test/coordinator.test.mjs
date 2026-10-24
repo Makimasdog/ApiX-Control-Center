@@ -173,7 +173,7 @@ test('workspace verifies native paths and legacy repository aliases without acce
     const other=join(dir,'other');execFileSync('git',['-c','core.autocrlf=false','init',other],{stdio:'ignore'});saved.common_dir=join(other,'.git');
     assert.throws(()=>handoffs.workspace(task),/Git 目录已变化/);
     saved.path=other;assert.throws(()=>handoffs.workspace(task),/可验证的托管工作区/);
-  }finally{const absolute=resolve(dir);assert(absolute.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(absolute,{recursive:true,force:true});}
+  }finally{const absolute=resolve(dir);assert(absolute.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(absolute,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('Windows npm shims resolve package bin entries without a shell', {skip:process.platform!=='win32'}, async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-shims-'));
@@ -194,7 +194,7 @@ test('Windows npm shims resolve package bin entries without a shell', {skip:proc
     assert.equal(adapters.command('opencode').executable,join(dir,'node_modules','opencode-ai','bin','opencode.exe'));
     assert.equal(adapters.command('kimi'),null);
     assert.equal(adapters.catalog().find(item=>item.id==='kimi').available,false);
-  } finally {db.close();await rm(dir,{recursive:true,force:true});}
+  } finally {db.close();await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 const delay = ms => new Promise(r=>setTimeout(r,ms));
 test('Pi employee entries are independent of the obsolete manager override',async()=>{
@@ -203,7 +203,7 @@ test('Pi employee entries are independent of the obsolete manager override',asyn
     process.env.APIX_PI_ENTRY=join(root,'test/fake-pi.mjs');assert.equal(adapters.command('pi').executable,process.execPath);
     for(const bad of [dir,'pi',join(dir,'missing.js'),join(dir,'pi.cmd')]){process.env.APIX_PI_ENTRY=bad;assert.equal(adapters.command('pi'),null);}
     process.env.APIX_PI_ENTRY=process.execPath;assert.deepEqual(adapters.command('pi'),{executable:process.execPath,prefix:[]});
-  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true});}
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 test('Windows Pi npm shims accept both official package scopes and reject invalid bin entries',{skip:process.platform!=='win32'},async()=>{
@@ -217,7 +217,7 @@ test('Windows Pi npm shims accept both official package scopes and reject invali
       await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'../outside.js'}}));assert.equal(adapters.command('pi'),null);
       await writeFile(join(packageDir,'package.json'),JSON.stringify({bin:{pi:'dist'}}));assert.equal(adapters.command('pi'),null);
     }
-  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true,force:true});}
+  }finally{if(saved===undefined)delete process.env.APIX_PI_ENTRY;else process.env.APIX_PI_ENTRY=saved;db.close();assert(resolve(dir).startsWith(resolve(tmpdir())+'\\'));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 test('ApiX operates without Pi and missing model configuration does not start a CLI',async()=>harness(async h=>{

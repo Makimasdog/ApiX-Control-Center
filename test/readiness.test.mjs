@@ -6,11 +6,11 @@ import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 test('readiness accepts an actual non-Git directory without initializing it',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-nongit-readiness-'));
-  try{const result=await projectReadiness({project:{id:'p',path:dir},employees:[],runtimes:[],settings:{provider:'',model:'',apiKeyEnv:''},managerAvailable:false});assert.equal(result.checks[0].state,'ready');assert.match(result.checks[0].message,/托管 Git 快照/);}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true});}
+  try{const result=await projectReadiness({project:{id:'p',path:dir},employees:[],runtimes:[],settings:{provider:'',model:'',apiKeyEnv:''},managerAvailable:false});assert.equal(result.checks[0].state,'ready');assert.match(result.checks[0].message,/托管 Git 快照/);}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('a missing Git executable is not treated as a usable non-Git project',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-missing-git-'));const previous=process.env.PATH;
-  try{process.env.PATH='';const result=await projectReadiness({project:{id:'p',path:dir},employees:[],runtimes:[],settings:{provider:'',model:'',apiKeyEnv:''},managerAvailable:false});assert.equal(result.checks[0].state,'missing');assert.match(result.checks[0].message,/Git 安装/);}finally{if(previous===undefined)delete process.env.PATH;else process.env.PATH=previous;assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true});}
+  try{process.env.PATH='';const result=await projectReadiness({project:{id:'p',path:dir},employees:[],runtimes:[],settings:{provider:'',model:'',apiKeyEnv:''},managerAvailable:false});assert.equal(result.checks[0].state,'missing');assert.match(result.checks[0].message,/Git 安装/);}finally{if(previous===undefined)delete process.env.PATH;else process.env.PATH=previous;assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 import {readinessView} from '../dist/web/readiness.js';
 const defaults={project:{id:'p',path:'/fixture'},employees:[],runtimes:[],settings:{model:'',apiKeyEnv:''},managerAvailable:false,inspect:async()=>{},policy:{mode:'ask_approval'}};

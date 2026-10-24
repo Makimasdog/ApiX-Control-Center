@@ -41,7 +41,7 @@ async function idle(service,id){
 async function loopFixture(inference,work){
   const dir=await mkdtemp(join(tmpdir(),'apix-infer-'));const path=join(dir,'state.sqlite');let db,service;const calls=[];let policy={mode:'full_access',version:0};
   const open=()=>{db=new DatabaseSync(path);db.exec("CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY);INSERT OR IGNORE INTO projects VALUES ('p')");const deps={db,row:(sql,...p)=>db.prepare(sql).get(...p),rows:(sql,...p)=>db.prepare(sql).all(...p),now:()=>new Date().toISOString(),policy:()=>policy,describe:()=>({}),infer:inference,execute:async(_s,tool,args)=>{calls.push({tool,args});return {};},fingerprint:()=> 'same',child:()=>({status:'running',complete:false,details:{}}),stopChild:()=>{}};service=createAssistantLoop(deps);};open();
-  try{await work({get service(){return service;},calls,setPolicy:value=>policy=value,restart:()=>{db.close();open();}});}finally{db.close();assert(dir.startsWith(join(tmpdir(),'apix-infer-')));await rm(dir,{recursive:true,force:true});}
+  try{await work({get service(){return service;},calls,setPolicy:value=>policy=value,restart:()=>{db.close();open();}});}finally{db.close();assert(dir.startsWith(join(tmpdir(),'apix-infer-')));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }
 const unknownEvent=s=>s.events.find(e=>e.kind==='process_unknown'&&e.body.resource==='model_transport');
 

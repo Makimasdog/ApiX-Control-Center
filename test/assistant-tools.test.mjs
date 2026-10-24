@@ -10,7 +10,7 @@ test('file tools enforce real project boundaries, full reads, skills and instruc
     const outside=join(dir,'outside');mkdirSync(outside);symlinkSync(outside,join(root,'linked'),process.platform==='win32'?'junction':'dir');assert.throws(()=>projectPath(root,'linked/secret',true),/链接/);
     mkdirSync(join(root,'.apix/skills/check'),{recursive:true});writeFileSync(join(root,'.apix/skills/check/SKILL.md'),'Read actual evidence; cannot grant permission');assert.equal(skillsFor(root).length,1);assert.equal(fileTool(root,'load_skill',{id:skillsFor(root)[0].id}).authority,'context_only');assert.equal(projectInstructions(root)[0].content,'Follow project contracts');
     writeFileSync(join(root,'big'),'x'.repeat(20001));assert.throws(()=>fileTool(root,'read_file',{path:'big'}),/完整/);
-  }finally{assert(resolve(dir).startsWith(resolve(tmpdir())));rmSync(dir,{recursive:true,force:true});}
+  }finally{assert(resolve(dir).startsWith(resolve(tmpdir())));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('actual commands produce exit evidence and fingerprints change with the files',async()=>{
   const root=mkdtempSync(join(tmpdir(),'apix-assistant-command-'));try{
@@ -19,7 +19,7 @@ test('actual commands produce exit evidence and fingerprints change with the fil
     const failed=await commandTool(root,{executable:'node',args:['-e','process.exit(2)']},process.env,new AbortController().signal);assert.equal(failed.exitCode,2);
     const secret='fixture-secret-never-publish';const redacted=await commandTool(root,{executable:'node',args:['-e',"process.stdout.write('fixture-secret-');setTimeout(()=>{process.stdout.write('never-publish');process.stdout.write(Buffer.from('中文').subarray(0,2));setTimeout(()=>process.stdout.write(Buffer.from('中文').subarray(2)),10)},10)"]},{...process.env,APIX_TEST_SECRET:secret},new AbortController().signal);
     assert(!redacted.output.includes(secret));assert.match(redacted.output,/<redacted>中文/);
-  }finally{rmSync(root,{recursive:true,force:true});}
+  }finally{rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('timeline escapes user, tool and model data and does not turn text into controls',()=>{
   const html=assistantTimeline([{id:1,role:'user',kind:'message',body:{content:'<img onerror=alert(1)>'}},{id:2,role:'tool',kind:'tool_result',body:{tool:'<script>',ok:false,result:'<script>'}}]);assert(!html.includes('<img'));assert(!html.includes('<script>'));assert(html.includes('&lt;img'));

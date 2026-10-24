@@ -18,7 +18,7 @@ test('saved keys survive restart, rotate without breaking old references, and st
     assert.equal(workerEnvironment(restarted,'codex',second)[first],undefined);
     assert.equal(workerEnvironment(restarted,'codex',second)[second],undefined);
     for(const key of ['', 'bad key', 'bad\nkey', 'bad\0key', 'x'.repeat(8193)])assert.throws(()=>store.save(key),/格式无效/);
-  } finally {assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true});}
+  } finally {assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 test('HTTP settings accept a direct key without echoing it; saved reference authorizes inference',async()=>{

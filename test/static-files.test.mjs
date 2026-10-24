@@ -85,6 +85,6 @@ test('production server serves relocated assets and keeps its static access boun
   } finally {
     child.kill();
     await exited;
-    await rm(directory, {recursive:true,force:true});
+    await rm(directory, {recursive:true,force:true,maxRetries:10,retryDelay:100});
   }
 });

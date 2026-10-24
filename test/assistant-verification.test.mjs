@@ -23,7 +23,7 @@ async function fixture(work,script="const fs=require('node:fs');const value=fs.r
   const h={db,root,deps,calls,prompts,service:createAssistantLoop(deps),push:(...a)=>queue.push(...a)};h.id=h.service.create({projectId:'p'}).id;
   h.start=(...a)=>{h.push(...a);h.service.message(h.id,{content:'implement and verify'});return wait(h);};
   h.approve=async(...a)=>{const d=await h.start(action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:1000}],writablePaths:['src']}),...a);assert.equal(d.status,'waiting_user');assert.equal(calls.length,0);await h.service.reply(h.id,{version:d.version,requestId:d.pending.id,approved:true});return wait(h);};
-  try{await work(h);}finally{db.close();assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true});}
+  try{await work(h);}finally{db.close();assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }
 test('arbitrary successful diagnostic and no configured checks cannot verify or claim completion',()=>fixture(async h=>{
   const d=await h.start(write('good'),action('verify',{executable:'node',args:['-e','process.exit(0)']}),finish);

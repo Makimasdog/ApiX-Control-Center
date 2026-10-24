@@ -19,7 +19,7 @@ test('long and short host results retain identical execution and verification de
  }}finally{db.close();}
 });
 test('unsupported capabilities disable command tools but preserve file operations',()=>{
- const root=mkdtempSync(join(tmpdir(),'apix-capabilities-'));try{assert.equal(commandCapabilities('linux').managedCommands.available,false);assert.throws(()=>preflightCommand(root,{executable:'node'},'linux'),/本平台/);const registry=createToolRegistry([],false);assert.equal(registry.get('run_check'),undefined);assert(registry.get('read_file'));fileTool(root,'write_file',{path:'a',content:'available'});assert.equal(fileTool(root,'read_file',{path:'a'}).content,'available');}finally{assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true});}
+ const root=mkdtempSync(join(tmpdir(),'apix-capabilities-'));try{assert.equal(commandCapabilities('linux').managedCommands.available,false);assert.throws(()=>preflightCommand(root,{executable:'node'},'linux'),/本平台/);const registry=createToolRegistry([],false);assert.equal(registry.get('run_check'),undefined);assert(registry.get('read_file'));fileTool(root,'write_file',{path:'a',content:'available'});assert.equal(fileTool(root,'read_file',{path:'a'}).content,'available');}finally{assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('invalid executable is a known rejection before any intent or process uncertainty',async()=>{
  const db=new DatabaseSync(':memory:');db.exec("CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY,project_id TEXT);INSERT INTO assistant_sessions VALUES ('s','p');CREATE TABLE assistant_events(id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,kind TEXT,body TEXT,created_at TEXT)");

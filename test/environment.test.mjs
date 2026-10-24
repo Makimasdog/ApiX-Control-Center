@@ -17,7 +17,7 @@ test('.env loads quoted values, aliases the key and preserves process overrides'
     env.APIX_ALI_API_KEY='override';env.APIX_ENV_TEST_VALUE='override-model';
     result=spawnSync(process.execPath,['--input-type=module','-e',script,path],{env,encoding:'utf8'});
     assert.equal(result.status,0);assert.deepEqual(JSON.parse(result.stdout),['override','override-model']);
-  }finally{rmSync(dir,{recursive:true,force:true});}
+  }finally{rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 
 test('worker environment removes manager aliases and stale run identity while preserving independent CLI credentials',()=>{

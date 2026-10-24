@@ -41,5 +41,5 @@ test('real stdio MCP discovery, environment isolation, schema validation, error 
     const failure=discovered.tools.find(t=>t.description.includes('/ failure:'));assert.equal((await manager.call('p',failure.name,{},failure.version,new AbortController().signal)).isError,true);
     const slow=discovered.tools.find(t=>t.description.includes('/ slow:'));const controller=new AbortController();setTimeout(()=>controller.abort(),100);await assert.rejects(()=>manager.call('p',slow.name,{},slow.version,controller.signal),/不自动重放/);assert.equal((await readFile(log,'utf8')).trim().split('\n').filter(line=>JSON.parse(line).name==='slow').length,1);
     await manager.save('p',{...input,version:1,enabled:false});assert.equal(manager.catalog('p').length,0);await assert.rejects(()=>manager.call('p',echo.name,{text:'old'},echo.version,new AbortController().signal),/尚未发现|停用/);
-  }finally{await manager.close();db.close();await rm(dir,{recursive:true,force:true});}
+  }finally{await manager.close();db.close();await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });

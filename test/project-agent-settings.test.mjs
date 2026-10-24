@@ -14,7 +14,7 @@ import {executionArgs,inspectCodex,normalizeQuota} from '../dist/src/agents/agen
 const fixture=resolve('test/fake-agent-settings.mjs');
 test('folder browser and explicit creation validate absolute directories and preserve files',async()=>{
   const temp=await mkdtemp(join(tmpdir(),'apix-folder-'));
-  try{const sub=join(temp,'中文 空格');assert.throws(()=>projectDirectory(sub),/不存在/);assert(!existsSync(sub));assert.equal(projectDirectory(sub,true),realpathSync.native(sub));assert(sameProjectDirectory(sub,realpathSync.native(sub)));assert(!sameProjectDirectory(sub,join(temp,'missing')));assert.throws(()=>projectDirectory(''),/绝对路径/);assert.throws(()=>projectDirectory('relative',true),/绝对路径/);const file=join(temp,'file');await writeFile(file,'keep');assert.throws(()=>projectDirectory(file,true),/文件夹/);const list=browseFolders(temp);assert(list.directories.some(d=>d.path===realpathSync.native(sub)));assert(!list.directories.some(d=>d.path===file));}finally{await rm(temp,{recursive:true,force:true});}
+  try{const sub=join(temp,'中文 空格');assert.throws(()=>projectDirectory(sub),/不存在/);assert(!existsSync(sub));assert.equal(projectDirectory(sub,true),realpathSync.native(sub));assert(sameProjectDirectory(sub,realpathSync.native(sub)));assert(!sameProjectDirectory(sub,join(temp,'missing')));assert.throws(()=>projectDirectory(''),/绝对路径/);assert.throws(()=>projectDirectory('relative',true),/绝对路径/);const file=join(temp,'file');await writeFile(file,'keep');assert.throws(()=>projectDirectory(file,true),/文件夹/);const list=browseFolders(temp);assert(list.directories.some(d=>d.path===realpathSync.native(sub)));assert(!list.directories.some(d=>d.path===file));}finally{await rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('model argv and automatic effort distinguish difficulty and runtime',()=>{
   const modelArgs=(_,model)=>model?['--model',model]:[];
@@ -64,5 +64,5 @@ test('HTTP project creation, employee settings, runtime quota, UTF-8 JSONL and s
     const denied=await fetch(base+'/api/project-folders',{headers:{Origin:'https://attacker.invalid'}});assert.equal(denied.status,403);
     const alias=await new Promise((resolveStatus,reject)=>{const req=request(base+`/api/project-folders?path=${encodeURIComponent(temp)}`,{headers:{Host:`localhost:${port}`,Origin:`http://localhost:${port}`,Authorization:'Bearer '+process.env.APIX_OWNER_TOKEN}},response=>{response.resume();resolveStatus(response.statusCode);});req.on('error',reject);req.end();});assert.equal(alias,200);
     const crossHost=await fetch(base+'/api/project-folders',{headers:{Origin:`http://localhost:${port}`}});assert.equal(crossHost.status,403);
-  }catch(e){throw new Error(e.message+'\n'+errors,{cause:e});}finally{if(server){server.kill();await new Promise(r=>server.exitCode!==null?r():server.once('exit',r));}await rm(temp,{recursive:true,force:true});}
+  }catch(e){throw new Error(e.message+'\n'+errors,{cause:e});}finally{if(server){server.kill();await new Promise(r=>server.exitCode!==null?r():server.once('exit',r));}await rm(temp,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });

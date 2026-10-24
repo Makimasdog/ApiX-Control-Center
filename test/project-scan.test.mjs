@@ -16,5 +16,5 @@ test('project above 8 MiB hashes all bytes and freezes bounded previews',()=>{
   const fd=openSync(path,'r+');try{writeSync(fd,Buffer.from('B'),0,1,8*1024*1024+100);}finally{closeSync(fd);}
   assert.notEqual(projectFingerprint(dir),first);assert.notEqual(sourceManifest(dir).hash,manifest.hash);
   const stale=lstatSync(path);writeFileSync(path,'changed');assert.throws(()=>scanProjectFile(path,stale),/变化/);
- }finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true});}
+ }finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
