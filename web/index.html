@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f5f7" />
+    <meta name="theme-color" content="#f4f6fa" />
     <title>ApiX · 智能工作区</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./phase4.css" />
@@ -126,7 +126,7 @@
 
         <main id="page-projects" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> PROJECT SPACES</div><h1>项目空间<span class="title-period">.</span></h1><p>绑定已有的本地目录，作为 Agent 的工作目录。</p></div><div class="section-block"><div class="block-header"><div><h2>所有项目</h2><p>项目路径由本地服务验证。</p></div><button class="primary-button" id="add-project"><svg class="icon"><use href="#icon-plus"/></svg>新建项目</button></div><div id="project-grid" class="project-grid"></div></div></main>
 
-        <main id="page-resources" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> CAPABILITY LIBRARY</div><h1>能力中心<span class="title-period">.</span></h1><p>让 ApiX 按需掌握技能，并与外部服务建立连接。</p></div><div class="resource-tabs" role="tablist" aria-label="能力类型"><button class="resource-tab active" data-resource-tab="skills" role="tab" aria-selected="true">Skills <span id="skill-tab-count">0</span></button><button class="resource-tab" data-resource-tab="mcp" role="tab" aria-selected="false">MCP 服务 <span id="mcp-tab-count">0</span></button></div><div id="skills-panel" class="resource-panel"><div class="block-header"><div><h2>我的 Skills</h2><p>定义 ApiX 可以使用的专门工作方式。</p></div><button class="primary-button" id="add-skill"><svg class="icon"><use href="#icon-plus"/></svg>添加 Skill</button></div><div id="skill-grid" class="resource-grid"></div></div><div id="mcp-panel" class="resource-panel hidden"><div class="block-header"><div><h2>MCP 服务</h2><p>管理外部能力的配置。实际连接需要本地运行时。</p></div><button class="primary-button" id="add-mcp"><svg class="icon"><use href="#icon-plus"/></svg>添加服务</button></div><div id="mcp-grid" class="resource-grid"></div></div></main>
+        <main id="page-resources" class="page settings-page"><div class="page-intro"><div class="eyebrow"><span class="eyebrow-line"></span> CAPABILITY LIBRARY</div><h1>能力中心<span class="title-period">.</span></h1><p>让 ApiX 按需掌握技能，并与外部服务建立连接。</p></div><div class="resource-tabs" role="tablist" aria-label="能力类型"><button id="skills-tab" class="resource-tab active" data-resource-tab="skills" role="tab" aria-selected="true" aria-controls="skills-panel">Skills <span id="skill-tab-count">0</span></button><button id="mcp-tab" class="resource-tab" data-resource-tab="mcp" role="tab" aria-selected="false" aria-controls="mcp-panel" tabindex="-1">MCP 服务 <span id="mcp-tab-count">0</span></button></div><div id="skills-panel" class="resource-panel" role="tabpanel" aria-labelledby="skills-tab"><div class="block-header"><div><h2>我的 Skills</h2><p>定义 ApiX 可以使用的专门工作方式。</p></div><button class="primary-button" id="add-skill"><svg class="icon"><use href="#icon-plus"/></svg>添加 Skill</button></div><div id="skill-grid" class="resource-grid"></div></div><div id="mcp-panel" class="resource-panel hidden" role="tabpanel" aria-labelledby="mcp-tab"><div class="block-header"><div><h2>MCP 服务</h2><p>管理外部能力的配置。实际连接需要本地运行时。</p></div><button class="primary-button" id="add-mcp"><svg class="icon"><use href="#icon-plus"/></svg>添加服务</button></div><div id="mcp-grid" class="resource-grid"></div></div></main>
       </div>
     </div>
 

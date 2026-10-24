@@ -55,6 +55,7 @@ try {
           }).slice(0,5).map(el => ({tag:el.tagName,id:el.id,class:el.className}));
           return {documentWidth:document.documentElement.scrollWidth,viewport:innerWidth,pageRight:Math.round(box.right),overflow,
             navigationClosed:!document.body.hasAttribute('data-navigation-open'),
+            titleMatches:document.title===`${document.querySelector('#breadcrumb-page').textContent} · ApiX`,
             missingInputNames:[...active.querySelectorAll('input:not([type="hidden"]),select,textarea')].filter(el=>el.checkVisibility({visibilityProperty:true}) && !el.disabled &&
               !(el.labels?.length||el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')||el.title)).map(el=>el.id||el.name),
             missingButtonNames:[...active.querySelectorAll('button')].filter(el => el.checkVisibility({visibilityProperty:true}) && !el.disabled &&
@@ -63,6 +64,29 @@ try {
         const key = `${theme}-${width}-${route}`;
         report.cases.push({key,...result});
         if (width === 1440 || width === 390) await page.screenshot({path:join(output,key+'.png')});
+      }
+      if (width === 1440) {
+        await page.locator('#skills-tab').focus();
+        await page.keyboard.press('ArrowRight');
+        assert.equal(await page.locator('#mcp-tab').getAttribute('aria-selected'),'true');
+        assert(await page.locator('#skills-panel').evaluate(el=>el.classList.contains('hidden')));
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),'mcp-tab');
+        await page.keyboard.press('ArrowLeft');
+        assert.equal(await page.locator('#skills-tab').getAttribute('aria-selected'),'true');
+      }
+      if (theme === 'light' && width === 1440) {
+        await page.locator('.nav-item[data-page-target="memory"]').evaluate(el=>el.click());
+        let submissions = 0;
+        await page.route('**/api/projects/*/profile',async route=>{submissions++;await new Promise(resolve=>setTimeout(resolve,250));await route.continue();});
+        await page.locator('#profile-form [name="summary"]').fill('界面提交状态验证');
+        await page.locator('#profile-form').evaluate(form=>{form.requestSubmit();form.requestSubmit();});
+        await page.waitForFunction(()=>document.querySelector('#profile-form').getAttribute('aria-busy')==='true');
+        assert(await page.locator('#profile-form button[type="submit"]').isDisabled());
+        await page.waitForFunction(()=>document.querySelector('#profile-form').getAttribute('aria-busy')==='false');
+        assert.equal(submissions,1,'重复提交应只产生一次请求');
+        assert(!await page.locator('#profile-form button[type="submit"]').isDisabled());
+        await page.unroute('**/api/projects/*/profile');
+        report.formBusy={submissions};
       }
       await page.locator('.nav-item[data-page-target="assistant"]').evaluate(el=>el.click());
       await page.locator('#assistant-details').click();
@@ -84,8 +108,8 @@ try {
   }
   await writeFile(join(output,'report.json'),JSON.stringify(report,null,2));
   assert.deepEqual(report.errors,[],'页面存在未处理的 JavaScript 错误');
-  const failures = report.cases.filter(c=>c.documentWidth>c.viewport+1 || c.pageRight>c.viewport+1 || !c.navigationClosed || c.missingButtonNames.length || c.missingInputNames.length);
-  assert.deepEqual(failures,[], '页面溢出、导航或按钮名称检查失败，详见 .tmp-ui-review/report.json');
+  const failures = report.cases.filter(c=>c.documentWidth>c.viewport+1 || c.pageRight>c.viewport+1 || !c.navigationClosed || !c.titleMatches || c.missingButtonNames.length || c.missingInputNames.length);
+  assert.deepEqual(failures,[], '页面溢出、标题、导航或控件名称检查失败，详见 .tmp-ui-review/report.json');
   assert.equal(fixture.calls.length,0,'UI 检查不应调用模型');
   assert(Object.values(report.contrasts).every(theme=>Object.values(theme).every(ratio=>ratio>=4.5)), '语义文字配色未达到 4.5:1');
   console.log(JSON.stringify({passed:true,cases:report.cases.length,screenshots:output,modelCalls:fixture.calls.length}));

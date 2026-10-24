@@ -19,6 +19,7 @@ import {startDeliveryFixture} from './delivery-fixture.mjs';
 
 function store(){const db=new DatabaseSync(':memory:');db.exec("PRAGMA foreign_keys=ON;CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES ('p'),('q');CREATE TABLE employees(id TEXT PRIMARY KEY,deleted_at TEXT);INSERT INTO employees VALUES ('e',NULL),('f',NULL);CREATE TABLE assistant_events(id INTEGER PRIMARY KEY,session_id TEXT,role TEXT,kind TEXT);INSERT INTO assistant_events VALUES (1,'s','user','message');");return {db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};}
 const tick=()=>new Promise(r=>setImmediate(r));
+const withoutFts=s=>({...s,db:new Proxy(s.db,{get(target,property){if(property==='exec')return sql=>{if(sql.includes('USING fts5'))throw new Error('no such module: fts5');return target.exec(sql);};const value=Reflect.get(target,property,target);return typeof value==='function'?value.bind(target):value;}})});
 const upload=(id,text,extra={})=>({spaceId:id,filename:'handbook.md',base64:Buffer.from(text).toString('base64'),...extra});
 
 test('strict schemas, cross-field and dangerous input checks preserve declared MCP schemas',()=>{
@@ -62,6 +63,16 @@ test('knowledge pipeline isolates subjects/projects, checks live citations and a
  const next=kb.search('p','Replacement','apix').results[0].citation;kb.saveSpace('p',{id:space.id,name:'更新库',grants:[],version:1});assert.equal(kb.search('p','Replacement','apix').results.length,0);assert.throws(()=>kb.read('p',next,'apix'));
  kb.removeDocument('p',{id:d.id,version:2});assert.equal(s.row('SELECT COUNT(*) AS n FROM kb_fts').n,0);assert.equal(s.row('SELECT COUNT(*) AS n FROM kb_chunks').n,0);assert.throws(()=>kb.read('p',next));
  }finally{s.db.close();}
+});
+
+test('knowledge search starts without FTS5 and preserves existing documents and access boundaries',async()=>{
+ const existing=store();try{const seeded=createKnowledgeBase(existing),space=seeded.saveSpace('p',{name:'既有资料',grants:['apix','e']});seeded.upload('p',upload(space.id,'Existing Recovery_Receipt and 副作用收据'));await tick();
+  const kb=createKnowledgeBase(withoutFts(existing));assert.equal(kb.search('p','recovery_receipt','e').results.length,1);assert.equal(kb.search('p','副作用收据','e').results.length,1);assert.equal(kb.search('p','recovery','f').results.length,0);
+  const added=kb.upload('p',upload(space.id,'Fallback bounded recovery'));await tick();assert.equal(kb.search('p','fallback').results.length,1);
+  const restored=createKnowledgeBase(existing);assert.equal(restored.search('p','Existing').results.length,1);assert.equal(restored.search('p','Fallback').results.length,1);restored.removeDocument('p',{id:added.id,version:1});assert.equal(restored.search('p','Fallback').results.length,0);
+ }finally{existing.db.close();}
+ const fresh=store();try{const kb=createKnowledgeBase(withoutFts(fresh)),space=kb.saveSpace('p',{name:'新环境'}),doc=kb.upload('p',upload(space.id,'Fresh Offline_Index'));await tick();assert.equal(kb.search('p','offline_index').results.length,1);assert.equal(fresh.row('SELECT COUNT(*) AS n FROM kb_fts').n,1);const restored=createKnowledgeBase(fresh);assert.equal(restored.search('p','offline_index').results.length,1);restored.removeDocument('p',{id:doc.id,version:1});assert.equal(fresh.row('SELECT COUNT(*) AS n FROM kb_fts').n,0);
+ }finally{fresh.db.close();}
 });
 
 test('invalid encodings/formats, parse failure, delete during processing and restart processing',async()=>{

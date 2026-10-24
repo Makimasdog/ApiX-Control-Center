@@ -39,6 +39,26 @@ function toast(message) {
   const element = $("#toast"); element.textContent = message; element.classList.add("show");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => element.classList.remove("show"), 3500);
 }
+function setFormBusy(form, busy) {
+  form.setAttribute("aria-busy", String(busy));
+  for (const button of form.querySelectorAll("button")) {
+    if (busy && !button.disabled) { button.disabled = true; button.dataset.formBusy = "true"; }
+    else if (!busy && button.dataset.formBusy) { button.disabled = false; delete button.dataset.formBusy; }
+  }
+}
+async function withFormBusy(form, action) {
+  if (form.getAttribute("aria-busy") === "true") return;
+  setFormBusy(form, true);
+  try { return await action(); }
+  finally { setFormBusy(form, false); }
+}
+function onBusySubmit(selector, action) {
+  $(selector).addEventListener("submit", event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    void withFormBusy(form, () => action(form));
+  });
+}
 function confirmAction(title, message) {
   return new Promise((resolve) => {
     const dialog = $("#confirm-dialog");
@@ -105,7 +125,9 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
-  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", knowledge:"知识库与工具安全", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  const pageTitle = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", knowledge:"知识库与工具安全", projects: "项目管理", resources: "Skills 与 MCP" }[page] ?? "工作区";
+  $("#breadcrumb-page").textContent = pageTitle;
+  document.title = `${pageTitle} · ApiX`;
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();
@@ -281,6 +303,28 @@ function openEditor(kind, id = null) {
   $("#editor-dialog").showModal();
 }
 async function mutate(path, body) { try { await api(path, body); await refresh(); } catch (error) { toast(error.message); } }
+function selectResourceTab(name, focus = false) {
+  const selected = $$(".resource-tab").find(item => item.dataset.resourceTab === name);
+  if (!selected) return;
+  for (const item of $$(".resource-tab")) {
+    const active = item === selected;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-selected", String(active));
+    item.tabIndex = active ? 0 : -1;
+  }
+  $("#skills-panel").classList.toggle("hidden", name !== "skills");
+  $("#mcp-panel").classList.toggle("hidden", name !== "mcp");
+  if (focus) selected.focus();
+}
+$(".resource-tabs").addEventListener("keydown", event => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = $$(".resource-tab");
+  const current = tabs.indexOf(event.target.closest(".resource-tab"));
+  if (current < 0) return;
+  event.preventDefault();
+  const index = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  selectResourceTab(tabs[index].dataset.resourceTab, true);
+});
 
 document.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-page-target],[data-select-project],[data-edit-project],[data-register-runtime],[data-open-employee],[data-edit-employee],[data-delete-employee],[data-open-task],[data-view-task],[data-select-conversation],[data-rename-conversation],[data-resume-task],[data-edit-memory],[data-delete-memory],[data-edit-department],[data-edit-plan-task],[data-approve-plan],[data-cancel-plan],[data-plan-approve],[data-approve],[data-reject],[data-stop],[data-accept],[data-revise],[data-toggle-skill],[data-toggle-mcp],[data-remove-skill],[data-remove-mcp],[data-resource-tab],[data-apply-integration]");
@@ -343,7 +387,7 @@ document.addEventListener("click", async (event) => {
   else if (d.accept || d.revise) await mutate(`/api/tasks/${d.accept ?? d.revise}/review`, { accepted: !!d.accept });
   else if (d.toggleSkill || d.toggleMcp) { const collection = d.toggleSkill ? settings.skills : settings.mcps; const item = collection.find((entry) => entry.id === (d.toggleSkill ?? d.toggleMcp)); if (item) item.enabled = !item.enabled; saveSettings(); renderSettings(); }
   else if (d.removeSkill || d.removeMcp) { const key = d.removeSkill ? "skills" : "mcps"; settings[key] = settings[key].filter((item) => item.id !== (d.removeSkill ?? d.removeMcp)); saveSettings(); renderSettings(); }
-  else if (d.resourceTab) { $$(".resource-tab").forEach((item) => { item.classList.toggle("active", item === target); item.setAttribute("aria-selected", String(item === target)); }); $("#skills-panel").classList.toggle("hidden", d.resourceTab !== "skills"); $("#mcp-panel").classList.toggle("hidden", d.resourceTab !== "mcp"); }
+  else if (d.resourceTab) selectResourceTab(d.resourceTab);
 });
 async function submitChat(parallel) {
   if (!selectedProjectId) { toast("请先添加并选择项目"); go("projects"); return; }
@@ -352,19 +396,23 @@ async function submitChat(parallel) {
   if (!prompt) return;
   try { const created = await api("/api/tasks", { projectId: selectedProjectId, conversationId: parallel ? null : selectedConversationId, employeeId, prompt }); $("#chat-input").value = ""; selectedConversationId = created.conversationId; selectedTaskId = created.taskId; await refresh(); go("workspace"); toast(parallel ? "已在独立对话创建并行任务，请审查启动审批" : "任务已创建，请审查启动审批"); } catch (error) { toast(error.message); }
 }
-$("#chat-form").addEventListener("submit", async (event) => { event.preventDefault(); await submitChat(false); });
-$("#parallel-submit").addEventListener("click", async () => submitChat(true));
-$("#director-form").addEventListener("submit", async (event) => {
+$("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); void withFormBusy(event.currentTarget, () => submitChat(false)); });
+$("#parallel-submit").addEventListener("click", () => void withFormBusy($("#chat-form"), () => submitChat(true)));
+$("#director-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!selectedProjectId) { toast("请先添加并选择项目"); go("projects"); return; }
-  const goal = $("#director-goal").value.trim();
-  if (!goal) return;
-  try { await api("/api/director/plans", { projectId: selectedProjectId, goal }); $("#director-goal").value = ""; await refresh(); toast("Director 已生成计划，请逐项审查批准"); } catch (error) { toast(error.message); }
+  void withFormBusy(event.currentTarget, async () => {
+    if (!selectedProjectId) { toast("请先添加并选择项目"); go("projects"); return; }
+    const goal = $("#director-goal").value.trim();
+    if (!goal) return;
+    try { await api("/api/director/plans", { projectId: selectedProjectId, goal }); $("#director-goal").value = ""; await refresh(); toast("Director 已生成计划，请逐项审查批准"); } catch (error) { toast(error.message); }
+  });
 });
 $("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); $("#chat-form").requestSubmit(); } });
-$("#editor-form").addEventListener("submit", async (event) => {
+$("#editor-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  const values = Object.fromEntries(new FormData(event.currentTarget));
+  const form = event.currentTarget;
+  void withFormBusy(form, async () => {
+  const values = Object.fromEntries(new FormData(form));
   if (editing.kind === "project") { values.createDirectory = values.createDirectory === "on"; values.path=values.path.trim(); $("#project-editor-error").textContent=""; try { const created = await api(editing.id ? `/api/projects/${editing.id}` : "/api/projects", values); snapshotETag='';await refresh();if (created.id) { selectedProjectId = created.id; localStorage.setItem("apix.selectedProject", created.id);await refresh(); } toast('项目已保存'); } catch (error) { $("#project-editor-error").textContent=error.message; return; } }
   else if (editing.kind === "employee") { try { values.enabled = values.enabled === "true"; if (!values.runtime) values.runtime = data.employees.find((item) => item.id === editing.id)?.runtime ?? editing.id; await api(data.employees.some((item) => item.id === editing.id) ? `/api/employees/${editing.id}` : "/api/employees", values); await refresh(); } catch (error) { toast(error.message); return; } }
   else if (editing.kind === "department") { try { await api(`/api/departments/${editing.id}`, values); await refresh(); } catch (error) { toast(error.message); return; } }
@@ -374,6 +422,7 @@ $("#editor-form").addEventListener("submit", async (event) => {
   else if (editing.kind === "resume") { try { const created = await api(`/api/tasks/${editing.id}/resume`, values); const previous = data.tasks.find((item) => item.id === editing.id); selectedProjectId = previous.project_id; selectedConversationId = created.conversationId; selectedTaskId = created.taskId; localStorage.setItem("apix.selectedProject", selectedProjectId); await refresh(); go("workspace"); toast("续接任务已创建，请审查启动审批"); } catch (error) { toast(error.message); return; } }
   else { settings[editing.kind === "skill" ? "skills" : "mcps"].push({ id: crypto.randomUUID(), ...values, enabled: false }); saveSettings(); renderSettings(); toast("配置已保存；尚未连接 Agent 运行时"); }
   $("#editor-dialog").close();
+  });
 });
 $("#sidebar-add-project").addEventListener("click", () => openEditor("project"));
 $("#add-project").addEventListener("click", () => openEditor("project"));
@@ -392,28 +441,33 @@ $("#new-conversation").addEventListener("click", () => { go("assistant"); docume
 $("#open-about").addEventListener("click", () => toast("ApiX Agent OS · 本地任务与运行数据保存在 SQLite"));
 $("#director-chat-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   if (directorSending) return;
   if (!selectedProjectId) { toast("请先选择项目"); go("projects"); return; }
   const content = $("#director-chat-input").value.trim();
   if (!content) return;
   directorSending = true;
-  $("#director-chat-form button").disabled = true;
+  setFormBusy(form, true);
   try { $("#director-chat-input").value = ""; const pending = api("/api/director/messages", { projectId: selectedProjectId, content }); await refresh(); const result = await pending; renderedProposalKey = null; await refresh(); toast(result.mode === "pi" ? result.proposalId ? "ApiX 已生成可编辑提案" : "ApiX 已回复" : "规则草案已生成，请检查 Pi 配置"); }
   catch (error) { $("#director-chat-input").value = content; toast(error.message); }
-  finally { directorSending = false; $("#director-chat-form button").disabled = false; }
+  finally { directorSending = false; setFormBusy(form, false); }
 });
-document.addEventListener("submit", async (event) => {
+document.addEventListener("submit", (event) => {
   if (event.target.id !== "director-proposal-form") return;
   event.preventDefault();
-  try { const { id, ...values } = directorProposalValues(); const created = await api(`/api/director/proposals/${id}/approve`, values); renderedProposalKey = null; await refresh(); toast(`协作计划 ${created.planId.slice(0, 8)} 已创建，请逐项审批`); } catch (error) { toast(error.message); }
+  void withFormBusy(event.target, async () => {
+    try { const { id, ...values } = directorProposalValues(); const created = await api(`/api/director/proposals/${id}/approve`, values); renderedProposalKey = null; await refresh(); toast(`协作计划 ${created.planId.slice(0, 8)} 已创建，请逐项审批`); } catch (error) { toast(error.message); }
+  });
 });
-document.addEventListener("click", async (event) => {
+document.addEventListener("click", (event) => {
   if (event.target.id !== "save-director-proposal") return;
-  try { const { id, ...values } = directorProposalValues(); await api(`/api/director/proposals/${id}`, values); renderedProposalKey = null; await refresh(); toast("提案修改已保存"); } catch (error) { toast(error.message); }
+  void withFormBusy(event.target.closest("form"), async () => {
+    try { const { id, ...values } = directorProposalValues(); await api(`/api/director/proposals/${id}`, values); renderedProposalKey = null; await refresh(); toast("提案修改已保存"); } catch (error) { toast(error.message); }
+  });
 });
-$("#profile-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!selectedProjectId) { toast("请先选择项目"); return; } try { const profile = data.profiles.find((item) => item.project_id === selectedProjectId); await api(`/api/projects/${selectedProjectId}/profile`, { ...Object.fromEntries(new FormData(event.currentTarget)), version: profile?.version ?? 0 }); profileLoadedProjectId = null; await refresh(); toast("项目档案已保存"); } catch (error) { toast(error.message); } });
+$("#profile-form").addEventListener("submit", (event) => { event.preventDefault(); const form = event.currentTarget; void withFormBusy(form, async () => { if (!selectedProjectId) { toast("请先选择项目"); return; } try { const profile = data.profiles.find((item) => item.project_id === selectedProjectId); await api(`/api/projects/${selectedProjectId}/profile`, { ...Object.fromEntries(new FormData(form)), version: profile?.version ?? 0 }); profileLoadedProjectId = null; await refresh(); toast("项目档案已保存"); } catch (error) { toast(error.message); } }); });
 $("#memory-scope").addEventListener("change", (event) => { $("#memory-task-field").classList.toggle("hidden", event.target.value !== "task"); $("#memory-task-select").required = event.target.value === "task"; });
-$("#memory-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!selectedProjectId) { toast("请先选择项目"); return; } try { const values = Object.fromEntries(new FormData(event.currentTarget)); await api("/api/memories", { ...values, projectId: selectedProjectId, taskId: values.scope === "task" ? values.taskId : null }); event.currentTarget.reset(); $("#memory-task-field").classList.add("hidden"); $("#memory-task-select").required = false; memoryResults = null; await refresh(); toast("记忆已保存"); } catch (error) { toast(error.message); } });
+$("#memory-form").addEventListener("submit", (event) => { event.preventDefault(); const form = event.currentTarget; void withFormBusy(form, async () => { if (!selectedProjectId) { toast("请先选择项目"); return; } try { const values = Object.fromEntries(new FormData(form)); await api("/api/memories", { ...values, projectId: selectedProjectId, taskId: values.scope === "task" ? values.taskId : null }); form.reset(); $("#memory-task-field").classList.add("hidden"); $("#memory-task-select").required = false; memoryResults = null; await refresh(); toast("记忆已保存"); } catch (error) { toast(error.message); } }); });
 $("#memory-search-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!selectedProjectId) return; const query = $("#memory-search-input").value.trim(); if (!query) { memoryResults = null; renderMemory(); return; } try { memoryResults = await api(`/api/memories/search?projectId=${encodeURIComponent(selectedProjectId)}&q=${encodeURIComponent(query)}`); renderMemory(); } catch (error) { toast(error.message); } });
 $("#memory-clear-search").addEventListener("click", () => { $("#memory-search-input").value = ""; memoryResults = null; renderMemory(); });
 
@@ -477,13 +531,13 @@ function renderCollaboration() {
 }
 $("#collab-pack-select").addEventListener("change", showPackSteps);
 $("#meeting-plan-select").addEventListener("change", renderCollaboration);
-$("#department-form").addEventListener("submit", async (event) => { event.preventDefault(); await mutate("/api/departments", Object.fromEntries(new FormData(event.currentTarget))); event.currentTarget.reset(); });
-$("#repository-form").addEventListener("submit", async (event) => { event.preventDefault(); await mutate("/api/repositories", { ...Object.fromEntries(new FormData(event.currentTarget)), projectId: selectedProjectId }); event.currentTarget.reset(); });
-$("#pack-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const values = Object.fromEntries(new FormData(event.currentTarget)); await api("/api/packs", { id: values.id, name: values.name, steps: JSON.parse(values.steps) }); packCache.delete(values.id); event.currentTarget.reset(); await refresh(); if ($("#collab-pack-select").value === values.id) await showPackSteps(); toast("Pack 新版本已发布"); } catch (error) { toast(error.message); } });
-$("#collab-plan-form").addEventListener("submit", async (event) => { event.preventDefault(); try { if (!selectedProjectId) throw new Error("请先选择项目"); const packId = $("#collab-pack-select").value; const pack = packCache.get(packId); if (!pack) throw new Error("请先选择 Pack"); const steps = pack.definition.steps.map((step, index) => ({ ...step, employeeId: $(`[data-step-employee="${index}"]`).value, departmentId: $(`[data-step-department="${index}"]`).value || null, repositoryId: $(`[data-step-repository="${index}"]`).value || null })); await api("/api/collaboration/plans", { projectId: selectedProjectId, goal: event.currentTarget.elements.goal.value, packId, packVersion: pack.version, steps }); event.currentTarget.elements.goal.value = ""; await refresh(); toast("协作计划已创建，请逐项审批"); } catch (error) { toast(error.message); } });
-$("#meeting-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const reviewerIds = $$("#meeting-reviewers input:checked").map((item) => item.value); await api("/api/meetings", { planId: $("#meeting-plan-select").value, sourceTaskId: $("#meeting-source-select").value, topic: event.currentTarget.elements.topic.value, reviewerIds }); event.currentTarget.elements.topic.value = ""; await refresh(); toast("评审任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
-$("#integration-form").addEventListener("submit", async (event) => { event.preventDefault(); try { const result = await api("/api/integrations", { planId: $("#integration-plan-select").value, repositoryId: $("#integration-repository-select").value || null }); await refresh(); toast(result.status === "conflict" ? "发现冲突，请查看报告" : "集成预检已生成"); } catch (error) { toast(error.message); } });
-$("#manager-review-form").addEventListener("submit", async (event) => { event.preventDefault(); try { await api("/api/manager-reviews", { planId: $("#manager-plan-select").value, departmentId: $("#manager-department-select").value }); await refresh(); toast("经理审查任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
+onBusySubmit("#department-form", async form => { await mutate("/api/departments", Object.fromEntries(new FormData(form))); form.reset(); });
+onBusySubmit("#repository-form", async form => { await mutate("/api/repositories", { ...Object.fromEntries(new FormData(form)), projectId: selectedProjectId }); form.reset(); });
+onBusySubmit("#pack-form", async form => { try { const values = Object.fromEntries(new FormData(form)); await api("/api/packs", { id: values.id, name: values.name, steps: JSON.parse(values.steps) }); packCache.delete(values.id); form.reset(); await refresh(); if ($("#collab-pack-select").value === values.id) await showPackSteps(); toast("Pack 新版本已发布"); } catch (error) { toast(error.message); } });
+onBusySubmit("#collab-plan-form", async form => { try { if (!selectedProjectId) throw new Error("请先选择项目"); const packId = $("#collab-pack-select").value; const pack = packCache.get(packId); if (!pack) throw new Error("请先选择 Pack"); const steps = pack.definition.steps.map((step, index) => ({ ...step, employeeId: $(`[data-step-employee="${index}"]`).value, departmentId: $(`[data-step-department="${index}"]`).value || null, repositoryId: $(`[data-step-repository="${index}"]`).value || null })); await api("/api/collaboration/plans", { projectId: selectedProjectId, goal: form.elements.goal.value, packId, packVersion: pack.version, steps }); form.elements.goal.value = ""; await refresh(); toast("协作计划已创建，请逐项审批"); } catch (error) { toast(error.message); } });
+onBusySubmit("#meeting-form", async form => { try { const reviewerIds = $$("#meeting-reviewers input:checked").map((item) => item.value); await api("/api/meetings", { planId: $("#meeting-plan-select").value, sourceTaskId: $("#meeting-source-select").value, topic: form.elements.topic.value, reviewerIds }); form.elements.topic.value = ""; await refresh(); toast("评审任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
+onBusySubmit("#integration-form", async () => { try { const result = await api("/api/integrations", { planId: $("#integration-plan-select").value, repositoryId: $("#integration-repository-select").value || null }); await refresh(); toast(result.status === "conflict" ? "发现冲突，请查看报告" : "集成预检已生成"); } catch (error) { toast(error.message); } });
+onBusySubmit("#manager-review-form", async () => { try { await api("/api/manager-reviews", { planId: $("#manager-plan-select").value, departmentId: $("#manager-department-select").value }); await refresh(); toast("经理审查任务已创建，请审批启动"); } catch (error) { toast(error.message); } });
 $("#page-missions").insertAdjacentHTML("beforeend", `<section class="section-block"><div class="block-header"><div><h2>Agent 消息监督</h2><p>Director 可查看消息、关联交付物、超时重试与拦截记录。</p></div><span id="mailbox-summary" class="count-label"></span></div><div id="agent-message-list" class="collab-list"></div></section><section class="section-block"><div class="block-header"><div><h2>资源锁</h2><p>锁使用租约，到期后可重新获取；请核对仍在运行的 Agent。</p></div></div><div id="agent-lock-list" class="collab-list"></div></section>`);
 document.addEventListener("click", async (event) => {
   const rejected = event.target.closest("[data-reject-message]");

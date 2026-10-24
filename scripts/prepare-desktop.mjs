@@ -2,16 +2,13 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, lst
 import { resolve, join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { DatabaseSync } from 'node:sqlite';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const stage = join(root, '.tmp-desktop');
 if (existsSync(stage) && lstatSync(stage).isSymbolicLink()) throw new Error('构建根目录不能是符号链接。');
 if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('请在 Windows x64 上构建桌面版。');
 const [major, minor] = process.versions.node.split('.').map(Number);
-if (!(major === 22 && minor >= 19 || major === 24 && minor >= 22)) throw new Error('构建需要 Node.js 22.19–22.x 或 24.22+（24.x），并支持 SQLite FTS5。');
-const probe = new DatabaseSync(':memory:');
-probe.exec('CREATE VIRTUAL TABLE probe USING fts5(content)'); probe.close();
+if (!(major === 22 && minor >= 19 || major === 24 && minor >= 22)) throw new Error('构建需要 Node.js 22.19–22.x 或 24.22+（24.x）。');
 const npm = process.env.npm_execpath;
 if (!npm || !existsSync(npm)) throw new Error('请通过 npm run desktop:prepare 执行。');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));

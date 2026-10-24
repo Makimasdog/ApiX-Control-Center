@@ -115,7 +115,7 @@ Windows 主 Agent 可直接搜索源文件、按行读取、基于 SHA 精确编
 
 | 工具 | 要求 |
 | --- | --- |
-| Node.js | 22.19–22.x 或 24.22+（24.x），内置 SQLite 支持 FTS5 |
+| Node.js | 22.19–22.x 或 24.22+（24.x），内置 SQLite；FTS5 可选，缺失时知识库使用持久化文本检索 |
 | Git | 已安装；未初始化 Git 或尚无首次提交的项目会建立托管快照 |
 | 模型 API | 配置可用的 API URL、模型 ID、协议与密钥（本机服务可免密钥） |
 | 执行员工 CLI | 可选；委派任务时安装并登录所选的 Pi、Codex 或 Claude 等 CLI |
@@ -136,13 +136,11 @@ npm start
 `npm start` 自动编译 TypeScript。升级代码或修改 `.env` 后须重启原服务。默认数据位于用户目录 `.apix-agent-os/`，数据库为 `apix.sqlite`；可通过 `APIX_DATA_DIR` 与 `PORT` 调整数据目录和端口。
 
 <details>
-<summary>启动报 FTS5 错误？检查 Node 的 SQLite 支持</summary>
+<summary>没有 FTS5 也能启动吗？</summary>
 
-```powershell
-node --input-type=module -e "import {DatabaseSync} from 'node:sqlite'; const db = new DatabaseSync(':memory:'); db.exec('CREATE VIRTUAL TABLE probe USING fts5(content)'); db.close();"
-```
+可以。ApiX 会在启动时探测 FTS5：可用时使用全文排序检索，不可用时使用持久化文档分块进行文本检索，已有知识库文档与授权边界保持不变。项目记忆不依赖 FTS5。
 
-若报 `no such module: fts5`，切换到满足要求且支持 FTS5 的 Node，再启动服务。
+这不会放宽 Node 版本要求；仍请使用 README 中列出的受支持 Node 版本。
 
 </details>
 
@@ -302,7 +300,7 @@ ali_model_name=<你的模型 ID>
 | --- | --- |
 | 界面 | HTML、CSS、JavaScript 与严格 TypeScript 模块 |
 | 服务 | Node.js 原生 HTTP、进程托管与 CLI 适配器 |
-| 数据 | Node 内置 SQLite、FTS5、状态表与协调事件账本 |
+| 数据 | Node 内置 SQLite、可选 FTS5 与文本降级检索、状态表与协调事件账本 |
 | 状态与实时通信 | 主对话持久化事件轮询、协作 POST SSE 与独立 mailbox 事件流 |
 | 代码交付 | Git detached worktree、差异指纹与冻结交付 |
 | 检查 | TypeScript、`node --check`、Node Test Runner、Windows GitHub Actions |

@@ -133,7 +133,7 @@ ALTER TABLE employees ADD COLUMN deleted_at TEXT;
 CREATE TABLE project_profiles (project_id TEXT PRIMARY KEY REFERENCES projects(id), summary TEXT NOT NULL DEFAULT '', goals TEXT NOT NULL DEFAULT '', constraints TEXT NOT NULL DEFAULT '', decisions TEXT NOT NULL DEFAULT '', version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL);
 CREATE TABLE memories (id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), task_id TEXT REFERENCES tasks(id), scope TEXT NOT NULL CHECK(scope IN ('task','project')), category TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, source TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE memory_revisions (memory_id TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE, version INTEGER NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(memory_id,version));
-CREATE VIRTUAL TABLE memory_fts USING fts5(title,content,tokenize='trigram');
+CREATE TABLE memory_fts(rowid INTEGER PRIMARY KEY,title TEXT NOT NULL,content TEXT NOT NULL);
 CREATE TRIGGER memories_ai AFTER INSERT ON memories BEGIN INSERT INTO memory_fts(rowid,title,content) VALUES (new.rowid,new.title,new.content); END;
 CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN DELETE FROM memory_fts WHERE rowid=old.rowid; INSERT INTO memory_fts(rowid,title,content) VALUES (new.rowid,new.title,new.content); END;
 CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN DELETE FROM memory_fts WHERE rowid=old.rowid; END;`);
