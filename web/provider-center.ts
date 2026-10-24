@@ -36,7 +36,7 @@ export function providerCenter(container:HTMLElement,options:Options={}){
         <p class="coord-muted">${bound?`绑定供应商：${esc(bound.name)}`:'当前配置尚未绑定到供应商。'}</p>
         ${apix.adoptable?`<div class="provider-adopt" role="note"><p>检测到现有 ApiX 模型配置尚未纳入供应商中心。导入后可在这里统一编辑、切换和测试。</p><button type="button" class="outline-button" data-provider-adopt>导入为供应商</button></div>`:''}
         <form data-agent="apix" class="provider-agent provider-apix-form"><label>使用供应商<select name="providerId" required><option value="">选择兼容供应商</option>${apixOptions}</select></label><button class="outline-button">应用到 ApiX</button></form>
-        <details class="provider-test"><summary>测试已保存的 ApiX 连接</summary><p class="coord-muted">使用当前项目预算调用一次模型；无项目工具、不启动员工。90 秒后请求终止；结果不证明工具或员工可用。</p><label><input type="checkbox" data-test-approved>批准一次连接测试，可能产生模型费用</label><button type="button" class="outline-button" data-test-connection ${!manager.model||!manager.baseUrl||testPending?'disabled':''}>${testPending?'正在测试…':'测试连接'}</button><p data-test-status role="status"></p></details>
+        <details class="provider-test" open><summary>测试已保存的 ApiX 连接</summary><p class="coord-muted">使用当前项目预算调用一次模型；无项目工具、不启动员工。90 秒后请求终止；结果不证明工具或员工可用。</p><label><input type="checkbox" data-test-approved>批准一次连接测试，可能产生模型费用</label><button type="button" class="outline-button" data-test-connection ${!manager.model||!manager.baseUrl||testPending?'disabled':''}>${testPending?'正在测试…':'测试连接'}</button><p data-test-status role="status"></p></details>
       </section>
       <h3>执行 Agent 绑定</h3>
       <p>先保存供应商，再在员工卡片中应用；也可在下方选择目标后保存并应用。保存本身不会绑定员工。Codex API 使用 Responses，Claude Code 使用 Anthropic Messages；Chat Completions 不能直接用于这两个 CLI。</p><p>为 Codex、Claude Code 等员工选择兼容供应商。切换后清除原账户绑定与模型费率，防止把旧通道预算误当作新通道余额；切换本身不重跑任务。</p>
@@ -61,6 +61,7 @@ export function providerCenter(container:HTMLElement,options:Options={}){
         </form>
       </details>`;
     const form=content.querySelector<HTMLFormElement>('[data-provider-form]')!,editor=content.querySelector<HTMLSelectElement>('[data-provider-editor]')!;
+    form.addEventListener('invalid',event=>{const input=event.target as HTMLInputElement;status.textContent='请检查供应商表单：'+(input.closest('label')?.childNodes[0]?.textContent?.trim()??input.name)+' — '+input.validationMessage;},true);
     const field=(name:string)=>form.elements.namedItem(name) as HTMLInputElement|HTMLSelectElement;
     const discover=content.querySelector<HTMLButtonElement>('[data-provider-discover]')!;
     const syncDiscovery=()=>{const url=field('baseUrl').value.trim(),type=field('apiType').value;discover.hidden=field('baseUrl').disabled||!isLoopback(url)||!['openai-completions','openai-responses'].includes(type);};

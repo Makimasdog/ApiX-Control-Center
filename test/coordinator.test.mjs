@@ -85,7 +85,7 @@ test('Assistant HTTP choice survives refresh and default permission asks before 
 
 test('Assistant loop approves setup, delegates through frozen contracts and resumes after repair and integrated acceptance',async()=>harness(async h=>{
   await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual child check passed');");
-  execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture checks'],{cwd:h.project,stdio:'ignore'});
+  execFileSync('git',['-c','core.autocrlf=false','add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','core.autocrlf=false','-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','fixture checks'],{cwd:h.project,stdio:'ignore'});
   const projectId=(await h.request('/api/projects',{name:'loop delegation',path:h.project})).id;
   const parent=await h.request('/api/assistant/sessions',{projectId});
   await h.request(`/api/conversation-models/assistant/${parent.id}`,{version:1,model:'fixture-parent-model'});
@@ -155,18 +155,18 @@ test('Assistant loads real project Skill content and shares editable memory acro
 test('workspace verifies native paths and legacy repository aliases without accepting a different repository',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'apix-path-alias-'));
   try{
-    const project=join(dir,'project');execFileSync('git',['init',project],{stdio:'ignore'});
-    await writeFile(join(project,'README.md'),'fixture');execFileSync('git',['add','README.md'],{cwd:project});
-    execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
+    const project=join(dir,'project');execFileSync('git',['-c','core.autocrlf=false','init',project],{stdio:'ignore'});
+    await writeFile(join(project,'README.md'),'fixture');execFileSync('git',['-c','core.autocrlf=false','add','README.md'],{cwd:project});
+    execFileSync('git',['-c','core.autocrlf=false','-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
     const data=join(dir,'data');await mkdir(join(data,'workspaces'),{recursive:true});
     const alias=join(dir,'data-alias');const repoAlias=join(dir,'repo-alias');
     await symlink(data,alias,process.platform==='win32'?'junction':'dir');await symlink(project,repoAlias,process.platform==='win32'?'junction':'dir');
     const task={id:'task-1',workspace_path:join(alias,'workspaces','task-1')};
-    execFileSync('git',['worktree','add','--detach',task.workspace_path,'HEAD'],{cwd:project,stdio:'ignore'});
+    execFileSync('git',['-c','core.autocrlf=false','worktree','add','--detach',task.workspace_path,'HEAD'],{cwd:project,stdio:'ignore'});
     const saved={kind:'git-worktree',path:task.workspace_path,common_dir:join(repoAlias,'.git'),base_sha:'fixture'};
     const handoffs=createCodeHandoffs({dataDir:alias,row:()=>saved,rows:()=>[],db:{},now:()=>'',recordTask(){}});
     assert.equal(handoffs.workspace(task).path,realpathSync.native(task.workspace_path));
-    const other=join(dir,'other');execFileSync('git',['init',other],{stdio:'ignore'});saved.common_dir=join(other,'.git');
+    const other=join(dir,'other');execFileSync('git',['-c','core.autocrlf=false','init',other],{stdio:'ignore'});saved.common_dir=join(other,'.git');
     assert.throws(()=>handoffs.workspace(task),/Git 目录已变化/);
     saved.path=other;assert.throws(()=>handoffs.workspace(task),/可验证的托管工作区/);
   }finally{const absolute=resolve(dir);assert(absolute.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(absolute,{recursive:true,force:true});}
@@ -236,10 +236,10 @@ async function harness(work, extraEnv={}) {
   const model=await startModelFixture(extraEnv);
   const dir=await mkdtemp(join(tmpdir(),'apix-coordinator-'));
   const project=join(dir,'project');
-  execFileSync('git',['init',project],{stdio:'ignore'});
+  execFileSync('git',['-c','core.autocrlf=false','init',project],{stdio:'ignore'});
   await writeFile(join(project,'README.md'),'fixture\n');
-  execFileSync('git',['add','.'],{cwd:project});
-  execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
+  execFileSync('git',['-c','core.autocrlf=false','add','.'],{cwd:project});
+  execFileSync('git',['-c','core.autocrlf=false','-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','fixture'],{cwd:project,stdio:'ignore'});
   const port=await new Promise(resolvePort=>{const s=createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolvePort(p));});});
   let server; let errors='';
   const env={...process.env,APIX_LEGACY_API:'0',APIX_DATA_DIR:join(dir,'data'),PORT:String(port),APIX_PI_ENTRY:join(root,'test/fake-pi.mjs'),APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_CLAUDE_ENTRY:join(root,'test/fake-claude.mjs'),...extraEnv};
@@ -260,7 +260,7 @@ async function harness(work, extraEnv={}) {
 }
 const answers={scope:'仅检查当前项目',constraints:'保持现有功能',deliverable:'代码检查报告',acceptance:'列出可复现的验证证据'};
 async function autonomyFixture(h,overrides={},verifySource="import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');assert.equal(process.env.APIX_AGENT_TOKEN,undefined);console.log('actual content check passed');") {
-  await writeFile(join(h.project,'verify.mjs'),verifySource);execFileSync('git',['add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','approved fixture checks'],{cwd:h.project,stdio:'ignore'});
+  await writeFile(join(h.project,'verify.mjs'),verifySource);execFileSync('git',['-c','core.autocrlf=false','add','verify.mjs'],{cwd:h.project});execFileSync('git',['-c','core.autocrlf=false','-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','approved fixture checks'],{cwd:h.project,stdio:'ignore'});
   const projectId=(await h.request('/api/projects',{name:'autonomous fixture',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'implementer',runtime:'codex',role:'实现'})).id;
   await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'fixture-model',reasoningLevel:3,tags:[],tools:[],languages:[],projectIds:[],contextTokens:32000});
@@ -308,7 +308,7 @@ test('slow Git inspection does not block HTTP and preserves the production deliv
   const task=s.tasks[0];const started=join(h.dir,'clean-started');const filter=join(h.dir,'slow-clean.mjs');
   await writeFile(filter,`import {writeFileSync} from 'node:fs';let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(started)},'started');setTimeout(()=>process.stdout.write(text),2000);});`);
   const quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
-  execFileSync('git',['config','filter.apixdelay.clean',quote(process.execPath.replaceAll('\\','/'))+' '+quote(filter.replaceAll('\\','/'))],{cwd:h.project});
+  execFileSync('git',['-c','core.autocrlf=false','config','filter.apixdelay.clean',quote(process.execPath.replaceAll('\\','/'))+' '+quote(filter.replaceAll('\\','/'))],{cwd:h.project});
   await writeFile(join(task.workspace_path,'.gitattributes'),'slow.txt filter=apixdelay\n');await writeFile(join(task.workspace_path,'slow.txt'),'real delayed filter\n');
   const pending=h.request(`/api/tasks/${task.id}/delivery`);
   await waitFor(async()=>{try{return await readFile(started);}catch{return false;}});
@@ -1163,7 +1163,7 @@ test('spawned employees receive fresh mailbox identity and independent credentia
 
 test('accepted code including new files reaches chained workers from frozen Git deliveries',async()=>harness(async h=>{
   const worker=join(h.dir,'code-worker.mjs');
-  await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
+  await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['-c','core.autocrlf=false','add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
   await h.request('/api/adapters',{id:'code-worker',name:'Code worker',executable:process.execPath,args:[worker],format:'plain'});
   const {s,employeeId}=await setup(h,'code-worker');
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
@@ -1178,10 +1178,10 @@ test('accepted code including new files reaches chained workers from frozen Git 
   await writeFile(join(source.workspace_path,'shared.txt'),'accepted input');
   const inspected=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
   await h.request(`/api/tasks/${p.tasks[0].id}/review`,{accepted:true,fingerprint:inspected.inspection.fingerprint});
-  const refs=execFileSync('git',['for-each-ref','--format=%(refname)','refs/apix/deliveries/'],{cwd:h.project,encoding:'utf8'}).trim().split(/\r?\n/);
+  const refs=execFileSync('git',['-c','core.autocrlf=false','for-each-ref','--format=%(refname)','refs/apix/deliveries/'],{cwd:h.project,encoding:'utf8'}).trim().split(/\r?\n/);
   assert.equal(refs.length,1);assert.match(refs[0],/^refs\/apix\/deliveries\/[a-f0-9]{32}$/);
   const frozen=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[0].id);
-  assert.equal(execFileSync('git',['rev-parse',refs[0]],{cwd:h.project,encoding:'utf8'}).trim(),frozen.delivery_commit);
+  assert.equal(execFileSync('git',['-c','core.autocrlf=false','rev-parse',refs[0]],{cwd:h.project,encoding:'utf8'}).trim(),frozen.delivery_commit);
   await writeFile(join(source.workspace_path,'shared.txt'),'unreviewed mutation');
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[1].status==='completed');
   let state=await h.request(`/api/coordination/sessions/${s.id}`);
@@ -1219,7 +1219,7 @@ test('conflicting accepted inputs block the consumer before process launch and p
   await assert.rejects(readFile(join(h.project,'collision.txt'),'utf8'),{code:'ENOENT'});
   const blocked=(await h.request('/api/snapshot')).tasks.find(t=>t.id===p.tasks[2].id);
   await writeFile(join(blocked.workspace_path,'collision.txt'),'user resolved');
-  execFileSync('git',['add','--','collision.txt'],{cwd:blocked.workspace_path});
+  execFileSync('git',['-c','core.autocrlf=false','add','--','collision.txt'],{cwd:blocked.workspace_path});
   const reviewed=await h.request(`/api/tasks/${blocked.id}/delivery`);
   await h.request(`/api/tasks/${blocked.id}/recovery`,{revision:s.revision,runId:reviewed.latestRun.id,fingerprint:reviewed.recoveryFingerprint,reviewed:true});
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[2].status==='completed');

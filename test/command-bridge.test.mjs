@@ -1,7 +1,8 @@
+import {waitForFile} from './wait-for-file.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {mkdtempSync,writeFileSync,existsSync,rmSync,watch,readFileSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,existsSync,rmSync,readFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createAssistantCommands} from '../dist/src/assistant/assistant-commands.js';
@@ -38,7 +39,7 @@ for(const tool of ['run_command','verify','run_check'])test(`${tool} uses shared
  if(tool==='run_check'){
   h.push(action('configure_verification',{checks:[{id:'check',args:['check.cjs'],timeoutMs:5000}],writablePaths:['src']}));h.service.message(h.id,{content:'configure'});let s=await idle(h);h.push(action(tool,{checkId:'check'}));await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:true});
  }else{h.push(action(tool,{executable:'node',args:['check.cjs'],timeoutMs:5000}));h.service.message(h.id,{content:'work'});}
- await new Promise((resolve,reject)=>{const done=()=>{if(existsSync(join(h.root,'ready'))){clearTimeout(timer);w.close();resolve();}};const w=watch(h.root,done),timer=setTimeout(()=>{w.close();reject(new Error('ready watchdog'));},10000);done();});
+ await waitForFile(join(h.root,'ready'));
  h.service.stop(h.id);const s=await idle(h);assert.equal(s.status,'attention');assert.equal(s.busy,false);assert.equal(s.verification,null);assert(s.events.some(e=>e.kind==='command_intent'));assert(s.events.some(e=>e.kind==='command_finished'));assert(s.events.some(e=>e.kind==='process_unknown'));assert(!s.events.some(e=>e.kind==='verification_evidence'&&e.body.passed));assert.throws(()=>h.service.message(h.id,{content:'retry'}),/核对|恢复|检查后继续/);
  const latest=h.service.details(h.id);h.push(finish);h.service.resume(h.id,{version:latest.version,confirmed:true});await idle(h);assert.equal(h.db.prepare("SELECT COUNT(*) n FROM assistant_events WHERE kind='command_intent'").get().n,1);
 }));
@@ -46,14 +47,14 @@ test('server assembly uses the shared production command bridge',()=>{const sour
 test('a reconstructed recovery guard refuses a still active job and never kills by old PID',{timeout:30000},()=>fixture(async h=>{
  writeFileSync(join(h.root,'active.cjs'),"require('node:fs').writeFileSync('active-ready','1');setInterval(()=>{},1000)");
  const controller=new AbortController(),s=h.service.details(h.id);const resultPromise=h.bridge.execute(s,'run_command',{executable:'node',args:['active.cjs'],timeoutMs:10000},controller.signal);
- try{await new Promise((resolve,reject)=>{const done=()=>{if(existsSync(join(h.root,'active-ready'))){clearTimeout(timer);w.close();resolve();}};const w=watch(h.root,done),timer=setTimeout(()=>{w.close();reject(new Error('ready watchdog'));},10000);done();});
+ try{await waitForFile(join(h.root,'active-ready'));
  const store={db:h.db,row:(q,...p)=>h.db.prepare(q).get(...p),rows:(q,...p)=>h.db.prepare(q).all(...p),now:()=>new Date().toISOString()};const reconstructed=createAssistantCommands({...store,root:()=>h.root,env:()=>process.env,protectedValues:()=>[],policy:()=>({mode:'full_access',version:1})});
  assert.throws(()=>reconstructed.recover(s),/活跃|身份/);controller.abort();const result=await resultPromise;assert.equal(result.processesEnded,true);reconstructed.recover(s);
  }finally{controller.abort();await resultPromise;}
 }));
 test('permission revocation cancels a real command and keeps the recovery gate',{timeout:30000},()=>fixture(async h=>{
  writeFileSync(join(h.root,'revoke.cjs'),"require('node:fs').writeFileSync('revoke-ready','1');setInterval(()=>{},1000)");h.push(action('run_command',{executable:'node',args:['revoke.cjs'],timeoutMs:10000}));h.service.message(h.id,{content:'work'});
- await new Promise((resolve,reject)=>{const done=()=>{if(existsSync(join(h.root,'revoke-ready'))){clearTimeout(timer);w.close();resolve();}};const w=watch(h.root,done),timer=setTimeout(()=>{w.close();reject(new Error('ready watchdog'));},10000);done();});
+ await waitForFile(join(h.root,'revoke-ready'));
  h.policy({mode:'read_only',version:2});const state=await idle(h);assert.equal(state.status,'attention');assert(state.events.some(e=>e.kind==='command_finished'&&e.body.reason==='permission_revoked'));assert.throws(()=>h.service.message(h.id,{content:'retry'}),/核对|恢复|检查后继续/);
 }));
 

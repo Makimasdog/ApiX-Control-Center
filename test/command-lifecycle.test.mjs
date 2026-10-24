@@ -1,6 +1,7 @@
+import {waitForFile} from './wait-for-file.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,watch} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -15,9 +16,9 @@ function fixture(){
  writeFileSync(join(root,'parent.ps1'),`param([string]$Mode)\n$si=New-Object Diagnostics.ProcessStartInfo\n$si.FileName='${process.execPath.replaceAll("'","''")}'\n$si.Arguments='"${join(root,'worker.cjs').replaceAll("'","''")}"'\n$si.UseShellExecute=$false\n$si.RedirectStandardOutput=$true\n$si.RedirectStandardError=$true\n$si.CreateNoWindow=$true\n$p=[Diagnostics.Process]::Start($si)\nif($p.StandardOutput.ReadLine() -ne 'READY'){throw 'worker not ready'}\nif($Mode -eq 'exit'){exit 0}\n[Threading.Thread]::Sleep(60000)\n`);
  writeFileSync(join(root,'parent.cjs'),`const {spawn}=require('node:child_process');const child=spawn(process.execPath,[require('node:path').join(__dirname,'worker.cjs')],{cwd:__dirname,stdio:['ignore','ignore','ignore','ipc']});child.once('message',()=>{${''}if(process.argv[2]==='exit')process.exit(0);});setInterval(()=>{},1000);`);
  const alive=()=>{if(!existsSync(join(root,'owned.pid')))return false;try{process.kill(Number(readFileSync(join(root,'owned.pid'),'utf8')),0);return true;}catch{return false;}};
- return {root,command:mode=>({executable:'powershell.exe',args:['-NoProfile','-NonInteractive','-File',join(root,'parent.ps1'),mode]}),alive,cleanup:()=>{let fallback=false;if(alive()){fallback=true;const pid=Number(readFileSync(join(root,'owned.pid'),'utf8'));if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-Command',`$p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}';if($p.CommandLine.Contains('${root.replaceAll("'","''")}')){Stop-Process -Id ${pid} -Force}`],{windowsHide:true});else process.kill(pid,'SIGKILL');}assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});return fallback;}};
+ return {root,command:mode=>({executable:'powershell.exe',args:['-NoProfile','-NonInteractive','-File',join(root,'parent.ps1'),mode]}),alive,cleanup:()=>{let fallback=false;if(alive()){fallback=true;const pid=Number(readFileSync(join(root,'owned.pid'),'utf8'));if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-Command',`$p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}';if($p.CommandLine.Contains('${root.replaceAll("'","''")}')){Stop-Process -Id ${pid} -Force}`],{windowsHide:true});else process.kill(pid,'SIGKILL');}assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true,maxRetries:15,retryDelay:100});return fallback;}};
 }
-function ready(root){return new Promise((resolve,reject)=>{const path=join(root,'ready');const done=()=>{if(existsSync(path)){clearTimeout(timer);watcher.close();resolve();}};const watcher=watch(root,done);const timer=setTimeout(()=>{watcher.close();reject(new Error('ready signal missing'));},12000);done();});}
+const ready=root=>waitForFile(join(root,'ready'));
 test('parent exit zero with a writing descendant is not successful delivery',{timeout:25000},async()=>{
  const h=fixture();let fallback=false;try{const result=await commandTool(h.root,{...h.command('exit'),timeoutMs:10000},process.env,new AbortController().signal);assert.equal(result.executionComplete,false);assert.equal(result.sideEffectsNeedReview,true);assert.equal(result.processesEnded,true);assert.equal(h.alive(),false);}finally{fallback=h.cleanup();}assert.equal(fallback,false,'fixture fallback must not substitute for runtime termination');
 });

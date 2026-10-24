@@ -9,7 +9,7 @@ Windows 自用桌面版：复用现有前后端，支持双击启动和生成 ex
 
 <p align="center">
   <a href="https://github.com/Makimasdog/ApiX-Control-Center/actions/workflows/ci.yml"><img src="https://github.com/Makimasdog/ApiX-Control-Center/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI · main" /></a>
-  <img src="https://img.shields.io/badge/Node.js-%3E%3D22.19.0-339933" alt="Node.js ≥ 22.19.0" />
+  <img src="https://img.shields.io/badge/Node.js-22.19%2B%20%2F%2024.22%2B-339933" alt="Node.js 22.19+ / 24.22+" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/Status-In%20Development-orange" alt="开发中" />
 </p>
@@ -27,6 +27,8 @@ Windows 自用桌面版：复用现有前后端，支持双击启动和生成 ex
 <p align="center">
   <img src="协作/工具调度桌面验收.png" alt="ApiX 桌面对话工作区：项目与对话侧栏、流式交流、计划审查和工作详情" width="100%" />
 </p>
+
+运行环境：Windows 使用 Node 22.19–22.x 或 Node 24.22+（24.x），npm 10/11。Node 24.20 的 Windows 文件监听崩溃在报告环境可复现，因此不列入支持范围；CI 覆盖 Node 22.19 和最新 24.x。安装时使用完整 `npm ci`，包含 Electron 与 electron-builder 开发依赖；`--omit=dev` 无法运行桌面命令。`npm run test:desktop` 验证桌面模块，真实窗口另用 `npm run test:desktop:app`。
 
 ## ApiX 是什么？
 
@@ -113,7 +115,7 @@ Windows 主 Agent 可直接搜索源文件、按行读取、基于 SHA 精确编
 
 | 工具 | 要求 |
 | --- | --- |
-| Node.js | ≥ 22.19.0，内置 SQLite 支持 FTS5 |
+| Node.js | 22.19–22.x 或 24.22+（24.x），内置 SQLite 支持 FTS5 |
 | Git | 已安装；未初始化 Git 或尚无首次提交的项目会建立托管快照 |
 | 模型 API | 配置可用的 API URL、模型 ID、协议与密钥（本机服务可免密钥） |
 | 执行员工 CLI | 可选；委派任务时安装并登录所选的 Pi、Codex 或 Claude 等 CLI |

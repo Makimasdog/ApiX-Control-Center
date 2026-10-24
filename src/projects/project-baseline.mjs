@@ -44,7 +44,7 @@ export function projectBaseline(sourcePath,planId,dataDir,{create=true}={}){
   const staging=join(storage,key+'-'+randomUUID()),target=join(staging,'repo');
   mkdirSync(target,{recursive:true});
   try{
-    git(target,['init']);
+    git(target,['init']);git(target,['config','core.autocrlf','false']);
     let files=0,bytes=0,entries=0;
     function copy(from,to){
       const names=readdirSync(from);
@@ -75,10 +75,15 @@ export function projectBaseline(sourcePath,planId,dataDir,{create=true}={}){
     const head=git(target,['-c','user.name=ApiX','-c','user.email=apix@local.invalid','commit-tree',tree,'-m','ApiX project input snapshot']);
     git(target,['update-ref','HEAD',head]);
     writeFileSync(join(staging,'source.json'),JSON.stringify({source,planId,head}));
-    renameSync(staging,saved);
+    for(let attempt=0;;attempt++){
+      try{renameSync(staging,saved);break;}catch(error){
+        if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt>=5)throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,50*(attempt+1));
+      }
+    }
     return repo;
   }catch(error){
-    if(inside(realpathSync.native(storage),realpathSync.native(staging)))rmSync(staging,{recursive:true,force:true});
+    if(inside(realpathSync.native(storage),realpathSync.native(staging)))rmSync(staging,{recursive:true,force:true,maxRetries:10,retryDelay:100});
     throw new Error(`无法建立非 Git 项目基线：${error.message}`);
   }
 }

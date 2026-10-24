@@ -1,7 +1,7 @@
 """Standalone stdio MCP demo, not a database health check or an automated test.
 
 Optional dependency: python -m pip install "mcp==1.30.0"
-Start with: python test/MCP_test.py
+Start with: python test/manual/mcp_demo.py
 """
 from mcp.server.fastmcp import FastMCP
 

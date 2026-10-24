@@ -4,7 +4,7 @@ Electron 复用现有网页和 HTTP 后端；后端仅监听本机端口。首�
 
 ## 开发与打包
 
-在 Windows x64 上使用 Node.js >=22.19.0（SQLite 必须支持 FTS5）：
+在 Windows x64 上使用 Node.js 22.19–22.x 或 24.22+（24.x）（SQLite 必须支持 FTS5）：
 
 ```powershell
 npm ci

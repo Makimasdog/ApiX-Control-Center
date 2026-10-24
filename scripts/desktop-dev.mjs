@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const major=Number(process.versions.node.split('.')[0]),minor=Number(process.versions.node.split('.')[1]);
-if(process.platform!=='win32'||major<22||major===22&&minor<19)throw Error('Electron 开发模式需要 Windows 与 Node >=22.19。');
+if(process.platform!=='win32'||!(major===22&&minor>=19||major===24&&minor>=22))throw Error('Electron 开发模式需要 Windows 与 Node 22.19–22.x 或 24.22+（24.x）。');
 async function run(executable,args,env=process.env){return new Promise((resolve,reject)=>{
   const child=spawn(executable,args,{cwd:root,env,windowsHide:executable===process.execPath,stdio:'inherit'});
   child.once('error',reject);child.once('close',code=>code===0?resolve():reject(Error('开发进程退出：'+code)));

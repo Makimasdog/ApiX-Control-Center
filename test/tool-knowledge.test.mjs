@@ -1,3 +1,4 @@
+import http from 'node:http';
 import {fileTool} from '../dist/src/assistant/assistant-tools.js';
 import {sourceManifest} from '../dist/src/validation/node-project.js';
 import {reviewSnapshot} from '../dist/src/assistant/assistant-delivery.js';
@@ -119,4 +120,36 @@ test('HTML extraction treats scripts/comments as data and handles unmatched repe
 
 test('owner capability files cannot enter project reads, search, snapshots or knowledge uploads',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'apix-owner-scan-'));const s=store();try{await mkdir(join(dir,'config'));for(const path of ['owner-access.json','config/OWNER-ACCESS.JSON']){await writeFile(join(dir,path),'{"token":"fixture-owner-capability-private"}');assert.throws(()=>fileTool(dir,'read_file',{path}),/凭据/);}await writeFile(join(dir,'note.txt'),'ordinary project text');assert.equal(fileTool(dir,'search_files',{query:'fixture-owner-capability-private'}).matches.length,0);assert(!JSON.stringify(sourceManifest(dir)).includes('owner-access.json'));assert(!JSON.stringify(reviewSnapshot(dir)).includes('owner-access.json'));const kb=createKnowledgeBase(s),space=kb.saveSpace('p',{name:'private'});assert.throws(()=>kb.upload('p',upload(space.id,'{"token":"private"}',{filename:'owner-access.json'})),e=>e.code==='CREDENTIAL_DOCUMENT');}finally{s.db.close();await rm(dir,{recursive:true,force:true});}
+});
+
+
+test('oversized JSON is drained and the next authenticated request reuses the connection',async()=>{
+ const fixture=await startDeliveryFixture(),agent=new http.Agent({keepAlive:true,maxSockets:1});
+ const request=(path,body)=>new Promise((resolve,reject)=>{
+  const req=http.request(fixture.origin+path,{agent,method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+process.env.APIX_OWNER_TOKEN,'Content-Type':'application/json'}},res=>{
+   const socket=res.socket;let text='';res.setEncoding('utf8');res.on('data',c=>text+=c);res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(text),socket}));
+  });req.on('error',reject);req.setTimeout(10000,()=>req.destroy(new Error('HTTP regression request timed out')));req.end(body);
+ });
+ try{
+  const p='/api/projects/'+fixture.projectId;
+  for(const [path,size] of [[p+'/knowledge/documents/upload',1600000],[p+'/tool-access',31000],['/api/projects',31000],['/api/owner/login',1100]]){
+   const large=await request(path,JSON.stringify({content:'x'.repeat(size)}));assert.equal(large.status,413);assert.equal(large.body.code,'PAYLOAD_TOO_LARGE');
+   const next=await request(p+'/tool-access');assert.equal(next.status,200);assert.equal(next.socket,large.socket);
+  }
+  const unicode=JSON.stringify({content:'中'.repeat(11000)});
+  assert.equal((await request('/api/unknown-regression-route',unicode)).status,404,'legacy routes retain their character limit');
+  assert.equal((await request(p+'/tool-access',unicode)).status,413,'project tool routes retain their byte limit');
+  for(const path of ['/api/events/stream','/api/chat-history','/api/mailboxes']){const r=await request(path);assert.equal(r.status,400);assert.match(r.body.error,/projectId/);}
+ }finally{agent.destroy();await fixture.close();}
+});
+
+
+test('HTTP database defects return 500 without leaking internal schema',async()=>{
+ const fixture=await startDeliveryFixture();let db;
+ try{
+  const path='/api/projects/'+fixture.projectId+'/tool-access';
+  await fixture.request(path,undefined,200);
+  db=new DatabaseSync(join(fixture.dir,'data','apix.sqlite'));db.exec('DROP TABLE tool_access');
+  const result=await fixture.request(path,undefined,500);assert.equal(result.code,'INTERNAL_ERROR');assert(!JSON.stringify(result).includes('tool_access'));
+ }finally{db?.close();await fixture.close();}
 });

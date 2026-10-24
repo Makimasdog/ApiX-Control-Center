@@ -14,10 +14,10 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 async function isolatedProject(dataDir) {
   const project = join(dataDir, 'project');
   await mkdir(project);
-  execFileSync('git', ['init', '-q', project]);
+  execFileSync('git', ['-c','core.autocrlf=false','init', '-q', project]);
   await writeFile(join(project, 'README.md'), 'Isolated ApiX test project\n');
-  execFileSync('git', ['add', 'README.md'], {cwd: project});
-  execFileSync('git', ['-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
+  execFileSync('git', ['-c','core.autocrlf=false','add', 'README.md'], {cwd: project});
+  execFileSync('git', ['-c','core.autocrlf=false','-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
   return project;
 }
 const serverErrors = new Map();

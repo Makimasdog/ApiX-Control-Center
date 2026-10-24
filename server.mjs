@@ -81,10 +81,18 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
     if (origin && origin !== expectedOrigin) { response.writeHead(403); response.end("Forbidden origin"); return; }
     // send 是本分支统一的返回工具:设状态码 + 把对象序列化成 JSON 发出。
     // no-store 禁止浏览器和中间代理缓存接口结果,保证 UI 看到的始终是最新状态。
-    const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
+    // Read to EOF even when oversized: breaking the request iterator destroys its socket.
+    const readBody = async (max, byteLimit=false) => {
+      request.setEncoding('utf8');let raw='',size=0;
+      for await (const chunk of request) {size+=byteLimit?Buffer.byteLength(chunk):chunk.length;raw=size<=max?raw+chunk:'';}
+      if(size>max)throw new ToolError('PAYLOAD_TOO_LARGE','请求过大','correct_input',{},413);
+      return raw;
+    };
+    const requiredProject = query => {const id=query.get('projectId');if(!id?.trim())throw new ToolError('INVALID_ARGUMENTS','缺少必需参数 projectId','correct_input');return id;};
+    const send = (status, value) => { if(!request.complete&&(Number(request.headers['content-length'])>0||request.headers['transfer-encoding'])){response.setHeader("Connection","close");request.resume();}response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
       if(pathname==='/api/owner/login'&&request.method==='POST'){
-        let raw='';for await(const chunk of request){raw+=chunk;if(raw.length>1000)throw new Error('请求过大');}
+        const raw=await readBody(1000);
         if(!ownerAccess.equals(JSON.parse(raw).token)){send(401,{error:'需要本机所有者令牌',code:'OWNER_REQUIRED',retryable:false});return;}
         response.setHeader('Set-Cookie',ownerAccess.cookie());send(200,{connected:true});return;
       }
@@ -101,10 +109,9 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id,actor.task_id)); return; }
         if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveAgentMessages(actor)); return; }
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
-        // 请求体是分块流式到达的,这里边收边拼;累计超过约 30000 字符就抛错,防止超大请求拖垮服务。
+        // 请求体是分块流式到达的,这里边收边拼;累计超过 30000 字符后丢弃超限内容,防止超大请求拖垮服务。
         // 拼完再 JSON.parse 成 input 对象;空 body 用 '{}' 兜底,免得 JSON.parse('') 报出看不懂的语法错误。
-        request.setEncoding('utf8');
-        let body = ''; for await (const chunk of request) { body += chunk; if (body.length > 30000) throw new Error('请求过大'); }
+        const body=await readBody(30000);
         // 收 body 期间已经 await 过,令牌或其授权状态可能在这段空档里变化,所以动手前再校验一次。
         // 这是“检查—使用”之间要重新确认的常见写法(TOCTOU 防护)。
         const input = JSON.parse(body || '{}');
@@ -140,7 +147,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         }
         if(request.method!=='POST'||request.headers['content-type']?.split(';')[0]!=='application/json')throw new ToolError('INVALID_ARGUMENTS','需要 JSON POST');
         const max=domain==='knowledge'&&operation==='documents/upload'?1500000:30000;
-        let raw='';for await(const chunk of request){raw+=chunk;if(Buffer.byteLength(raw)>max)throw new ToolError('PAYLOAD_TOO_LARGE','请求过大','correct_input',{},413);}
+        const raw=await readBody(max,true);
         const input=JSON.parse(raw||'{}');if(!input||typeof input!=='object'||Array.isArray(input))throw new ToolError('INVALID_ARGUMENTS','需要 JSON 对象');
         let result;
         if(domain==='tool-access')result=toolGovernance.save(projectId,input);
@@ -168,7 +175,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       // 运行日志、交付物以及交付物里的文件、项目诊断。URL 里的查询参数统一用 new URL(...).searchParams 取。
       if (pathname === "/api/manager/settings" && request.method === "GET") { send(200, managerSettings()); return; }
       if (pathname === '/api/agent-providers' && request.method === 'GET') {send(200,listAgentProviders());return;}
-      if(pathname==='/api/chat-history'&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,chatHistory(q.get('projectId')??'',q.get('view')??'active'));return;}
+      if(pathname==='/api/chat-history'&&request.method==='GET'){const q=new URL(request.url,'http://localhost').searchParams;send(200,chatHistory(requiredProject(q),q.get('view')??'active'));return;}
       if(pathname==='/api/project-folders' && request.method==='GET'){send(200,browseFolders(new URL(request.url,'http://localhost').searchParams.get('path')));return;}
       if(/^\/api\/projects\/[^/]+\/mcp$/.test(pathname)&&request.method==='GET'){send(200,mcpServers(pathname.split('/')[3]));return;}
       if(/^\/api\/assistant\/sessions\/[^/]+\/events$/.test(pathname)&&request.method==='GET'){send(200,assistantEvents(pathname.split('/')[4],new URL(request.url,'http://localhost').searchParams.get('before')??undefined));return;}
@@ -194,7 +201,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       if (/^\/api\/coordination\/sessions\/[^/]+$/.test(pathname) && request.method === "GET") { send(200, coordinationSessionDetails(pathname.split("/")[4])); return; }
       if (/^\/api\/coordination\/sessions\/[^/]+\/timeline$/.test(pathname) && request.method === "GET") { const q = new URL(request.url, 'http://localhost').searchParams; send(200, coordinationTimeline(pathname.split("/")[4], q.has('at') ? Number(q.get('at')) : undefined)); return; }
       if (pathname === "/api/memories/search" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, searchMemories(query.get("projectId"), query.get("q"))); return; }
-      if (pathname === "/api/mailboxes" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listMailboxes(query.get("projectId"))); return; }
+      if (pathname === "/api/mailboxes" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, listMailboxes(requiredProject(query))); return; }
       if (pathname === "/api/messages" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, receiveMessages({ projectId: query.get("projectId"), agentId: query.get("agentId"), limit: query.get("limit") })); return; }
       if (pathname === "/api/messages/thread" && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, messageThread(query.get("projectId"), query.get("correlationId"), query.get("agentId"))); return; }
       if (/^\/api\/messages\/[^/]+$/.test(pathname) && request.method === "GET") { const query = new URL(request.url, "http://localhost").searchParams; send(200, messageDetails(pathname.split("/")[3], query.get("agentId"))); return; }
@@ -204,7 +211,7 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       // 每条事件的写法是 `id: ...\nevent: ...\ndata: ...\n\n`,结尾空行是 SSE 协议要求的消息分隔符。
       if (pathname === "/api/events/stream" && request.method === "GET") {
         const query = new URL(request.url, "http://localhost").searchParams;
-        const projectId = query.get("projectId");
+        const projectId = requiredProject(query);
         const agentId = query.get("agentId");
         let lastId = Number(request.headers["last-event-id"] ?? query.get("after") ?? 0) || 0;
         const initial = messageEventsSince(projectId, agentId, lastId);
@@ -246,10 +253,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       // split(';')[0] 是因为客户端可能写成 `application/json; charset=utf-8`。
       // 一个容易踩到的细节: GET 请求打到未注册路径会先在这里被拦成 405,而非走到链尾得到 404。
       if (request.method !== "POST" || request.headers["content-type"]?.split(";")[0] !== "application/json") { send(405, { error: "Unsupported request" }); return; }
-      // 读取写操作的请求体,做法与员工通道相同:分块累积、超过约 30000 字符即拒绝、再解析成 input 对象。
-      let raw = "";
-      request.setEncoding('utf8');
-      for await (const chunk of request) { raw += chunk; if (raw.length > 30000) throw new Error("请求过大"); }
+      // 读取写操作的请求体,做法与员工通道相同:分块累积、超过 30000 字符则读完后拒绝、再解析成 input 对象。
+      const raw=await readBody(30000);
       const input = JSON.parse(raw || "{}");
       if (/^\/api\/coordination\/sessions\/[^/]+\/messages\/stream$/.test(pathname)) {
         // 【流式对话】协作会话里的提问走 SSE 边生成边推送:start 表示开始,delta 是模型新吐出的一小段文字,
@@ -387,8 +392,16 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       else { send(404, { error: "Not found" }); return; }
       send(200, result);
     // 【统一错误出口】接口处理中任何抛错(参数不合法、权限不足、JSON 解析失败……)都在这里收口,
-    // 一律回 400 + error 文本。前端只需读 error 字段就能展示原因,而且响应始终是完整合法的 JSON。
-    } catch (error) { const failure=pathname.startsWith('/api/agent/tools/')&&!(error instanceof ToolError)?new ToolError('INVALID_ARGUMENTS','工具请求格式无效','correct_input'):error;send(failure instanceof ToolError?failure.status:400, { error: failure.message,...failure instanceof ToolError?errorInfo(failure):{} }); }
+    // Preserve legacy business errors; database/runtime defects are server failures.
+    } catch (error) {
+      if(!(error instanceof ToolError)&&(error instanceof TypeError||error instanceof ReferenceError||/^(?:ERR_SQLITE|SQLITE_)/.test(error.code??''))){
+        process.stderr.write(`ApiX HTTP: ${error.stack??error.message}\n`);
+        send(500,{error:'服务端内部错误，请查看本机日志',code:'INTERNAL_ERROR',retryable:false});
+      }else{
+        const failure=pathname.startsWith('/api/agent/tools/')&&!(error instanceof ToolError)?new ToolError('INVALID_ARGUMENTS','工具请求格式无效','correct_input'):error;
+        send(failure instanceof ToolError?failure.status:400,{error:failure.message,...failure instanceof ToolError?errorInfo(failure):{}});
+      }
+    }
     return;
   }
   // ===== 静态文件区 (不是 /api 的请求都走到这里) =====

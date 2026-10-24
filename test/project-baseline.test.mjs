@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import {syncBuiltinESMExports} from 'node:module';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,existsSync,readFileSync,rmSync,symlinkSync,unlinkSync,realpathSync} from 'node:fs';
@@ -6,8 +8,8 @@ import {tmpdir} from 'node:os';
 import {execFileSync} from 'node:child_process';
 import {projectBaseline,projectSourceVersion} from '../src/projects/project-baseline.mjs';
 import {createTaskDelivery} from '../src/projects/task-delivery.mjs';
-const git=(cwd,args)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
-function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true});}}
+const git=(cwd,args)=>execFileSync('git',['-c','core.autocrlf=false',...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}}
 test('ApiX data root cannot be snapshotted as a project',()=>fixture(({source})=>{
   writeFileSync(join(source,'apix.sqlite'),'private state');assert.throws(()=>projectBaseline(source,'plan',source),/数据目录不能/);
   assert(!existsSync(join(source,'project-baselines')));
@@ -44,4 +46,19 @@ test('failed non-Git tasks without a workspace have recoverable source fingerpri
   assert.equal(delivery.error,null);assert.equal(delivery.sourceHead,before);assert(delivery.recoveryFingerprint);
   writeFileSync(join(source,'README.md'),'after');assert.notEqual(projectSourceVersion(source,data),before);
   assert.notEqual(createTaskDelivery({row,codeHandoffs:{},dataDir:data})('t').recoveryFingerprint,delivery.recoveryFingerprint);
+}));
+
+
+test('Windows transient rename locks retry without replacing the saved baseline', {skip:process.platform!=='win32'},()=>fixture(({source,data})=>{
+ writeFileSync(join(source,'README.md'),'retry snapshot');const original=fs.renameSync;let attempts=0;
+ fs.renameSync=(from,to)=>{if(++attempts<3)throw Object.assign(new Error('fixture lock'),{code:'EPERM'});return original(from,to);};syncBuiltinESMExports();
+ try{const repo=projectBaseline(source,'retry-plan',data);assert.equal(attempts,3);assert.equal(readFileSync(join(repo,'README.md'),'utf8'),'retry snapshot');assert.equal(projectBaseline(source,'retry-plan',data),repo);assert.equal(attempts,3);}
+ finally{fs.renameSync=original;syncBuiltinESMExports();}
+}));
+
+for(const [code,expected] of [['EIO',1],['EPERM',6]])test('baseline rename '+code+' fails without publishing partial state',{skip:process.platform!=='win32'},()=>fixture(({source,data})=>{
+ writeFileSync(join(source,'README.md'),'source survives');const original=fs.renameSync;let attempts=0;
+ fs.renameSync=()=>{attempts++;throw Object.assign(new Error('fixture '+code),{code});};syncBuiltinESMExports();
+ try{assert.throws(()=>projectBaseline(source,'failed-plan',data),new RegExp(code));assert.equal(attempts,expected);assert.deepEqual(fs.readdirSync(join(data,'project-baselines')),[]);assert.equal(readFileSync(join(source,'README.md'),'utf8'),'source survives');}
+ finally{fs.renameSync=original;syncBuiltinESMExports();}
 }));

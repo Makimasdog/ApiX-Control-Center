@@ -16,7 +16,7 @@ export function npmRuntime(){
  const candidates=[join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'),...(process.env.PATH??'').split(delimiter).filter(p=>isAbsolute(p)).map(p=>join(p,'node_modules/npm/bin/npm-cli.js'))];
  const cli=candidates.find(p=>existsSync(p));if(!cli)throw new Error('未发现固定 npm CLI 入口');
  const path=realpathSync.native(cli),pkg=JSON.parse(readFileSync(join(dirname(path),'../package.json'),'utf8'));
- const [major,minor]=process.versions.node.split('.').map(Number);if(!(major===22&&minor!>=19||major===24)||!/^1[01]\./.test(pkg.version))throw new Error('支持 Node 22.19–22.x / 24.x 和 npm 10.x / 11.x');
+ const [major,minor]=process.versions.node.split('.').map(Number);if(!(major===22&&minor!>=19||major===24&&minor!>=22)||!/^1[01]\./.test(pkg.version))throw new Error('支持 Node 22.19–22.x / 24.22+ 和 npm 10.x / 11.x');
  return {node:realpathSync.native(process.execPath),nodeVersion:process.version,npm:path,npmVersion:String(pkg.version),npmSha256:digest(readFileSync(path))};
 }
 function projectGitStatus(root:string){
