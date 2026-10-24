@@ -7,7 +7,7 @@
 
 | 功能 | 状态 | 契约文档 | 验收方式（脚本/测试） | 最新验收记录 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
-| 流式对话与会话管理 | active | docs/架构设计.md（主循环）、README「配置指南」 | `npm test`（conversation-ui/conversation-model 等）+ `npm run test:ui:browser` | 协作/20261024-Agent消息幂等开发与自审.md | 普通路由请求体 30KB 上限待按类目统一（方案 P13） |
+| 流式对话与会话管理 | active | docs/架构设计.md（主循环）、README「配置指南」「请求体限额」 | `npm test`（conversation-ui/conversation-model 等）+ `npm run test:ui:browser` | 协作/20261024-Agent消息幂等开发与自审.md | 消息类 256KB / 配置类 64KB / 默认 30000 字符（2026-10-25 起，见 README） |
 | 项目工具（文件/进程/验证） | active | docs/开发约定.md、docs/架构设计.md | `npm test`（assistant-tools、command-* 系列） | 协作/20261019-P11-A命令证据一致性自审.md | Windows + Node 24.20 有 libuv fs.watch 崩溃，需 ≥24.22（engines 已拦截） |
 | 自动协作（Director 计划） | active | README「核心功能」、docs/使用指南.md | `npm run test:ui:task-flow` | 协作/20261022-交互执行重构自审.md | 每步 Run 启动前需单独审批（设计如此） |
 | 能力调度 | active | docs/架构设计.md | `npm test`（coordinator 等） | 协作/20261022-协作任务图与节点详情自审.md | — |

@@ -150,6 +150,17 @@ test('oversized JSON is drained and the next authenticated request reuses the co
   const unicode=JSON.stringify({content:'中'.repeat(11000)});
   assert.equal((await request('/api/unknown-regression-route',unicode)).status,404,'legacy routes retain their character limit');
   assert.equal((await request(p+'/tool-access',unicode)).status,413,'project tool routes retain their byte limit');
+  // P13 限额分类:对话消息类 256KB(250KB 送达业务校验、280KB 拒 413),配置类 64KB。
+  const session=(await fixture.request('/api/assistant/sessions',{projectId:fixture.projectId})).id;
+  const messageBody=size=>JSON.stringify({requestId:'missing-request',approved:true,padding:'x'.repeat(size)});
+  assert.notEqual((await request('/api/assistant/sessions/'+session+'/reply',messageBody(250000))).status,413,'250KB 消息不应被限额拒绝');
+  assert.equal((await request('/api/assistant/sessions/'+session+'/reply',messageBody(280000))).status,413);
+  assert.notEqual((await request('/api/manager/settings',JSON.stringify({padding:'x'.repeat(60000)}))).status,413,'60KB 配置不应被限额拒绝');
+  assert.equal((await request('/api/manager/settings',JSON.stringify({padding:'x'.repeat(70000)}))).status,413);
+  // P7 语义:路径未注册一律 404(GET 也不例外),方法不匹配才是 405。
+  assert.equal((await request('/api/never-registered-route')).status,404,'unknown GET path must be 404');
+  assert.equal((await request('/api/projects')).status,405,'method mismatch must be 405');
+  assert.equal((await request(p+'/tool-access')).status,200);
   for(const path of ['/api/events/stream','/api/chat-history','/api/mailboxes']){const r=await request(path);assert.equal(r.status,400);assert.match(r.body.error,/projectId/);}
  }finally{agent.destroy();await fixture.close();}
 });
