@@ -58,6 +58,7 @@ export function createAssistantLoop(deps:Dependencies){
     CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));`);
   const memory=deps.memory??createProjectMemory(deps);
   db.exec('CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)');
+  db.exec('CREATE TABLE IF NOT EXISTS assistant_message_requests(session_id TEXT NOT NULL REFERENCES assistant_sessions(id),request_id TEXT NOT NULL,content_hash TEXT NOT NULL,event_id INTEGER NOT NULL REFERENCES assistant_events(id),created_at TEXT NOT NULL,PRIMARY KEY(session_id,request_id))');
   const governance=deps.governance??createToolGovernance(deps),progress=deps.progress??createToolProgress(deps),knowledge=deps.knowledge;
   const effects=createEffectJournal(deps);
   const outputs=createContextOutputs(deps);let cachedRegistry=createToolRegistry(),registryKey='';
@@ -108,13 +109,25 @@ export function createAssistantLoop(deps:Dependencies){
     else if(effects.pending(id)||classifyFault(error).strategy==='review'){recordSafety(id,error,'failure_recovery');}
     else if(get(id).status==='running'){event(id,'system','error',{error:safeError(error),fault:classifyFault(error)});update(id,'attention');}
   }catch(recordError){recordSafety(id,recordError,'recovery_state');}});}
-  function message(id:string,input:Record<string,unknown>){const s=get(id);if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');if(effects.pending(id))throw new Error('本会话有副作用结果尚未核对，请先检查后继续');deps.commandState?.(s,'message');const content=text(input.content);if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
+  function message(id:string,input:Record<string,unknown>){const s=get(id),content=text(input.content),requestId=input.requestId;
+    if(requestId!==undefined&&(typeof requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(requestId)))throw new ToolError('INVALID_ARGUMENTS','消息请求 ID 应为 8–100 位字母、数字或 . _ : -','correct_input');
+    const contentHash=createHash('sha256').update(content).digest('hex');
+    if(typeof requestId==='string'){
+      const previous=row<{content_hash:string}>("SELECT content_hash FROM assistant_message_requests WHERE session_id=? AND request_id=?",id,requestId);
+      if(previous){if(previous.content_hash!==contentHash)throw new ToolError('MESSAGE_REQUEST_CONFLICT','同一消息请求 ID 不能用于不同内容','correct_input',{},409);return details(id);}
+    }
+    if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');if(effects.pending(id))throw new Error('本会话有副作用结果尚未核对，请先检查后继续');deps.commandState?.(s,'message');if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
     const recovery=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind IN ('restart_interrupted','process_unknown','stopped')",id)?.id??0;
     const confirmed=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind='resumed'",id)?.id??0;
     if(recovery>confirmed)throw new Error('请先检查原进程并点击“检查后继续”，或新建对话；普通消息不会重放中断操作');
     if(s.child_session_id&&['completed','stopped'].includes(s.status))throw new Error('原委派尚未处理，请先检查');
-    if(!deliveries.current(id)&&!row("SELECT id FROM assistant_events WHERE session_id=? AND kind<>'verification_contract' LIMIT 1",id))deliveries.start(s,content.slice(0,4000));
-    event(id,'user','message',{content});db.prepare("UPDATE assistant_sessions SET title=CASE WHEN title='新对话' THEN ? ELSE title END,steps=0,status='running',version=version+1,started_at=?,updated_at=? WHERE id=?").run(content.slice(0,80),now(),now(),id);kick(id);return details(id);}
+    db.exec('SAVEPOINT assistant_message');try{
+      if(!deliveries.current(id)&&!row("SELECT id FROM assistant_events WHERE session_id=? AND kind<>'verification_contract' LIMIT 1",id))deliveries.start(s,content.slice(0,4000));
+      const saved=event(id,'user','message',{content,...(typeof requestId==='string'?{requestId}:{})});
+      if(typeof requestId==='string')db.prepare('INSERT INTO assistant_message_requests VALUES (?,?,?,?,?)').run(id,requestId,contentHash,Number(saved.lastInsertRowid),now());
+      db.prepare("UPDATE assistant_sessions SET title=CASE WHEN title='新对话' THEN ? ELSE title END,steps=0,status='running',version=version+1,started_at=?,updated_at=? WHERE id=?").run(content.slice(0,80),now(),now(),id);db.exec('RELEASE assistant_message');
+    }catch(error){db.exec('ROLLBACK TO assistant_message;RELEASE assistant_message');throw error;}
+    kick(id);return details(id);}
   function request(id:string,pending:Record<string,unknown>){db.exec('SAVEPOINT assistant_request');try{db.prepare("UPDATE assistant_sessions SET pending=?,status='waiting_user',version=version+1,updated_at=? WHERE id=?").run(JSON.stringify({...pending,id:randomUUID()}),now(),id);event(id,'assistant','request',redactPending(pending));db.exec('RELEASE assistant_request');}catch(error){db.exec('ROLLBACK TO assistant_request;RELEASE assistant_request');throw error;}}
   function timeBudget(id:string){const s=get(id),remaining=Math.max(1,Date.parse(s.started_at)+progress.settings(s.project_id).maxMs-Date.now());return setTimeout(()=>{
     if(!['running','waiting_user'].includes(get(id).status))return;

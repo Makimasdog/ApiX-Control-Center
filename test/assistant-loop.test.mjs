@@ -76,6 +76,23 @@ test('unknown model cleanup after stop stays visible and requires manual recover
 test('new user steering invalidates the in-flight decision and preserves both messages',()=>fixture(async h=>{
   let resolve;h.answer(()=>new Promise(r=>resolve=r),finish);h.service.message(h.id,{content:'写文件'});while(!resolve)await new Promise(r=>setTimeout(r,1));h.service.message(h.id,{content:'改为只解释，不写文件'});resolve(JSON.stringify(tool('write_file',{path:'late',content:'bad'})));const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert.equal(h.calls.length,0);assert(h.prompts.at(-1).includes('改为只解释'));
 }));
+test('durable message request IDs deduplicate in-flight and post-restart retries',()=>fixture(async h=>{
+  let resolve;h.answer(()=>new Promise(r=>resolve=r));const request={requestId:'retry-message-0001',content:'只执行一次'};
+  h.service.message(h.id,request);while(!resolve)await new Promise(r=>setTimeout(r,1));const running=h.service.details(h.id);
+  assert.equal(h.service.message(h.id,request).version,running.version);assert.equal(h.prompts.length,1);
+  resolve(JSON.stringify(finish));const completed=await wait(h.service,h.id);assert.equal(completed.status,'completed');
+  const restored=createAssistantLoop(h.deps),retried=restored.details(h.id);assert.equal(restored.message(h.id,request).version,retried.version);
+  assert.equal(h.prompts.length,1);assert.equal(retried.events.filter(e=>e.role==='user'&&e.kind==='message').length,1);
+  assert.throws(()=>restored.message(h.id,{...request,content:'不同内容'}),e=>e.code==='MESSAGE_REQUEST_CONFLICT'&&e.status===409);
+  for(const requestId of ['short','bad id 0000','x'.repeat(101)])assert.throws(()=>restored.message(h.id,{requestId,content:'无效'}),e=>e.code==='INVALID_ARGUMENTS');
+  h.answer(finish);const other=restored.create({projectId:'p'});restored.message(other.id,request);assert.equal((await wait(restored,other.id)).status,'completed');assert.equal(h.prompts.length,2);
+}));
+test('message receipt persistence failure rolls back the user turn and running state',()=>fixture(async h=>{
+  h.db.exec("CREATE TRIGGER reject_message_receipt BEFORE INSERT ON assistant_message_requests BEGIN SELECT RAISE(ABORT,'receipt unavailable');END;");
+  assert.throws(()=>h.service.message(h.id,{requestId:'atomic-message-0001',content:'不能留下半条消息'}),/receipt unavailable/);
+  assert.equal(h.db.prepare('SELECT COUNT(*) AS n FROM assistant_events WHERE session_id=?').get(h.id).n,0);
+  assert.equal(h.service.details(h.id).status,'idle');assert.equal(h.service.details(h.id).version,1);assert.equal(h.prompts.length,0);
+}));
 test('restart does not replay interrupted work; project notes are versioned and isolated',()=>fixture(async h=>{
   h.service.remember('p','rule','use actual evidence');assert.equal(h.service.notes('other').length,0);
   assert.throws(()=>h.service.editMemory(h.id,{title:'rule',version:0,content:'wrong'}),/版本/);

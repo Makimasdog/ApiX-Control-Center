@@ -13,9 +13,15 @@ let modeProject='',modeDirty=false;
 $('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;});
 let reviewSignature='' ;
 const drafts=new Map<string,string>();const draftKey=()=>projectId+':'+threadId;
+const messageRequests=new Map<string,{content:string;requestId:string}>();
 async function api<T>(path:string,body?:unknown):Promise<T>{const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const value=await response.json();if(!response.ok)throw new Error(value.error??'请求失败');return value as T;}
 function error(value:unknown){$('#assistant-error').textContent=value instanceof Error?value.message:String(value);}
 function render(s:Session){
+  const pendingMessage=messageRequests.get(s.id);
+  if(pendingMessage&&s.events.some(e=>e.role==='user'&&e.kind==='message'&&e.body.requestId===pendingMessage.requestId)){
+    messageRequests.delete(s.id);$('#assistant-error').textContent='';
+    const input=$<HTMLTextAreaElement>('#assistant-input');if(input.value.trim()===pendingMessage.content)input.value='';
+  }
   updateModel('assistant',s.id,s.busy||['running','waiting_agents','waiting_user'].includes(s.status));
   if(active&&current?.id!==s.id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:s.id,kind:'assistant'}}));
   if(current&&current.id!==s.id){olderEvents=[];olderCursor=undefined;notesSignature='';}
@@ -61,7 +67,11 @@ async function sendMessage(s:Session,content:string){
   const mode=$<HTMLSelectElement>('#assistant-execution-mode').value;
   if(s.policy.mode!==mode){const policy=await api<Session['policy']>('/api/permissions',{projectId:s.project_id,subject:'apix',mode,version:s.policy.version});s.policy=policy;modeDirty=false;}
   if(version!==generation||s.project_id!==projectId)throw new Error('项目已切换，消息尚未发送');
-  return api('/api/assistant/sessions/'+s.id+'/messages',{content});
+  const previous=messageRequests.get(s.id),pending=previous?.content===content?previous:{content,requestId:crypto.randomUUID()};
+  messageRequests.set(s.id,pending);
+  const result=await api<Session>('/api/assistant/sessions/'+s.id+'/messages',pending);
+  if(messageRequests.get(s.id)?.requestId===pending.requestId)messageRequests.delete(s.id);
+  return result;
 }
 $('#assistant-form').addEventListener('submit',event=>{event.preventDefault();if(posting)return;void(async()=>{posting=true;try{const input=$<HTMLTextAreaElement>('#assistant-input'),content=input.value.trim();if(!content)return;const version=generation;const s=current??await newSession();await sendMessage(s,content);if(version!==generation)return;if(input.value.trim()===content)input.value='';$('#assistant-error').textContent='';await refresh();}catch(e){error(e);}finally{posting=false;}})();});
 $('#assistant-input').addEventListener('keydown',event=>{if(event instanceof KeyboardEvent&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$<HTMLFormElement>('#assistant-form').requestSubmit();}});

@@ -44,7 +44,11 @@ test('adapter registration distinguishes invalid IDs from builtins without repla
 test('Assistant can start a general conversation without selecting a project or registering employees',async()=>harness(async h=>{
   const s=await h.request('/api/assistant/sessions',{});assert(s.project_id);
   const snapshot=await h.request('/api/snapshot');assert.equal(snapshot.employees.length,0);const project=snapshot.projects.find(p=>p.id===s.project_id);assert.equal(project.name,'通用工作区');assert(project.path.startsWith(join(realpathSync.native(h.dir),'data')));
-  await h.request(`/api/assistant/sessions/${s.id}/messages`,{content:'解释如何协作，不执行命令'});await waitFor(async()=>(await h.request(`/api/assistant/sessions/${s.id}`)).status==='completed');assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
+  const message={requestId:'http-retry-message-0001',content:'解释如何协作，不执行命令'},path=`/api/assistant/sessions/${s.id}/messages`;
+  const accepted=await h.request(path,message);assert.equal((await h.request(path,message)).version,accepted.version);
+  const completed=await waitFor(async()=>{const state=await h.request(`/api/assistant/sessions/${s.id}`);return state.status==='completed'?state:null;});
+  assert.equal((await h.request(path,message)).version,completed.version);assert.equal(completed.events.filter(e=>e.role==='user'&&e.kind==='message').length,1);
+  assert.equal((await h.request(path,{...message,content:'不能复用请求 ID'},409)).code,'MESSAGE_REQUEST_CONFLICT');assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
   const alias=join(h.dir,'general-alias');await symlink(project.path,alias,process.platform==='win32'?'junction':'dir');
   const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));try{db.prepare('UPDATE projects SET path=? WHERE id=?').run(alias,project.id);}finally{db.close();}
   assert.equal((await h.request('/api/assistant/sessions',{})).project_id,s.project_id);
