@@ -1,3 +1,6 @@
+import {knowledgeBase,toolGovernance,toolProgress,invokeAgentTool} from './control-plane.mjs';
+import {errorInfo,ToolError} from './dist/src/assistant/tool-governance.js';
+import {createOwnerAccess,ownerLoginHtml} from './src/infrastructure/owner-access.mjs';
 import {projectMemoryState,saveProjectMemorySettings,assistantContext,assistantCompact} from './control-plane.mjs';
 // 【这个文件是什么】ApiX 的 Web 服务入口:`npm start` 实际执行的就是 `node server.mjs`。
 // 它只承担两件事:① 接收浏览器发来的 /api/* 请求,判断该调用哪个业务函数,把结果转成 JSON 返回;
@@ -37,6 +40,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 // `??` 只在左侧为 null/undefined 时才取右侧(与 `||` 的差别是 0 也算有效值);
 // parseInt 的第二个参数 10 表示按十进制解析字符串。
 const port = Number.parseInt(process.env.PORT ?? "4173", 10);
+const ownerAccess=createOwnerAccess(port);
 // 扩展名 → HTTP Content-Type 对照表。浏览器靠这个头决定怎么解释收到的字节(当网页、当样式、当脚本)。
 // 表里没有的扩展名会走后面的 application/octet-stream 兜底,意思是“当二进制流处理,不要执行”。
 const contentTypes = {
@@ -79,6 +83,12 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
     // no-store 禁止浏览器和中间代理缓存接口结果,保证 UI 看到的始终是最新状态。
     const send = (status, value) => { response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); response.end(JSON.stringify(value)); };
     try {
+      if(pathname==='/api/owner/login'&&request.method==='POST'){
+        let raw='';for await(const chunk of request){raw+=chunk;if(raw.length>1000)throw new Error('请求过大');}
+        if(!ownerAccess.equals(JSON.parse(raw).token)){send(401,{error:'需要本机所有者令牌',code:'OWNER_REQUIRED',retryable:false});return;}
+        response.setHeader('Set-Cookie',ownerAccess.cookie());send(200,{connected:true});return;
+      }
+      if(!pathname.startsWith('/api/agent/')&&!ownerAccess.authorized(request)){send(401,{error:'需要本机所有者身份',code:'OWNER_REQUIRED',retryable:false});return;}
       // 【员工通道】/api/agent/* 不是给网页用的,而是给“正在被 ApiX 驱动的外部 Agent 进程”用的:
       // 它们凭启动时拿到的令牌表明身份,再通过信箱收发消息。这一小段先处理完就 return,
       // 不会落到下面的通用路由里。
@@ -86,7 +96,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         // authenticateAgent 校验 Authorization 头里的 Bearer 令牌,失败会抛错(最终由下面的 catch 转成 400 响应)。
         // 返回的 actor 带有 project_id / task_id,后续所有读写都被限制在这个身份的范围之内。
         // 注意团队查询和收消息走 GET(只读),其余操作必须是 POST + application/json,否则直接抛错。
-        let actor = authenticateAgent(request.headers.authorization);
+        const workerIdentity=()=>{try{return authenticateAgent(request.headers.authorization);}catch(error){if(pathname.startsWith('/api/agent/tools/'))throw new ToolError('AGENT_UNAUTHORIZED','运行凭据无效或已结束','request_owner',{},401);throw error;}};
+        let actor = workerIdentity();
         if (pathname === '/api/agent/team' && request.method === 'GET') { send(200, agentTeam(actor.project_id,actor.task_id)); return; }
         if (pathname === '/api/agent/messages' && request.method === 'GET') { send(200, receiveAgentMessages(actor)); return; }
         if (request.method !== 'POST' || request.headers['content-type']?.split(';')[0] !== 'application/json') throw new Error('Unsupported request');
@@ -97,7 +108,8 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         // 收 body 期间已经 await 过,令牌或其授权状态可能在这段空档里变化,所以动手前再校验一次。
         // 这是“检查—使用”之间要重新确认的常见写法(TOCTOU 防护)。
         const input = JSON.parse(body || '{}');
-        actor = authenticateAgent(request.headers.authorization);
+        actor = workerIdentity();
+        if(/^\/api\/agent\/tools\/[a-zA-Z]\w{0,119}$/.test(pathname)){send(200,await invokeAgentTool(actor,pathname.split('/')[4],input));return;}
         if (pathname === '/api/agent/messages') {
           // 先把投递结果返回给调用方,再“发后即忘”地启动进度监督:
           // void 表示明知是异步但刻意不等待,.catch 兜住异常只写日志 —— 监督失败不能影响已成功的投递。
@@ -111,7 +123,35 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
         if (match) {
           send(200,handleAgentMessage(actor,match[1],match[2],input)); return;
         }
+        if(pathname.startsWith('/api/agent/tools/'))throw new ToolError('TOOL_NOT_FOUND','工具路径无效','correct_input',{},404);
         throw new Error('Unknown Agent operation');
+      }
+      const projectRoute=/^\/api\/projects\/([^/]+)\/(knowledge|tool-access|tool-limits)(?:\/(.*))?$/.exec(pathname);
+      if(projectRoute){
+        const [,projectId,domain,operation]=projectRoute,query=new URL(request.url,'http://localhost').searchParams;
+        if(domain==='tool-access'&&operation&&operation!=='audit'||domain==='tool-limits'&&operation)throw new ToolError('NOT_FOUND','接口不存在','correct_input',{},404);
+        if(domain==='tool-access'&&operation==='audit'&&request.method!=='GET')throw new ToolError('METHOD_NOT_ALLOWED','审计接口只允许读取','correct_input',{},405);
+        if(request.method==='GET'){
+          if(domain==='tool-access')send(200,operation==='audit'?toolGovernance.list(projectId):toolGovernance.get(projectId,query.get('subject')??'apix'));
+          else if(domain==='tool-limits')send(200,toolProgress.settings(projectId));
+          else if(operation==='source')send(200,knowledgeBase.read(projectId,query.get('citation')??''));
+          else if(!operation)send(200,knowledgeBase.list(projectId));else throw new ToolError('NOT_FOUND','接口不存在','correct_input',{},404);
+          return;
+        }
+        if(request.method!=='POST'||request.headers['content-type']?.split(';')[0]!=='application/json')throw new ToolError('INVALID_ARGUMENTS','需要 JSON POST');
+        const max=domain==='knowledge'&&operation==='documents/upload'?1500000:30000;
+        let raw='';for await(const chunk of request){raw+=chunk;if(Buffer.byteLength(raw)>max)throw new ToolError('PAYLOAD_TOO_LARGE','请求过大','correct_input',{},413);}
+        const input=JSON.parse(raw||'{}');if(!input||typeof input!=='object'||Array.isArray(input))throw new ToolError('INVALID_ARGUMENTS','需要 JSON 对象');
+        let result;
+        if(domain==='tool-access')result=toolGovernance.save(projectId,input);
+        else if(domain==='tool-limits')result=toolProgress.save(projectId,input);
+        else if(operation==='spaces/save')result=knowledgeBase.saveSpace(projectId,input);
+        else if(operation==='spaces/remove')result=knowledgeBase.removeSpace(projectId,input);
+        else if(operation==='documents/upload')result=knowledgeBase.upload(projectId,input);
+        else if(operation==='documents/remove')result=knowledgeBase.removeDocument(projectId,input);
+        else if(operation==='search')result=knowledgeBase.search(projectId,input.query,'owner',input.spaceId,input.limit??6);
+        else throw new ToolError('NOT_FOUND','接口不存在','correct_input',{},404);
+        send(200,result);return;
       }
       // ===== 只读(GET)路由区 =====
       // 从这里到后面的 405 判断之前,全是 GET 查询接口,套路完全一致:
@@ -348,11 +388,16 @@ createServer({keepAliveTimeout:65000},async (request, response) => {
       send(200, result);
     // 【统一错误出口】接口处理中任何抛错(参数不合法、权限不足、JSON 解析失败……)都在这里收口,
     // 一律回 400 + error 文本。前端只需读 error 字段就能展示原因,而且响应始终是完整合法的 JSON。
-    } catch (error) { send(400, { error: error.message }); }
+    } catch (error) { const failure=pathname.startsWith('/api/agent/tools/')&&!(error instanceof ToolError)?new ToolError('INVALID_ARGUMENTS','工具请求格式无效','correct_input'):error;send(failure instanceof ToolError?failure.status:400, { error: failure.message,...failure instanceof ToolError?errorInfo(failure):{} }); }
     return;
   }
   // ===== 静态文件区 (不是 /api 的请求都走到这里) =====
   // 根路径 / 映射为 index.html; 其余去掉开头的“/”,得到相对文件名。
+  if(pathname==='/'||pathname==='/index.html'){
+    if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(request.headers.host??'')){response.writeHead(403);response.end('Forbidden host');return;}
+    if(!ownerAccess.authorized(request)){response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(ownerLoginHtml);return;}
+    response.setHeader('Set-Cookie',ownerAccess.cookie());
+  }
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
   // staticFilePath 维护允许公开访问的“白名单”: 只有映射成功的文件才会被读出来。
   // 白名单是安全边界 —— 若改成“整个目录随便读”,源码、数据库文件甚至 .env 里的密钥都可能被下载。

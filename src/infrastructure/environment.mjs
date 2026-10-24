@@ -8,7 +8,7 @@ export function loadEnvironment(path=fileURLToPath(new URL('../../.env',import.m
 }
 
 export function workerEnvironment(source, runtime, managerKey) {
-  const keyNames=new Set(['APIX_ALI_API_KEY','ALI_API_KEY',...(Array.isArray(managerKey)?managerKey:[managerKey]).map(key=>String(key??'').toUpperCase())]);
+  const keyNames=new Set(['APIX_OWNER_TOKEN','APIX_ALI_API_KEY','ALI_API_KEY',...(Array.isArray(managerKey)?managerKey:[managerKey]).map(key=>String(key??'').toUpperCase())]);
   const managerValues=new Set(Object.entries(source).filter(([name,value])=>keyNames.has(name.toUpperCase()) && value).map(([,value])=>value));
   const credentials={codex:['OPENAI_API_KEY','CODEX_API_KEY'],claude:['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','CLAUDE_CODE_OAUTH_TOKEN'],gemini:['GEMINI_API_KEY','GOOGLE_API_KEY'],kimi:['KIMI_API_KEY','MOONSHOT_API_KEY']};
   const sharedCredentials=['OPENAI_API_KEY','ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','GEMINI_API_KEY','GOOGLE_API_KEY','KIMI_API_KEY','MOONSHOT_API_KEY'];

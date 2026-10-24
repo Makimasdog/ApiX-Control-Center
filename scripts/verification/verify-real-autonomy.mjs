@@ -1,3 +1,4 @@
+import {fetch} from '../../test/local-fetch.mjs';
 // Opt-in acceptance only. Model responses are real; fixtures and faults are deterministic.
 import assert from 'node:assert/strict';
 import {spawn,execFileSync} from 'node:child_process';

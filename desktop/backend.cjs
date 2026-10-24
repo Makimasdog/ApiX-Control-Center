@@ -19,13 +19,14 @@ async function freePort(preferred = 0) {
 }
 
 // Reuse the command supervisor's Windows Job Object so descendants also die on a desktop crash.
-async function startBackend({ root, dataDir, log, onExit = () => {}, node = join(root, 'runtime/node.exe') }) {
+async function startBackend({ root, dataDir, log, ownerToken, onExit = () => {}, node = join(root, 'runtime/node.exe') }) {
   const portFile = join(dataDir, 'desktop-port.json');
   let preferred = 0;
   try { const value = JSON.parse(readFileSync(portFile)); if (Number.isInteger(value) && value >= 1024 && value <= 65535) preferred = value; } catch { /* First launch or invalid saved port. */ }
   const port = await freePort(preferred);
   const url = `http://127.0.0.1:${port}`;
   const env = { ...process.env, PORT: String(port), APIX_DATA_DIR: dataDir };
+  if(ownerToken)env.APIX_OWNER_TOKEN=ownerToken;
   delete env.NODE_OPTIONS;
   delete env.NODE_PATH;
   delete env.ELECTRON_RUN_AS_NODE;

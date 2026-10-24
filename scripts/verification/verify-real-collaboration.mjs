@@ -1,3 +1,4 @@
+import {fetch} from '../../test/local-fetch.mjs';
 // Explicit opt-in: real providers may charge; preserve isolated workspaces as evidence.
 import {spawn,execFileSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync} from 'node:fs';

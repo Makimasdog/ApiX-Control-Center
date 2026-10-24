@@ -12,7 +12,7 @@ try{
   const session=await fixture.request('/api/assistant/sessions',{projectId:fixture.projectId});
   for(let i=0;i<4;i++){await fixture.request('/api/assistant/sessions/'+session.id+'/messages',{content:'请记住测试约定，覆盖边界 '+i});await fixture.idle(session.id);}
   browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(({p,s})=>{localStorage.setItem('apix.selectedProject',p);localStorage.setItem('apix.assistant.'+p,s);},{p:fixture.projectId,s:session.id});await page.goto(fixture.origin);
+  await page.addInitScript(({p,s})=>{localStorage.setItem('apix.selectedProject',p);localStorage.setItem('apix.assistant.'+p,s);},{p:fixture.projectId,s:session.id});await fixture.authorize(page);await page.goto(fixture.origin);
   await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='本轮完成');
   const initialInfo=await fixture.request('/api/assistant/sessions/'+session.id+'/context');assert.equal(initialInfo.error,undefined,initialInfo.error);
   await page.locator('#assistant-details').click();await page.locator('#assistant-context-refresh').click();await page.locator('#assistant-budget progress').waitFor();assert.match(await page.locator('#assistant-budget').innerText(),/自动记忆索引/);

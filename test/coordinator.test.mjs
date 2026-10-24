@@ -1,3 +1,4 @@
+import {fetch} from './local-fetch.mjs';
 import { test } from 'node:test';
 import {serviceDiagnostics,waitServiceReady,stopService} from './service-diagnostics.mjs';
 import assert from 'node:assert/strict';

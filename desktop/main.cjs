@@ -1,3 +1,4 @@
+const {pathToFileURL}=require('node:url');
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const { join, resolve } = require('node:path');
 const { mkdirSync, existsSync, copyFileSync, createWriteStream, writeFileSync } = require('node:fs');
@@ -42,7 +43,9 @@ async function start() {
   if (!existsSync(envFile)) copyFileSync(join(root, '.env.example'), envFile);
   const log = createWriteStream(join(dataDir, 'desktop.log'), { flags: 'w' });
   log.on('error', error => { dialog.showErrorBox('ApiX 日志写入失败', error.message); app.quit(); });
-  const backendOptions={ root, dataDir, log, ...(dev?{node:process.env.APIX_DEV_NODE}:{}), onExit: () => {
+  const {readOwnerToken}=await import(pathToFileURL(join(root,'src/infrastructure/owner-access.mjs')).href);
+  const ownerToken=readOwnerToken(dataDir);
+  const backendOptions={ root, dataDir, log, ownerToken, ...(dev?{node:process.env.APIX_DEV_NODE}:{}), onExit: () => {
     if (!quitting) { dialog.showErrorBox('ApiX 后端已停止', `请重新启动应用。日志目录：${dataDir}`); app.quit(); }
   } };
   backend=await startBackend(backendOptions);
@@ -87,11 +90,11 @@ async function start() {
     { label: '编辑', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
     { label: '视图', submenu: [{ role: 'reload' }, { role: 'toggleDevTools' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }] },
   ]));
-  await window.loadURL(backend.url);
+  await window.loadURL(backend.url,{extraHeaders:`Authorization: Bearer ${ownerToken}\r\n`});
   if(dev){
     window.on('page-title-updated',(event,title)=>{event.preventDefault();window.setTitle(title+' · 开发版');});window.setTitle(window.getTitle()+' · 开发版');
     development=require('./dev-watch.cjs').startDevelopment({root,node:process.env.APIX_DEV_NODE,log,
-      restart:async()=>{await backend.stop();if(quitting)return;backend=await startBackend(backendOptions);if(quitting){await backend.stop();return;}secureResponses();await window.loadURL(backend.url);},
+      restart:async()=>{await backend.stop();if(quitting)return;backend=await startBackend(backendOptions);if(quitting){await backend.stop();return;}secureResponses();await window.loadURL(backend.url,{extraHeaders:`Authorization: Bearer ${ownerToken}\r\n`});},
       reload:async()=>{if(!quitting)window.webContents.reloadIgnoringCache();}});
   }
   if (!smoke) window.show();

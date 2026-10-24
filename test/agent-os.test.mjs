@@ -1,3 +1,4 @@
+import {fetch} from './local-fetch.mjs';
 import { test } from "node:test";
 import {startModelFixture} from './fake-model-http.mjs';
 import assert from "node:assert/strict";

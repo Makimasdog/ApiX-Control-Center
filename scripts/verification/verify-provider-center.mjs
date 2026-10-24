@@ -9,7 +9,7 @@ const fixture=await startDeliveryFixture({startupMs:20000}),out=resolve('.tmp-pr
 try{
   await mkdir(out,{recursive:true});const employee=await fixture.request('/api/employees',{name:'测试需求分析员',runtime:'codex',role:'需求分析'});
   browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[];
-  page.on('pageerror',e=>errors.push(e.message));await page.goto(fixture.origin,{waitUntil:'load'});await page.locator('[data-page-target="settings"]').first().click();
+  page.on('pageerror',e=>errors.push(e.message));await fixture.authorize(page);await page.goto(fixture.origin,{waitUntil:'load'});await page.locator('[data-page-target="settings"]').first().click();
   const root=page.locator('.provider-center');await root.locator('[data-agent="'+employee.id+'"]').waitFor();
   const form=root.locator('[data-provider-form]');await form.locator('[name="name"]').fill('独立 Codex API');await form.locator('[name="apiType"]').selectOption('openai-responses');await form.locator('[name="model"]').fill('fixture-model');await form.locator('[name="baseUrl"]').fill('https://provider.invalid/v1');await form.locator('[name="apiKey"]').fill('fixture-ui-private-key');await form.getByRole('button',{name:'保存供应商',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('[data-provider-status]')?.textContent.includes('供应商已保存'));

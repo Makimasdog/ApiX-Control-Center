@@ -9,7 +9,7 @@ type TimelineEvent={id:number;role:string;kind:string;body:Record<string,unknown
 function timelineEvent(e:TimelineEvent){
   if(e.kind==='model_retry')return `<article class="assistant-message"><small>系统</small><div>模型临时故障，将在 ${escapeAssistant(e.body.delayMs)} ms 后进行第 ${escapeAssistant(e.body.attempt)} 次请求；尚未执行工具。</div></article>`;
   const content=e.body.content??e.body.error??e.body.question;
-  if(content)return `<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?'你':e.role==='system'?'系统':'ApiX'}</small><div>${escapeAssistant(content)}</div></article>`;
+  if(content)return `<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?'你':e.role==='system'?'系统':'ApiX'}</small><div>${escapeAssistant(content).replace(/KB:[\w-]+:[\w-]+:\d+:\d+/g,c=>`<button type="button" class="text-action" data-kb-citation="${c}">${c}</button>`)}</div></article>`;
   if(e.kind==='tool_started')return `<details class="assistant-tool-detail"><summary>↗ ${escapeAssistant(e.body.tool)}</summary><pre>${escapeAssistant(JSON.stringify(e.body.args,null,2))}</pre>${outputLink(e.body.args)}</details>`;
   if(e.kind.startsWith('npm_validation_'))return `<details class="assistant-tool-detail"><summary>Node/npm · ${escapeAssistant(e.body.status??e.kind)}</summary><pre>${escapeAssistant(JSON.stringify(e.body,null,2))}</pre></details>`;
   if(e.kind==='command_intent')return `<details class="assistant-tool-detail"><summary>命令已登记 · 等待托管启动</summary><code>${escapeAssistant(e.body.operationId)}</code>${logLinks(e.body.operationId)}</details>`;

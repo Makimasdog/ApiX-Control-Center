@@ -105,7 +105,7 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
-  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", projects: "项目管理", resources: "Skills 与 MCP" }[page];
+  $("#breadcrumb-page").textContent = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", knowledge:"知识库与工具安全", projects: "项目管理", resources: "Skills 与 MCP" }[page];
   document.dispatchEvent(new CustomEvent("apix:page", { detail: page }));
 }
 let refreshing=false;let snapshotETag='';let refreshPending=Promise.resolve();

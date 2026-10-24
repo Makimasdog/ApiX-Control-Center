@@ -1,3 +1,4 @@
+import {fetch} from './local-fetch.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
@@ -40,7 +41,7 @@ test('HTTP project creation, employee settings, runtime quota, UTF-8 JSONL and s
     const path=join(temp,'新项目');await post('/api/projects',{name:'测试项目',path},400);assert(!existsSync(path));const project=await post('/api/projects',{name:'测试项目',path,createDirectory:true});
     const duplicate=await post('/api/projects',{name:'重复项目',path},400);assert.match(duplicate.error,/已添加/);
     const streamed=await new Promise((resolveResponse,reject)=>{
-      const req=request(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json'}},response=>{let raw='';response.setEncoding('utf8');response.on('data',c=>raw+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body:JSON.parse(raw)}));});req.on('error',reject);
+      const req=request(base+'/api/projects',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.APIX_OWNER_TOKEN}},response=>{let raw='';response.setEncoding('utf8');response.on('data',c=>raw+=c);response.on('end',()=>resolveResponse({status:response.statusCode,body:JSON.parse(raw)}));});req.on('error',reject);
       void(async()=>{for(const byte of Buffer.from(JSON.stringify({name:'分块请求中文项目',path:join(temp,'字节请求项目'),createDirectory:true}))){req.write(Buffer.from([byte]));await new Promise(r=>setTimeout(r,1));}req.end();})().catch(reject);
     });assert.equal(streamed.status,200,JSON.stringify(streamed.body));assert.equal((await get('/api/snapshot')).projects.find(p=>p.id===streamed.body.id).name,'分块请求中文项目');
     const folders=await get(`/api/project-folders?path=${encodeURIComponent(temp)}`);assert(folders.directories.some(d=>d.name==='新项目'));
@@ -61,7 +62,7 @@ test('HTTP project creation, employee settings, runtime quota, UTF-8 JSONL and s
     const run=await get(`/api/tasks/${task.taskId}/details`);const args=run.events.find(e=>e.kind==='run_started').payload.executionArgs;assert(args.includes('fixture-model'));assert(args.includes('model_reasoning_effort="medium"'));
     assert.equal(run.events.filter(e=>e.kind==='stderr').map(e=>e.payload.text).join(''),'中文标准错误完整');assert(!run.events.some(e=>e.kind==='unparsed_stdout'));assert(run.events.some(e=>e.kind==='turn.completed'));
     const denied=await fetch(base+'/api/project-folders',{headers:{Origin:'https://attacker.invalid'}});assert.equal(denied.status,403);
-    const alias=await new Promise((resolveStatus,reject)=>{const req=request(base+`/api/project-folders?path=${encodeURIComponent(temp)}`,{headers:{Host:`localhost:${port}`,Origin:`http://localhost:${port}`}},response=>{response.resume();resolveStatus(response.statusCode);});req.on('error',reject);req.end();});assert.equal(alias,200);
+    const alias=await new Promise((resolveStatus,reject)=>{const req=request(base+`/api/project-folders?path=${encodeURIComponent(temp)}`,{headers:{Host:`localhost:${port}`,Origin:`http://localhost:${port}`,Authorization:'Bearer '+process.env.APIX_OWNER_TOKEN}},response=>{response.resume();resolveStatus(response.statusCode);});req.on('error',reject);req.end();});assert.equal(alias,200);
     const crossHost=await fetch(base+'/api/project-folders',{headers:{Origin:`http://localhost:${port}`}});assert.equal(crossHost.status,403);
   }catch(e){throw new Error(e.message+'\n'+errors,{cause:e});}finally{if(server){server.kill();await new Promise(r=>server.exitCode!==null?r():server.once('exit',r));}await rm(temp,{recursive:true,force:true});}
 });

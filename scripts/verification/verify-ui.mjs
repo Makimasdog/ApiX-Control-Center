@@ -30,7 +30,7 @@ try {
     for (const width of [1440,1024,768,390]) {
       console.log(`UI audit: ${theme} ${width}px`);
       await page.setViewportSize({width,height:900});
-      await page.goto(fixture.origin, {waitUntil:'load'});
+      await fixture.authorize(page);await page.goto(fixture.origin, {waitUntil:'load'});
       await page.waitForSelector('#assistant-input');
       await page.waitForSelector('.sidebar-project', {state:'attached'});
       await page.waitForSelector('.provider-center [data-provider-form]', {state:'attached'});

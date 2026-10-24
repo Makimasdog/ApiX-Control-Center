@@ -1,3 +1,4 @@
+import {fetch} from './local-fetch.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
 
 export function serviceDiagnostics(child,env=process.env){

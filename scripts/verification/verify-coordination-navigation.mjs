@@ -9,7 +9,7 @@ const fixture=await startDeliveryFixture({startupMs:20000}),output=resolve('.tmp
 try{
   await mkdir(output,{recursive:true});browser=await chromium.launch({headless:true});
   const page=await browser.newPage({viewport:{width:1440,height:960}}),errors=[];
-  page.on('pageerror',e=>errors.push(e.message));await page.goto(fixture.origin);
+  page.on('pageerror',e=>errors.push(e.message));await fixture.authorize(page);await page.goto(fixture.origin);
   const openBoard=()=>page.locator('.nav-item[data-page-target="coordinator"]').click();
   await openBoard();await page.getByRole('heading',{name:'暂无协作流程'}).waitFor();
   assert.equal(await page.locator('#desktop-start,#coord-create,#desktop-mobile-new,#desktop-new-chat').count(),0);

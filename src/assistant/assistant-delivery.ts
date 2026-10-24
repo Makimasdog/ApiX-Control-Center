@@ -15,7 +15,7 @@ interface Snapshot {scopeVersion:1;manifest:string;files:File[];scope:{included:
 interface Task {id:string;description:string;startedEventId:number;createdAt:string}
 interface Verification {verificationStatus:string;contract?:{version:string}|null;checks?:any[]}
 export interface Delivery {id:string;version:number;taskId:string;sessionId:string;projectId:string;description:string;createdAt:string;baselineRef:string|null;finalRef:string|null;baselineVersion:string|null;manifest:string|null;fingerprint:string|null;netChanges:any[];scope:unknown;requiresVerification:boolean;verification:Verification;modelSummary:string;execution:unknown}
-const excluded=(name:string)=>['.npmrc','model-credentials.json'].includes(name.toLowerCase())||name==='.git'||name==='node_modules'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(name);
+const excluded=(name:string)=>['.npmrc','model-credentials.json','owner-access.json'].includes(name.toLowerCase())||name==='.git'||name==='node_modules'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(name);
 export function reviewSnapshot(root:string,artifacts:string[]=[]):Snapshot{
  root=realpathSync.native(root);const fingerprint=()=>artifacts.length?sourceManifest(root,artifacts).hash:projectFingerprint(root);const before=fingerprint(),files:File[]=[];let items=0,bytes=0,captured=0;
  function visit(dir:string){for(const name of readdirSync(dir).sort()){

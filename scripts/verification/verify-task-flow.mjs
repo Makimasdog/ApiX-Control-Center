@@ -16,7 +16,7 @@ let browser;
 try {
  browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:960}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(fixture.origin);await page.waitForSelector('#assistant-input');
+ await fixture.authorize(page);await page.goto(fixture.origin);await page.waitForSelector('#assistant-input');
  await page.waitForFunction(()=>document.querySelector('.sidebar-project'));
  await page.locator('#assistant-execution-mode').selectOption('full_access');
  await page.locator('#assistant-input').fill('运行项目已有的测试用例，告诉我真实结果');

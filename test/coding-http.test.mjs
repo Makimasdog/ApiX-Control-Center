@@ -1,3 +1,4 @@
+import {fetch} from './local-fetch.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {spawn} from 'node:child_process';import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';import {join,resolve,sep} from 'node:path';import {tmpdir} from 'node:os';
 import {serviceDiagnostics,waitServiceReady,stopService} from './service-diagnostics.mjs';
 test('production HTTP assembly connects coding decisions, approved checks and session-owned log routes',{timeout:60000,skip:process.platform!=='win32'},async()=>{

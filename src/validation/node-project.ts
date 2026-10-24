@@ -8,7 +8,7 @@ import {projectScanLimits} from '../infrastructure/project-scan.js';
 
 export const nodeProjectLimits={sourceFiles:projectScanLimits.items,sourceBytes:projectScanLimits.bytes,dependencyFiles:40000,dependencyBytes:256*1024*1024,artifactFiles:6000,artifactBytes:32*1024*1024};
 export const digest=(v:string|Buffer)=>createHash('sha256').update(v).digest('hex');
-export const credentialName=(n:string)=>['.npmrc','model-credentials.json'].includes(n.toLowerCase())||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(n);
+export const credentialName=(n:string)=>['.npmrc','model-credentials.json','owner-access.json'].includes(n.toLowerCase())||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(n);
 export function boundedNames(path:string,limit:number){const dir=opendirSync(path),names:string[]=[];try{let entry;while((entry=dir.readSync())){if(names.length>=limit)throw new Error('目录扫描超过项目文件预算，扫描未完成');names.push(entry.name);}}finally{dir.closeSync();}return names.sort();}
 export interface NpmProfile {schemaVersion:1;artifacts:string[];trustedPaths:string[];installArgs:string[];scripts:{id:string;sequence:string[];commands:{name:string;command:string;npmArgs:string[]}[]}[];network:boolean;runtime:ReturnType<typeof npmRuntime>;installPolicy:'ci-ignore-scripts-v1';environmentPolicy:'minimal-v1'}
 // No project code, npm configuration or user startup file is evaluated during discovery.

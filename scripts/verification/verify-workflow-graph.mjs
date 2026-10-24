@@ -27,7 +27,7 @@ try{
   const id=new URL(route.request().url()).pathname.split('/')[3],task=tasks.find(t=>t.id===id);
   await route.fulfill({json:{taskId:id,status:task.status,processMayExist:id==='graph-b'?true:false,managedActive:false,recoveryFingerprint:'fixture-recovery',latestRun:{id:'fixture-run',status:task.status,pid:null},inspection:{fingerprint:null,files:[],conflicts:[],preview:'fixture diff only'},workspacePath:'fixture / isolated UI'}});
  });
- await page.goto(fixture.origin);await page.locator('.nav-item[data-page-target="settings"]').click();
+ await fixture.authorize(page);await page.goto(fixture.origin);await page.locator('.nav-item[data-page-target="settings"]').click();
  await page.locator('.workflow-node').first().waitFor({state:'attached'});
  await page.locator('.nav-item[data-page-target="coordinator"]').click();
  await page.locator('.workflow-node[data-graph-task="graph-a"]').waitFor();

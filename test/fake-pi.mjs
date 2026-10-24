@@ -43,7 +43,7 @@ process.stdin.on("data", (chunk) => {
       }else if(message.includes('fixture-loop-readlarge')){
         answer=!results.some(e=>e.body.tool==='read_file')?action('read_file',{path:'large.txt'}):{action:'finish',outcome:'completed',message:'大文件结果已保存，可分段核对完整内容。'};
       }else if(message.includes('fixture-loop-skill')){
-        answer=!results.some(e=>e.body.tool==='load_skill')?action('load_skill',{id:context.context.skills[0].id}):!results.some(e=>e.body.tool==='remember')?action('remember',{title:'项目验证约定',content:'使用实际断言检查，不能把进程成功当作交付。'}):{action:'finish',outcome:'completed',message:'已加载 Skill 并记录项目约定。'};
+        answer=!results.some(e=>e.body.tool==='load_skill')?action('load_skill',{id:context.context.skills[0].id}):!results.some(e=>e.body.tool==='remember')?action('remember',{title:'项目验证约定',content:'使用实际断言检查，不能把进程成功当作交付。',kind:'reference',evidence:'Use actual assertions.'}):{action:'finish',outcome:'completed',message:'已加载 Skill 并记录项目约定。'};
       }else if(message.includes('fixture-loop-choice')){
         const response=history.find(e=>e.kind==='request_answer');answer=response?{action:'finish',outcome:'completed',message:'选择已保存：'+JSON.stringify(response.body)}:{action:'ask',question:'本次包含哪些部分？',options:['后端','前端','文档'],multiple:true};
       }else if(message.includes('fixture-loop-read')&&!results.length)answer=action('read_file',{path:'README.md'});

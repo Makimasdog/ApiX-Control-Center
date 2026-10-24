@@ -42,7 +42,7 @@ test('approved real check binds execution, output, current code and contract wit
   h.service=createAssistantLoop(h.deps);assert.equal(h.service.details(h.id).verificationStatus,'verified');
 }));
 test('every required check must pass and model cannot override the fixed command',()=>fixture(async h=>{
-  const pending=await h.start(action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:1000},{id:'second',args:['check.cjs'],timeoutMs:1000}],writablePaths:['src']}),write('good'),action('run_check',{checkId:'unit',executable:'node',args:['-e','process.exit(0)']}),finish,action('run_check',{checkId:'second'}),finish);
+  const pending=await h.start(action('configure_verification',{checks:[{id:'unit',args:['check.cjs'],timeoutMs:1000},{id:'second',args:['check.cjs'],timeoutMs:1000}],writablePaths:['src']}),write('good'),action('run_check',{checkId:'unit',executable:'node',args:['-e','process.exit(0)']}),check,finish,action('run_check',{checkId:'second'}),finish);
   await h.service.reply(h.id,{version:pending.version,requestId:pending.pending.id,approved:true});const d=await wait(h);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert.equal(d.checks.length,2);assert(d.checks.every(e=>e.passed));assert(d.events.some(e=>e.kind==='completion_rejected'));assert(h.calls.filter(c=>c.tool==='run_command').every(c=>c.args.args[0]==='check.cjs'));
 }));
 test('check modifying its own script cannot generate trusted success',()=>fixture(async h=>{
@@ -61,8 +61,8 @@ test('failed trusted check rejects completion and provides actual evidence for r
   const d=await h.approve(write('bad'),check,finish,write('good'),check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));
   const failed=d.events.find(e=>e.kind==='verification_evidence'&&e.body.exitCode===2);assert(failed);assert.equal(failed.body.passed,false);assert(d.events.some(e=>e.kind==='completion_rejected'));assert(h.prompts.some(p=>p.includes('outputRef')));assert.match(h.service.readOutput(h.id,{id:failed.body.outputRef}).text,/observed=bad/);
 }));
-test('writing after a successful check invalidates evidence even when bytes are unchanged',()=>fixture(async h=>{
-  const d=await h.approve(write('good'),check,write('good'),finish,check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert(d.events.some(e=>e.kind==='completion_rejected'));assert.equal(h.calls.filter(c=>c.tool==='run_command').length,2);
+test('an identical write decision reuses its receipt and does not invalidate an unchanged verified workspace',()=>fixture(async h=>{
+  const d=await h.approve(write('good'),check,write('good'),finish,check,finish);assert.equal(d.status,'completed',JSON.stringify(d.events.filter(e=>['command_finished','tool_result','error','process_unknown'].includes(e.kind))));assert(d.events.some(e=>e.kind==='operation_reused'));assert.equal(h.calls.filter(c=>c.tool==='run_command').length,1);
 }));
 test('writes in another conversation invalidate old project evidence even for identical bytes',()=>fixture(async h=>{
   const verified=await h.approve(write('good'),check,finish);assert.equal(verified.verificationStatus,'verified');const first=h.id;h.id=h.service.create({projectId:'p'}).id;
@@ -78,7 +78,7 @@ test('code changed outside runtime after check is stale',()=>fixture(async h=>{
   const d=await h.approve(write('good'),check,()=>{writeFileSync(join(h.root,'src/value.txt'),'changed');return finish;},{...finish,outcome:'blocked'});assert.equal(d.status,'attention');assert.notEqual(d.verificationStatus,'verified');assert.equal(d.verification,null);assert(d.events.some(e=>e.kind==='completion_rejected'));
 }));
 test('timeout produces actual failed evidence and never automatically replays',()=>fixture(async h=>{
-  const d=await h.approve(write('good'),check,check,finish);assert.equal(d.status,'attention');assert.equal(h.calls.filter(c=>c.tool==='run_command').length,1);assert(d.events.some(e=>e.kind==='verification_evidence'&&e.body.timedOut===true&&e.body.passed===false));assert.throws(()=>h.service.message(h.id,{content:'retry'}),/检查原进程/);
+  const d=await h.approve(write('good'),check,check,finish);assert.equal(d.status,'attention');assert.equal(h.calls.filter(c=>c.tool==='run_command').length,1);assert(d.events.some(e=>e.kind==='verification_evidence'&&e.body.timedOut===true&&e.body.passed===false));assert.throws(()=>h.service.message(h.id,{content:'retry'}),/副作用结果尚未核对|检查原进程/);
 },'setInterval(()=>{},1000)'));
 test('unknown execution and spawn failure require explicit recovery, never inferred pass',()=>fixture(async h=>{
   const execute=h.deps.execute;h.deps.execute=(...a)=>a[1]==='run_command'?Promise.reject(Error('spawn failed')):execute(...a);
