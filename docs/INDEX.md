@@ -24,6 +24,7 @@
 | 所有者门禁（owner access） | active | 协作/20261024-四项能力接口与使用说明.md | `npm test`（tool-knowledge、static-files 登录页）+ 冒烟（全面测试报告 §R2） | 协作/2026-10-24-全面测试报告.md | owner-access.json 必须为无注释 JSON，令牌 32–128 字符 |
 | Windows 桌面版（Electron） | beta | docs/Windows桌面版.md | `npm run test:desktop` + `npm run test:desktop:app` | 协作/20261024-SQLite兼容与共享界面优化自审.md | 仅 Windows；本地需自备 electron devDependencies 才能跑桌面测试 |
 | Node/npm 项目验证 | active | docs/Node-npm项目验证.md | `npm run test:npm` + `npm run test:npm:browser` | 协作/20261019-Node-npm接入与验证自审.md | 仅 Node 22.19–22.x / ≥24.22 与 npm 10/11；不支持 workspaces、原生扩展等（见契约文档） |
+| 本地 HTTP 回归夹具 | active | test/local-fetch.mjs、test/service-diagnostics.mjs | `npm test`（service-diagnostics、coordinator、npm-http 等） | 协作/2026-10-25-全量五项失败修复与自审.md | 本地明文 HTTP 默认关闭连接、不重放写入；协调夹具启动预算 30 秒；生产同步操作阻塞未在此修复 |
 
 ## 维护规则
 

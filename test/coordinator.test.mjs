@@ -256,7 +256,7 @@ async function harness(work, extraEnv={}) {
     server=spawn(process.execPath,[join(root,'server.mjs')],{cwd:root,env,stdio:['ignore','pipe','pipe']});
     diagnostic=serviceDiagnostics(server,env);
     server.stderr.on('data',c=>errors+=c);
-    await waitServiceReady(diagnostic,`http://127.0.0.1:${port}/api/snapshot`);
+    await waitServiceReady(diagnostic,`http://127.0.0.1:${port}/api/snapshot`,{timeoutMs:30000});
   };
   const stop=()=>stopService(server);
   try {await start();await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''}); await work({request,project,dir,model,origin:`http://127.0.0.1:${port}`,restart:async()=>{await stop();await start();}});}
