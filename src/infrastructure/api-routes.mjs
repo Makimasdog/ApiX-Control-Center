@@ -137,7 +137,7 @@ export const apiRoutes=[
   post(/^\/api\/memories\/([^/]+)$/,({m,body})=>updateMemory(m[1],body)),
   post(/^\/api\/departments$/,({body})=>({id:createDepartment(body)})),
   post(/^\/api\/departments\/([^/]+)$/,({m,body})=>{updateDepartment(m[1],body);return {updated:true};}),
-  post(/^\/api\/repositories$/,({body})=>({id:addRepository(body)})),
+  post(/^\/api\/repositories$/,async({body})=>({id:await addRepository(body)})),
   post(/^\/api\/integrations$/,({body})=>prepareIntegration(body)),
   post(/^\/api\/integrations\/([^/]+)\/apply$/,({m})=>applyIntegration(m[1])),
   // ===== 信箱、消息与锁 =====
@@ -153,9 +153,9 @@ export const apiRoutes=[
   post(/^\/api\/locks\/([^/]+)\/renew$/,({m,body})=>renewLock(m[1],body)),
   post(/^\/api\/locks\/([^/]+)\/release$/,({m,body})=>releaseLock(m[1],body)),
   // ===== 执行控制 =====
-  post(/^\/api\/approvals\/([^/]+)$/,({m,body})=>({runId:resolveApproval(m[1],body.approved===true)})),
+  post(/^\/api\/approvals\/([^/]+)$/,async ({m,body})=>({runId:(await resolveApproval(m[1],body.approved===true))})),
   post(/^\/api\/runs\/([^/]+)\/stop$/,({m})=>{stopRun(m[1]);return {requested:true};}),
-  post(/^\/api\/tasks\/([^/]+)\/review$/,({m,body})=>{acceptTask(m[1],body.accepted===true,body.fingerprint);return {reviewed:true};}),
+  post(/^\/api\/tasks\/([^/]+)\/review$/,async ({m,body})=>{(await acceptTask(m[1],body.accepted===true,body.fingerprint));return {reviewed:true};}),
   post(/^\/api\/tasks\/([^/]+)\/delivery$/,({m,body})=>freezeHistoricalDelivery(m[1],body),configLimit),
   post(/^\/api\/tasks\/([^/]+)\/recovery$/,async({m,body})=>recoverTask(m[1],body)),
   // ===== 旧接口(未设 APIX_LEGACY_API=1 时一律 409,引导去 ApiX 目标工作台)=====

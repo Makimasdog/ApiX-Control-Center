@@ -24,20 +24,23 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
       if(reason){if(candidate.status!=='queued'||candidate.queue_reason!==reason){db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);onWaiting(candidate,reason);}return;}
       if (["queued", "awaiting_approval"].includes(candidate.status)) {
         db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), candidate.id);
-        try { launch(candidate); } catch (error) {
+        const failed=error=>{
+          if(!['running','failed','blocked'].includes(row('SELECT status FROM tasks WHERE id=?',candidate.id)?.status))return;
           db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed',String(error.message), now(), candidate.id);
           recordTask(candidate.id, 'task.launch_failed', {error: String(error.message)});
-          scheduleDependents(candidate.id);
-        }
+          return scheduleDependents(candidate.id);
+        };
+        try { const result=launch(candidate);return result?.then?result.catch(failed):result; } catch (error) {return failed(error);}
       }
   }
   function scheduleDependents(completedTaskId) {
-    for(const task of rows('SELECT task_id FROM task_dependencies WHERE depends_on_id=?',completedTaskId))advance(task.task_id);
+    const work=Promise.all(rows('SELECT task_id FROM task_dependencies WHERE depends_on_id=?',completedTaskId).map(task=>advance(task.task_id)));
+    void work.catch(()=>console.error('任务派发未可靠完成，请检查任务记录。'));return work;
   }
   function pump() {
     if(pumping)return;
     pumping=true;
-    try {for(const task of rows("SELECT id FROM tasks WHERE status='queued' ORDER BY rowid"))advance(task.id);}finally{pumping=false;}
+    try {for(const task of rows("SELECT id FROM tasks WHERE status='queued' ORDER BY rowid")){const work=advance(task.id);if(work?.then)void work.catch(()=>console.error('排队任务派发未可靠完成，请检查任务记录。'));}}finally{pumping=false;}
   }
   function resumeBlocked(planId) {
     let changed;

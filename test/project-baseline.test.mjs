@@ -9,7 +9,7 @@ import {execFileSync} from 'node:child_process';
 import {projectBaseline,projectSourceVersion} from '../src/projects/project-baseline.mjs';
 import {createTaskDelivery} from '../src/projects/task-delivery.mjs';
 const git=(cwd,args)=>execFileSync('git',['-c','core.autocrlf=false',...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
-function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}}
+async function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{await work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}}
 test('ApiX data root cannot be snapshotted as a project',()=>fixture(({source})=>{
   writeFileSync(join(source,'apix.sqlite'),'private state');assert.throws(()=>projectBaseline(source,'plan',source),/数据目录不能/);
   assert(!existsSync(join(source,'project-baselines')));
@@ -38,14 +38,14 @@ test('links and excessive inputs fail without publishing an incomplete baseline'
   unlinkSync(join(source,'linked'));writeFileSync(join(source,'huge'),Buffer.alloc(101*1024*1024));
   assert.throws(()=>projectBaseline(source,'plan',data),/100 MiB/);assert.throws(()=>projectBaseline(source,'plan',data,{create:false}),/尚未建立/);
 }));
-test('failed non-Git tasks without a workspace have recoverable source fingerprints that change with content',()=>fixture(({source,data})=>{
+test('failed non-Git tasks without a workspace have recoverable source fingerprints that change with content',()=>fixture(async ({source,data})=>{
   writeFileSync(join(source,'README.md'),'before');const before=projectSourceVersion(source,data);
   const task={id:'t',project_id:'p',status:'failed',workspace_path:null};
   const row=(sql)=>sql.startsWith('SELECT * FROM tasks')?task:sql.startsWith('SELECT path FROM projects')?{path:source}:null;
-  const delivery=createTaskDelivery({row,codeHandoffs:{},dataDir:data})('t');
+  const delivery=(await createTaskDelivery({row,codeHandoffs:{},dataDir:data})('t'));
   assert.equal(delivery.error,null);assert.equal(delivery.sourceHead,before);assert(delivery.recoveryFingerprint);
   writeFileSync(join(source,'README.md'),'after');assert.notEqual(projectSourceVersion(source,data),before);
-  assert.notEqual(createTaskDelivery({row,codeHandoffs:{},dataDir:data})('t').recoveryFingerprint,delivery.recoveryFingerprint);
+  assert.notEqual((await createTaskDelivery({row,codeHandoffs:{},dataDir:data})('t')).recoveryFingerprint,delivery.recoveryFingerprint);
 }));
 
 

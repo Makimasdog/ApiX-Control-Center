@@ -36,7 +36,7 @@ function adapter(settings,infer){
   return {wrapped,calls};
 }
 async function idle(service,id){
-  const limit=Date.now()+2500;while(Date.now()<limit){const s=service.details(id);if(!s.busy&&s.status!=='running')return s;await new Promise(r=>setTimeout(r,5));}throw new Error('loop did not settle');
+  const limit=Date.now()+2500;while(Date.now()<limit){const s=(await service.details(id));if(!s.busy&&s.status!=='running')return s;await new Promise(r=>setTimeout(r,5));}throw new Error('loop did not settle');
 }
 async function loopFixture(inference,work){
   const dir=await mkdtemp(join(tmpdir(),'apix-infer-'));const path=join(dir,'state.sqlite');let db,service;const calls=[];let policy={mode:'full_access',version:0};
@@ -64,20 +64,20 @@ for(const mode of ['running','stopped','revoked'])test(`${mode} cleanup unknown 
       try{return await net.request(AbortSignal.any([context.signal,revoke.signal]));}catch(error){throw managerInferenceError(error,revoked);}
     });
     await loopFixture(a.wrapped,async h=>{
-      const id=h.service.create({projectId:'p'}).id;h.service.message(id,{content:'work'});await net.observed;
-      if(mode==='stopped')h.service.stop(id);
+      const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));await net.observed;
+      if(mode==='stopped')(await h.service.stop(id));
       if(mode==='revoked'){revoked=true;revoke.abort();}
       let s=await idle(h.service,id);assert.equal(s.status,'attention');assert.equal(s.busy,false);assert(unknownEvent(s));assert.equal(h.calls.length,0);assert.equal(net.requests(),1);
-      assert.throws(()=>h.service.message(id,{content:'continue'}),/检查原进程/);
+      (await assert.rejects(async ()=>(await h.service.message(id,{content:'continue'})),/检查原进程/));
       const stale=s.version-1;
-      assert.throws(()=>h.service.resume(id,{version:stale,confirmed:true}),/最新版本/);assert.throws(()=>h.service.resume(id,{version:s.version,confirmed:false}),/检查/);
-      h.restart();s=h.service.details(id);assert.equal(s.status,'attention');assert.equal(s.busy,false);assert(unknownEvent(s));assert.throws(()=>h.service.message(id,{content:'continue'}),/检查原进程/);
-      const other=h.service.create({projectId:'p'}).id;decisions.push(write);h.service.message(other,{content:'write from another chat'});const blocked=await idle(h.service,other);assert.equal(blocked.status,'attention');assert.equal(h.calls.length,0);assert(blocked.events.some(e=>e.kind==='error'&&e.body.error.includes('未确认')));
-      decisions.push(finish);h.service.resume(id,{version:s.version,confirmed:true});s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(h.calls.length,0);assert.equal(net.requests(),1);
-      h.setPolicy({mode:'ask_approval',version:1});decisions.push(write);h.service.message(other,{content:'new write'});let pending=await idle(h.service,other);assert.equal(pending.status,'waiting_user');assert.equal(h.calls.length,0);
-      h.setPolicy({mode:'ask_approval',version:2});await assert.rejects(h.service.reply(other,{version:pending.version,requestId:pending.pending.id,approved:true}),/权限已变化/);
+      (await assert.rejects(async ()=>(await h.service.resume(id,{version:stale,confirmed:true})),/最新版本/));(await assert.rejects(async ()=>(await h.service.resume(id,{version:s.version,confirmed:false})),/检查/));
+      h.restart();s=(await h.service.details(id));assert.equal(s.status,'attention');assert.equal(s.busy,false);assert(unknownEvent(s));(await assert.rejects(async ()=>(await h.service.message(id,{content:'continue'})),/检查原进程/));
+      const other=(await h.service.create({projectId:'p'})).id;decisions.push(write);(await h.service.message(other,{content:'write from another chat'}));const blocked=await idle(h.service,other);assert.equal(blocked.status,'attention');assert.equal(h.calls.length,0);assert(blocked.events.some(e=>e.kind==='error'&&e.body.error.includes('未确认')));
+      decisions.push(finish);(await h.service.resume(id,{version:s.version,confirmed:true}));s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(h.calls.length,0);assert.equal(net.requests(),1);
+      h.setPolicy({mode:'ask_approval',version:1});decisions.push(write);(await h.service.message(other,{content:'new write'}));let pending=await idle(h.service,other);assert.equal(pending.status,'waiting_user');assert.equal(h.calls.length,0);
+      h.setPolicy({mode:'ask_approval',version:2});await assert.rejects(async()=>(await h.service.reply(other,{version:pending.version,requestId:pending.pending.id,approved:true})),/权限已变化/);
       decisions.push(finish);await h.service.reply(other,{version:pending.version,requestId:pending.pending.id,approved:false});await idle(h.service,other);
-      decisions.push(write,{...finish,outcome:'blocked'});h.service.message(other,{content:'fresh write'});pending=await idle(h.service,other);assert.equal(pending.status,'waiting_user');
+      decisions.push(write,{...finish,outcome:'blocked'});(await h.service.message(other,{content:'fresh write'}));pending=await idle(h.service,other);assert.equal(pending.status,'waiting_user');
       await h.service.reply(other,{version:pending.version,requestId:pending.pending.id,approved:true});await idle(h.service,other);assert.equal(h.calls.length,1);assert.equal(net.requests(),1);
     });
   },{partial:mode!=='running'});
@@ -99,8 +99,8 @@ test('reservation refusal prevents inference and absent reservation is not settl
   deps.reserve=()=>false;assert.equal(await createAssistantInference(deps)('p','task'),'ok');assert.equal(calls,1);assert.equal(settles,0);
 });
 test('confirmed transport stop does not manufacture an unknown event',{timeout:7000},async t=>{
-  await transport(t,async net=>{const a=adapter(net.settings,(_p,_d,context)=>net.request(context.signal));await loopFixture(a.wrapped,async h=>{const id=h.service.create({projectId:'p'}).id;h.service.message(id,{content:'work'});await net.observed;h.service.stop(id);const s=await idle(h.service,id);assert.equal(s.status,'stopped');assert.equal(s.busy,false);assert.equal(unknownEvent(s),undefined);assert.equal(h.calls.length,0);assert.equal(net.requests(),1);});},{partial:true,unknown:false});
+  await transport(t,async net=>{const a=adapter(net.settings,(_p,_d,context)=>net.request(context.signal));await loopFixture(a.wrapped,async h=>{const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));await net.observed;(await h.service.stop(id));const s=await idle(h.service,id);assert.equal(s.status,'stopped');assert.equal(s.busy,false);assert.equal(unknownEvent(s),undefined);assert.equal(h.calls.length,0);assert.equal(net.requests(),1);});},{partial:true,unknown:false});
 });
 for(const reply of ['{invalid',JSON.stringify({error:{code:'MODEL_CLEANUP_UNKNOWN',message:'private-fixture-key'}})])test(`ordinary protocol/provider error cannot forge host uncertainty: ${reply.startsWith('{invalid')?'syntax':'provider code'}`,{timeout:7000},async t=>{
-  await transport(t,async net=>{let first=true;const a=adapter(net.settings,(_p,_d,context)=>{if(first){first=false;return net.request(context.signal);}return Promise.resolve(JSON.stringify(finish));});await loopFixture(a.wrapped,async h=>{const id=h.service.create({projectId:'p'}).id;h.service.message(id,{content:'work'});let s=await idle(h.service,id);assert.equal(s.status,'attention');assert.equal(unknownEvent(s),undefined);assert(s.events.some(e=>e.kind==='error'));assert.equal(h.calls.length,0);h.service.message(id,{content:'new read only request'});s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(net.requests(),1);});},{unknown:false,reply});
+  await transport(t,async net=>{let first=true;const a=adapter(net.settings,(_p,_d,context)=>{if(first){first=false;return net.request(context.signal);}return Promise.resolve(JSON.stringify(finish));});await loopFixture(a.wrapped,async h=>{const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));let s=await idle(h.service,id);assert.equal(s.status,'attention');assert.equal(unknownEvent(s),undefined);assert(s.events.some(e=>e.kind==='error'));assert.equal(h.calls.length,0);(await h.service.message(id,{content:'new read only request'}));s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(net.requests(),1);});},{unknown:false,reply});
 });

@@ -27,7 +27,7 @@ interface Dependencies extends Store {
   sendMessage(input: Record<string, unknown>): { id: string; status: string };
   resolveApproval(id: string, approved: boolean): unknown;
   stopRun(id: string): void;
-  reviewTask(id:string,accepted:boolean,fingerprint:string):void;
+  reviewTask(id:string,accepted:boolean,fingerprint:string):void|Promise<void>;
   onCreated?(id:string):void;
   onTaskEvent?(sessionId:string,kind:string):void;
 }
@@ -158,7 +158,7 @@ export function createCoordinator(deps: Dependencies) {
       else {
         const reviewed=Array.isArray(input.reviewedDeliveries)?input.reviewedDeliveries.slice(0,32).find(v=>v&&typeof v==='object'&&v.taskId===target.id):undefined;
         if(reviewed&&typeof reviewed.fingerprint==='string'&&reviewed.fingerprint.length<=128){
-          deps.reviewTask(target.id,true,reviewed.fingerprint);
+          (await deps.reviewTask(target.id,true,reviewed.fingerprint));
           const actual=tasksOf(s);output=`任务 ${tasks.indexOf(target)+1} 已由宿主执行验收并冻结当前交付版本，实际状态为 accepted。当前 ${actual.filter(t=>t.status==='running').length} 个任务执行中、${actual.filter(t=>t.status==='queued').length} 个排队、${actual.filter(t=>t.status==='accepted').length} 个已验收。后续步骤仍按依赖、权限、额度与并发条件推进。`;
         }else{
           reviewTaskId=target.id;output=`任务 ${tasks.indexOf(target)+1} 尚未验收：需要先查看代码差异和实际验证证据，取得该版本的交付指纹。已请求打开验收面板；核对后点击“通过验收”，或再次发送“确认验收任务 ${tasks.indexOf(target)+1}”。只有宿主成功冻结后才会变为 accepted。`;
@@ -265,7 +265,7 @@ export function createCoordinator(deps: Dependencies) {
     if (mode === 'api' && (autonomousDispatch || (input.workflowVersion===undefined || automation.enabled) && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null))) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
     return details(id);
   }
-  function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {
+  async function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {
     const s = session(id); if (busy.has(id)) throw new Error('ApiX 正在处理此目标');
     if (s.status !== 'plan_review' || s.confirmed_revision !== s.revision || !s.plan_id) throw new Error('请先确认最新需求并检查计划');
     deps.autonomy.assertPlan(s.plan_id,s.project_id);
@@ -280,7 +280,7 @@ export function createCoordinator(deps: Dependencies) {
       memory.append(s.project_id,id,'plan.dispatched',{ planId:s.plan_id,source }); checkpoint(id);
     });
     const failures: {taskId: string; error: string}[] = [];
-    for (const task of tasks) { try { deps.resolveApproval(task.approval_id,true); } catch (e) { failures.push({taskId:task.id,error:String(e instanceof Error ? e.message : e)}); } }
+    for (const task of tasks) { try { (await deps.resolveApproval(task.approval_id,true)); } catch (e) { failures.push({taskId:task.id,error:String(e instanceof Error ? e.message : e)}); } }
     checkpoint(id);
     return { ...details(id), failures };
   }

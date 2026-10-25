@@ -1,3 +1,4 @@
+import {projectIo} from '../projects/project-io.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {lstatSync,readdirSync,realpathSync} from 'node:fs';
 import {join,relative,resolve} from 'node:path';
@@ -36,7 +37,7 @@ export function reviewDiff(before:string,after:string){
  const diff=lines.join('\n');return {diff:diff.slice(0,reviewLimits.diffCharacters),diffComplete:diff.length<=reviewLimits.diffCharacters};
 }
 
-export function createAssistantDelivery(store:Store,deps:{root?:(projectId:string)=>string;verification(s:Session):Verification;admit(s:Session):void;artifacts?(s:Session):string[];fingerprint?(s:Session):string}){
+export function createAssistantDelivery(store:Store,deps:{root?:(projectId:string)=>string;verification(s:Session):Verification|Promise<Verification>;admit(s:Session):void;artifacts?(s:Session):string[];fingerprint?(s:Session):string|Promise<string>}){
  const {db,row,rows,now}=store;
  const event=(s:Session,role:string,kind:string,body:unknown)=>db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(s.id,role,kind,JSON.stringify(body),now());
  const entries=(s:Session,kind:string)=>rows<{id:number;body:string}>('SELECT id,body FROM assistant_events WHERE session_id=? AND kind=? ORDER BY id',s.id,kind).map(e=>({...JSON.parse(e.body),eventId:e.id}));
@@ -51,19 +52,30 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
   const ref='review-'+randomUUID(),anchor=event(s,'system','review_snapshot',{taskId:task.id,ref,manifest:value.manifest});db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(ref,s.id,Number(anchor.lastInsertRowid),body,sha(body),now());return ref;
  }
  function baseline(s:Session){const task=current(s.id);if(!task)return null;return entries(s,'task_baseline').find(e=>e.taskId===task.id)??null;}
- function ensureBaseline(s:Session){const task=current(s.id);if(!task||!deps.root)return null;const prior=baseline(s);if(prior){snapshot(prior.ref);return prior;}const value=reviewSnapshot(deps.root(s.project_id),deps.artifacts?.(s));return transaction(()=>{const ref=save(s,task,value);event(s,'system','task_baseline',{taskId:task.id,ref,version:value.manifest});return {taskId:task.id,ref,version:value.manifest};});}
- function start(s:Session,description:string){const task={id:randomUUID(),description:text(description,4000),createdAt:now()};event(s,'user','task_started',task);try{ensureBaseline(s);}catch(e){event(s,'system','task_baseline_limited',{taskId:task.id,reason:e instanceof Error?e.message:'基线不可用'});}return current(s.id)!;}
+ const baselines=new Map<string,Promise<unknown>>();
+ function assertCurrent(s:Session,version=true){const saved=row<Session & {archived_at:string|null;deleted_at:string|null}>('SELECT * FROM assistant_sessions WHERE id=?',s.id);if(!saved||saved.archived_at||saved.deleted_at||version&&saved.version!==s.version)throw Object.assign(new Error('扫描期间会话已变化，请刷新后重试'),{code:'SESSION_CHANGED'});}
+ async function ensureBaseline(s:Session){
+  const task=current(s.id);if(!task||!deps.root)return null;const prior=baseline(s);if(prior){snapshot(prior.ref);return prior;}
+  if(baselines.has(task.id))return await baselines.get(task.id);
+  const root=deps.root(s.project_id),artifacts=deps.artifacts?.(s),job=(async()=>{
+   const value:Snapshot=await projectIo('reviewSnapshot',[root,artifacts]);assertCurrent(s,false);
+   if(current(s.id)?.id!==task.id||deps.root!(s.project_id)!==root||JSON.stringify(deps.artifacts?.(s))!==JSON.stringify(artifacts))throw new Error('扫描期间任务或项目范围已变化');
+   return transaction(()=>{const ref=save(s,task,value);event(s,'system','task_baseline',{taskId:task.id,ref,version:value.manifest});return {taskId:task.id,ref,version:value.manifest};});
+  })();baselines.set(task.id,job);try{return await job;}finally{baselines.delete(task.id);}
+ }
+ function start(s:Session,description:string){const task={id:randomUUID(),description:text(description,4000),createdAt:now()};event(s,'user','task_started',task);return current(s.id)!;}
  function net(s:Session,task:Task,initial:Snapshot,final:Snapshot){
   const key=(p:string)=>process.platform==='win32'?p.toLowerCase():p,old=new Map(initial.files.map(f=>[key(f.path),f])),latest=new Map(final.files.map(f=>[key(f.path),f]));
   let remaining=reviewLimits.totalDiffCharacters;const ops=entries(s,'file_edit_result').filter(e=>e.eventId>task.startedEventId);return [...new Set([...old.keys(),...latest.keys()])].sort().flatMap(k=>{const a=old.get(k),b=latest.get(k);if(a?.sha256===b?.sha256)return [];const path=b?.path??a!.path;let chain=a?.sha256??null,known=false;for(const op of ops.filter(e=>key(relative(deps.root!(s.project_id),resolve(deps.root!(s.project_id),e.path)).replaceAll('\\','/'))===k)){if(op.beforeSha256!==chain){known=false;chain='external';break;}chain=op.afterSha256;known=true;}
    const source=known&&chain===(b?.sha256??null)?'agent_file_operations':'unattributed_or_external',detail=(a&&!a.content&&a.detail!=='text')||(b&&!b.content&&b.detail!=='text')?{diff:'仅有元数据：二进制或超出文本预算',diffComplete:false}:reviewDiff(a?.content??'',b?.content??'');
    if(detail.diff.length>remaining){detail.diff=detail.diff.slice(0,remaining);detail.diffComplete=false;}remaining-=detail.diff.length;return [{path,kind:!a?'added':!b?'deleted':'modified',beforeSha256:a?.sha256??null,afterSha256:b?.sha256??null,beforeBytes:a?.size??null,afterBytes:b?.size??null,source,...detail}];});
  }
- function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {changes:[],baseline:null,final:null};const initial=snapshot(b.ref),final=reviewSnapshot(deps.root(s.project_id),deps.artifacts?.(s));return {changes:net(s,task,initial,final),baseline:b,final};}
- function freeze(s:Session,modelSummary:string){
-  const task=current(s.id);if(!task)return null;let observed:ReturnType<typeof observe>;try{observed=observe(s);}catch(e){if(s.needs_verification)throw e;observed={changes:[],baseline:null,final:null};}
+ async function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {changes:[],baseline:null,final:null};const root=deps.root(s.project_id),initial=snapshot(b.ref),final=(await projectIo('reviewSnapshot',[root,deps.artifacts?.(s)]));if(deps.root(s.project_id)!==root)throw new Error('扫描期间项目路径已变化');return {changes:net(s,task,initial,final),baseline:b,final};}
+ async function freeze(s:Session,modelSummary:string){
+  const sourceRoot=deps.root?.(s.project_id),task=current(s.id);if(!task)return null;let observed:Awaited<ReturnType<typeof observe>>;try{observed=(await observe(s));}catch(e){if(s.needs_verification)throw e;observed={changes:[],baseline:null,final:null};}
   if(s.needs_verification&&(!observed.baseline||!observed.final))throw new Error('没有可核对的任务基线，不能创建代码交付；请明确开始新任务');
-  const previous=entries(s,'delivery_record').filter(e=>e.taskId===task.id).at(-1),verification=deps.verification(s);
+  const previous=entries(s,'delivery_record').filter(e=>e.taskId===task.id).at(-1),verification=(await deps.verification(s));
+  assertCurrent(s);if(current(s.id)?.id!==task.id||deps.root?.(s.project_id)!==sourceRoot)throw new Error('扫描期间任务或路径已变化');
   return transaction(()=>{const finalRef=observed.final?save(s,task,observed.final):null;const d:Delivery={id:randomUUID(),version:(previous?.version??0)+1,taskId:task.id,sessionId:s.id,projectId:s.project_id,description:task.description,createdAt:now(),baselineRef:observed.baseline?.ref??null,baselineVersion:observed.baseline?.version??null,finalRef,manifest:observed.final?.manifest??null,fingerprint:observed.final?.fingerprint??null,netChanges:observed.changes,scope:observed.final?.scope??{included:'只读说明，未冻结代码',complete:false},requiresVerification:!!s.needs_verification,verification,modelSummary,execution:{sideEffects:'按现有恢复门槛核对',checks:verification.checks?.map(c=>c?{runId:c.runId,operationId:c.operationId,outputRef:c.outputRef,log:c.log,executionComplete:c.executionComplete,evidencePersisted:c.evidencePersisted}:null)??[]}};event(s,'system','delivery_record',d);return d;});
  }
  function get(s:Session,id:string){const d=entries(s,'delivery_record').find(e=>e.id===id) as Delivery|undefined;if(!d||d.projectId!==s.project_id||d.sessionId!==s.id)throw new Error('交付不属于本项目/会话');return d;}
@@ -78,21 +90,24 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
    }
   }
  }
- function view(s:Session,d:Delivery){let staleReason:string|null=null;try{deps.admit(s);if(d.finalRef)snapshot(d.finalRef);if(d.baselineRef)snapshot(d.baselineRef);if(d.fingerprint&&(!deps.root||(deps.fingerprint?.(s)??projectFingerprint(deps.root(s.project_id)))!==d.fingerprint))staleReason='工作区已变化';if(d.requiresVerification){const v=deps.verification(s);if(v.contract?.version!==d.verification.contract?.version)staleReason='验收契约已变化';else if(v.verificationStatus!=='verified'&&!entries(s,'delivery_changes_requested').some(e=>e.deliveryId===d.id))staleReason??='当前可信检查尚未通过';evidenceCurrent(d);}}catch(e){staleReason=e instanceof Error?e.message:'交付资料不可用';}
+ async function view(s:Session,d:Delivery,verification?:Verification){let staleReason:string|null=null;try{deps.admit(s);if(d.finalRef)snapshot(d.finalRef);if(d.baselineRef)snapshot(d.baselineRef);if(d.fingerprint&&(!deps.root||((await deps.fingerprint?.(s))??(await projectIo('projectFingerprint',[deps.root(s.project_id)])))!==d.fingerprint))staleReason='工作区已变化';if(d.requiresVerification){const v=verification??(await deps.verification(s));if(v.contract?.version!==d.verification.contract?.version)staleReason='验收契约已变化';else if(v.verificationStatus!=='verified'&&!entries(s,'delivery_changes_requested').some(e=>e.deliveryId===d.id))staleReason??='当前可信检查尚未通过';evidenceCurrent(d);}}catch(e){staleReason=e instanceof Error?e.message:'交付资料不可用';}
   const accepted=entries(s,'delivery_accepted').find(e=>e.deliveryId===d.id),feedback=entries(s,'delivery_changes_requested').filter(e=>e.deliveryId===d.id);const latest=entries(s,'delivery_record').filter(e=>e.taskId===d.taskId).at(-1);if(latest?.id!==d.id)staleReason??='已有新交付版本';if(current(s.id)?.id!==d.taskId)staleReason??='当前已是其他任务';
   return {...d,status:staleReason?'stale':feedback.length?'changes_requested':accepted?'accepted':'awaiting_review',staleReason,historicalAcceptance:accepted??null,feedback};
  }
- function state(s:Session){const task=current(s.id),all=entries(s,'delivery_record'),records=all.filter(e=>e.taskId===task?.id);const last=records.at(-1);return {task,legacyScopeUnknown:!task,baselineReady:!!baseline(s),latestDelivery:last?view(s,last as Delivery):null,history:all.map(d=>({id:d.id,taskId:d.taskId,description:d.description,version:d.version,createdAt:d.createdAt})),limits:reviewLimits};}
+ async function state(s:Session,verification?:Verification){const task=current(s.id),all=entries(s,'delivery_record'),records=all.filter(e=>e.taskId===task?.id);const last=records.at(-1);return {task,legacyScopeUnknown:!task,baselineReady:!!baseline(s),latestDelivery:last?(await view(s,last as Delivery,verification)):null,history:all.map(d=>({id:d.id,taskId:d.taskId,description:d.description,version:d.version,createdAt:d.createdAt})),limits:reviewLimits};}
  function readFile(s:Session,id:string,args:Record<string,unknown>){const d=get(s,id);if(args.version!==d.version)throw new Error('交付版本不匹配');const data=snapshot(args.side==='before'?d.baselineRef:args.side==='after'?d.finalRef:null),file=data.files.find(f=>f.path===args.path);if(!file)throw new Error('文件不在冻结审阅范围');if(file.content===undefined)return {path:file.path,sha256:file.sha256,detail:file.detail,text:null,nextOffset:null};const offset=Number(args.offset??0),limit=6000;if(!Number.isSafeInteger(offset)||offset<0||(offset>0&&/[\uDC00-\uDFFF]/.test(file.content[offset]??'')))throw new Error('片段偏移无效');let end=Math.min(file.content.length,offset+limit);if(end<file.content.length&&/[\uDC00-\uDFFF]/.test(file.content[end]??''))end--;return {path:file.path,sha256:file.sha256,detail:file.detail,text:file.content.slice(offset,end),nextOffset:end<file.content.length?end:null};}
- function decide(s:Session,input:Record<string,unknown>){
+ async function decide(s:Session,input:Record<string,unknown>){
+  const sourceRoot=deps.root?.(s.project_id);
   const d=get(s,text(input.deliveryId,100));if(input.deliveryVersion!==d.version||current(s.id)?.id!==d.taskId)throw new Error('交付版本或当前任务已变化，请重新审阅');const action=String(input.action);if(!['accept','request_changes'].includes(action))throw new Error('审阅动作无效');
-  const requestId=text(input.requestId,100),kind=action==='accept'?'delivery_accepted':'delivery_changes_requested',comment=action==='request_changes'?text(input.comment,4000):'';const prior=['delivery_accepted','delivery_changes_requested'].flatMap(k=>entries(s,k).map(e=>({...e,kind:k}))).find(e=>e.requestId===requestId);if(prior){if(prior.kind!==kind||prior.deliveryId!==d.id||prior.comment!==comment)throw new Error('重复请求内容不匹配');return view(s,d);}
+  const requestId=text(input.requestId,100),kind=action==='accept'?'delivery_accepted':'delivery_changes_requested',comment=action==='request_changes'?text(input.comment,4000):'';const prior=['delivery_accepted','delivery_changes_requested'].flatMap(k=>entries(s,k).map(e=>({...e,kind:k}))).find(e=>e.requestId===requestId);if(prior){if(prior.kind!==kind||prior.deliveryId!==d.id||prior.comment!==comment)throw new Error('重复请求内容不匹配');return (await view(s,d));}
   if(input.version!==s.version)throw new Error('会话版本已变化，请刷新后审阅');deps.admit(s);if(entries(s,'delivery_record').filter(e=>e.taskId===d.taskId).at(-1)?.id!==d.id)throw new Error('已有新交付版本，请重新审阅');const feedback=entries(s,'delivery_changes_requested').some(e=>e.deliveryId===d.id);if(action==='accept'){
-   const v=view(s,d);if(v.staleReason||feedback)throw new Error(v.staleReason??'该版本已请求修改，请审阅新版本');if(d.requiresVerification){const current=deps.verification(s);if(current.verificationStatus!=='verified'||d.verification.verificationStatus!=='verified')throw new Error('当前交付未通过可信验证');evidenceCurrent(d);}
+   const v=(await view(s,d));if(v.staleReason||feedback)throw new Error(v.staleReason??'该版本已请求修改，请审阅新版本');if(d.requiresVerification){const current=(await deps.verification(s));if(current.verificationStatus!=='verified'||d.verification.verificationStatus!=='verified')throw new Error('当前交付未通过可信验证');evidenceCurrent(d);}
 
-   if(d.finalRef){const current=reviewSnapshot(deps.root!(s.project_id),deps.artifacts?.(s));if(current.manifest!==d.manifest||current.fingerprint!==d.fingerprint)throw new Error('确认时内容已变化，请重新审阅');}
+   if(d.finalRef){const current=(await projectIo('reviewSnapshot',[deps.root!(s.project_id),deps.artifacts?.(s)]));if(current.manifest!==d.manifest||current.fingerprint!==d.fingerprint)throw new Error('确认时内容已变化，请重新审阅');}
   }
-  return transaction(()=>{if(action==='accept'&&entries(s,'delivery_accepted').some(e=>e.deliveryId===d.id))return view(s,d);event(s,'user',kind,{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,requestId,comment,at:now()});const changed=db.prepare("UPDATE assistant_sessions SET version=version+1,status=?,steps=0 WHERE id=? AND version=?").run(action==='request_changes'?'idle':s.status,s.id,s.version);if(changed.changes!==1)throw new Error('会话状态写入未确认，未保存验收');return view(s,d);});
+  assertCurrent(s);deps.admit(s);if(deps.root?.(s.project_id)!==sourceRoot)throw new Error('审查期间项目路径已变化');
+  transaction(()=>{if(action==='accept'&&entries(s,'delivery_accepted').some(e=>e.deliveryId===d.id))return;event(s,'user',kind,{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,requestId,comment,at:now()});const changed=db.prepare("UPDATE assistant_sessions SET version=version+1,status=?,steps=0 WHERE id=? AND version=?").run(action==='request_changes'?'idle':s.status,s.id,s.version);if(changed.changes!==1)throw new Error('会话状态写入未确认，未保存验收');});
+  return await view(s,d);
  }
- return {current,start,ensureBaseline,observe,freeze,state,get:(s:Session,id:string)=>view(s,get(s,id)),readFile,decide};
+ return {current,start,ensureBaseline,observe,freeze,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
 }

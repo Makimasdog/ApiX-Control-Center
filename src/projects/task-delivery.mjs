@@ -4,10 +4,10 @@ import {projectSourceVersion} from './project-baseline.mjs';
 
 export function deliveryVersion(row,id){return JSON.stringify({task:row('SELECT * FROM tasks WHERE id=?',id),run:row('SELECT id,status,pid,started_at,ended_at,exit_code FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',id),handoff:row('SELECT * FROM code_handoffs WHERE task_id=?',id)});}
 export function createTaskDelivery({row,codeHandoffs,dataDir,isActive=()=>false}){
-  return function taskDelivery(id){
+  return async function taskDelivery(id){
     const task=row('SELECT * FROM tasks WHERE id=?',id);if(!task)throw new Error('任务不存在');
     const handoff=row('SELECT * FROM code_handoffs WHERE task_id=?',id);let inspection=null;let error=null;
-    if(task.workspace_path && ['queued','completed','accepted','unknown','failed','blocked','needs_revision','cancelled'].includes(task.status)){try{inspection=codeHandoffs.inspect(task);}catch(e){error=String(e.message);}}
+    if(task.workspace_path && ['queued','completed','accepted','unknown','failed','blocked','needs_revision','cancelled'].includes(task.status)){try{inspection=(await codeHandoffs.inspect(task));}catch(e){error=String(e.message);}}
     const latestRun=row('SELECT id,status,pid,started_at,ended_at,exit_code FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',id)??null;
     let processMayExist=null;if(latestRun?.pid){try{process.kill(latestRun.pid,0);processMayExist=true;}catch(e){processMayExist=e.code==='ESRCH'?false:null;}}
     const managedActive=!!(latestRun && isActive(latestRun.id));let sourceHead=null;

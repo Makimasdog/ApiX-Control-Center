@@ -48,18 +48,18 @@ test('credential configuration blockers pause autonomy without code repair attem
   assert.equal(service.details('plan').state,'attention');assert.deepEqual(counts(),{reviews:0,accepts:0,retries:0});
 }));
 test('unknown workers require explicit recovery and are never automatically retried',()=>fixture(async({db,service,counts})=>{
-  db.exec("UPDATE tasks SET status='unknown';UPDATE runs SET status='unknown'");await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(counts().retries,0);assert.throws(()=>service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')}),/原员工/);
+  db.exec("UPDATE tasks SET status='unknown';UPDATE runs SET status='unknown'");await service.tick();assert.equal(service.details('plan').state,'attention');assert.equal(counts().retries,0);(await assert.rejects(async ()=>(await service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')})),/原员工/));
 }));
 test('permission revoked while reviewing actual checks prevents acceptance and repair',()=>fixture(async({db,service,deps,revoke,counts})=>{
   db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");deps.review=async()=>{revoke();return {passed:true,findings:[],reviewMode:'apix_self_review'};};await service.tick();assert.equal(counts().accepts,0);assert.equal(counts().retries,0);assert.equal(service.details('plan').state,'attention');
 }));
 test('restart preserves interrupted verification and requires a fresh explicit stop confirmation',()=>fixture(async({db,service,restart})=>{
   db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed';INSERT INTO autonomy_checks VALUES ('check','t','run','running','stable','{}','now')");const restored=restart();assert.equal(restored.details('plan').checks[0].status,'interrupted');assert.equal(restored.details('plan').state,'attention');
-  const input={reviewed:true,fingerprint:restored.resumeFingerprint('plan')};assert.throws(()=>restored.resume('plan',input),/确认已停止/);restored.resume('plan',{...input,confirmedStopped:true});await restored.tick();assert.equal(restored.details('plan').state,'completed');assert(restored.details('plan').checks.some(c=>c.status==='passed'));assert.equal(restart().details('plan').state,'completed','resolved interrupted history must not reopen a delivered plan');
+  const input={reviewed:true,fingerprint:restored.resumeFingerprint('plan')};(await assert.rejects(async ()=>(await restored.resume('plan',input)),/确认已停止/));(await restored.resume('plan',{...input,confirmedStopped:true}));await restored.tick();assert.equal(restored.details('plan').state,'completed');assert(restored.details('plan').checks.some(c=>c.status==='passed'));assert.equal(restart().details('plan').state,'completed','resolved interrupted history must not reopen a delivered plan');
 }));
 test('manual recovery resume activates an already authorized pending retry and preserves fingerprint checks',()=>fixture(async({db,service,deps})=>{
   db.exec("UPDATE tasks SET status='awaiting_approval';UPDATE runs SET status='cancelled';UPDATE autonomy_plans SET state='attention',reason='worker recovery'");let activated=0;deps.activatePending=()=>activated++;
-  assert.throws(()=>service.resume('plan',{reviewed:true,fingerprint:'stale'}),/检查/);service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')});assert.equal(activated,1);assert.equal(service.details('plan').state,'running');
+  (await assert.rejects(async ()=>(await service.resume('plan',{reviewed:true,fingerprint:'stale'})),/检查/));(await service.resume('plan',{reviewed:true,fingerprint:service.resumeFingerprint('plan')}));assert.equal(activated,1);assert.equal(service.details('plan').state,'running');
 }));
 test('a changed model or budget binding during quality review cannot be silently approved',()=>fixture(async({db,service,deps,counts})=>{
   db.exec("UPDATE tasks SET status='completed';UPDATE runs SET status='completed'");deps.review=async()=>{deps.scheduling.assertBinding=()=>{throw new Error('档案版本已变化');};return {passed:true,findings:[],reviewMode:'apix_self_review'};};await service.tick();assert.equal(counts().accepts,0);assert.match(service.details('plan').reason,/档案版本/);
@@ -145,5 +145,5 @@ test('autonomy does not repair a classified credential or uncertain failure',()=
 test('restart quarantines an interrupted repair dispatch until explicit checked recovery',()=>fixture(async({db,service,restart,counts})=>{
  db.exec("UPDATE tasks SET status='failed';UPDATE runs SET status='failed',ended_at='ended';INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at,run_id) VALUES ('prepared','t',1,'a','repair','prepared','now','run')");
  const restored=restart();assert.equal(restored.details('plan').state,'attention');await restored.tick();assert.equal(counts().retries,0);
- assert.throws(()=>restored.resume('plan',{reviewed:true,fingerprint:restored.resumeFingerprint('plan')}),/派发结果未知/);
+ (await assert.rejects(async ()=>(await restored.resume('plan',{reviewed:true,fingerprint:restored.resumeFingerprint('plan')})),/派发结果未知/));
 }));

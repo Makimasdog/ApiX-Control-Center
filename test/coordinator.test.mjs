@@ -169,10 +169,10 @@ test('workspace verifies native paths and legacy repository aliases without acce
     execFileSync('git',['-c','core.autocrlf=false','worktree','add','--detach',task.workspace_path,'HEAD'],{cwd:project,stdio:'ignore'});
     const saved={kind:'git-worktree',path:task.workspace_path,common_dir:join(repoAlias,'.git'),base_sha:'fixture'};
     const handoffs=createCodeHandoffs({dataDir:alias,row:()=>saved,rows:()=>[],db:{},now:()=>'',recordTask(){}});
-    assert.equal(handoffs.workspace(task).path,realpathSync.native(task.workspace_path));
+    assert.equal((await handoffs.workspace(task)).path,realpathSync.native(task.workspace_path));
     const other=join(dir,'other');execFileSync('git',['-c','core.autocrlf=false','init',other],{stdio:'ignore'});saved.common_dir=join(other,'.git');
-    assert.throws(()=>handoffs.workspace(task),/Git 目录已变化/);
-    saved.path=other;assert.throws(()=>handoffs.workspace(task),/可验证的托管工作区/);
+    (await assert.rejects(async ()=>(await handoffs.workspace(task)),/Git 目录已变化/));
+    saved.path=other;(await assert.rejects(async ()=>(await handoffs.workspace(task)),/可验证的托管工作区/));
   }finally{const absolute=resolve(dir);assert(absolute.startsWith(resolve(tmpdir())+(process.platform==='win32'?'\\':'/')));await rm(absolute,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 test('Windows npm shims resolve package bin entries without a shell', {skip:process.platform!=='win32'}, async()=>{
@@ -233,7 +233,8 @@ test('ApiX operates without Pi and missing model configuration does not start a 
 },{APIX_MANAGER_PI_ENTRY:'pi.cmd',APIX_PI_ENTRY:'not-installed'}));
 
 async function waitFor(predicate) {
-  for(let i=0;i<150;i++){ const result=await predicate(); if(result)return result; await delay(60); }
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline){ const result=await predicate(); if(result)return result; await delay(60); }
   throw new Error('Timed out');
 }
 async function harness(work, extraEnv={}) {
@@ -274,7 +275,7 @@ async function autonomyFixture(h,overrides={},verifySource="import assert from '
   for(const [field,value] of Object.entries({...answers,scope:'仅实现 a.txt 并按已有 verify.mjs 验收'}))s=await h.request(`/api/coordination/sessions/${s.id}/answers`,{revision:s.revision,field,value});
   s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});return {s,projectId,employeeId};
 }
-async function waitAutonomy(h,id,predicate){for(let i=0;i<400;i++){const s=await h.request(`/api/coordination/sessions/${id}`);if(predicate(s))return s;if(s.autonomy.state==='attention')throw new Error(JSON.stringify(s.autonomy));await delay(100);}throw new Error('autonomy timed out');}
+async function waitAutonomy(h,id,predicate){const deadline=Date.now()+180000;while(Date.now()<deadline){const s=await h.request(`/api/coordination/sessions/${id}`);if(predicate(s))return s;if(s.autonomy.state==='attention')throw new Error(JSON.stringify(s.autonomy));await delay(100);}throw new Error('autonomy timed out');}
 test('autonomous contract runs actual checks, creates a repair and accepts final integrated code without user review',async()=>harness(async h=>{
   const {s}=await autonomyFixture(h);assert.equal(s.autonomy.architecture.modules[0].id,'core');assert.equal(s.tasks.length,2);assert.equal(s.autonomy.tasks[1].module_id,'integration');
   const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed'||s.autonomy.state==='attention');assert.equal(final.autonomy.state,'completed',JSON.stringify(final.autonomy));assert.equal(final.derivedStatus,'completed');assert(final.tasks.every(t=>t.status==='accepted'));
@@ -305,8 +306,8 @@ test('autonomous repair waits through a project pause and resumes its dependency
   await h.restart();const restored=await h.request(`/api/coordination/sessions/${s.id}`);assert.equal(restored.autonomy.repairs[0].status,'waiting');assert.equal(restored.autonomy.state,'running');
   await h.request(`/api/projects/${projectId}/execution`,{version:paused.version,paused:false});const final=await waitAutonomy(h,s.id,s=>s.autonomy.state==='completed');assert(final.tasks.every(t=>t.status==='accepted'));assert.equal(final.autonomy.repairs.length,1);assert.equal(final.autonomy.repairs[0].status,'dispatched');
 },{APIX_SUPERVISION_TICK_MS:'100'}));
-test('slow Git inspection does not block HTTP and preserves the production delivery fingerprint',async()=>harness(async h=>{
-  let {s,employeeId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
+for(const invalidated of [false,'task','permission'])test(`slow Git inspection and delivery freeze keep HTTP responsive (${invalidated||'fingerprint preserved'})`,async()=>harness(async h=>{
+  let {s,employeeId,projectId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
   s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
   const task=s.tasks[0];const started=join(h.dir,'clean-started');const filter=join(h.dir,'slow-clean.mjs');
@@ -316,9 +317,41 @@ test('slow Git inspection does not block HTTP and preserves the production deliv
   await writeFile(join(task.workspace_path,'.gitattributes'),'slow.txt filter=apixdelay\n');await writeFile(join(task.workspace_path,'slow.txt'),'real delayed filter\n');
   const pending=h.request(`/api/tasks/${task.id}/delivery`);
   await waitFor(async()=>{try{return await readFile(started);}catch{return false;}});
-  const start=Date.now();await h.request('/api/manager/settings');assert(Date.now()-start<1500,'HTTP blocked by Git filter');
+  const start=Date.now();await h.request('/api/manager/settings');const inspectionLatency=Date.now()-start;assert(inspectionLatency<1500,'HTTP blocked by Git filter');
   const delivery=await pending;assert(delivery.inspection.fingerprint);assert(delivery.inspection.files.includes('slow.txt'));
-  await h.request(`/api/tasks/${task.id}/review`,{accepted:true,fingerprint:delivery.inspection.fingerprint});
+  await rm(started);const pendingReview=h.request(`/api/tasks/${task.id}/review`,{accepted:true,fingerprint:delivery.inspection.fingerprint},invalidated?400:200);
+  await waitFor(async()=>{try{return await readFile(started);}catch{return false;}});
+  const reviewing=Date.now();await h.request('/api/manager/settings',undefined,200,{Connection:'keep-alive'});const freezeLatency=Date.now()-reviewing;assert(freezeLatency<1500,'HTTP blocked while freezing Git delivery');console.log('Git concurrent HTTP latency: inspection '+inspectionLatency+'ms, freeze '+freezeLatency+'ms');
+  if(invalidated==='task')await h.request(`/api/tasks/${task.id}/review`,{accepted:false});
+  if(invalidated==='permission'){const permission=await h.request(`/api/permissions?projectId=${projectId}`);await h.request('/api/permissions',{projectId,subject:'apix',mode:'read_only',version:permission.version});}
+  const reviewed=await pendingReview;
+  if(invalidated){assert.match(reviewed.error,/状态已变化|只读/);const current=(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0];assert.equal(current.status,invalidated==='task'?'needs_revision':'completed');assert.equal(current.delivery_commit,null);}
+}));
+
+for(const action of ['stop','pause'])test(`slow Git workspace preparation remains responsive and respects ${action}`,async()=>harness(async h=>{
+  const marker=join(h.dir,'checkout-started'),filter=join(h.dir,'slow-smudge.mjs'),quote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+  await writeFile(filter,`import {writeFileSync} from 'node:fs';let text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>{writeFileSync(${JSON.stringify(marker)},'started');setTimeout(()=>process.stdout.write(text),2000);});`);
+  await writeFile(join(h.project,'.gitattributes'),'slow.txt filter=apixdelay\n');await writeFile(join(h.project,'slow.txt'),'checkout input\n');
+  execFileSync('git',['add','--','.gitattributes','slow.txt'],{cwd:h.project});execFileSync('git',['-c','user.name=Test','-c','user.email=test@example.invalid','commit','-m','slow checkout fixture'],{cwd:h.project,stdio:'ignore'});
+  execFileSync('git',['config','filter.apixdelay.smudge',quote(process.execPath.replaceAll('\\','/'))+' '+quote(filter.replaceAll('\\','/'))],{cwd:h.project});
+  let {s,projectId}=await setup(h);s=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});const pending=h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:s.planVersion});
+  await waitFor(async()=>{try{return await readFile(marker);}catch{return false;}});
+  const start=Date.now();await h.request('/api/manager/settings',undefined,200,{Connection:'keep-alive'});const latency=Date.now()-start;assert(latency<1500,'HTTP blocked during checkout');console.log('Git checkout concurrent HTTP latency ('+action+'): '+latency+'ms');
+  const run=(await h.request('/api/snapshot')).runs.find(r=>r.task_id===s.tasks[0].id);assert.equal(run.status,'starting');assert.equal(run.pid,null);
+  let paused;if(action==='stop')await h.request(`/api/runs/${run.id}/stop`,{});else paused=await h.request(`/api/projects/${projectId}/execution`,{version:0,paused:true});
+  await pending;let state=await h.request(`/api/coordination/sessions/${s.id}`);const runs=(await h.request('/api/snapshot')).runs.filter(r=>r.task_id===s.tasks[0].id);assert.equal(runs.length,1);assert.equal(runs[0].pid,null);assert.equal(runs[0].status,'cancelled');assert(state.tasks[0].workspace_path,'owned prepared workspace remains inspectable');
+  if(action==='stop')assert.equal(state.tasks[0].status,'cancelled');
+  else{assert.equal(state.tasks[0].status,'queued');await h.request(`/api/projects/${projectId}/execution`,{version:paused.version,paused:false});state=await waitFor(async()=>{const value=await h.request(`/api/coordination/sessions/${s.id}`);return value.tasks[0].status==='completed'&&value;});assert.equal((await h.request('/api/snapshot')).runs.filter(r=>r.task_id===s.tasks[0].id&&r.pid!==null).length,1);}
+}));
+
+test('production project diagnosis scans a large directory without stalling persistent HTTP requests',async()=>harness(async h=>{
+  const {npmProjectFiles}=await import('./npm-project-fixture.mjs');npmProjectFiles(h.project);const directory=join(h.project,'scan-input');await mkdir(directory);const bytes='x'.repeat(16384);
+  for(let i=0;i<4096;i++)await writeFile(join(directory,i+'.txt'),bytes);
+  const projectId=(await h.request('/api/projects',{name:'scan responsiveness',path:h.project})).id,session=await h.request('/api/assistant/sessions',{projectId});let finished=false;
+  const scan=fetch(h.origin+`/api/assistant/sessions/${session.id}/project-diagnosis`,{signal:AbortSignal.timeout(125000),headers:{Connection:'keep-alive'}}).then(async response=>{const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result;}).finally(()=>{finished=true;});await delay(30);
+  const start=Date.now();await h.request('/api/manager/settings',undefined,200,{Connection:'keep-alive'});const elapsed=Date.now()-start;assert(elapsed<1500,'HTTP blocked by project scan');assert.equal(finished,false,'HTTP must respond while the production scan is in progress');
+  await delay(6500);const later=Date.now();await h.request('/api/manager/settings',undefined,200,{Connection:'keep-alive'});assert(Date.now()-later<1500,'persistent HTTP failed after idle expiry during the scan');
+  const result=await scan;assert.equal(result.scanComplete,true);assert(result.source.items>=4096);console.log('production scan concurrent HTTP latency: '+elapsed+'ms');
 }));
 test('Codex reconnect diagnostics do not fail a later successful turn',async()=>harness(async h=>{
   let {s,employeeId}=await setup(h);
