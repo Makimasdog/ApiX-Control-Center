@@ -10,6 +10,7 @@ import {createProjectMemory,sensitiveMemory} from './dist/src/assistant/project-
 import {createNpmValidation} from './dist/src/validation/npm-validation.js';
 import {createConversationModels} from './dist/src/models/conversation-models.js';
 import {loadEnvironment,workerEnvironment} from './src/infrastructure/environment.mjs';
+import {changeBus} from './src/infrastructure/change-bus.mjs';
 import {modelCredentials} from './src/infrastructure/model-credentials.mjs';
 import {createAgentProviders} from './src/models/agent-providers.mjs';
 import {projectDirectory,sameProjectDirectory} from './src/projects/project-folders.mjs';
@@ -394,7 +395,7 @@ const agentHealth=createAgentHealth({...store,probeMs:Number(process.env.APIX_AG
 });
 const workflowRecovery=createWorkflowRecovery({...store,fault:taskFault,permissions,scheduling,workflow:projectId=>coordinator.workflowSettings(projectId),retry:retryAutomatically,record:(...args)=>coordinator.recordTask(...args)});
 
-const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, recordEvent(projectId, aggregateId, kind, payload, actor) {
+const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, notify: change => changeBus.emit(change), recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
   const taskId = payload.taskId ?? row('SELECT task_id FROM agent_messages WHERE id=?', aggregateId)?.task_id;
   if (taskId) coordinator.recordTask(taskId, kind, { messageId: aggregateId, actor, ...payload });

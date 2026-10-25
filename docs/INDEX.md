@@ -14,7 +14,7 @@
 | 规划会议 / 集成审查等遗留域 | frozen | docs/参考/（历史设计） | `npm test`（collaboration 等回归） | 协作/20261018-P0可信验收开发与自审.md（superseded 前最后记录） | 已由 409 开关隔离；拆分计划见 协作/2026-10-24-问题解决方案.md P6 |
 | 额度与预算 | active | docs/使用指南.md（额度） | `npm test`（inference-accounting、evaluation-budget） | 协作/20261024-四项能力验证与自审.md | ApiX 预算记录不等同于平台余额 |
 | 并行执行与调度 | active | docs/架构设计.md | `npm test`（scheduling、workflow） | 协作/20261022-多Agent失败自动恢复自审.md | — |
-| 执行监督（mailbox/锁） | active | docs/架构设计.md | `npm test`（messaging、agent-health） | 协作/20261024-Agent消息幂等开发与自审.md | SSE 事件目前 500ms 轮询（方案 P11 待事件驱动） |
+| 执行监督（mailbox/锁） | active | docs/架构设计.md | `npm test`（messaging、agent-health） | 协作/20261024-Agent消息幂等开发与自审.md | SSE 事件流为事件驱动（写入即 50ms 去抖推送）+ 30s 兜底轮询 + 15s 心跳（2026-10-25 起，P11） |
 | Git 代码交接（worktree/交付冻结） | active | docs/使用指南.md（验收） | `npm test`（delivery-*、coding-*）+ `npm run test:delivery:browser` | 协作/20261019-P11-B任务交付自审.md | — |
 | 失败恢复 | active | docs/架构设计.md | `npm run test:ui:recovery` + `npm test`（workflow-recovery、fault-policy） | 协作/20261022-多Agent失败自动恢复自审.md | 恢复需人工确认，不自动重放未确认操作（设计如此） |
 | 模型配置与供应商中心 | active | README「集中配置 Agent 供应商」 | `npm run test:ui:providers` + `npm test`（model-*、agent-providers） | 协作/20261022-JSON契约与供应商中心自审.md | Codex API 用 Responses、Claude 用 Anthropic Messages；Chat Completions 不能直供 CLI |

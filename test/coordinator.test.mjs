@@ -1338,4 +1338,7 @@ test('authenticated mailbox activity keeps a silent but responsive Agent healthy
  const worker=join(h.dir,'mailbox-alive-worker.mjs');await writeFile(worker,`process.stdin.resume();const timer=setInterval(async()=>{try{await fetch(process.env.APIX_MAILBOX_URL+'/messages',{headers:{Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN}});}catch{}},60);setTimeout(()=>{clearInterval(timer);console.log('mailbox heartbeat completed');process.exit(0);},2200);`);
  await h.request('/api/adapters',{id:'mailbox-alive',name:'心跳夹具',executable:process.execPath,args:[worker],format:'plain'});const {s}=await setup(h,'mailbox-alive');const p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
  const done=await waitFor(async()=>{const x=await h.request(`/api/coordination/sessions/${s.id}`);return x.tasks[0].status==='completed'&&x;});assert.match(done.tasks[0].result,/heartbeat completed/);const timeline=await h.request(`/api/coordination/sessions/${s.id}/timeline`);assert(!timeline.events.some(e=>e.kind==='agent.unresponsive'));assert(timeline.events.some(e=>e.kind==='agent.probe'));
-},{APIX_SUPERVISION_TICK_MS:'100',APIX_AGENT_PROBE_MS:'200',APIX_AGENT_SILENCE_MS:'800'}));
+// 静默窗口 1500ms:worker 冷启动(node 进程 + 首轮 fetch)在同文件长上下文/慢环境下可能超过原 800ms,导致本用例
+// 间歇性被误判 unresponsive(2026-10-24 报告 R1 与 2026-10-25 两次复现,对照实验证明与被测代码无关)。
+// worker 心跳总时长 2200ms,窗口仍显著小于它;unresponsive 路径由上一个用例继续用 800ms 验证。
+},{APIX_SUPERVISION_TICK_MS:'100',APIX_AGENT_PROBE_MS:'200',APIX_AGENT_SILENCE_MS:'1500'}));

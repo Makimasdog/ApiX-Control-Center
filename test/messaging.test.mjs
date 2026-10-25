@@ -96,9 +96,29 @@ test("message protocol persists mailbox, correlation, idempotency, retry, timeou
     const stream = await fetch(`http://127.0.0.1:${port}/api/events/stream?projectId=${projectId}&agentId=apix-director&after=0`);
     assert.equal(stream.status, 200);
     const reader = stream.body.getReader();
-    const chunk = await reader.read();
-    assert.match(new TextDecoder().decode(chunk.value), /event: message.created/);
+    const decode = value => new TextDecoder().decode(value ?? new Uint8Array());
+    const ids = text => [...text.matchAll(/^id: (\d+)$/gm)].map(match => Number(match[1]));
+    let live = decode((await reader.read()).value);
+    assert.match(live, /event: message.created/);
+    const seenMax = () => Math.max(0, ...ids(live));
+    const before = seenMax();
+    // P11 事件驱动:写入后应在 1.5s 内(50ms 去抖 + 增量拉取)推到已建立的流上,不依赖固定轮询。
+    await post(port, "/api/messages", { projectId, from: "apix-director", to: bob, type: "event", idempotencyKey: "sse-probe-alpha", payload: { marker: "probe-alpha" } });
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline && seenMax() <= before) { const next = await Promise.race([reader.read(), new Promise(resolve => setTimeout(() => resolve({ done: true }), 200))]); if (next.done) continue; live += decode(next.value); }
+    assert.ok(seenMax() > before, "事件驱动推送应在 1.5 秒内到达已订阅的 SSE 流");
+    const newest = seenMax();
     await reader.cancel();
+    // 断线重连去重:after=最新已见 id,重放流里不得出现任何 <= 游标的旧帧,只应收到新事件(probe-beta)。
+    await post(port, "/api/messages", { projectId, from: "apix-director", to: bob, type: "event", idempotencyKey: "sse-probe-beta", payload: { marker: "probe-beta" } });
+    const resumed = await fetch(`http://127.0.0.1:${port}/api/events/stream?projectId=${projectId}&agentId=apix-director&after=${newest}`);
+    const resumedReader = resumed.body.getReader();
+    let replay = "";
+    const replayDeadline = Date.now() + 2000;
+    while (Date.now() < replayDeadline && !replay.includes("event: message.created")) { const next = await Promise.race([resumedReader.read(), new Promise(resolve => setTimeout(() => resolve({ done: true }), 200))]); if (next.done) continue; replay += decode(next.value); }
+    assert.ok(replay.includes("event: message.created"), "重连后应立即收到游标之后的新事件");
+    assert.ok(ids(replay).length > 0 && ids(replay).every(id => id > newest), "重连不得重放游标之前的旧事件");
+    await resumedReader.cancel();
   } finally {
     if (server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
     await rm(dataDir, { recursive: true, force: true });

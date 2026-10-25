@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
 // Project-scoped message state, permissions, delivery and resource leases.
-export function createMailboxService({ db, row, rows, now, recordEvent = () => {} }) {
+// notify:事件落库后回调(P11 事件驱动 SSE),由注入方连接进程内 changeBus;缺省为空操作。
+export function createMailboxService({ db, row, rows, now, recordEvent = () => {}, notify = () => {} }) {
   const MESSAGE_MAX_BYTES = 24000;
   const MESSAGE_DEFAULT_TIMEOUT_MS = 120000;
   const MESSAGE_MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
@@ -45,6 +46,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     const createdAt = now();
     const result = db.prepare("INSERT INTO agent_message_events(message_id,project_id,event_type,actor_agent,payload,created_at) VALUES (?,?,?,?,?,?)").run(messageId, projectId, eventType, actorAgent ?? null, JSON.stringify(payload), createdAt);
     recordEvent(projectId, messageId ?? projectId, eventType, payload, actorAgent ?? 'system');
+    notify({ projectId });
     return { id: Number(result.lastInsertRowid), messageId, projectId, eventType, actorAgent: actorAgent ?? null, payload, createdAt };
   }
   function assertProject(projectId) {
