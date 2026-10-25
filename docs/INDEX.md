@@ -7,6 +7,7 @@
 
 | 功能 | 状态 | 契约文档 | 验收方式（脚本/测试） | 最新验收记录 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
+| 前端 HTML 渲染安全（P9） | active | docs/开发约定.md（前端 HTML 转义） | `npm test`（html 等）+ `npm run test:ui:html`、既有 UI 验收脚本 | 协作/2026-10-25-P9剩余视图迁移与自审.md | 知识库及原 12 个豁免视图均已迁移；辅助渲染模块仍有显式转义；模板不替代 URL/CSS 校验，lint 非完整污点分析 |
 | 流式对话与会话管理 | active | docs/架构设计.md（主循环）、README「配置指南」「请求体限额」 | `npm test`（conversation-ui/conversation-model 等）+ `npm run test:ui:browser` | 协作/20261024-Agent消息幂等开发与自审.md | 消息类 256KB / 配置类 64KB / 默认 30000 字符（2026-10-25 起，见 README） |
 | 项目工具（文件/进程/验证） | active | docs/开发约定.md、docs/架构设计.md | `npm test`（assistant-tools、command-* 系列） | 协作/20261019-P11-A命令证据一致性自审.md | Windows + Node 24.20 有 libuv fs.watch 崩溃，需 ≥24.22（engines 已拦截） |
 | 自动协作（Director 计划） | active | README「核心功能」、docs/使用指南.md | `npm run test:ui:task-flow` | 协作/20261022-交互执行重构自审.md | 每步 Run 启动前需单独审批（设计如此） |
@@ -19,7 +20,7 @@
 | 失败恢复 | active | docs/架构设计.md | `npm run test:ui:recovery` + `npm test`（workflow-recovery、fault-policy） | 协作/20261022-多Agent失败自动恢复自审.md | 恢复需人工确认，不自动重放未确认操作（设计如此） |
 | 模型配置与供应商中心 | active | README「集中配置 Agent 供应商」 | `npm run test:ui:providers` + `npm test`（model-*、agent-providers） | 协作/20261022-JSON契约与供应商中心自审.md | Codex API 用 Responses、Claude 用 Anthropic Messages；Chat Completions 不能直供 CLI |
 | 历史追踪（项目侧栏/归档） | active | docs/使用指南.md | `npm test`（chat-history、static-files） | 协作/20261020-项目目录整理自审.md | — |
-| 知识库与工具治理 | active | 协作/20261024-四项能力接口与使用说明.md、docs/开发约定.md（前端 HTML 转义） | `npm run test:ui:knowledge` + `npm test`（tool-knowledge、knowledge-concurrency、html） | 协作/2026-10-25-P9知识库自动转义实施与自审.md | 知识库视图已自动转义，其余视图渐进迁移；1MiB/文档、1.5MB 请求上限；SQLite 无 FTS5 时降级启动（检索不可用）；索引在主线程执行，超过 50ms 输出分块/入库耗时日志（P10 基线测量中，是否 Worker 化待数据） |
+| 知识库与工具治理 | active | 协作/20261024-四项能力接口与使用说明.md、docs/开发约定.md（前端 HTML 转义） | `npm run test:ui:knowledge` + `npm test`（tool-knowledge、knowledge-concurrency、html） | 协作/2026-10-25-P9知识库自动转义实施与自审.md；视图后续见 P9 渲染安全行 | 1MiB/文档、1.5MB 请求上限；SQLite 无 FTS5 时降级启动（检索不可用）；索引在主线程执行，超过 50ms 输出分块/入库耗时日志（P10 基线测量中，是否 Worker 化待数据） |
 | 所有者门禁（owner access） | active | 协作/20261024-四项能力接口与使用说明.md | `npm test`（tool-knowledge、static-files 登录页）+ 冒烟（全面测试报告 §R2） | 协作/2026-10-24-全面测试报告.md | owner-access.json 必须为无注释 JSON，令牌 32–128 字符 |
 | Windows 桌面版（Electron） | beta | docs/Windows桌面版.md | `npm run test:desktop` + `npm run test:desktop:app` | 协作/20261024-SQLite兼容与共享界面优化自审.md | 仅 Windows；本地需自备 electron devDependencies 才能跑桌面测试 |
 | Node/npm 项目验证 | active | docs/Node-npm项目验证.md | `npm run test:npm` + `npm run test:npm:browser` | 协作/20261019-Node-npm接入与验证自审.md | 仅 Node 22.19–22.x / ≥24.22 与 npm 10/11；不支持 workspaces、原生扩展等（见契约文档） |

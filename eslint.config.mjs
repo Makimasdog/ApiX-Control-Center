@@ -7,21 +7,6 @@ const innerHtmlGuard = {
   selector: "AssignmentExpression[left.type='MemberExpression'][left.property.type='Identifier'][left.property.name='innerHTML'][right.type='TemplateLiteral'][right.expressions.length>0]",
   message: '禁止把含插值的普通模板串直接赋给 innerHTML：插值必须经过转义（使用 web/html.ts 的 html`` 模板；仅适用于文本与带引号属性）。',
 };
-// 旧代码渐进迁移：以下文件在护栏规则生效之前就大量使用裸 innerHTML 模板，先降为 warn，迁移完一个就从这里删除一个。
-const innerHtmlLegacyFiles = [
-  'web/agent-os.js',
-  'web/assistant.ts',
-  'web/autonomy-view.ts',
-  'web/conversation-model.ts',
-  'web/coordinator.ts',
-  'web/employee-settings.ts',
-  'web/mcp-settings.ts',
-  'web/project-picker.ts',
-  'web/provider-center.ts',
-  'web/scheduling-view.ts',
-  'web/task-events.ts',
-  'web/workflow-graph.ts',
-];
 
 // 推荐规则整体降为 warn：只报告不拦截，避免一次性重排整个仓库的既有代码；新代码由 CI 输出提示逐步消化。
 const toWarn = rules => Object.fromEntries(Object.entries(rules).map(([id, level]) => [id, level === 0 || level === 'off' ? level : Array.isArray(level) ? ['warn', ...level.slice(1)] : 'warn']));
@@ -41,5 +26,4 @@ export default tseslint.config(
       'max-statements-per-line': 'warn',
     },
   },
-  ...(innerHtmlLegacyFiles.length ? [{ files: innerHtmlLegacyFiles, rules: { 'no-restricted-syntax': 'warn' } }] : []),
 );

@@ -9,7 +9,12 @@ const output=resolve('.tmp-task-flow');await mkdir(output,{recursive:true});
 const fixture=await startDeliveryFixture({startupMs:20000,setup:async root=>{
  await writeFile(join(root,'large.dat'),Buffer.alloc(9*1024*1024,65));
  await writeFile(join(root,'check.cjs'),'console.log("existing test passed");');
-},decide:(_context,state)=>(state.step=(state.step??0)+1)>1?{action:'finish',outcome:'completed',message:'现有测试已通过。'}:{action:'tool',tool:'run_command',args:{executable:'node',args:['check.cjs'],timeoutMs:10000},message:'直接运行已有测试，无需配置员工。'}});
+},decide:(context,state)=>{
+ const command={action:'tool',tool:'run_command',args:{executable:'node',args:['check.cjs'],timeoutMs:10000},message:'直接运行已有测试，无需配置员工。'};
+ // Conversations may share the current task; the read-only case must still attempt the forbidden command.
+ if(context.latestUserRequest.content.startsWith('只读检查'))return command;
+ return (state.step=(state.step??0)+1)>1?{action:'finish',outcome:'completed',message:'现有测试已通过。'}:command;
+}});
 // This project deliberately starts in the old per-operation mode.
 await fixture.request('/api/permissions',{projectId:fixture.projectId,subject:'apix',mode:'ask_approval',version:1});
 let browser;
