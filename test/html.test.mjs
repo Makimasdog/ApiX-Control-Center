@@ -1,7 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {ESLint} from 'eslint';
-import {html} from '../dist/web/html.js';
+import {html,escapeHtml} from '../dist/web/html.js';
+import {assistantTimeline,escapeAssistant} from '../dist/web/assistant-view.js';
+import {deliveryView} from '../dist/web/delivery-view.js';
+import {recoveryForm} from '../dist/web/execution-view.js';
+import {readinessView} from '../dist/web/readiness.js';
+import {rendererFixture} from './renderer-fixture.mjs';
 import {autonomySummary} from '../dist/web/autonomy-view.js';
 import {taskEventList} from '../dist/web/task-events.js';
 
@@ -20,10 +25,15 @@ test('html preserves false and zero, handles absent values and composes escaped 
   assert.equal(html`${html`<b>${'hello'}</b>`}`,'&lt;b&gt;hello&lt;/b&gt;');
 });
 
+test('the legacy escapeAssistant export uses the shared leaf implementation',()=>{
+  assert.equal(escapeAssistant,escapeHtml);
+  for(const value of [null,undefined,false,0,'<>&"\''])assert.equal(escapeAssistant(value),html`${value}`);
+});
+
 test('all migrated views enforce the innerHTML guard without legacy exemptions',async()=>{
   const eslint=new ESLint();
   assert.equal(await eslint.isPathIgnored('.tmp-review/dist/web/knowledge.js'),true);
-  for(const file of ['knowledge.ts','agent-os.js','assistant.ts','autonomy-view.ts','conversation-model.ts','coordinator.ts','employee-settings.ts','mcp-settings.ts','project-picker.ts','provider-center.ts','scheduling-view.ts','task-events.ts','workflow-graph.ts']){
+  for(const file of ['knowledge.ts','agent-os.js','assistant.ts','autonomy-view.ts','conversation-model.ts','coordinator.ts','employee-settings.ts','mcp-settings.ts','project-picker.ts','provider-center.ts','scheduling-view.ts','task-events.ts','workflow-graph.ts','assistant-view.ts','delivery-view.ts','execution-view.ts','readiness.ts','chat-history.ts','employee.ts','overview.ts']){
     const filePath='web/'+file;
     assert.equal(await eslint.isPathIgnored(filePath),false);
     const [unsafe]=await eslint.lintText('element.innerHTML = `<p>${value}</p>`;',{filePath});
@@ -31,6 +41,35 @@ test('all migrated views enforce the innerHTML guard without legacy exemptions',
     const [safe]=await eslint.lintText('element.innerHTML = html`<p>${value}</p>`;',{filePath});
     assert.equal(safe.errorCount,0,filePath);
   }
+});
+
+test('timeline keeps real citation and evidence controls without turning surrounding data into markup',()=>{
+  const f=rendererFixture('"><img src=x onerror="window.p9Injected=1"> & quote');
+  const output=assistantTimeline(f.timeline);
+  assert.equal((output.match(/data-kb-citation=/g)??[]).length,2);
+  assert(output.includes('data-kb-citation="'+f.citation+'"'));
+  assert(output.includes('data-output-reference="&quot;&gt;&lt;img'));
+  assert(output.includes('data-command-log="&quot;&gt;&lt;img'));
+  assert(output.includes('日志不完整：未采集'));
+  assert(output.includes('+0 / −'));
+  assert(!output.includes('&amp;lt;img'));
+  assert(!output.includes('<img'));
+  assert.equal(assistantTimeline([{id:1,role:'system',kind:'message',body:{content:'.'}}]),'');
+  assert(assistantTimeline([{id:1,role:'user',kind:'message',body:{content:'.'}}]).includes('<div>.</div>'));
+});
+
+test('delivery, recovery and readiness keep controls, guards and escaped detail branches',()=>{
+  const f=rendererFixture('"><img src=x onerror="window.p9Injected=1"> & quote');
+  const outputs=[deliveryView(f.review,false),recoveryForm(f.recovery,f.recoveryTask,f.employees,true),readinessView(f.readiness)];
+  for(const output of outputs){assert(!output.includes('<img'));assert(!output.includes('&amp;lt;img'));assert(output.includes('&lt;img'));}
+  assert(outputs[0].includes('data-delivery-version="0"'));
+  assert(outputs[0].includes('源码快照、依赖准备与本次产物'));
+  assert(outputs[0].includes('<blockquote>'));
+  assert.match(outputs[0],/data-delivery-action="accept"[^>]* disabled/);
+  assert(outputs[1].includes('name="confirmedStopped" required'));
+  assert(outputs[1].includes('name="reviewed" required'));
+  assert(outputs[2].includes('data-setup-action="model"'));
+  assert.equal((outputs[2].match(/data-setup-action=/g)??[]).length,1);
 });
 
 test('autonomy and event fragments preserve nested markup while escaping every data field',()=>{

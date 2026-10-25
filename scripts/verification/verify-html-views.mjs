@@ -3,6 +3,7 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {resolve,join,isAbsolute} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {startDeliveryFixture} from '../../test/delivery-fixture.mjs';
+import {rendererFixture} from '../../test/renderer-fixture.mjs';
 
 const moduleName=process.env.APIX_PLAYWRIGHT_MODULE??'playwright';
 const {chromium}=await import(isAbsolute(moduleName)?pathToFileURL(moduleName).href:moduleName);
@@ -89,10 +90,67 @@ try{
   assert.equal(await page.locator('[data-folder-select]').getAttribute('data-folder-select'),payload);
   await page.locator('[data-folder-select]').click();
   assert.equal(await page.locator('#editor-form [name=path]').inputValue(),payload);
+  checks.push('folder paths round-trip through quoted attributes without injection');
+
+  const renderers=rendererFixture(payload);
+  await page.evaluate(async data=>{
+    const mount=(id,markup)=>{const root=document.createElement('section');root.id=id;root.innerHTML=markup;document.body.append(root);};
+    mount('timeline-renderer',(await import('/dist/web/assistant-view.js')).assistantTimeline(data.timeline));
+    mount('delivery-renderer',(await import('/dist/web/delivery-view.js')).deliveryView(data.review,false));
+    mount('recovery-renderer',(await import('/dist/web/execution-view.js')).recoveryForm(data.recovery,data.recoveryTask,data.employees,true));
+    mount('readiness-renderer',(await import('/dist/web/readiness.js')).readinessView(data.readiness));
+  },renderers);
+  assert.equal(await page.locator('#timeline-renderer [data-kb-citation]').count(),2);
+  assert.equal(await page.locator('#timeline-renderer [data-kb-citation]').first().getAttribute('data-kb-citation'),renderers.citation);
+  assert.equal(await page.locator('#timeline-renderer [data-output-reference]').first().getAttribute('data-output-reference'),payload);
+  assert((await page.locator('#timeline-renderer .assistant-message').first().innerText()).includes(payload));
+  assert.equal(await page.locator('#delivery-renderer [data-delivery-action=accept]').isDisabled(),true);
+  assert.equal(await page.locator('#delivery-renderer [data-delivery-file]').first().getAttribute('data-delivery-file'),payload);
+  assert.equal(await page.locator('#delivery-renderer [data-delivery-action=accept]').getAttribute('data-delivery-version'),'0');
+  assert.equal(await page.locator('#recovery-renderer [name=employeeId]').inputValue(),payload);
+  assert.equal(await page.locator('#recovery-renderer [name=confirmedStopped]').getAttribute('required'),'');
+  assert.equal(await page.locator('#recovery-renderer button').isDisabled(),false);
+  assert.equal(await page.locator('#readiness-renderer [data-setup-action]').count(),1);
+  await page.evaluate(async data=>{document.querySelector('#recovery-renderer').innerHTML=(await import('/dist/web/execution-view.js')).recoveryForm({...data.recovery,managedActive:true},data.recoveryTask,data.employees,true);},renderers);
+  assert.equal(await page.locator('#recovery-renderer button').isDisabled(),true);
+  checks.push('timeline citations, output links, delivery versions and recovery/readiness guards survive renderer migration');
+
+  // These routes supply UI data only; they do not claim backend workflow or history-write acceptance.
+  await page.route('**/api/chat-history?*',route=>route.fulfill({json:renderers.threads}));
+  await page.route('**/api/employees/p9/details',route=>route.fulfill({json:renderers.employeeDetails}));
+  await page.route('**/api/coordination/sessions?*',route=>route.fulfill({json:renderers.goals}));
+  await page.evaluate(async data=>{
+    document.body.insertAdjacentHTML('beforeend','<div id="assistant-thread-list"></div><main id="page-missions"></main><main id="page-overview"></main>');
+    await import('/dist/web/chat-history.js');await import('/dist/web/employee.js');await import('/dist/web/overview.js');
+    document.dispatchEvent(new CustomEvent('apix:snapshot',{detail:{projectId:'p9',data:data.snapshot}}));
+    document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:'p9'}));
+  },renderers);
+  await page.locator('#assistant-thread-list .history-row').waitFor();
+  assert.equal(await page.locator('#assistant-thread-list .assistant-thread span').innerText(),payload);
+  assert.equal(await page.locator('#assistant-thread-list [data-history-open]').getAttribute('data-history-open'),payload);
+  assert.equal(await page.locator('#assistant-thread-list [data-history-action=archive]').getAttribute('aria-label'),'归档 '+payload);
+  await page.locator('#assistant-thread-list select').selectOption('archived');
+  await page.waitForFunction(()=>document.querySelector('#assistant-thread-list [data-history-open]')?.disabled===true);
+  assert.equal(await page.locator('#assistant-thread-list [data-history-action=restore]').count(),1);
+  await page.locator('#assistant-thread-list select').selectOption('deleted');
+  await page.waitForFunction(()=>!document.querySelector('#assistant-thread-list [data-history-action=delete]'));
+  await page.locator('#employee-active .employee-task').waitFor();
+  assert.equal(await page.locator('#employee-active .employee-task strong').innerText(),payload);
+  assert((await page.locator('#employee-history').innerText()).includes('阻塞报告：'+payload));
+  await page.locator('#overview-board .overview-task').waitFor();
+  assert.equal(await page.locator('#overview-action-list strong').innerText(),payload);
+  assert.equal(await page.locator('#overview-team-list strong').innerText(),payload);
+  assert.equal(await page.locator('#overview-board .overview-task strong').innerText(),payload);
+  assert((await page.locator('#overview-departments').innerText()).includes(payload));
+  await page.locator('#overview-search').fill('not-present');
+  assert.equal(await page.locator('#overview-board .overview-task').count(),0);
+  await page.locator('#overview-search').fill('');
+  assert.equal(await page.locator('#overview-board .overview-task').count(),1);
+  checks.push('history filters, employee progress and overview cards preserve escaped text and existing controls');
+
   assert.equal(await page.locator('img, [onerror]').count(),0);
   assert.equal(await page.evaluate(()=>window.p9Injected),undefined);
   assert.deepEqual(errors,[]);
-  checks.push('folder paths round-trip through quoted attributes without injection');
   await writeFile(join(output,'result.json'),JSON.stringify({passed:true,checks,pageErrors:errors,paidModelCalls:0},null,2));
   console.log(JSON.stringify({passed:true,checks,output}));
 }catch(error){

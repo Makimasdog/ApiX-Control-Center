@@ -1,12 +1,12 @@
+import {html} from './html.js';
 type Task = {id:string;project_id:string;plan_id:string|null;employee_id:string|null;prompt:string;status:string;updated_at:string};
 type Employee = {id:string;name:string;role:string;runtime:string;department:string;enabled:number};
 type Project = {id:string;name:string};
 type Goal = {id:string;title:string;plan_id:string|null;derivedStatus:string;status:string};
 type Snapshot = {projects:Project[];tasks:Task[];employees:Employee[];departments:{id:string;name:string}[];runs:{id:string;task_id:string;status:string}[]};
 const root=document.querySelector<HTMLElement>('#page-overview')!;
-const esc=(value:unknown)=>String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const $=<T extends HTMLElement=HTMLElement>(selector:string)=>root.querySelector<T>(selector)!;
-const html=(selector:string,value:string)=>{const element=$(selector);if(element.innerHTML!==value)element.innerHTML=value;};
+const setMarkup=(selector:string,value:string)=>{const element=$(selector);if(element.innerHTML!==value)element.innerHTML=value;};
 const status:Record<string,string>={awaiting_approval:'待审批',queued:'等待依赖',running:'执行中',stopping:'正在停止',completed:'待验收',accepted:'已验收',failed:'执行失败',blocked:'已阻塞',unknown:'状态未知',needs_revision:'需要修改',cancelled:'已取消',rejected:'已拒绝'};
 const lanes=[
   {key:'waiting',name:'待启动',statuses:['awaiting_approval','queued']},
@@ -16,7 +16,7 @@ const lanes=[
   {key:'done',name:'已完成',statuses:['accepted']},
 ];
 let snapshot:Snapshot={projects:[],tasks:[],employees:[],departments:[],runs:[]};let projectId='';let goals:Goal[]=[];let goalsProjectId='';let loadVersion=0;
-root.innerHTML=`<div class="overview-header"><div><div class="eyebrow">APIX · COMMAND CENTER</div><h1>管理总览</h1><p>查看目标、员工与任务的真实进展，再决定下一步。</p></div><div class="overview-header-actions"><label>当前项目<select id="overview-project" aria-label="总览项目"></select></label><button class="primary-button" data-overview-nav="assistant">提出新任务</button></div></div>
+root.innerHTML=html`<div class="overview-header"><div><div class="eyebrow">APIX · COMMAND CENTER</div><h1>管理总览</h1><p>查看目标、员工与任务的真实进展，再决定下一步。</p></div><div class="overview-header-actions"><label>当前项目<select id="overview-project" aria-label="总览项目"></select></label><button class="primary-button" data-overview-nav="assistant">提出新任务</button></div></div>
 <div id="overview-empty" class="surface-card overview-empty" hidden><h2>先添加项目</h2><p>ApiX 将在这里汇总该项目的目标、任务和员工状态。</p><button class="outline-button" data-overview-nav="projects">添加项目</button></div>
 <div id="overview-content"><section class="overview-metrics" aria-label="项目概况"><article class="surface-card"><span>目标</span><strong id="overview-goal-count">0</strong><small>当前项目</small></article><article class="surface-card"><span>正在执行</span><strong id="overview-active-count">0</strong><small>真实运行任务</small></article><article class="surface-card"><span>等待你处理</span><strong id="overview-action-count">0</strong><small>澄清、确认、审批与验收</small></article><article class="surface-card"><span>参与员工</span><strong id="overview-employee-count">0</strong><small>当前项目计划</small></article></section>
 <div class="overview-grid"><section class="surface-card overview-attention"><div class="overview-section-head"><div><h2>ApiX 等待你的决定</h2><p>显示需要继续澄清、确认、审批、验收或处理阻塞的事项。</p></div><span id="overview-attention-count" class="coord-pill">0 项</span></div><div id="overview-action-list"></div></section><section class="surface-card overview-team"><div class="overview-section-head"><div><h2>员工动态</h2><p>基于任务和 Run 状态；点击员工查看履历。</p></div><button class="text-action" data-overview-nav="missions">管理员工</button></div><div id="overview-team-list"></div><div id="overview-departments"></div></section></div>
@@ -28,7 +28,7 @@ function render(){
   const selected=snapshot.projects.find(project=>project.id===projectId);
   $('#overview-empty').hidden=!!selected;$('#overview-content').hidden=!selected;
   const projectSelect=$<HTMLSelectElement>('#overview-project');
-  const choices=snapshot.projects.map(project=>`<option value="${esc(project.id)}">${esc(project.name)}</option>`).join('');
+  const choices=snapshot.projects.map(project=>html`<option value="${project.id}">${project.name}</option>`).join('');
   if(projectSelect.innerHTML!==choices)projectSelect.innerHTML=choices;
   projectSelect.value=projectId;projectSelect.disabled=!snapshot.projects.length;
   if(!selected)return;
@@ -43,13 +43,13 @@ function render(){
   $('#overview-action-count').textContent=String(actions.length);
   $('#overview-employee-count').textContent=String(employeeIds.size);
   $('#overview-attention-count').textContent=`${actions.length} 项`;
-  html('#overview-action-list',actions.length?actions.map(({goal,message})=>`<button class="overview-action" data-overview-goal="${esc(goal.id)}"><span class="overview-action-dot"></span><span><strong>${esc(goal.title)}</strong><small>${esc(message)}</small></span><span aria-hidden="true">→</span></button>`).join(''):'<p class="overview-placeholder">当前没有等待你处理的事项。</p>');
+  setMarkup('#overview-action-list',actions.length?actions.map(({goal,message})=>html`<button class="overview-action" data-overview-goal="${goal.id}"><span class="overview-action-dot"></span><span><strong>${goal.title}</strong><small>${message}</small></span><span aria-hidden="true">→</span></button>`).join(''):'<p class="overview-placeholder">当前没有等待你处理的事项。</p>');
   const team=snapshot.employees.filter(employee=>employee.enabled && (employeeIds.has(employee.id)||active.some(task=>task.employee_id===employee.id)));
-  html('#overview-team-list',team.length?team.map(employee=>{const assigned=tasks.filter(task=>task.employee_id===employee.id);const running=assigned.filter(task=>['running','stopping'].includes(task.status));return `<button class="overview-person" data-open-employee="${esc(employee.id)}"><span class="overview-person-mark">${esc(employee.name.slice(0,1))}</span><span><strong>${esc(employee.name)}</strong><small>${esc(employee.role)} · ${esc(employee.runtime)}${running.length?` · ${running.length} 项执行中`:''}</small></span><span class="overview-person-state ${running.length?'working':''}">${running.length?'工作中':'待命'}</span></button>`;}).join(''):'<p class="overview-placeholder">项目尚未安排员工。创建目标并确认计划后会显示团队动态。</p>');
+  setMarkup('#overview-team-list',team.length?team.map(employee=>{const assigned=tasks.filter(task=>task.employee_id===employee.id);const running=assigned.filter(task=>['running','stopping'].includes(task.status));return html`<button class="overview-person" data-open-employee="${employee.id}"><span class="overview-person-mark">${employee.name.slice(0,1)}</span><span><strong>${employee.name}</strong><small>${employee.role} · ${employee.runtime}${running.length?` · ${running.length} 项执行中`:''}</small></span><span class="overview-person-state ${running.length?'working':''}">${running.length?'工作中':'待命'}</span></button>`;}).join(''):'<p class="overview-placeholder">项目尚未安排员工。创建目标并确认计划后会显示团队动态。</p>');
   const departments=[...new Set(team.map(employee=>employee.department || '未分组'))];
-  html('#overview-departments',departments.length?`<div class="overview-department-title">团队分布</div><div class="overview-department-list">${departments.map(name=>`<span>${esc(name)} <strong>${team.filter(employee=>(employee.department||'未分组')===name).length}</strong></span>`).join('')}</div>`:'');
+  setMarkup('#overview-departments',departments.length?html`<div class="overview-department-title">团队分布</div><div class="overview-department-list">` + (departments.map(name=>html`<span>${name} <strong>${team.filter(employee=>(employee.department||'未分组')===name).length}</strong></span>`).join('')) + html`</div>`:'');
   const employeeSelect=$<HTMLSelectElement>('#overview-employee-filter');const selectedEmployee=employeeSelect.value;
-  const employeeOptions='<option value="">全部员工</option>'+team.map(employee=>`<option value="${esc(employee.id)}">${esc(employee.name)}</option>`).join('');
+  const employeeOptions='<option value="">全部员工</option>'+team.map(employee=>html`<option value="${employee.id}">${employee.name}</option>`).join('');
   if(employeeSelect.innerHTML!==employeeOptions)employeeSelect.innerHTML=employeeOptions;
   if(team.some(employee=>employee.id===selectedEmployee))employeeSelect.value=selectedEmployee;
   renderBoard(tasks);
@@ -59,7 +59,7 @@ function renderBoard(tasks:Task[]){
   const query=$<HTMLInputElement>('#overview-search').value.trim().toLowerCase();const employeeId=$<HTMLSelectElement>('#overview-employee-filter').value;
   const visible=tasks.filter(task=>(!query||task.prompt.toLowerCase().includes(query))&&(!employeeId||task.employee_id===employeeId));
   $('#overview-board-count').textContent=`${visible.length} 个任务`;
-  html('#overview-board',lanes.map(lane=>{const items=visible.filter(task=>lane.statuses.includes(task.status));return `<section class="overview-lane lane-${lane.key}"><div class="overview-lane-head"><h3>${lane.name}</h3><span>${items.length}</span></div><div class="overview-lane-cards">${items.length?items.map(task=>{const goal=goalFor(task);const employee=employeeFor(task);return `<button class="overview-task" data-overview-goal="${esc(goal?.id ?? '')}"><span class="overview-task-status">${esc(status[task.status]??task.status)}</span><strong>${esc(task.prompt)}</strong><small>${esc(employee?.name ?? '历史员工')} · ${esc(goal?.title ?? '任务')}</small></button>`;}).join(''):'<p class="overview-lane-empty">暂无任务</p>'}</div></section>`;}).join(''));
+  setMarkup('#overview-board',lanes.map(lane=>{const items=visible.filter(task=>lane.statuses.includes(task.status));return html`<section class="overview-lane lane-${lane.key}"><div class="overview-lane-head"><h3>${lane.name}</h3><span>${items.length}</span></div><div class="overview-lane-cards">` + (items.length?items.map(task=>{const goal=goalFor(task);const employee=employeeFor(task);return html`<button class="overview-task" data-overview-goal="${goal?.id ?? ''}"><span class="overview-task-status">${status[task.status]??task.status}</span><strong>${task.prompt}</strong><small>${employee?.name ?? '历史员工'} · ${goal?.title ?? '任务'}</small></button>`;}).join(''):'<p class="overview-lane-empty">暂无任务</p>') + html`</div></section>`;}).join(''));
 }
 async function update(){const selected=projectId;const version=++loadVersion;if(!selected){goals=[];goalsProjectId='';render();return;}
   if(selected!==goalsProjectId){goals=[];goalsProjectId=selected;}
