@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 // 允许的写法:html`` 自动转义 tagged template(方案 P9)、不含插值的纯字符串、textContent。
 const innerHtmlGuard = {
   selector: "AssignmentExpression[left.type='MemberExpression'][left.property.type='Identifier'][left.property.name='innerHTML'][right.type='TemplateLiteral'][right.expressions.length>0]",
-  message: '禁止把含插值的普通模板串直接赋给 innerHTML：插值必须经过转义（后续接入 html`` 自动转义模板，见 协作/2026-10-24-问题解决方案.md P9）。',
+  message: '禁止把含插值的普通模板串直接赋给 innerHTML：插值必须经过转义（使用 web/html.ts 的 html`` 模板；仅适用于文本与带引号属性）。',
 };
 // 旧代码渐进迁移：以下文件在护栏规则生效之前就大量使用裸 innerHTML 模板，先降为 warn，迁移完一个就从这里删除一个。
 const innerHtmlLegacyFiles = [
@@ -15,7 +15,6 @@ const innerHtmlLegacyFiles = [
   'web/conversation-model.ts',
   'web/coordinator.ts',
   'web/employee-settings.ts',
-  'web/knowledge.ts',
   'web/mcp-settings.ts',
   'web/project-picker.ts',
   'web/provider-center.ts',
@@ -29,7 +28,7 @@ const toWarn = rules => Object.fromEntries(Object.entries(rules).map(([id, level
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'desktop/**', 'out/**', '.tmp-ci/**', '.tmp-provider-review/**', '.tmp-desktop/**', '.tmp-lint-files.mjs', 'coverage/**', '协作/**', '示例/**', 'docs/**'],
+    ignores: ['dist/**', 'node_modules/**', 'desktop/**', 'out/**', '.tmp*/**', '.tmp-lint-files.mjs', 'coverage/**', '协作/**', '示例/**', 'docs/**'],
   },
   { rules: toWarn(eslint.configs.recommended.rules) },
   ...tseslint.configs.recommended.map(config => ({ ...config, rules: config.rules ? toWarn(config.rules) : {} })),
