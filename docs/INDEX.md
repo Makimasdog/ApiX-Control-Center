@@ -22,7 +22,7 @@
 | 历史追踪（项目侧栏/归档） | active | docs/使用指南.md | `npm test`（chat-history、static-files） | 协作/20261020-项目目录整理自审.md | — |
 | 知识库与工具治理 | active | 协作/20261024-四项能力接口与使用说明.md、docs/开发约定.md（前端 HTML 转义） | `npm run test:ui:knowledge` + `npm test`（tool-knowledge、knowledge-concurrency、html） | 协作/2026-10-25-P9知识库自动转义实施与自审.md；视图后续见 P9 渲染安全行 | 1MiB/文档、1.5MB 请求上限；SQLite 无 FTS5 时降级启动（检索不可用）；索引在主线程执行，超过 50ms 输出分块/入库耗时日志（P10 基线测量中，是否 Worker 化待数据） |
 | 所有者门禁（owner access） | active | 协作/20261024-四项能力接口与使用说明.md | `npm test`（tool-knowledge、static-files 登录页）+ 冒烟（全面测试报告 §R2） | 协作/2026-10-24-全面测试报告.md | owner-access.json 必须为无注释 JSON，令牌 32–128 字符 |
-| Windows 桌面版（Electron） | beta | docs/Windows桌面版.md | `npm run test:desktop` + `npm run test:desktop:app` | 协作/20261024-SQLite兼容与共享界面优化自审.md | 仅 Windows；本地需自备 electron devDependencies 才能跑桌面测试 |
+| Windows 桌面版（Electron） | beta | docs/Windows桌面版.md | `npm run test:desktop` + `npm run test:desktop:app -- <exe路径>`；正常窗口导航/退出/重启检查 | 协作/2026-10-26-Electron实际运行验证与自审.md | 仅 Windows x64；Git 等 CLI 需自行安装；未配置签名或自动更新；应用探针核对包内 Node/npm 与项目 Worker |
 | Node/npm 项目验证 | active | docs/Node-npm项目验证.md、docs/开发约定.md（生产 Git 与项目扫描） | `npm run test:npm` + `npm test`（project-io、coordinator 大目录响应性） | 协作/2026-10-25-生产Git与扫描异步化及自审.md | 副本准备和容量扫描使用 Worker，保留 20 副本 / 1GiB 等原有预算；仅 Node 22.19–22.x / 24.22–24.x、npm 10/11，其他限制见契约文档 |
 | 本地 HTTP 回归夹具 | active | test/local-fetch.mjs、test/service-diagnostics.mjs | `npm test`（service-diagnostics、coordinator、npm-http 等） | 协作/2026-10-25-生产Git与扫描异步化及自审.md | 默认关闭连接、不重放写入；协调夹具启动 30 秒、等待按实际总时限；生产持久连接另有慢 Git/大目录回归 |
 

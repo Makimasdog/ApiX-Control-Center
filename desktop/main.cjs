@@ -54,6 +54,8 @@ async function start() {
     title: 'ApiX Control Center', width: 1440, height: 960, minWidth: 960, minHeight: 640, show: false,
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
+  const rendererErrors=[];
+  if(smoke)window.webContents.on('console-message',details=>{if(details.level==='error'&&rendererErrors.length<20)rendererErrors.push(details.message);});
   const allowed = value => { try { return new URL(value).origin === backend.url; } catch { return false; } };
   window.webContents.on('will-navigate', (event, url) => { if (!allowed(url)) event.preventDefault(); });
   window.webContents.on('will-redirect', (event, url) => { if (!allowed(url)) event.preventDefault(); });
@@ -100,15 +102,30 @@ async function start() {
   if (!smoke) window.show();
   else {
     const report = await window.webContents.executeJavaScript(`(async () => {
+      const fixture=${JSON.stringify(process.env.APIX_DESKTOP_SMOKE_PROJECT??'')};
+      const request=async(path,body)=>{const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error(path+' returned '+response.status);return response.json();};
+      let projectChecks=null;
+      if(fixture){
+        const project=await request('/api/projects',{name:'Electron smoke fixture',path:fixture});
+        const session=await request('/api/assistant/sessions',{projectId:project.id});
+        const base='/api/assistant/sessions/'+session.id;
+        const diagnosis=await request(base+'/project-diagnosis');
+        const proposal=await request(base+'/npm-proposal',{network:false,writablePaths:['src']});
+        const memory=await request('/api/projects/'+project.id+'/memory-state');
+        const context=await request(base+'/context');
+        const repository=${process.env.APIX_DESKTOP_SMOKE_GIT==='1'}?await request('/api/repositories',{projectId:project.id,name:'Smoke Git',path:fixture}):null;
+        projectChecks={diagnosis,runtime:proposal.npm.runtime,network:proposal.npm.network,instructions:memory.instructions.map(file=>file.path),contextInstructions:context.instructions?.map(file=>file.path),repositoryId:repository?.id??null};
+      }
       const response = await fetch('/api/snapshot');
       return { title: document.title, bodyLength: document.body.innerText.length,
         apiStatus: response.status, snapshot: typeof await response.json(),
+        projectChecks,
         nodeExposed: typeof window.require !== 'undefined' || typeof window.process !== 'undefined',
         assets: await Promise.all([...document.querySelectorAll('script[src],link[rel="stylesheet"]')].map(async el => {
           const asset = await fetch(el.src || el.href); return { url: new URL(asset.url).pathname, status: asset.status };
         })) };
     })()`);
-    writeFileSync(join(dataDir, 'smoke-result.json'), JSON.stringify({ ...report, url: backend.url, supervisorPid: backend.supervisorPid }));
+    writeFileSync(join(dataDir, 'smoke-result.json'), JSON.stringify({ ...report, rendererErrors, url: backend.url, supervisorPid: backend.supervisorPid }));
     writeFileSync(join(dataDir, 'window.png'), (await window.webContents.capturePage()).toPNG());
     app.quit();
   }

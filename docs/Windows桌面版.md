@@ -23,9 +23,18 @@ npm run desktop:dist
 产物：
 
 - `.tmp-desktop/release/win-unpacked/ApiX Control Center.exe`：直接启动；复制给其他目录时必须复制整个 `win-unpacked` 文件夹。
-- `.tmp-desktop/release/ApiX-Setup-0.2.0-x64.exe`：当前用户安装包，可选择目录并生成桌面快捷方式；不需要管理员安装。
+- `.tmp-desktop/release/ApiX-Setup-<version>-x64.exe`：当前用户安装包，版本取自根 `package.json`；可选择目录并生成桌面快捷方式，不需要管理员安装。
 
 本版未配置代码签名或自动更新。安装包版本来自根 `package.json`。构建资源和产物使用已有 `.tmp*/` 忽略规则，不提交 Git。桌面前后端在 `.tmp-desktop` 暂存，修改源码后重跑上述命令即可。
+
+安装依赖时若跳过了生命周期脚本，缺少 `node_modules/electron/dist/electron.exe`，可运行 `node node_modules/electron/install.js` 恢复锁定版本。离线恢复所用的 Electron ZIP 必须与该包的 `checksums.json` 匹配。构建需要当前 Node 版本的官方许可证，缓存为 `.tmp-desktop/node-<Node版本>-LICENSE.txt`；网络失败时应重试或补齐对应版本的完整许可证。
+
+全局 npm 缓存出现 `EEXIST` 时，可为本轮构建指定独立缓存后重试：
+
+```powershell
+$env:NPM_CONFIG_CACHE = Join-Path $PWD '.tmp-desktop/npm-cache'
+npm run desktop:pack
+```
 
 ## 数据与模型配置
 
@@ -51,6 +60,10 @@ npm run test:desktop:app
 ```
 
 后端进程测试覆盖外部配置、路径含中文和空格、启动失败、停止整棵进程树、监督进程异常退出、重启端口复用和端口占用回退。应用验收会先核对分发包的生产依赖、npm 和密钥排除，再把整包复制到仓库之外的临时目录启动，防止误用仓库里的依赖；验收后清理临时程序副本。
+
+应用验收还会创建隔离项目，核对项目 Worker 完整扫描、项目指令和上下文读取、npm 方案使用包内 Node/npm，以及渲染错误为零。宿主安装了 Git 时同时检查 Git 诊断与仓库登记；未安装时跳过这两项。验收不调用模型、不安装项目依赖，也不运行项目检查脚本。超时失败时等待 Electron 关闭后清理临时程序副本，数据与日志保留用于排错。
+
+指定其他输出目录的应用可运行 `npm run test:desktop:app -- "完整 exe 路径"`。旧包缺少新增探针证据时会明确报错，需要重新构建。最近实际运行记录见[2026-10-26 Electron 实际运行验证与自审](../协作/2026-10-26-Electron实际运行验证与自审.md)。
 
 `--smoke-test` 参数仅用于自动验收：隐藏窗口，加载真实网页并请求 `/api/snapshot`，将结果写入隔离数据目录的 `smoke-result.json` 并保存 `window.png` 后退出；不调用模型或派发员工。
 
