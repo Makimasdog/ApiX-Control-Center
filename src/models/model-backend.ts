@@ -1,3 +1,20 @@
+/**
+ * 后端抽象 - 模型调用的核心实现，负责 HTTP 请求构建、流式响应解析、重试与错误处理
+ *
+ * 所属层级：模型层（src/models/）
+ * 核心功能：
+ *   1. directModelSettings() 解析并验证用户保存的模型设置
+ *   2. inferModel() 带重试和超时的模型推理入口，支持流式输出
+ *   3. inferAttempt() 单次请求实现：构建请求体、处理 SSE 流、解析各协议响应
+ *   4. 安全机制：API Key 脱敏、传输资源清理、超时保护
+ * 依赖关系：
+ *   - 依赖 model-providers.ts 获取提供商配置
+ *   - 依赖 model-endpoint.ts 构建请求 URL
+ *   - 依赖 model-usage.ts 记录 Token 用量
+ *   - 依赖 conversation-models.ts 获取推理参数
+ *   - 依赖 recovery/fault-policy.js 进行故障分类与重试策略
+ *   - 被 src/coordination/ 层调用以执行 LLM 推理
+ */
 import {setTimeout as sleep} from 'node:timers/promises';
 import {classifyFault,FaultError,retryDelay,retryAfter} from '../recovery/fault-policy.js';
 import {reasoningParameters} from './conversation-models.js';
@@ -8,11 +25,26 @@ import type {Socket} from 'node:net';
 import {modelEndpoint} from './model-endpoint.js';
 import {modelUsage,unknownUsage,type ModelUsage,type ModelAttempt} from './model-usage.js';
 
+/**
+ * ModelSettings - 模型设置的完整配置接口
+ */
 export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string;contextWindow?:number|null}
+
+/**
+ * ModelCleanupUnknownError - 模型传输清理未确认时抛出的安全错误
+ * 只有宿主创建的实例才能跨推理边界保留此错误码
+ */
 // Only host-created instances may retain this code across inference boundaries.
 export class ModelCleanupUnknownError extends Error {
   readonly code='MODEL_CLEANUP_UNKNOWN';
 }
+
+/**
+ * directModelSettings - 解析并验证用户保存的模型设置
+ * 自动填充预设的 Base URL 和 API Key 环境变量，确保配置完整可用
+ * @param saved - 用户保存的原始设置
+ * @returns 验证通过的完整设置
+ */
 export function directModelSettings(saved:ModelSettings):ModelSettings {
   const preset=!saved.baseUrl?getProviderConfig(saved.provider):undefined;
   const settings=preset?{...saved,baseUrl:preset.baseUrl,apiType:preset.apiType,apiKeyEnv:saved.apiKeyEnv||preset.defaultApiKeyEnv||''}:saved;
@@ -23,14 +55,32 @@ export function directModelSettings(saved:ModelSettings):ModelSettings {
   return settings;
 }
 
+// ApiX 模型调用的系统提示词：明确模型角色为“决策组件”，禁止模型虚构操作或启动 Agent
 const system='你是 ApiX 的独立模型决策组件。工具、Skills、上下文、委派、权限与验收由 ApiX 宿主管理；模型本身没有本机工具，不得虚构操作或自行启动其他 Agent。遵守输入中的 JSON 契约，只返回一个完整 JSON 对象，不加 Markdown 或前言。公开回复放在契约指定的 question、reply、message 或 summary 字段，不输出隐藏推理过程。';
 type Json=Record<string,any>;
+
+/**
+ * parts - 从内容数组中提取指定类型的文本并拼接
+ * @param value - 内容数组或空值
+ * @param type - 要提取的内容类型，默认 'text'
+ */
 const parts=(value:unknown,type='text'):string=>Array.isArray(value)?value.filter(p=>p?.type===type&&typeof p.text==='string').map(p=>p.text).join(''):'';
+
+/**
+ * serviceFailure - 将服务返回的错误码分类并转换为友好的 FaultError
+ * @param data - 服务响应数据
+ */
 function serviceFailure(data:Json):Error {
   const code=String(data.error?.code??data.error?.type??data.response?.error?.code??'');
   const fault=classifyFault(null,{kind:'model',serviceCode:code});
   return new FaultError(fault.category==='quota'?'模型服务额度不足 (insufficient_quota)':fault.category==='rate_limit'?'模型服务触发速率限制 (rate_limit_error)':'模型未返回可用答复（服务返回错误或未完成）',fault);
 }
+/**
+ * finalText - 从非流式响应中提取最终文本，检查响应完整性
+ * @param data - 响应数据
+ * @param api - API 协议类型
+ * @returns 提取的文本内容
+ */
 function finalText(data:Json,api:string):string {
   if(data.error)throw serviceFailure(data);
   if(api==='openai-completions'){
@@ -45,7 +95,20 @@ function finalText(data:Json,api:string):string {
   return parts(data.content);
 }
 
+/**
+ * InferenceOptions - 推理请求的可选项配置
+ */
 interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void;onAttemptStart?:(attempt:number)=>void;onAttempt?:(value:ModelAttempt)=>void;onUsage?:(usage:ModelUsage,complete:boolean)=>void}
+
+/**
+ * inferModel - 带重试和超时的模型推理入口
+ * 在总超时时间内最多重试 maxAttempts 次，每次失败后按指数退避等待
+ * @param saved - 模型设置
+ * @param prompt - 用户提示词
+ * @param onDelta - 流式输出的增量回调
+ * @param options - 可选项（超时、重试次数、事件回调等）
+ * @returns 模型返回的文本内容
+ */
 export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(delta:string)=>void,options:InferenceOptions={}):Promise<string>{
   const attempts=options.maxAttempts??3,totalMs=options.timeoutMs??90000;
   if(!Number.isSafeInteger(totalMs)||totalMs<=0||totalMs>2147483647)throw new Error('模型请求超时配置无效');
@@ -68,6 +131,15 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
     if(Date.now()>=deadline)throw error;
   }}
 }
+/**
+ * inferAttempt - 执行单次模型推理请求
+ * 负责构建请求体、发起 HTTP 请求、解析 SSE 流、处理各协议响应格式
+ * @param saved - 模型设置
+ * @param prompt - 用户提示词
+ * @param onDelta - 流式输出回调
+ * @param options - 推理选项
+ * @returns 模型返回的文本
+ */
 async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:string)=>void)|undefined,options:InferenceOptions):Promise<string>{
   const settings=directModelSettings(saved),api=settings.apiType,key=settings.apiKeyEnv?process.env[settings.apiKeyEnv]:undefined;
   if(Buffer.byteLength(prompt)>512*1024)throw new Error('模型上下文超过 512 KiB，请整理或拆分任务');

@@ -7,6 +7,7 @@
 
 | 功能 | 状态 | 契约文档 | 验收方式（脚本/测试） | 最新验收记录 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
+| 后端源码中文注释与历史报告 | active | 各后端模块中文注释；docs/zcode测试/2026-10-24-全面测试报告.md（历史记录） | TS/C# 语法等价及 PowerShell Token 核验、`npm run build`、`npm run check`、assistant-loop/token-usage 回归 | 协作/2026-10-27-后端中文注释同步自审.md | 提示词含两处已确认的引号替换；未重跑全量/浏览器/真实模型；历史报告不代表当前版本验收 |
 | 前端 HTML 渲染安全（P9） | active | docs/开发约定.md（前端 HTML 转义） | `npm test`（html、coding-view、execution-ui、readiness、delivery-review 等）+ `npm run test:ui:html`、既有 UI 验收脚本 | 协作/2026-10-25-P9辅助渲染模块迁移与自审.md | 20 个模块已迁移，手写实体转义集中到 html.ts，旧 escapeAssistant 导出兼容；模板不替代 URL/CSS 校验，lint 非完整污点分析 |
 | 流式对话与会话管理 | active | docs/架构设计.md（主循环）、README「配置指南」「请求体限额」 | `npm test`（conversation-ui/conversation-model 等）+ `npm run test:ui:browser` | 协作/20261024-Agent消息幂等开发与自审.md | 消息类 256KB / 配置类 64KB / 默认 30000 字符（2026-10-25 起，见 README） |
 | 项目工具（文件/进程/验证） | active | docs/开发约定.md（生产 Git 与项目扫描）、docs/架构设计.md | `npm test`（assistant-*、command-*、project-io）+ 任务流/恢复浏览器回归 | 协作/2026-10-25-生产Git与扫描异步化及自审.md | 递归扫描使用 2 Worker / 32 排队 / 120 秒期限；单文件原子写入、SQLite 与未知进程探测仍同步；Windows 需 22.19–22.x 或 24.22–24.x |

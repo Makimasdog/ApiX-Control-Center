@@ -1,24 +1,53 @@
+/**
+ * 消息持久化 - Agent 邮箱的消息存储、检索、状态管理与资源租约服务
+ *
+ * 所属层级：消息层（src/messaging/）
+ * 核心功能：
+ *   1. 消息生命周期管理：发送、接收、确认、拒绝、重试、过期
+ *   2. 幂等投递：通过 idempotencyKey 防止重复消息
+ *   3. Director 拦截网关：正则匹配并拦截员工的高风险执行请求
+ *   4. 资源租约锁：TTL + 续租 + 过期接管，类似 etcd lease
+ *   5. 消息事件流：记录所有状态变更事件，支持 SSE 实时推送
+ * 依赖关系：
+ *   - 依赖 coordination/contracts.ts 的 Store 接口
+ *   - 被 src/ 各层调用以支持 Agent 间异步通信
+ *   - 与 agent-mailbox.ts 互补：本文件负责消息存储，agent-mailbox 负责凭据
+ */
 import { createHash, randomUUID } from "node:crypto";
 
+/**
+ * createMailboxService - 创建完整的邮箱消息服务
+ * @param deps - 依赖注入：数据库、时间戳函数、事件回调等
+ * @returns 包含消息 CRUD、租约锁、事件查询等方法的完整服务
+ */
 // Project-scoped message state, permissions, delivery and resource leases.
 // notify:事件落库后回调(P11 事件驱动 SSE),由注入方连接进程内 changeBus;缺省为空操作。
 export function createMailboxService({ db, row, rows, now, recordEvent = () => {}, notify = () => {} }) {
+  // 消息大小与重试的常量限制
   const MESSAGE_MAX_BYTES = 24000;
   const MESSAGE_DEFAULT_TIMEOUT_MS = 120000;
   const MESSAGE_MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
   const MESSAGE_MAX_RETRIES = 8;
   const MESSAGE_ROLES = new Set(["director", "employee", "reviewer", "system", "user"]);
+  // 初始化：为所有项目创建 Director 和 System 邮箱，并为每个员工创建对应角色的邮箱
   for (const project of db.prepare("SELECT id FROM projects").all()) {
     db.prepare("INSERT OR IGNORE INTO agent_mailboxes(project_id,agent_id,role,created_at) VALUES (?,?,?,?)").run(project.id, "apix-director", "director", now());
     db.prepare("INSERT OR IGNORE INTO agent_mailboxes(project_id,agent_id,role,created_at) VALUES (?,?,?,?)").run(project.id, "system", "system", now());
     for (const employee of db.prepare("SELECT id,role FROM employees WHERE deleted_at IS NULL").all()) db.prepare("INSERT OR IGNORE INTO agent_mailboxes(project_id,agent_id,role,created_at) VALUES (?,?,?,?)").run(project.id, employee.id, /review|审查|评审/i.test(employee.role) ? "reviewer" : "employee", now());
   }
 
+  /** messagePayload - 将消息内容转换为字符串格式 */
   function messagePayload(value) {
     if (typeof value === "string") return value;
     try { return JSON.stringify(value ?? {}); } catch { throw new Error("消息 payload 必须可序列化"); }
   }
+  /** messageBytes - 计算字符串的 UTF-8 字节长度 */
   function messageBytes(value) { return Buffer.byteLength(value, "utf8"); }
+
+  /**
+   * agentRole - 根据 Agent ID 推断其角色
+   * @returns 'director' | 'system' | 'user' | 'employee' | 'reviewer' | null
+   */
   function agentRole(projectId, agentId) {
     if (agentId === "apix-director" || agentId === "director") return "director";
     if (agentId === "system") return "system";
@@ -27,11 +56,18 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     if (!employee) return null;
     return /review|审查|评审|reviewer/i.test(employee.role) ? "reviewer" : "employee";
   }
+  /** ensureMailbox - 确保邮箱存在，不存在则自动创建 */
   function ensureMailbox(projectId, agentId, role = agentRole(projectId, agentId)) {
     if (!projectId || !agentId || !role || !MESSAGE_ROLES.has(role)) throw new Error("Agent mailbox 身份无效");
     db.prepare("INSERT OR IGNORE INTO agent_mailboxes(project_id,agent_id,role,created_at) VALUES (?,?,?,?)").run(projectId, agentId, role, now());
     return row("SELECT * FROM agent_mailboxes WHERE project_id=? AND agent_id=?", projectId, agentId);
   }
+  /**
+   * expireMessages - 惰性过期扫描：将超时消息标记为 expired
+   * 无独立定时器，仅在 receive/ack/nack 等入口顺带执行
+   * @param projectId - 可选，限定项目范围
+   * @returns 过期消息数量
+   */
   function expireMessages(projectId = null) {
     const condition = projectId ? "project_id=? AND " : "";
     const params = projectId ? [projectId, now()] : [now()];
@@ -42,6 +78,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     }
     return expired.length;
   }
+  /** appendMessageEvent - 追加消息事件到事件日志，并触发 SSE 通知 */
   function appendMessageEvent(projectId, messageId, eventType, actorAgent, payload = {}) {
     const createdAt = now();
     const result = db.prepare("INSERT INTO agent_message_events(message_id,project_id,event_type,actor_agent,payload,created_at) VALUES (?,?,?,?,?,?)").run(messageId, projectId, eventType, actorAgent ?? null, JSON.stringify(payload), createdAt);
@@ -49,9 +86,11 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     notify({ projectId });
     return { id: Number(result.lastInsertRowid), messageId, projectId, eventType, actorAgent: actorAgent ?? null, payload, createdAt };
   }
+  /** assertProject - 验证项目存在性 */
   function assertProject(projectId) {
     if (!row("SELECT id FROM projects WHERE id=?", projectId)) throw new Error("项目不存在");
   }
+  /** assertActor - 验证 Agent 在该项目的身份与权限 */
   function assertActor(projectId, agentId, allowedRoles = null) {
     const mailbox = row("SELECT * FROM agent_mailboxes WHERE project_id=? AND agent_id=? AND enabled=1", projectId, agentId);
     if (!mailbox) throw new Error("Agent 未注册到该项目的 mailbox");
@@ -59,12 +98,17 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     if (allowedRoles && !allowedRoles.includes(mailbox.role)) throw new Error("Agent 没有执行该操作的权限");
     return mailbox;
   }
+  /** ensureMessageAccess - 检查 Agent 是否有权操作该消息（读/确认/完成） */
   function ensureMessageAccess(message, agentId, action) {
     const actor = assertActor(message.project_id, agentId);
     if (action === "read" && actor.agent_id !== message.to_agent && actor.agent_id !== message.from_agent && !["director", "system"].includes(actor.role)) throw new Error("只能读取自己收发的消息");
     if (["ack", "nack", "complete"].includes(action) && actor.agent_id !== message.to_agent && !["director", "system"].includes(actor.role)) throw new Error("只能处理 mailbox 中发给自己的消息");
     return actor;
   }
+  /**
+   * blockedByDirector - Director 拦截网关：检查员工消息是否包含高风险执行请求
+   * @returns 拦截原因字符串，null 表示放行
+   */
   function blockedByDirector(input, fromRole, payload) {
     if (!["employee", "reviewer"].includes(fromRole)) return null;
     if (input.type === "request" && /(?:"action"\s*:\s*"(?:execute|launch|start_agent|write_file|delete_file)"|启动其他 agent|执行任务|删除文件)/i.test(payload)) return "员工执行请求必须由 Director 创建任务并经过审批";
@@ -74,21 +118,28 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     if (input.toProjectId && input.toProjectId !== input.projectId) return "跨项目消息默认拒绝";
     return null;
   }
+  /** publicMessage - 将消息转换为公开视图（自动解析 payload JSON） */
   function publicMessage(message) {
     if (!message) return null;
     return { ...message, payload: (() => { try { return JSON.parse(message.payload); } catch { return message.payload; } })() };
   }
 
+  /** registerMailbox - 注册新的 Agent 邮箱 */
   function registerMailbox(input) {
     assertProject(input.projectId);
     const role = agentRole(input.projectId, input.agentId);
     if (input.role && input.role !== role) throw new Error("mailbox 角色由 ApiX 根据 Agent 身份确定");
     return ensureMailbox(input.projectId, String(input.agentId ?? "").trim(), role);
   }
+  /** listMailboxes - 列出项目下所有邮箱 */
   function listMailboxes(projectId) {
     assertProject(projectId);
     return rows("SELECT * FROM agent_mailboxes WHERE project_id=? ORDER BY created_at", projectId);
   }
+  /**
+   * sendMessage - 发送消息，支持幂等投递、Director 拦截、任务关联
+   * 消息状态流转：queued → delivered → processing → completed/rejected/failed/expired
+   */
   function sendMessage(input) {
     assertProject(input.projectId);
     const from = String(input.from ?? input.fromAgent ?? "").trim();
@@ -139,6 +190,10 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(input.projectId, id, blockedReason ? "director.intercepted" : "message.created", "apix-director", { reason: blockedReason, from, to, type });
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
+  /**
+   * receiveMessages - 拉取发给指定 Agent 的待处理消息
+   * 将 queued 状态消息标记为 delivered，并返回完整消息列表
+   */
   function receiveMessages(input) {
     const projectId = input.projectId;
     const agentId = input.agentId;
@@ -157,6 +212,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     // Re-deliver unacknowledged messages; only mark the returned batch as delivered.
     return messages.map(message => publicMessage(row("SELECT * FROM agent_messages WHERE id=?", message.id)));
   }
+  /** ackMessage - 确认收到消息，将状态从 delivered 转为 processing */
   function ackMessage(id, input) {
     expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
@@ -170,6 +226,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(message.project_id, id, "message.acknowledged", input.agentId, { attemptNo });
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
+  /** completeMessage - 标记消息处理完成 */
   function completeMessage(id, input) {
     expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
@@ -181,6 +238,10 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(message.project_id, id, "message.completed", input.agentId, {});
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
+  /**
+   * nackMessage - 拒绝消息，支持指数退避重试
+   * 重试间隔 = min(60s, 2^retryCount)，超过最大重试次数则标记为 failed
+   */
   function nackMessage(id, input) {
     expireMessages();
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
@@ -196,6 +257,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(message.project_id, id, retryable ? "message.retry_scheduled" : "message.failed", input.agentId, { retryCount, nextRetryAt, error: input.error ?? null });
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
+  /** rejectMessage - Director 或 System 强制拒绝消息 */
   function rejectMessage(id, input) {
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
@@ -205,23 +267,30 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(message.project_id, id, "director.intercepted", input.agentId, { reason: input.reason ?? "Director rejected" });
     return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
   }
+  /** messageDetails - 获取消息详情，包含尝试记录、事件日志和关联交付物 */
   function messageDetails(id, agentId) {
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
     ensureMessageAccess(message, agentId, "read");
     return { message: publicMessage(message), attempts: rows("SELECT * FROM agent_message_attempts WHERE message_id=? ORDER BY attempt_no", id), events: rows("SELECT * FROM agent_message_events WHERE message_id=? ORDER BY id", id).map((item) => ({ ...item, payload: JSON.parse(item.payload) })), artifacts: rows("SELECT * FROM agent_message_artifacts WHERE message_id=?", id) };
   }
+  /** messageThread - 获取同一 correlationId 下的消息线程 */
   function messageThread(projectId, correlationId, agentId) {
     assertActor(projectId, agentId);
     if (!correlationId) throw new Error("缺少 correlationId");
     return rows("SELECT * FROM agent_messages WHERE project_id=? AND correlation_id=? AND (from_agent=? OR to_agent=? OR ? IN ('apix-director','system')) ORDER BY created_at,id", projectId, correlationId, agentId, agentId, agentId).map(publicMessage);
   }
+  /** messageEventsSince - 获取指定 ID 之后的消息事件（用于 SSE 增量同步） */
   function messageEventsSince(projectId, agentId, afterId = 0) {
     const mailbox = assertActor(projectId, agentId);
     expireMessages(projectId);
     const events = rows("SELECT e.* FROM agent_message_events e LEFT JOIN agent_messages m ON m.id=e.message_id WHERE e.project_id=? AND e.id>? AND (m.to_agent=? OR m.from_agent=? OR ? IN ('director','system')) ORDER BY e.id LIMIT 200", projectId, Number(afterId) || 0, agentId, agentId, mailbox.role).map((item) => ({ ...item, payload: JSON.parse(item.payload) }));
     return events;
   }
+  /**
+   * acquireLock - 获取资源租约锁
+   * TTL 范围：1 秒 ~ 1 小时，同一资源只允许一个活跃锁
+   */
   function acquireLock(input) {
     assertProject(input.projectId);
     assertActor(input.projectId, input.agentId);
@@ -238,6 +307,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(input.projectId, null, "lock.acquired", input.agentId, { lockId: lock.id, resourceType, resourceKey });
     return lock;
   }
+  /** renewLock - 续租锁，只能续租自己持有的未过期锁 */
   function renewLock(id, input) {
     const lock = row("SELECT * FROM agent_locks WHERE id=? AND released_at IS NULL", id);
     if (!lock || lock.owner_agent_id !== input.agentId) throw new Error("只能续租自己持有的锁");
@@ -246,6 +316,7 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     db.prepare("UPDATE agent_locks SET expires_at=? WHERE id=?").run(expiresAt, id);
     return { ...lock, expiresAt };
   }
+  /** releaseLock - 释放锁，只有持有者或 Director 可以释放 */
   function releaseLock(id, input) {
     const lock = row("SELECT * FROM agent_locks WHERE id=? AND released_at IS NULL", id);
     if (!lock) throw new Error("锁不存在或已释放");
@@ -255,11 +326,13 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     appendMessageEvent(lock.project_id, null, "lock.released", input.agentId, { lockId: id, resourceType: lock.resource_type, resourceKey: lock.resource_key });
     return { released: true };
   }
+  /** listLocks - 列出项目下的锁，可选包含已释放的 */
   function listLocks(projectId, includeReleased = false) {
     assertProject(projectId);
     db.prepare("UPDATE agent_locks SET released_at=? WHERE released_at IS NULL AND expires_at<=?").run(now(), now());
     return rows(`SELECT * FROM agent_locks WHERE project_id=? ${includeReleased ? "" : "AND released_at IS NULL"} ORDER BY created_at DESC`, projectId);
   }
+  /** attachMessageArtifact - 将交付物关联到消息，用于消息结果追溯 */
   function attachMessageArtifact(messageId, input) {
     const message = row("SELECT * FROM agent_messages WHERE id=?", messageId);
     if (!message) throw new Error("消息不存在");

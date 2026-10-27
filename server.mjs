@@ -1,3 +1,21 @@
+/**
+ * server.mjs - ApiX 控制台的 HTTP 入口文件
+ *
+ * 所属层级：入口层（整个后端服务的唯一入口）
+ * 核心功能：
+ *   1. 创建 HTTP 服务器并监听本机 127.0.0.1（不暴露到局域网/公网）
+ *   2. 路由分发：API 接口 → 员工通道 → 知识库/工具治理 → 通用路由表 → 静态文件
+ *   3. 安全中间件：Host/Origin 校验（防 DNS 重绑定）、所有者门禁（Cookie 鉴权）
+ *   4. 统一错误出口：ToolError 语义映射（401/404/405/409/413/500）
+ *   5. 优雅退出：SIGINT/SIGTERM 信号处理，先断 MCP 连接再退出进程
+ *
+ * 依赖关系：
+ *   - 调用 → control-plane.mjs（业务函数：知识库、工具治理、Agent 信箱等）
+ *   - 调用 → src/infrastructure/api-routes.mjs（路由表定义）
+ *   - 调用 → src/infrastructure/owner-access.mjs（所有者鉴权）
+ *   - 调用 → src/infrastructure/static-files.mjs（静态文件白名单）
+ *   - 被调用 → 无（这是最顶层入口）
+ */
 // ApiX 控制台 HTTP 入口:P7 重构后本文件只保留「执行管线 + 员工通道 + 知识/工具域 + 静态文件」。
 // 路由表与每条路由的请求体限额在 src/infrastructure/api-routes.mjs;管线统一负责 Host/Origin 校验、
 // 所有者门禁、405/404/409 语义(方法不匹配 405、路径未注册 404、legacy 未开启 409)与错误映射。
@@ -23,17 +41,41 @@ const contentTypes = {
 };
 // 读请求体:分块累积,超过 max(byteLimit 为真按字节,否则按字符)后丢弃内容但继续读完,再抛 413 —— 请求体
 // 完整消费后 socket 才能安全复用(P5:提前断开会让同连接池的下一个请求收到 ECONNRESET)。
+/**
+ * readBody - 读取 HTTP 请求体，带大小限制
+ *
+ * @param {import('http').IncomingMessage} request - Node.js 原始请求对象
+ * @param {number} maxBytes - 允许的最大字节/字符数
+ * @param {boolean} byteLimit - true 时按字节计数（用 Buffer.byteLength），false 时按字符计数
+ * @returns {Promise<string>} 请求体文本
+ * @throws {ToolError} 超过限额时抛 PAYLOAD_TOO_LARGE（HTTP 413）
+ *
+ * 设计意图：分块累积读取，超限后仍读完剩余数据再抛错——这样 socket 才能安全复用，
+ * 否则同连接池的下一个请求会收到 ECONNRESET（P5 修复）。
+ */
 async function readBody(request,maxBytes,byteLimit=false){
   request.setEncoding('utf8');let raw='',size=0;
   for await (const chunk of request) {size+=byteLimit?Buffer.byteLength(chunk):chunk.length;raw=size<=maxBytes?raw+chunk:'';}
   if(size>maxBytes)throw new ToolError('PAYLOAD_TOO_LARGE','请求过大','correct_input',{},413);
   return raw;
 }
+/**
+ * sendJson - 向客户端发送 JSON 响应
+ *
+ * @param {import('http').IncomingMessage} request - 请求对象（用于检查请求是否完整接收）
+ * @param {import('http').ServerResponse} response - 响应对象
+ * @param {number} status - HTTP 状态码
+ * @param {unknown} value - 要序列化为 JSON 的数据
+ *
+ * 如果请求体未完整接收（客户端发了 Content-Length 但中途断开），设置 Connection: close
+ * 告知客户端连接将关闭，避免 Keep-Alive 连接上的下一个请求出错。
+ */
 function sendJson(request,response,status,value){
   if(!request.complete&&(Number(request.headers['content-length'])>0||request.headers['transfer-encoding'])){response.setHeader("Connection","close");request.resume();}
   response.writeHead(status,{ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify(value));
 }
+// ===== HTTP 服务器主回调：每个请求都会走到这里 =====
 createServer(async (request,response)=>{
   // 地址里有非法百分号转义(比如孤立的 %)时,decodeURIComponent 会抛错;当场回 400,不再往下走。
   let pathname;
@@ -126,7 +168,9 @@ createServer(async (request,response)=>{
     }
     return;
   }
-  // ===== 静态文件区 (不是 /api 的请求都走到这里) =====
+// ===== 静态文件区 =====
+// 不是 /api 开头的请求都走到这里，用于提供前端 HTML/JS/CSS 等静态资源
+// 安全机制：Host 校验 + 所有者鉴权 + 白名单路径 + 目录穿越防护 + 只允许 GET/HEAD
   if(pathname==='/'||pathname==='/index.html'){
     if(![`127.0.0.1:${port}`,`localhost:${port}`].includes(request.headers.host??'')){response.writeHead(403);response.end('Forbidden host');return;}
     if(!ownerAccess.authorized(request)){response.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'});response.end(ownerLoginHtml);return;}
@@ -155,10 +199,15 @@ createServer(async (request,response)=>{
     response.writeHead(404);
     response.end("Not found");
   }
+// ===== 启动服务器 =====
 // 【只绑本机】监听 127.0.0.1:这台控制台持有模型密钥、能驱动进程执行任务,不适合暴露到局域网或公网。
 }).listen(port, "127.0.0.1", () => {
   process.stdout.write(`ApiX Web: http://127.0.0.1:${port}\n`);
 });
-// 【优雅退出】SIGINT/SIGTERM:先通知外部 MCP 服务断开再退出;4 秒兜底定时器防 MCP 关闭卡死,unref 不阻塞退出。
+// ===== 优雅退出 =====
+// SIGINT（Ctrl+C）或 SIGTERM 信号触发：
+// 1. 先通知外部 MCP 服务断开连接（closeMcpConnections）
+// 2. 4 秒兜底定时器防止 MCP 关闭卡死（unref 不阻塞进程退出）
+// shuttingDown 标志防止信号重复触发导致多次退出
 let shuttingDown=false;
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),4000).unref();void closeMcpConnections().finally(()=>process.exit(0));});

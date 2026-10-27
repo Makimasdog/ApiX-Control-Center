@@ -1,3 +1,19 @@
+/**
+ * 交付流程管理 (Delivery) — worktree 集成、代码变更提交到项目、审阅与验收
+ *
+ * 所属层级：助手层 - 交付管理
+ * 核心功能：
+ *   1. 任务基线快照——在任务开始时冻结代码状态作为对比基准
+ *   2. 最终快照与 diff 计算——任务结束时再次快照，计算净变更
+ *   3. 交付记录创建——将变更摘要、验证状态、模型摘要打包为可审阅的交付物
+ *   4. 审阅决策处理——支持 accept（接受）和 request_changes（请求修改）
+ *   5. 证据完整性校验——确保验收检查的所有证据可读取且未过期
+ * 依赖关系：
+ *   - 被 [→ 见 src/assistant/assistant-loop.ts] 的 createAssistantDelivery 创建
+ *   - 调用 [→ 见 src/assistant/assistant-tools.ts] 的 projectFingerprint
+ *   - 调用 [→ 见 src/projects/project-io.ts] 的 projectIo 隔离执行
+ *   - 调用 [→ 见 src/validation/node-project.ts] 的 sourceManifest
+ */
 import {projectIo} from '../projects/project-io.js';
 import {createHash,randomUUID} from 'node:crypto';
 import {lstatSync,readdirSync,realpathSync} from 'node:fs';
@@ -8,15 +24,29 @@ import {logLimits} from '../execution/command-logs.js';
 import {sourceManifest} from '../validation/node-project.js';
 import {projectScanLimits,scanProjectFile} from '../infrastructure/project-scan.js';
 
+/** 审阅容量限制配置——控制快照大小、diff 长度、保留天数等 */
 export const reviewLimits={items:projectScanLimits.items,bytes:projectScanLimits.bytes,textBytes:256*1024,artifactBytes:24*1024*1024,totalBytes:128*1024*1024,days:30,diffCharacters:16000,totalDiffCharacters:64000};
 const sha=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
+/** 会话接口子集——交付模块只需这些字段 */
 interface Session {id:string;project_id:string;status:string;version:number;needs_verification:number}
+/** 文件快照条目——记录单个文件的路径、哈希、大小和内容 */
 interface File {path:string;sha256:string;size:number;detail:string;content?:string}
+/** 项目快照——包含所有文件的元数据和指纹，用于基线和最终对比 */
 interface Snapshot {scopeVersion:1;manifest:string;files:File[];scope:{included:string;excluded:string[]};fingerprint:string}
+/** 任务记录——对应 task_started 事件 */
 interface Task {id:string;description:string;startedEventId:number;createdAt:string}
+/** 验证状态——来自 [→ 见 src/assistant/assistant-verification.ts] */
 interface Verification {verificationStatus:string;contract?:{version:string}|null;checks?:any[]}
+/** 交付记录接口——包含基线/最终快照引用、净变更、验证状态等 */
 export interface Delivery {id:string;version:number;taskId:string;sessionId:string;projectId:string;description:string;createdAt:string;baselineRef:string|null;finalRef:string|null;baselineVersion:string|null;manifest:string|null;fingerprint:string|null;netChanges:any[];scope:unknown;requiresVerification:boolean;verification:Verification;modelSummary:string;execution:unknown}
 const excluded=(name:string)=>['.npmrc','model-credentials.json','owner-access.json'].includes(name.toLowerCase())||name==='.git'||name==='node_modules'||name.startsWith('.tmp')||/^\.env(?:\.|$)|^id_(rsa|ed25519)$|\.(pem|key|pfx|p12)$/i.test(name);
+/**
+ * reviewSnapshot - 创建项目工作区的完整快照，用于基线和最终对比
+ * @param root - 项目根目录
+ * @param artifacts - 额外的产物路径列表（如 npm 构建产物）
+ * @returns 包含文件列表、指纹和 manifest 的快照对象
+ * 设计意图：快照前后各计算一次指纹，若不一致说明工作区在快照期间被外部修改，必须拒绝
+ */
 export function reviewSnapshot(root:string,artifacts:string[]=[]):Snapshot{
  root=realpathSync.native(root);const fingerprint=()=>artifacts.length?sourceManifest(root,artifacts).hash:projectFingerprint(root);const before=fingerprint(),files:File[]=[];let items=0,bytes=0,captured=0;
  function visit(dir:string){for(const name of readdirSync(dir).sort()){
@@ -29,6 +59,13 @@ export function reviewSnapshot(root:string,artifacts:string[]=[]):Snapshot{
  return {scopeVersion:1,manifest:sha(JSON.stringify(files.map(({path,sha256,size})=>({path,sha256,size})))),files,fingerprint:before,scope:{included:'项目内普通文件；文件字节，不包含目录属性',excluded:['.git','node_modules',...(artifacts.length?[]:['.tmp*']),'凭据文件','符号链接（拒绝）',...artifacts]}};
 }
 // Bounded line LCS after trimming common edges; large spans expose frozen before/after pages instead.
+/**
+ * reviewDiff - 计算两个文本内容的有界行级 diff
+ * @param before - 修改前的文本
+ * @param after - 修改后的文本
+ * @returns diff 字符串和是否完整的标志
+ * 设计意图：先裁剪公共前后缀，再对有界 LCS 计算 diff；超大跨度直接返回提示而非计算
+ */
 export function reviewDiff(before:string,after:string){
  const a=before.split('\n'),b=after.split('\n');let prefix=0,suffix=0;while(prefix<a.length&&prefix<b.length&&a[prefix]===b[prefix])prefix++;while(suffix<a.length-prefix&&suffix<b.length-prefix&&a[a.length-1-suffix]===b[b.length-1-suffix])suffix++;
  const x=a.slice(prefix,a.length-suffix),y=b.slice(prefix,b.length-suffix);if(x.length*y.length>200000)return {diff:'跨度超过有界 diff 预算；请读取冻结的修改前后内容',diffComplete:false};
@@ -37,6 +74,12 @@ export function reviewDiff(before:string,after:string){
  const diff=lines.join('\n');return {diff:diff.slice(0,reviewLimits.diffCharacters),diffComplete:diff.length<=reviewLimits.diffCharacters};
 }
 
+/**
+ * createAssistantDelivery - 创建交付管理模块，封装任务基线、快照、diff、审阅决策等全流程
+ * @param store - 数据库存储接口
+ * @param deps - 依赖对象（项目根目录、验证状态、审阅准入、指纹计算等）
+ * @returns 包含 current/start/ensureBaseline/observe/freeze/state/get/readFile/decide 方法的对象
+ */
 export function createAssistantDelivery(store:Store,deps:{root?:(projectId:string)=>string;verification(s:Session):Verification|Promise<Verification>;admit(s:Session):void;artifacts?(s:Session):string[];fingerprint?(s:Session):string|Promise<string>}){
  const {db,row,rows,now}=store;
  const event=(s:Session,role:string,kind:string,body:unknown)=>db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(s.id,role,kind,JSON.stringify(body),now());

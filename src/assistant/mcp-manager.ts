@@ -1,3 +1,17 @@
+/**
+ * mcp-manager.ts - MCP 外部工具集成：Model Context Protocol 服务端的生命周期管理
+ *
+ * 所属层级：助手层 - 工具系统
+ * 核心功能：
+ *   1. MCP 服务配置管理——保存/更新 MCP 服务端配置（stdio 和 HTTP 两种传输方式）
+ *   2. 连接管理——按需建立和复用 MCP 连接，支持自动重连和超时控制
+ *   3. 工具发现——从已连接的 MCP 服务发现可用工具并注册到本地工具表
+ *   4. 工具调用——通过 MCP 协议调用远程工具，带版本校验和取消支持
+ * 依赖关系：
+ *   - 被助手工具层调用，提供 MCP 工具的发现和调用能力
+ *   - 依赖 [→ 见 src/assistant/tool-registry.ts] 的工具注册和校验
+ *   - 依赖 @modelcontextprotocol/sdk 进行 MCP 协议通信
+ */
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -8,20 +22,31 @@ import {statSync} from 'node:fs';
 import {object,text,type Store} from '../coordination/contracts.js';
 import {createToolRegistry,type ToolDefinition} from './tool-registry.js';
 
+/** MCP 服务端配置：传输方式、命令、参数、环境变量等 */
 interface Config {id:string;name:string;transport:'stdio'|'http';command?:string;args:string[];url?:string;env:string[];headerEnv:Record<string,string>;enabled:boolean;version:number}
+/** 活跃的 MCP 连接：客户端实例 + 传输层 + 配置版本 */
 interface Connection {client:Client;transport:StdioClientTransport|StreamableHTTPClientTransport;version:number}
+/**
+ * 创建 MCP 管理器
+ * @param store - 数据库 Store
+ * @param deps - 项目路径和环境变量提供者
+ * @returns MCP 管理器，包含 configs / save / catalog / discover / call / close 方法
+ */
 export function createMcpManager(store:Store,deps:{project(id:string):{path:string};environment():Record<string,string|undefined>}){
   const {db,row,rows,now}=store;const connections=new Map<string,Promise<Connection>>();
   db.exec('CREATE TABLE IF NOT EXISTS apix_mcp_servers(project_id TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project_id,id));CREATE TABLE IF NOT EXISTS apix_mcp_tools(project_id TEXT NOT NULL,server_id TEXT NOT NULL,name TEXT NOT NULL,remote_name TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project_id,name))');
   const key=(projectId:string,id:string)=>projectId+':'+id;
   const configs=(projectId:string)=>{deps.project(projectId);return rows<{body:string}>('SELECT body FROM apix_mcp_servers WHERE project_id=? ORDER BY id',projectId).map(r=>JSON.parse(r.body) as Config);};
+  /** 关闭单个 MCP 连接（Windows 上先 taskkill 确保进程树终止） */
   async function closeConnection(c:Connection){
     // Kill the dedicated process tree before SDK close can lose the parent PID.
     const pid=c.transport instanceof StdioClientTransport?c.transport.pid:null;
     if(process.platform==='win32'&&pid)await new Promise<void>(resolve=>execFile('taskkill',['/PID',String(pid),'/T','/F'],{windowsHide:true,timeout:3000},()=>resolve()));
     await c.client.close().catch(()=>{});
   }
+  /** 断开指定 MCP 服务的连接 */
   async function disconnect(projectId:string,id:string,expected?:Connection){const k=key(projectId,id),pending=connections.get(k);if(!pending)return;if(expected){const actual=await pending.catch(()=>null);if(actual!==expected||connections.get(k)!==pending)return;}connections.delete(k);await pending.then(closeConnection,()=>{});}
+  /** save - 保存或更新 MCP 服务配置（含传输方式校验和安全检查） */
   async function save(projectId:string,input:Record<string,unknown>){
     deps.project(projectId);const id=text(input.id,40);if(!/^[a-z][a-z0-9-]*$/.test(id))throw new Error('MCP ID 只能包含小写字母、数字和连字符');
     const previous=configs(projectId).find(c=>c.id===id);if(input.version!==(previous?.version??0))throw new Error('MCP 配置已变化，请刷新');
@@ -37,6 +62,7 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
     db.prepare('INSERT INTO apix_mcp_servers VALUES (?,?,?) ON CONFLICT(project_id,id) DO UPDATE SET body=excluded.body').run(projectId,id,JSON.stringify(c));db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,id);await pending;return c;
   }
   const current=(projectId:string,id:string)=>{const c=configs(projectId).find(c=>c.id===id);if(!c?.enabled)throw new Error('MCP 服务已停用或不存在');return c;};
+  /** connect - 建立到 MCP 服务的连接（复用已有连接，带超时和取消支持） */
   async function connect(projectId:string,c:Config,signal?:AbortSignal){
     const k=key(projectId,c.id);let pending=connections.get(k);if(pending)return pending;
     pending=(async()=>{
@@ -52,7 +78,9 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
       catch{await closeConnection(connection);throw new Error('MCP 连接失败、超时或已取消；未执行工具，请检查服务配置');}
     })();connections.set(k,pending);try{return await pending;}catch(error){if(connections.get(k)===pending)connections.delete(k);throw error;}
   }
+  /** catalog - 返回当前已发现且配置版本匹配的 MCP 工具列表 */
   function catalog(projectId:string):ToolDefinition[]{const active=new Map(configs(projectId).filter(c=>c.enabled).map(c=>[c.id,c.version]));return rows<{server_id:string;body:string}>('SELECT server_id,body FROM apix_mcp_tools WHERE project_id=?',projectId).flatMap(r=>{const d=JSON.parse(r.body) as ToolDefinition;return d.version?.startsWith(active.get(r.server_id)+':')?[d]:[];});}
+  /** discover - 从所有已启用的 MCP 服务发现工具并持久化到数据库 */
   async function discover(projectId:string,signal?:AbortSignal){
     const errors:string[]=[];
     for(const c of configs(projectId).filter(c=>c.enabled)){
@@ -67,6 +95,7 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
       }catch{if(configs(projectId).find(saved=>saved.id===c.id)?.version===c.version){db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,c.id);await disconnect(projectId,c.id);}errors.push(c.name+'：无法发现工具，请检查连接、凭据或超时');}
     }return {tools:catalog(projectId),errors};
   }
+  /** call - 调用 MCP 远程工具（校验版本 → 建立连接 → 执行调用） */
   async function call(projectId:string,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal){
     const saved=row<{server_id:string;remote_name:string;body:string}>('SELECT * FROM apix_mcp_tools WHERE project_id=? AND name=?',projectId,name);if(!saved)throw new Error('MCP 工具尚未发现');const c=current(projectId,saved.server_id),definition=JSON.parse(saved.body) as ToolDefinition;
     if(definition.version!==version||!version.startsWith(c.version+':'))throw new Error('MCP 工具或配置已变化，请重新发现并批准');

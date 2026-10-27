@@ -1,7 +1,23 @@
-// Only explicit commands authorize a review; questions, quotations and negations must not change task state.
+/**
+ * 验收指令解析 - 正则匹配中文"确认验收"命令，解析任务验收请求
+ *
+ * 所属层级：协调层 - 工作流与恢复
+ * 核心功能：
+ *   1. 解析用户输入的中文验收指令（如"确认验收"、"验收通过 任务 1"等）
+ *   2. 仅匹配明确的确认命令，疑问句、引用、否定句不会触发状态变更
+ *   3. 支持可选的任务编号（1-999），不指定时表示验收全部任务
+ * 依赖关系：
+ *   - 被协调层主循环调用以判断用户是否发出了验收指令
+ *   - 不依赖其他 coordination 模块
+ */
+// 仅明确命令可授权验收；疑问句、引号和否定句不得变更任务状态
 export function taskAcceptanceRequest(content:string):{taskNumber?:number}|null {
   const value=content.trim();
+  // 正则匹配两种验收指令格式：
+  // 格式一：[请]确认验收通过|确认验收|验收通过|通过验收 [任务 N]
+  // 格式二：[请]确认|通过 任务 N [的]验收
   const match=/^(?:请)?(?:确认验收通过|确认验收|验收通过|通过验收)(?:\s*(?:任务\s*)?([1-9]\d{0,2}))?[。！!]?$/.exec(value)
     ?? /^(?:请)?(?:确认|通过)\s*任务\s*([1-9]\d{0,2})\s*(?:的)?验收[。！!]?$/.exec(value);
+  // 匹配成功返回任务编号（若有），否则返回 null 表示非验收指令
   return match?{...(match[1]?{taskNumber:Number(match[1])}:{})}:null;
 }

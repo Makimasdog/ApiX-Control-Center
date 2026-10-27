@@ -1,3 +1,36 @@
+/**
+ * control-plane.mjs - ApiX 全局依赖装配与控制平面
+ *
+ * 所属层级：装配层（服务初始化与业务函数聚合）
+ * 核心功能：
+ *   1. 初始化 SQLite 数据库、执行 schema 迁移（版本 1–12）
+ *   2. 创建所有服务实例：任务调度、员工管理、信箱、权限、推理、自主交付等
+ *   3. 提供 100+ 个业务函数供 HTTP 入口（server.mjs）调用
+ *   4. 管理 Agent 生命周期：启动、监控、健康检查、停止、恢复
+ *   5. 协调多 Agent 协作：计划、审批、工作区隔离、集成审查
+ *
+ * 依赖关系：
+ *   - 调用 → src/** 和 dist/src/** 下所有服务模块
+ *   - 调用 → agent-discovery.mjs（外部 Agent 扫描）
+ *   - 被调用 → server.mjs（HTTP 入口）
+ *   - 被调用 → web/** 前端界面
+ *
+ * 文件结构概览：
+ *   L1-57:    依赖导入
+ *   L58-311:  数据库初始化与 schema 迁移
+ *   L312-336: 内存状态与 CLI 路径缓存
+ *   L337-412: 核心服务实例创建
+ *   L414-499: 事件记录与工作区管理
+ *   L500-679: Agent 启动与执行监控
+ *   L681-905: 快照、员工/项目/任务/审批管理
+ *   L906-1214: Director 规划与协作计划
+ *   L1260-1329: 集成审查与交付应用
+ *   L1332-1441: Assistant 循环与 MCP 管理
+ *   L1455-1616: 导出函数与 Agent 工具通道
+ */
+
+// ===== 依赖导入区 =====
+// 工具注册与治理 [→ 见 src/assistant/tool-registry.ts, tool-governance.ts]
 import {createToolRegistry} from './dist/src/assistant/tool-registry.js';
 import {ToolError,errorInfo,redact} from './dist/src/assistant/tool-governance.js';
 import {createKnowledgeBase} from './dist/src/assistant/knowledge-base.js';
@@ -55,11 +88,16 @@ import {estimateTokens} from './dist/src/assistant/assistant-context.js';
 import {createMcpManager} from './dist/src/assistant/mcp-manager.js';
 import {createChatHistory} from './dist/src/assistant/chat-history.js';
 
+// ===== 数据库初始化与 Schema 迁移 =====
+// 加载环境变量（.env 文件）[→ 见 src/infrastructure/environment.mjs]
 loadEnvironment();
+// 数据目录：默认 ~/.apix-agent-os/，可通过 APIX_DATA_DIR 环境变量自定义
 const dataDir = process.env.APIX_DATA_DIR ?? join(homedir(), ".apix-agent-os");
 mkdirSync(dataDir, { recursive: true });
 const credentials=modelCredentials(dataDir);
+// 创建 SQLite 数据库连接，启用 WAL 模式（并发读优化）和外键约束
 const db = new DatabaseSync(join(dataDir, "apix.sqlite"));
+// Schema 迁移版本 1：创建基础表（项目、任务、审批、运行、事件、产物）
 db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON");
 db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
@@ -69,6 +107,8 @@ CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFE
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(id), source TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL);`);
 db.prepare("INSERT OR IGNORE INTO schema_migrations(version) VALUES (1)").run();
+// Schema 迁移版本 2：为 approvals 表添加 target_path 和 prompt_hash 字段
+// 用途：审批时记录目标路径和提示词哈希，防止任务内容被篡改后再批准
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=2").get()) {
   db.exec("BEGIN");
   try {
@@ -80,6 +120,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=2").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 3：创建 employees 表，为 tasks 添加 employee_id 字段
+// 用途：引入「员工」概念，每个 Agent 实例对应一个员工账户
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=3").get()) {
   db.exec("BEGIN");
   try {
@@ -89,6 +131,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=3").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 4：创建 plans、task_dependencies、workspaces 表
+// 用途：支持多步骤协作计划、任务依赖关系、Git worktree 隔离工作区
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=4").get()) {
   db.exec("BEGIN");
   try {
@@ -97,6 +141,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=4").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 5：创建 departments、project_repositories、workflow_packs、meetings 等表
+// 用途：支持部门管理、多仓库协作、工作流模板、评审会议等高级功能
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=5").get()) {
   db.exec("BEGIN");
   try {
@@ -125,6 +171,8 @@ ALTER TABLE plans ADD COLUMN mode TEXT NOT NULL DEFAULT 'director';`);
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 6：创建 conversations、memories、memory_revisions、memory_fts 表
+// 用途：支持对话历史、项目记忆（带全文检索 FTS5）、记忆版本追踪
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=6").get()) {
   db.exec("BEGIN");
   try {
@@ -148,6 +196,8 @@ CREATE TRIGGER memories_ad AFTER DELETE ON memories BEGIN DELETE FROM memory_fts
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 7：创建 director_threads、director_messages、director_proposals 表
+// 用途：支持 Director 主 Agent 对话线程、消息记录、规划提案
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=7").get()) {
   db.exec("BEGIN");
   try {
@@ -159,6 +209,8 @@ ALTER TABLE memories ADD COLUMN source_message_id TEXT REFERENCES director_messa
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 8：创建 agent_mailboxes、agent_messages、agent_locks 等表
+// 用途：实现 Agent 间异步消息通信（信箱机制）和分布式锁（租约锁）
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=8").get()) {
   db.exec("BEGIN");
   try {
@@ -247,6 +299,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=8").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 9：创建 coordination_sessions、coordination_turns、coordination_events 表
+// 用途：支持多 Agent 协调会话、轮次记录、事件追踪
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=9").get()) {
   db.exec("BEGIN");
   try {
@@ -274,6 +328,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=9").get()) 
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
+// Schema 迁移版本 10：为 agent_messages 添加 target_task_id、target_run_id、source_run_id
+// 用途：消息与具体任务/运行绑定，支持跨 Agent 消息路由
 if (!db.prepare("SELECT version FROM schema_migrations WHERE version=10").get()) {
   db.exec("BEGIN");
   try {
@@ -286,7 +342,9 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=10").get())
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
 }
-if (!db.prepare("SELECT version FROM schema_migrations WHERE version=11").get()) {
+// Schema 迁移版本 11：为 tasks 添加 input_commit、delivery_commit、delivery_fingerprint
+// 用途：记录任务输入时的 Git commit、交付时的 commit、交付物指纹（防篡改）
+if(!db.prepare('SELECT version FROM schema_migrations WHERE version=11').get()) {
   db.exec('BEGIN');
   try {
     db.exec(`ALTER TABLE tasks ADD COLUMN input_commit TEXT;
@@ -298,6 +356,8 @@ if (!db.prepare("SELECT version FROM schema_migrations WHERE version=11").get())
     db.exec('COMMIT');
   } catch(error){db.exec('ROLLBACK');throw error;}
 }
+// Schema 迁移版本 12：创建 execution_settings、runtime_pauses 表
+// 用途：支持执行控制（项目级配额、暂停状态）、运行时暂停记录
 if(!db.prepare('SELECT version FROM schema_migrations WHERE version=12').get()) {
   db.exec('BEGIN');
   try {
@@ -309,16 +369,24 @@ if(!db.prepare('SELECT version FROM schema_migrations WHERE version=12').get()) 
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }
+// ===== 内存状态与启动恢复 =====
+// now() 返回 ISO 8601 时间戳，用于所有数据库时间字段
 const now = () => new Date().toISOString();
+// running: 当前正在运行的 Agent 进程 Map（runId → 进程信息）
 const running = new Map();
+// preparingRuns: 正在启动中的 Agent 进程 Map（runId → 准备状态）
 const preparingRuns = new Map();
 
 // A process cannot be safely reattached after a control-plane restart.
+// 启动恢复：服务重启后，将上次未完成的运行和任务标记为 'unknown' 状态
+// 原因：进程无法在重启后重新接管，必须人工确认或自动恢复
 const recoveredTasks = db.prepare("SELECT id FROM tasks WHERE status IN ('running','stopping')").all();
 db.prepare("UPDATE runs SET status='unknown', status_source='recovery', ended_at=? WHERE status IN ('starting','running','stopping')").run(now());
 db.prepare("UPDATE tasks SET status='unknown', updated_at=? WHERE status IN ('running','stopping')").run(now());
 db.prepare("UPDATE director_messages SET status='failed',content='主 Agent 推理被服务重启中断，请重新发送消息。' WHERE status='processing'").run();
 
+// ===== CLI 路径缓存 =====
+// 缓存可执行文件路径（pi/codex/claude 等），每 10 秒刷新一次
 const executableCache = new Map();
 let executableRefresh;
 function refreshExecutables(){
@@ -354,8 +422,14 @@ export function runtimes() {
 }
 export async function scanRuntimes() { await Promise.all([refreshExecutables(),scanExternalAgents()]); return runtimes(); }
 
+// ===== 核心服务实例创建 =====
+// 以下代码创建所有核心服务实例，它们通过闭包互相引用
+// 注意：初始化顺序很重要，后面的服务可能依赖前面的服务
+
+// 数据库查询辅助函数
 const rows = (sql, ...params) => db.prepare(sql).all(...params);
 const row = (sql, ...params) => db.prepare(sql).get(...params);
+// store 对象封装数据库访问，传给各服务模块
 const store = { db, row, rows, now };
 const tokenUsage=createTokenUsage(store);
 const projectMemory=createProjectMemory(store);
@@ -411,11 +485,36 @@ const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listM
   }
 } });
 
+// ===== 事件记录与工作区管理 =====
+/**
+ * event - 记录运行事件到数据库
+ *
+ * @param {string} runId - 运行 ID
+ * @param {string} source - 事件来源（如 'apix'、'pi-rpc'、'codex-stream'）
+ * @param {string} kind - 事件类型（如 'run_started'、'stderr'、'tool_execution_start'）
+ * @param {Object} payload - 事件数据（JSON 序列化存储）
+ *
+ * 同时触发 coordinator.recordTask 通知任务状态变化
+ */
 function event(runId, source, kind, payload = {}) {
   db.prepare("INSERT INTO events(run_id,source,kind,payload,created_at) VALUES (?,?,?,?,?)").run(runId, source, kind, JSON.stringify(payload), now());
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
   if (run) coordinator.recordTask(run.task_id, `runtime.${kind}`, { runId, source, payload });
 }
+/**
+ * setRun - 更新运行状态，并同步更新关联的任务状态
+ *
+ * @param {string} runId - 运行 ID
+ * @param {string} status - 新状态（starting/running/completed/failed/cancelled/unknown/blocked）
+ * @param {string} source - 状态来源（apix/process-exit/workspace/recovery 等）
+ * @param {number|null} exitCode - 进程退出码（可选）
+ *
+ * 状态终态（completed/failed/cancelled/blocked）会触发：
+ * 1. 调度器结算（scheduling.settle）
+ * 2. 任务状态同步
+ * 3. 消息事件通知
+ * 4. 依赖任务调度
+ */
 function setRun(runId, status, source, exitCode = null) {
   db.prepare("UPDATE runs SET status=?,status_source=?,ended_at=CASE WHEN ? IN ('completed','failed','cancelled','unknown','blocked') THEN ? ELSE ended_at END,exit_code=COALESCE(?,exit_code) WHERE id=?").run(status, source, status, now(), exitCode, runId);
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
@@ -461,6 +560,19 @@ function recordOutput(runId, output, status) {
 async function gitRoot(projectPath) {
   try { return (await git(projectPath,["rev-parse", "--show-toplevel"],{ cwd: projectPath, encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] })).trim(); } catch { return null; }
 }
+/**
+ * workspaceFor - 获取任务的工作区路径
+ *
+ * @param {Object} task - 任务对象
+ * @param {Object} project - 项目对象
+ * @param {Function} assertCurrent - 断言函数，用于 TOCTOU 防护
+ * @returns {Promise<string>} 工作区路径（Git worktree 或源项目路径）
+ *
+ * 设计意图：
+ * - 有 plan_id 的任务使用 Git worktree 隔离工作区，防止并行任务互相干扰
+ * - worktree 基于源仓库的某个 commit 创建，确保任务在稳定的代码基线上工作
+ * - 无 plan_id 的简单任务直接返回源项目路径
+ */
 async function workspaceFor(task, project,assertCurrent=()=>{}) {
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
@@ -498,6 +610,26 @@ function eventForTask(taskId, source, kind, payload = {}) {
   if (run) event(run.id, source, kind, payload);
 }
 
+// ===== Agent 启动与执行监控 =====
+/**
+ * launch - 启动 Agent 执行任务
+ *
+ * @param {Object} task - 任务对象（包含 project_id、runtime、prompt、employee_id 等）
+ * @returns {Promise<string|null>} 运行 ID（runId），如果因额度限制推迟则返回 null
+ *
+ * 执行流程：
+ * 1. 准备阶段：获取项目信息、命令、供应商配置、上下文
+ * 2. 创建运行记录，预留额度
+ * 3. 创建工作区（Git worktree）
+ * 4. 启动子进程，注入环境变量和令牌
+ * 5. 监听 stdout/stderr，解析输出并记录事件
+ * 6. 进程退出时更新状态，记录输出，触发后续任务
+ *
+ * 安全机制：
+ * - TOCTOU 防护：每个 await 后重新检查任务状态
+ * - 额度控制：启动前检查配额，失败时暂停运行时
+ * - 健康监控：agentHealth 监控输出，超时触发停止
+ */
 async function launch(task) {
   coordinator.assertExecution(task);
   const project = row("SELECT * FROM projects WHERE id=?", task.project_id);
@@ -638,6 +770,19 @@ async function launch(task) {
   return runId;
 }
 
+/**
+ * handleNative - 解析 Agent 原生输出（JSON 格式）
+ *
+ * @param {string} runId - 运行 ID
+ * @param {string} runtime - 运行时类型（pi/claude/codex/gemini/opencode/kimi）
+ * @param {Object} item - 解析后的 JSON 事件
+ *
+ * 不同运行时的输出格式不同，本函数统一处理：
+ * - pi: RPC 协议（response/message_end/tool_execution_start 等）
+ * - claude: 流式事件（assistant/result）
+ * - codex: JSONL 格式（thread.started/turn.completed/item.completed 等）
+ * - gemini/opencode/kimi: 通过 normalizeWorkerEvent 标准化
+ */
 function handleNative(runId, runtime, item) {
   const active = running.get(runId);
   if (!active) return;
@@ -678,7 +823,18 @@ function handleNative(runId, runtime, item) {
   }
 }
 
+// ===== 快照与任务详情 =====
+// snapshotEpoch 用于生成 ETag，服务重启后 Epoch 变化，客户端缓存自动失效
 const snapshotEpoch=randomUUID();
+/**
+ * snapshot - 获取全量数据快照（用于前端同步）
+ *
+ * @param {string} ifNoneMatch - 客户端的 If-None-Match 头（ETag）
+ * @returns {Object} { etag, data } 或 { etag, notModified: true }
+ *
+ * 返回所有业务数据：项目、任务、员工、计划、消息、事件等
+ * 使用 ETag 机制避免重复传输未变化的数据
+ */
 export function snapshot(ifNoneMatch) {
   const etag='"'+snapshotEpoch+':'+row('SELECT total_changes() AS n').n+':'+row('PRAGMA data_version').data_version+':'+Math.floor(Date.now()/10000)+'"';
   if(ifNoneMatch===etag)return {etag,notModified:true};
@@ -717,6 +873,12 @@ export function snapshot(ifNoneMatch) {
   return {etag,data};
 }
 
+/**
+ * taskDetails - 获取单个任务的详细信息
+ *
+ * @param {string} id - 任务 ID
+ * @returns {Object} 包含任务、运行记录、审批、事件、产物的完整信息
+ */
 export function taskDetails(id) {
   const task = row("SELECT t.*,p.name AS project_name,e.name AS employee_name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN employees e ON e.id=t.employee_id WHERE t.id=?", id);
   if (!task) throw new Error("任务不存在");
@@ -730,6 +892,16 @@ export function taskDetails(id) {
   };
 }
 
+// ===== 员工管理 =====
+/**
+ * registerEmployee - 注册新员工（Agent 实例）
+ *
+ * @param {Object} input - { runtime, name, role, department }
+ * @returns {string} 员工 ID
+ *
+ * 每个员工对应一个 Agent 运行时（pi/codex/claude 等）
+ * 注册时自动为所有项目创建信箱
+ */
 export function registerEmployee(input) {
   const runtime = runtimes().find((item) => item.id === input.runtime && item.managed && item.available);
   const name = String(input.name ?? "").trim().slice(0, 100);
@@ -760,6 +932,15 @@ export function deleteEmployee(id) {
   db.prepare("UPDATE employees SET enabled=0,deleted_at=?,updated_at=? WHERE id=?").run(now(), now(), id);
 }
 
+// ===== 对话管理 =====
+/**
+ * createConversation - 创建新对话
+ *
+ * @param {Object} input - { projectId, title }
+ * @returns {string} 对话 ID
+ *
+ * 对话是任务的容器，一个对话可以有多个任务（多轮交互）
+ */
 export function createConversation(input) {
   const project = row("SELECT id FROM projects WHERE id=?", input.projectId);
   if (!project) throw new Error("项目不存在");
@@ -775,6 +956,16 @@ export function renameConversation(id, input) {
 }
 
 function projectAtDirectory(path,exceptId){return rows('SELECT id,path FROM projects').find(p=>p.id!==exceptId&&sameProjectDirectory(p.path,path));}
+// ===== 项目管理 =====
+/**
+ * createProject - 创建新项目
+ *
+ * @param {Object} input - { name, path, description, createDirectory }
+ * @returns {string} 项目 ID
+ *
+ * 项目是任务和协作的顶层容器，绑定本地目录
+ * 创建时自动为 director 和所有员工创建信箱
+ */
 export function createProject(input) {
   const name = String(input.name ?? "").trim().slice(0, 100);
   if (!name) throw new Error("请填写项目名称");
@@ -797,6 +988,16 @@ export function updateProject(id, input) {
   if (!sameProjectDirectory(path,existing.path) && row("SELECT id FROM tasks WHERE project_id=? AND status IN ('awaiting_approval','queued','running','stopping','unknown') LIMIT 1", id)) throw new Error("该项目有待处理或运行中的任务，暂不能修改目录");
   db.prepare("UPDATE projects SET name=?,path=?,description=? WHERE id=?").run(name, path, String(input.description ?? "").slice(0, 500), id);
 }
+// ===== 任务创建与审批 =====
+/**
+ * createTask - 创建新任务
+ *
+ * @param {Object} input - { projectId, employeeId, prompt, conversationId, resumesTaskId }
+ * @returns {Object} { taskId, approvalId, conversationId }
+ *
+ * 任务创建后进入 'awaiting_approval' 状态，需要人工审批后才能执行
+ * 审批记录包含目标路径和提示词哈希，防止篡改后再批准
+ */
 export function createTask(input) {
   const project = row("SELECT id,path FROM projects WHERE id=?", input.projectId);
   const employee = row("SELECT * FROM employees WHERE id=? AND enabled=1 AND deleted_at IS NULL", input.employeeId);
@@ -847,6 +1048,16 @@ function splitGoal(goal) {
     `验证结果并整理交付物：${clean}`,
   ];
 }
+// ===== Director 规划与协作计划 =====
+/**
+ * createDirectorPlan - 创建 Director 规划（多步骤任务）
+ *
+ * @param {Object} input - { projectId, goal }
+ * @returns {string} 计划 ID
+ *
+ * 将目标拆分为多个步骤，自动匹配员工，创建任务链
+ * 步骤之间可以有依赖关系，支持并行执行
+ */
 export function createDirectorPlan(input) {
   const project = row("SELECT * FROM projects WHERE id=?", input.projectId);
   const employees = rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter((employee) => runtimes().some((runtime) => runtime.id === employee.runtime && runtime.available));
@@ -872,6 +1083,19 @@ export function createDirectorPlan(input) {
 export function plans() {
   return rows("SELECT p.*,pr.name AS project_name,(SELECT COUNT(*) FROM tasks t WHERE t.plan_id=p.id) AS task_count,CASE WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.plan_id=p.id AND t.status IN ('failed','blocked','cancelled','unknown','rejected','needs_revision')) THEN 'blocked' WHEN (SELECT COUNT(*) FROM tasks t WHERE t.plan_id=p.id AND t.status IN ('completed','accepted'))=(SELECT COUNT(*) FROM tasks t WHERE t.plan_id=p.id) THEN 'completed' WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.plan_id=p.id AND t.status IN ('running','stopping')) THEN 'running' WHEN EXISTS (SELECT 1 FROM tasks t WHERE t.plan_id=p.id AND t.status='queued') THEN 'queued' ELSE p.status END AS derived_status FROM plans p JOIN projects pr ON pr.id=p.project_id ORDER BY p.created_at DESC");
 }
+/**
+ * resolveApproval - 处理任务审批
+ *
+ * @param {string} id - 审批 ID
+ * @param {boolean} approved - 是否批准
+ * @returns {Promise<string|null>} 运行 ID（批准并启动时）或 null（等待/拒绝）
+ *
+ * 审批流程：
+ * 1. 检查审批状态和任务内容是否被篡改
+ * 2. 检查依赖任务状态（前置任务必须完成）
+ * 3. 检查额度配额（是否允许启动）
+ * 4. 调用 launch() 启动 Agent
+ */
 export async function resolveApproval(id, approved) {
   const approval = row("SELECT * FROM approvals WHERE id=?", id);
   if (!approval || approval.status !== "pending") throw new Error("审批已处理或不存在");
@@ -1092,6 +1316,16 @@ function normalizeDirectorSteps(rawSteps, goal, employees) {
   });
 }
 
+/**
+ * sendDirectorMessage - 发送 Director 对话消息
+ *
+ * @param {Object} input - { projectId, content }
+ * @returns {Promise<Object>} { threadId, proposalId, mode }
+ *
+ * Director 是主 Agent，负责理解用户需求并生成可编辑的执行提案
+ * 调用 LLM 生成结构化响应（reply/goal/steps/memoryCandidates）
+ * 如果 LLM 失败，回退到规则引擎生成草案
+ */
 export async function sendDirectorMessage(input) {
   const project = row("SELECT * FROM projects WHERE id=?", input.projectId);
   const content = String(input.content ?? "").trim();
@@ -1257,6 +1491,23 @@ export function createManagerReview(input) {
   return { taskId, approvalId };
 }
 
+// ===== 集成审查与交付应用 =====
+/**
+ * prepareIntegration - 准备集成审查（多任务成果合并）
+ *
+ * @param {Object} input - { planId, repositoryId }
+ * @returns {Promise<Object>} { id, status, report, workspacePath }
+ *
+ * 将同一计划下多个任务的成果合并到集成工作区：
+ * 1. 检查所有任务已验收（accepted）
+ * 2. 检查基线一致（所有 worktree 基于同一 commit）
+ * 3. 逐个应用 diff，检查冲突
+ * 4. 生成集成报告（applied/conflicts/changedFiles）
+ *
+ * 安全机制：
+ * - 未跟踪文件判为冲突（防止意外覆盖）
+ * - 使用 git apply --check 预检查，不自动合并
+ */
 export async function prepareIntegration(input) {
   const plan = row("SELECT * FROM plans WHERE id=?", input.planId);
   if (!plan) throw new Error("计划不存在");
@@ -1299,6 +1550,18 @@ export async function prepareIntegration(input) {
   return { id, status, report, workspacePath: integrationPath };
 }
 
+/**
+ * applyIntegration - 应用集成变更到源仓库
+ *
+ * @param {string} id - 集成审查 ID
+ * @returns {Promise<Object>} { applied, repositoryPath }
+ *
+ * 将集成工作区的变更应用到源仓库（人工批准后执行）
+ * 二次校验：源仓库 HEAD 未变化、工作区干净、patch 摘要一致
+ *
+ * 设计意图：参与方是不受控的第三方 Agent，自动合并会把语义冲突伪装成
+ * “看着没错”的代码；行级不一致退回人工，符合“过程可追溯、结果需验收”
+ */
 const applyingRepositories=new Set();
 export async function applyIntegration(id) {
   const review = row("SELECT * FROM integration_reviews WHERE id=?", id);
@@ -1329,6 +1592,9 @@ export async function applyIntegration(id) {
 }
 export function closeStore() { db.close(); }
 
+// ===== Assistant 循环与 MCP 管理 =====
+// coordinator 是核心协调器，负责需求分析、计划生成、任务调度、质量审查等
+// [→ 见 dist/src/coordination/coordinator.js]
 let notifyAssistant=()=>{};
 const coordinator = createCoordinator({ ...store,projectContext:(projectId,query,id)=>projectMemory.context(projectId,query,id,'coordinator'),saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
@@ -1346,6 +1612,8 @@ for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.reco
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
 const assistantProject=id=>{const project=row('SELECT * FROM projects WHERE id=?',id);if(!project)throw new Error('项目不存在');const rel=relative(realpathSync.native(project.path),realpathSync.native(dataDir));if(!rel||rel!=='..'&&!rel.startsWith('..'+sep)&&!isAbsolute(rel))throw new Error('工作区不能包含 ApiX 的内部状态目录');return project;};
+// MCP（Model Context Protocol）管理器，用于连接外部工具服务
+// [→ 见 dist/src/assistant/mcp-manager.js]
 const mcp=createMcpManager(store,{project:assistantProject,environment:()=>workerEnvironment(process.env,'mcp',managerApiKeys())});
 export const mcpServers=projectId=>({servers:mcp.configs(projectId),tools:mcp.catalog(projectId)});
 export const saveMcpServer=(projectId,input)=>mcp.save(projectId,input);
@@ -1358,6 +1626,8 @@ const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(pr
 export const knowledgeBase=createKnowledgeBase(store);
 export const toolGovernance=createToolGovernance(store);
 export const toolProgress=createToolProgress(store);
+// assistant 是 Assistant 循环实例，负责与用户交互、调用工具、管理对话
+// [→ 见 dist/src/assistant/assistant-loop.js]
 const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance:toolGovernance,progress:toolProgress,memory:projectMemory,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:id=>{const config=conversationModels.get('assistant',id).settings;return Number(config.contextWindow??getProviderConfig(config.provider)?.models.find(m=>m.id===config.model)?.contextWindow??process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768);},
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
@@ -1418,6 +1688,8 @@ const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance
 });
 notifyAssistant=id=>assistant.notify(id);
 setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
+// ===== 导出函数与 Agent 工具通道 =====
+// 以下导出函数供 server.mjs 调用，实现 HTTP API
 export const createAssistantSession=assistant.create;
 export const assistantSession=assistant.details;
 export const assistantSessions=assistant.list;
@@ -1449,6 +1721,8 @@ const history=createChatHistory(store,(kind,id)=>{
 });
 export const chatHistory=(projectId,view)=>history.list(projectId,view);
 export const changeChatHistory=(kind,id,input)=>history.change(kind,id,input);
+// 定时任务：任务队列复核（每 5 秒）
+// 用途：服务重启后或错过通知时，重新调度已批准但未启动的任务
 // Reconcile approved queued work after restart or missed completion notifications; admission still enforces pauses and quotas.
 setInterval(()=>{try{pumpTasks();}catch{process.stderr.write('任务队列复核失败\n');}},5000).unref();
 
@@ -1498,6 +1772,23 @@ export const removeAgentProvider=agentProviders.remove;
 export const schedulingView=scheduling.view;
 export function saveSchedulingPolicy(projectId,input){const result=scheduling.savePolicy(projectId,input);pumpTasks();return result;}
 export function settleSchedulingCost(projectId,input){const result=scheduling.settleReported(projectId,input);memory.append(projectId,projectId,'budget.manually_settled',{id:input.id,actualMinor:input.actualMinor,source:'user_reported'});pumpTasks();return result;}
+// ===== 任务恢复与交付冻结 =====
+/**
+ * recoverTask - 恢复失败或中断的任务
+ *
+ * @param {string} id - 任务 ID
+ * @param {Object} input - { revision, employeeId, runId, fingerprint, reviewed, confirmedStopped }
+ * @param {string} source - 恢复来源（user/policy）
+ * @param {string} repairPrompt - 修复提示词（可选）
+ * @returns {Promise<Object>} { session, failure }
+ *
+ * 恢复流程：
+ * 1. 检查前置任务已验收
+ * 2. 检查工作区状态（代码未变化）
+ * 3. 检查原进程已停止
+ * 4. 人工确认（unknown 状态需确认已停止）
+ * 5. 创建新审批并启动
+ */
 export async function recoverTask(id,input,source='user',repairPrompt) {
   const {task}=coordinator.assertRetry(id,input);
   if(rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',id).some(t=>t.status!=='accepted'))throw new Error('请先恢复并验收前置任务');
@@ -1528,6 +1819,16 @@ export async function freezeHistoricalDelivery(id,input) {
   if(permissions.get(task.project_id).mode==='read_only')throw new Error('只读模式不能冻结交付');
   return (await codeHandoffs.freeze(task,input.fingerprint,()=>{if(permissions.get(task.project_id).mode==='read_only')throw new Error('只读模式不能冻结交付');}));
 }
+// ===== Agent 消息与工具通道 =====
+/**
+ * receiveAgentMessages - 接收 Agent 消息（员工拉取）
+ *
+ * @param {Object} actor - 认证后的 Agent 信息（project_id, agent_id, task_id, run_id）
+ * @returns {Array} 消息列表
+ *
+ * 员工通过此函数从信箱拉取发给自己的消息
+ * 同时更新 run 的 mailbox_seen_at 时间戳
+ */
 export function receiveAgentMessages(actor) {
   db.prepare('UPDATE runs SET mailbox_seen_at=? WHERE id=?').run(now(),actor.run_id);
   return receiveMessages({projectId:actor.project_id,agentId:actor.agent_id,targetTaskId:actor.task_id,targetRunId:actor.run_id});
@@ -1596,6 +1897,24 @@ export function saveConversationModel(kind,id,input){
 }
 
 // Host tools for running employees: identity is exclusively derived from the live run token.
+/**
+ * invokeAgentTool - 调用员工工具（宿主提供的只读工具）
+ *
+ * @param {Object} actor - 认证后的 Agent 信息
+ * @param {string} name - 工具名称
+ * @param {Object} args - 工具参数
+ * @returns {Promise<unknown>} 工具执行结果
+ *
+ * 员工通道仅开放已声明的只读宿主工具：
+ * - search_knowledge / read_knowledge：知识库检索
+ * - read_file / list_files / search_files：文件读取
+ * - diagnose_project：项目诊断
+ *
+ * 安全机制：
+ * - 工具白名单（防止越权操作）
+ * - 执行前后 TOCTOU 检查（运行状态和授权未变化）
+ * - 工具治理（版本控制、审计日志）
+ */
 export async function invokeAgentTool(actor,name,args){
   const subject=actor.agent_id,projectId=actor.project_id,sessionId='agent:'+actor.run_id,registry=createToolRegistry(),definition=registry.get(name);
   const version=toolGovernance.get(projectId,subject).version+permissions.get(projectId,subject).version*1000000;

@@ -1,16 +1,55 @@
+/**
+ * project-memory.ts - 项目记忆：项目级长期记忆的持久化与检索
+ *
+ * 所属层级：助手层 - 记忆系统
+ * 核心功能：
+ *   1. sensitiveMemory —— 检测文本中是否包含密钥、令牌、密码等敏感信息
+ *   2. 记忆的 CRUD —— 保存 / 读取 / 删除 / 列表，带版本乐观锁
+ *   3. 上下文检索 —— 根据查询内容召回相关记忆（recallNotes）
+ *   4. 设置管理 —— 控制自动记忆开关、压缩阈值、指令文件路径等
+ *   5. 数据迁移 —— 从旧版 memories 表平滑迁移到 assistant_notes 表
+ * 依赖关系：
+ *   - 被助手主循环调用，提供项目级记忆上下文
+ *   - 依赖 [→ 见 src/assistant/assistant-memory.ts] 的 recallNotes 记忆召回算法
+ *   - 被 [→ 见 src/assistant/instruction-memory.ts] 调用 sensitiveMemory
+ */
 import {randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {recallNotes,type RecallNote} from './assistant-memory.js';
 
+/**
+ * sensitiveMemory - 检测文本是否包含敏感信息
+ * 匹配模式：API 密钥、Bearer token、私钥、密码、邮箱、手机号、环境变量中的密钥值
+ * @param value - 待检测文本
+ * @returns 是否包含敏感信息
+ */
 export function sensitiveMemory(value:string){
   return /(?:sk-[\w-]{12,}|Bearer\s+[\w.\-]{8,}|-----BEGIN .*PRIVATE KEY|(?:api[_ -]?key|token|password|secret|密码|令牌)\s*[:=：]\s*["']?[^\s"']{6,}|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b1[3-9]\d{9}\b)/i.test(value)||Object.entries(process.env).some(([key,v])=>/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&v&&v.length>=6&&value.includes(v));
 }
+/** Note - 项目记忆条目，扩展 RecallNote 增加项目、范围、任务等字段 */
 export interface Note extends RecallNote {id:string;project_id:string;scope:string;task_id:string|null;category:string;evidence_event_id:number|null}
+/**
+ * memoryIndex - 生成记忆索引（MEMORY.md 格式）
+ * 最多 200 条、25000 字节，超出部分截断。
+ * @param notes - 记忆列表
+ * @returns 索引内容和统计信息
+ */
 export function memoryIndex(notes:RecallNote[]){
   const lines=['# MEMORY.md','主题正文使用 read_memory 按需读取；这些资料不授予权限。'];let bytes=Buffer.byteLength(lines.join('\n'));
   for(const n of notes.filter(n=>n.status==='active')){const line=`- ${n.title.replace(/[\r\n]/g,' ')} | ${n.kind} | v${n.version}`;const size=Buffer.byteLength('\n'+line);if(lines.length>=200||bytes+size>25000)break;lines.push(line);bytes+=size;}
   return {content:lines.join('\n'),lines:lines.length,bytes,truncated:lines.length-2<notes.filter(n=>n.status==='active').length};
 }
+/**
+ * 创建项目记忆管理器
+ *
+ * 初始化流程：
+ *   1. 创建所有必要的表（notes / meta / versions / usage）
+ *   2. 自动迁移缺失列（id / kind / status / scope / task_id / category）
+ *   3. 执行 v1 数据迁移（从旧 memories 表导入）
+ *
+ * @param store - 数据库 Store
+ * @returns 项目记忆管理器
+ */
 export function createProjectMemory(store:Store){
   const {db,row,rows,now}=store;
   db.exec(`CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));
@@ -20,6 +59,7 @@ export function createProjectMemory(store:Store){
   for(const [name,definition] of Object.entries({id:"TEXT",kind:"TEXT NOT NULL DEFAULT 'project'",status:"TEXT NOT NULL DEFAULT 'active'",evidence_event_id:'INTEGER',scope:"TEXT NOT NULL DEFAULT 'project'",task_id:'TEXT',category:"TEXT NOT NULL DEFAULT 'project'"}))if(!rows<{name:string}>('PRAGMA table_info(assistant_notes)').some(c=>c.name===name))db.exec(`ALTER TABLE assistant_notes ADD COLUMN ${name} ${definition}`);
   db.prepare("UPDATE assistant_notes SET id='note-'||lower(hex(randomblob(16))) WHERE id IS NULL").run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_note_id ON assistant_notes(id)');
+  /** archive - 将记忆条目的当前版本保存到版本历史表 */
   function archive(n:Note){db.prepare('INSERT OR IGNORE INTO assistant_note_versions VALUES (?,?,?,?)').run(n.id,n.version,JSON.stringify(n),now());}
   db.exec('SAVEPOINT migrate_memory_v1');
   try{
@@ -33,11 +73,17 @@ export function createProjectMemory(store:Store){
     }
     db.exec('RELEASE migrate_memory_v1');
   }catch(error){db.exec('ROLLBACK TO migrate_memory_v1');db.exec('RELEASE migrate_memory_v1');throw error;}
+  /** invalidate - 使项目的所有会话版本递增（强制刷新缓存） */
   function invalidate(project:string){if(row("SELECT name FROM sqlite_master WHERE type='table' AND name='assistant_sessions'"))db.prepare('UPDATE assistant_sessions SET version=version+1 WHERE project_id=?').run(project);}
+  /** settings - 获取项目的记忆配置（含默认值合并） */
   function settings(project:string){if(!row('SELECT id FROM projects WHERE id=?',project))throw new Error('项目不存在');return {schema:1,version:0,enabled:true,autoConfirm:false,threshold:0.75,userFile:'',managedFile:'',externalApprovals:[] as string[],...JSON.parse(row<{value:string}>('SELECT value FROM assistant_memory_meta WHERE key=?','project:'+project)?.value??'{}')};}
+  /** saveSettings - 保存项目记忆配置（带版本乐观锁） */
   function saveSettings(project:string,input:Record<string,unknown>){const old=settings(project);if(input.version!==old.version)throw new Error('记忆设置版本已变化');const next={...old,version:old.version+1};for(const k of ['enabled','autoConfirm'] as const)if(input[k]!==undefined){if(typeof input[k]!=='boolean')throw new Error('记忆开关无效');next[k]=input[k];}if(input.threshold!==undefined){const n=Number(input.threshold);if(n<0.5||n>0.9||!Number.isFinite(n))throw new Error('压缩阈值应为 50%–90%');next.threshold=n;}for(const k of ['userFile','managedFile'] as const)if(input[k]!==undefined){if(typeof input[k]!=='string'||input[k].length>1000)throw new Error('指令路径无效');next[k]=input[k];}if(input.externalApproval!==undefined){if(typeof input.externalApproval!=='string'||! /^[a-f0-9]{64}$/.test(input.externalApproval))throw new Error('导入确认无效');next.externalApprovals=[...new Set([...old.externalApprovals,input.externalApproval])];}db.exec('SAVEPOINT memory_settings');try{db.prepare('INSERT INTO assistant_memory_meta VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('project:'+project,JSON.stringify(next));invalidate(project);db.exec('RELEASE memory_settings');}catch(e){db.exec('ROLLBACK TO memory_settings');db.exec('RELEASE memory_settings');throw e;}return next;}
+  /** list - 列出项目的所有记忆（敏感记忆被隔离显示） */
   function list(project?:string){return rows<Note>('SELECT * FROM assistant_notes'+(project?' WHERE project_id=?':'')+' ORDER BY updated_at DESC,id',...(project?[project]:[])).map(n=>sensitiveMemory(n.title+' '+n.content)?{...n,title:'已隔离的敏感记忆',content:'[敏感内容已隔离，不可召回]',status:'disabled'}:n);}
+  /** read - 读取单条记忆的完整内容（校验范围和状态） */
   function read(project:string,title:string,id?:string,taskId?:string,sessionId?:string){const n=list(project).find(n=>id?n.id===id:n.title===title);if(!n||n.status!=='active'||n.scope==='task'&&n.task_id!==taskId||!settings(project).enabled)throw new Error('记忆不存在、未启用或不属于当前范围');if(sessionId)db.prepare('INSERT OR IGNORE INTO assistant_memory_usage VALUES (?,?,?,?,?,?)').run(project,n.id,sessionId,n.version,'assistant',now());return {...n,authority:'reference_only'};}
+  /** save - 保存或更新一条记忆（带敏感内容检测和版本控制） */
   function save(project:string,input:Record<string,unknown>,source='user'){
     const config=settings(project);const old=input.id?row<Note>('SELECT * FROM assistant_notes WHERE project_id=? AND id=?',project,String(input.id)):row<Note>('SELECT * FROM assistant_notes WHERE project_id=? AND title=?',project,String(input.title));
     if(source==='user'&&old&&input.version===undefined)throw new Error('编辑已有记忆必须提供版本');
@@ -54,7 +100,9 @@ export function createProjectMemory(store:Store){
     const n={id:old?.id??randomUUID(),project_id:project,title,content,source,version:(old?.version??0)+1,updated_at:now(),kind,status:input.disabled===true?'disabled':source==='user'||config.autoConfirm?'active':'candidate',scope,task_id:scope==='task'?task:null,category:String(input.category??old?.category??kind).slice(0,50),evidence_event_id:Number(input.evidence??old?.evidence_event_id)||null};
     db.exec('SAVEPOINT note_write');try{if(old)archive(old);db.prepare('DELETE FROM assistant_notes WHERE id=?').run(n.id);db.prepare('INSERT INTO assistant_notes(project_id,title,content,source,version,updated_at,id,kind,status,scope,task_id,category,evidence_event_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(project,n.title,n.content,n.source,n.version,n.updated_at,n.id,n.kind,n.status,n.scope,n.task_id,n.category,n.evidence_event_id);archive(n);if(source==='user')invalidate(project);db.exec('RELEASE note_write');}catch(e){db.exec('ROLLBACK TO note_write');db.exec('RELEASE note_write');throw e;}return n;
   }
+  /** remove - 删除一条记忆（带版本乐观锁） */
   function remove(project:string,id:string,version:number){const n=row<Note>('SELECT * FROM assistant_notes WHERE project_id=? AND id=?',project,id);if(!n||n.version!==version)throw new Error('记忆版本已变化');db.exec('SAVEPOINT note_delete');try{archive(n);db.prepare('DELETE FROM assistant_notes WHERE id=? AND version=?').run(id,version);invalidate(project);db.exec('RELEASE note_delete');}catch(e){db.exec('ROLLBACK TO note_delete');db.exec('RELEASE note_delete');throw e;}}
+  /** context - 根据查询生成记忆上下文（索引 + 召回结果） */
   function context(project:string,query:string,session:string,agent='assistant',taskId?:string,record=true){
     const notes=settings(project).enabled?list(project).filter(n=>n.status==='active'&&(n.scope==='project'||n.task_id===taskId)):[];
     const recalled=recallNotes(query,notes),indexNotes=agent==='assistant'?notes:notes.filter(n=>recalled.some(r=>r.title===n.title)||n.task_id===taskId&&taskId!==undefined),index=memoryIndex(indexNotes);

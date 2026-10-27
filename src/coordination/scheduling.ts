@@ -1,31 +1,83 @@
+/**
+ * 员工调度与额度管理 - 能力档案、账户配额、任务画像、候选打分、费用估算、预留/结算
+ *
+ * 所属层级：协调层 - 领域服务（第3层）
+ * 核心功能：
+ *   1. 能力档案管理（CapabilityProfile）：员工的模型、标签、工具、语言、上下文容量等
+ *   2. 账户配额管理：订阅/API 两种账户类型，额度观测、保留线、暂停与恢复
+ *   3. 任务画像（TaskProfile）：任务类型、文件范围、难度、工作量估算
+ *   4. 候选打分与选择：多维度排序（资格→费用→历史→熟悉度→负载→偏好）
+ *   5. 费用预留与结算：SAVEPOINT 事务保证预留/结算原子性
+ * 依赖关系：
+ *   - 被 coordinator.ts 和 architecture.ts 调用
+ *   - 依赖 contracts.ts 的基础类型
+ */
 import { createHash } from 'node:crypto';
 import { type Store, type Employee, type PlanStep, object, text } from './contracts.js';
 
+/** 员工能力档案：描述一个员工的模型、技能、工具和费用信息 */
 export interface CapabilityProfile {
-  model: string; tags: string[]; tools: string[]; languages: string[]; projectIds: string[];
-  accountId: string | null; contextTokens: number | null; version: number; updatedAt: string | null;
-  reasoningLevel?: number | null;
-  reasoningEffort?: string | null;
-  pricing?: {model:string;version:string;currency:string;inputMinorPerMillion:number;outputMinorPerMillion:number} | null;
+  model: string;              // 模型版本（如 'gpt-4o'、'claude-sonnet-4-20250514'）
+  tags: string[];             // 能力标签（如 'typescript'、'react'）
+  tools: string[];            // 工具声明（如 'bash'、'git'）
+  languages: string[];        // 编程语言
+  projectIds: string[];       // 熟悉的项目 ID 列表
+  accountId: string | null;   // 关联的计费账户 ID
+  contextTokens: number | null; // 上下文窗口容量（Token 数）
+  version: number;            // 乐观锁版本号
+  updatedAt: string | null;   // 最后更新时间
+  reasoningLevel?: number | null;  // 推理能力等级（1-5）
+  reasoningEffort?: string | null; // 推理强度（auto/low/medium/high/xhigh，仅 Codex）
+  pricing?: {model:string;version:string;currency:string;inputMinorPerMillion:number;outputMinorPerMillion:number} | null; // 费率信息
 }
+/** 任务画像：描述一个任务的技能要求、文件范围、工作量和费用估算 */
 export interface TaskProfile {
-  kind: 'implementation' | 'testing' | 'review' | 'analysis' | 'docs';
-  tags: string[]; tools: string[]; writePaths: string[]; contextTokens: number | null;
-  fixedEmployeeId: string | null; estimateMinor: number | null; minutes: number | null;
-  estimates: {employeeId:string;estimateMinor:number|null;minutes:number|null}[];
-  difficulty?: number | null;
-  workload?: {inputTokens:number;outputTokens:number;calls:number} | null;
+  kind: 'implementation' | 'testing' | 'review' | 'analysis' | 'docs'; // 任务类型
+  tags: string[];           // 所需能力标签
+  tools: string[];          // 所需工具
+  writePaths: string[];     // 写入文件范围（项目内相对路径）
+  contextTokens: number | null; // 所需上下文容量
+  fixedEmployeeId: string | null; // 用户指定的员工（不可自动替换）
+  estimateMinor: number | null;   // 费用上界（用户批准）
+  minutes: number | null;         // 预计执行时间（分钟）
+  estimates: {employeeId:string;estimateMinor:number|null;minutes:number|null}[]; // 各员工的单独估算
+  difficulty?: number | null;       // 推理难度（1-5）
+  workload?: {inputTokens:number;outputTokens:number;calls:number} | null; // 工作量估算
 }
+/** 计费账户：跟踪订阅或 API 账户的额度和状态 */
 interface Account {
-  id: string; alias: string; type: 'subscription' | 'api'; currency: string | null;
-  limitMinor: number | null; remainingPercent: number | null; reservePercent: number;
-  observedAt: string | null; resetsAt: string | null; version: number;
+  id: string;                  // 账户 ID
+  alias: string;               // 显示别名
+  type: 'subscription' | 'api'; // 账户类型
+  currency: string | null;     // 币种（API 账户必填）
+  limitMinor: number | null;   // 费用预算上限
+  remainingPercent: number | null; // 剩余额度百分比
+  reservePercent: number;      // 保留线百分比（触及此线时视为额度不足）
+  observedAt: string | null;   // 额度观测时间
+  resetsAt: string | null;     // 额度重置时间
+  version: number;             // 乐观锁版本号
 }
-interface Policy { version: number; quotaMaxAgeMinutes: number; requireFreshQuota: boolean; limitMinor: number | null; currency: string | null; managerAccountId:string|null;managerEstimateMinor:number|null }
+/** 项目调度策略：控制额度检查严格程度和费用预算 */
+interface Policy {
+  version: number;              // 乐观锁版本号
+  quotaMaxAgeMinutes: number;   // 额度快照最大有效时长
+  requireFreshQuota: boolean;   // 是否强制要求新鲜额度快照
+  limitMinor: number | null;    // 项目费用预算上限
+  currency: string | null;      // 预算币种
+  managerAccountId: string | null; // ApiX 推理账户 ID
+  managerEstimateMinor: number | null; // ApiX 每次推理费用上界
+}
+/** 空白能力档案默认值：用于未注册档案的员工 */
 const blankProfile: CapabilityProfile = { model:'',tags:[],tools:[],languages:[],projectIds:[],accountId:null,contextTokens:null,version:0,updatedAt:null };
+/**
+ * list - 校验值为字符串数组且不超过指定长度
+ * @param value - 待校验的未知值
+ * @param name - 字段名称（用于错误消息）
+ * @returns 去重后的字符串数组
+ */
 export function list(value: unknown, name: string): string[] {
   if (!Array.isArray(value) || value.length > 30 || value.some(v=>typeof v!=='string' || !v.trim() || v.length>200)) throw new Error(`${name} 必须为最多 30 项的文本数组`);
-  return [...new Set(value.map(v=>String(v).trim()))];
+  return [...new Set(value.map(v=>String(v).trim()))]; // 去重
 }
 function integer(value: unknown, name: string, max = 1_000_000_000): number | null {
   if (value === undefined || value === null) return null;
@@ -42,6 +94,11 @@ function currency(value: unknown): string | null {
   if (typeof value !== 'string' || !/^[A-Z]{3}$/.test(value)) throw new Error('币种应为三位大写代码');
   return value;
 }
+/**
+ * taskProfile - 从未知值解析并校验任务画像
+ * @param value - 待解析的未知值
+ * @returns 校验后的 TaskProfile 对象
+ */
 export function taskProfile(value: unknown): TaskProfile {
   const v = value === undefined ? {} : object(value);
   const kind = v.kind ?? 'implementation';
@@ -60,14 +117,31 @@ export function taskProfile(value: unknown): TaskProfile {
 }
 function forEmployee(spec:TaskProfile,employeeId:string):TaskProfile {const estimate=spec.estimates.find(e=>e.employeeId===employeeId);return estimate?{...spec,estimateMinor:estimate.estimateMinor,minutes:estimate.minutes}:spec;}
 function forecast(profile:CapabilityProfile,spec:TaskProfile){const rate=profile.pricing?.model===profile.model?profile.pricing:null;const w=spec.workload;if(!rate||!w)return null;const amount=((BigInt(w.inputTokens)*BigInt(rate.inputMinorPerMillion)+BigInt(w.outputTokens)*BigInt(rate.outputMinorPerMillion))*BigInt(w.calls)+999999n)/1000000n;return amount<=BigInt(Number.MAX_SAFE_INTEGER)?Number(amount):null;}
+/**
+ * overlaps - 判断两组文件路径是否有重叠（考虑目录前缀）
+ * @param a - 第一组路径
+ * @param b - 第二组路径
+ * @returns 是否存在重叠（用于判断并行任务是否可安全执行）
+ */
 export function overlaps(a: string[], b: string[]) { if(process.platform==='win32'){a=a.map(p=>p.toLowerCase());b=b.map(p=>p.toLowerCase());}return a.some(x=>b.some(y=>x===y || x.startsWith(y+'/') || y.startsWith(x+'/'))); }
 
+/**
+ * createScheduling - 创建员工调度引擎实例
+ * @param store - 数据库存储层
+ * @param dependencies - 外部依赖（员工列表、运行时可用性、权限检查等）
+ * @returns 包含完整调度功能的对象（profile/candidates/assign/reserve/settle 等）
+ * 设计意图：调度引擎是纯计算+数据库操作，不直接调用 LLM；
+ *   通过 dependencies 注入外部状态，保证可测试性和关注点分离。
+ */
 export function createScheduling(store: Store, dependencies: {
-  employees(): Employee[]; available(runtime: string): boolean; denied(projectId: string, employeeId: string, drafting?:boolean): boolean;
-  waiting(task: {id:string;project_id:string;employee_id:string;runtime:string}): string | null;
-  supportsModel?(runtime:string,employeeId?:string):boolean;
+  employees(): Employee[];           // 获取所有员工
+  available(runtime: string): boolean; // 运行时是否可用
+  denied(projectId: string, employeeId: string, drafting?:boolean): boolean; // 是否被拒绝
+  waiting(task: {id:string;project_id:string;employee_id:string;runtime:string}): string | null; // 是否有等待原因
+  supportsModel?(runtime:string,employeeId?:string):boolean; // 是否支持指定模型
 }) {
   const {db,row,rows,now}=store;
+  /** 当前活跃的 ApiX 推理预留 ID 集合（用于结算时判断进程是否仍在运行） */
   const activeManagers=new Set<string>();
   db.exec(`CREATE TABLE IF NOT EXISTS scheduling_profiles(employee_id TEXT PRIMARY KEY REFERENCES employees(id),body TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS scheduling_accounts(id TEXT PRIMARY KEY,body TEXT NOT NULL);
@@ -77,13 +151,17 @@ export function createScheduling(store: Store, dependencies: {
     CREATE TABLE IF NOT EXISTS scheduling_reservations(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,account_id TEXT,amount INTEGER,currency TEXT,state TEXT NOT NULL,actual INTEGER,created_at TEXT NOT NULL);`);
   db.exec('CREATE TABLE IF NOT EXISTS scheduling_account_pauses(account_id TEXT PRIMARY KEY,reason TEXT NOT NULL,source_id TEXT NOT NULL,created_at TEXT NOT NULL)');
   if(!rows<{name:string}>('PRAGMA table_info(scheduling_attempts)').some(c=>c.name==='observed_model'))db.exec('ALTER TABLE scheduling_attempts ADD COLUMN observed_model TEXT');
+  /** 获取员工能力档案（未注册则返回空白默认值） */
   function profile(id: string): CapabilityProfile { const saved=row<{body:string}>('SELECT body FROM scheduling_profiles WHERE employee_id=?',id);return saved?JSON.parse(saved.body) as CapabilityProfile:{...blankProfile}; }
+  /** 获取所有计费账户列表 */
   function accounts(): Account[] {return rows<{body:string}>('SELECT body FROM scheduling_accounts ORDER BY id').map(r=>JSON.parse(r.body) as Account);}
+  /** 获取项目调度策略（未设置则返回默认值） */
   function policy(projectId: string): Policy {
     if (!row('SELECT id FROM projects WHERE id=?',projectId)) throw new Error('项目不存在');
     const saved=row<{body:string}>('SELECT body FROM scheduling_policies WHERE project_id=?',projectId);
     return saved?JSON.parse(saved.body) as Policy:{version:0,quotaMaxAgeMinutes:60,requireFreshQuota:false,limitMinor:null,currency:null,managerAccountId:null,managerEstimateMinor:null};
   }
+  /** 保存员工能力档案（乐观锁校验版本号） */
   function saveProfile(id: string,input: Record<string,unknown>) {
     if (!row('SELECT id FROM employees WHERE id=? AND deleted_at IS NULL',id)) throw new Error('员工不存在');
     const previous=profile(id);if(input.version!==previous.version)throw new Error('能力档案已变化，请刷新');
@@ -102,6 +180,7 @@ export function createScheduling(store: Store, dependencies: {
       contextTokens:integer(input.contextTokens,'上下文容量'),accountId,version:previous.version+1,updatedAt:now()};
     db.prepare('INSERT INTO scheduling_profiles VALUES (?,?) ON CONFLICT(employee_id) DO UPDATE SET body=excluded.body').run(id,JSON.stringify(result));return result;
   }
+  /** 保存计费账户（乐观锁校验版本号） */
   function saveAccount(input: Record<string,unknown>) {
     const id=text(input.id,100);const previous=accounts().find(a=>a.id===id);
     if(input.version!==(previous?.version ?? 0))throw new Error('账户快照已变化，请刷新');
@@ -117,9 +196,13 @@ export function createScheduling(store: Store, dependencies: {
     if(previous && (previous.type!==result.type || previous.currency!==result.currency) && row("SELECT id FROM scheduling_reservations WHERE account_id=? AND state!='released' LIMIT 1",id))throw new Error('账户已有费用记录，不能更换计费类型或币种');
     db.prepare('INSERT INTO scheduling_accounts VALUES (?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body').run(id,JSON.stringify(result));return result;
   }
+  /** 按账户 ID 暂停共享账户（额度或速率错误时） */
   function pauseAccountId(accountId:string|null,sourceId:string) {if(accountId)db.prepare('INSERT INTO scheduling_account_pauses VALUES (?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET source_id=excluded.source_id,created_at=excluded.created_at').run(accountId,'运行时报告额度或速率限制，请核对后明确恢复',sourceId,now());}
+  /** 按员工 ID 暂停其关联账户 */
   function pauseAccount(employeeId:string,sourceId:string) {pauseAccountId(profile(employeeId).accountId,sourceId);}
+  /** 恢复已暂停的账户（需用户明确确认已核对额度） */
   function resumeAccount(input:Record<string,unknown>) {const id=text(input.id,100);const account=accounts().find(a=>a.id===id);if(!account || input.version!==account.version || input.reviewed!==true)throw new Error('请刷新账户并明确确认已核对额度');db.prepare('DELETE FROM scheduling_account_pauses WHERE account_id=?').run(id);return account;}
+  /** 保存项目调度策略（乐观锁校验版本号） */
   function savePolicy(projectId: string,input: Record<string,unknown>) {
     const old=policy(projectId);if(input.version!==old.version)throw new Error('调度策略已变化，请刷新');
     if(typeof input.requireFreshQuota!=='boolean')throw new Error('严格额度检查必须为布尔值');
@@ -131,14 +214,27 @@ export function createScheduling(store: Store, dependencies: {
     if(old.currency!==result.currency && row("SELECT id FROM scheduling_reservations WHERE project_id=? AND amount IS NOT NULL AND state!='released' AND currency IS NOT ? LIMIT 1",projectId,result.currency))throw new Error('项目已有其他币种的费用记录，不能隐式换汇');
     db.prepare('INSERT INTO scheduling_policies VALUES (?,?) ON CONFLICT(project_id) DO UPDATE SET body=excluded.body').run(projectId,JSON.stringify(result));return result;
   }
+  /**
+   * quota - 检查账户额度状态
+   * @returns 'known'=额度充足 | 'insufficient'=触及保留线 | 'stale'=快照过期 | 'unknown'=无数据
+   */
   function quota(account: Account | undefined,p: Policy) {
     if(!account || account.remainingPercent===null || !account.observedAt)return 'unknown';
     if(Date.now()-Date.parse(account.observedAt)>p.quotaMaxAgeMinutes*60000 || account.resetsAt && Date.parse(account.resetsAt)<=Date.now())return 'stale';
     return account.remainingPercent<=account.reservePercent?'insufficient':'known';
   }
+  /** 计算已用费用（已结算的实际费用 + 预留的估算费用） */
   function usage(projectId: string, accountId: string | null) {
     return row<{committed:number}>(`SELECT COALESCE(SUM(CASE WHEN state='settled' THEN actual WHEN state IN ('reserved','unmeasured') THEN amount ELSE 0 END),0) AS committed FROM scheduling_reservations WHERE ${accountId?'account_id=?':'project_id=?'}`,accountId ?? projectId)!.committed;
   }
+  /**
+   * check - 综合检查员工是否可执行指定任务
+   * @param projectId - 项目 ID
+   * @param employeeId - 员工 ID
+   * @param spec - 任务画像
+   * @param drafting - 是否为草案模式（草案时费用缺失仅警告不拒绝）
+   * @returns reasons=拒绝原因列表, warnings=警告列表, account=关联账户
+   */
   function check(projectId: string, employeeId: string, spec: TaskProfile, drafting=false): {reasons:string[];warnings:string[];account:Account|undefined} {
     spec=forEmployee(spec,employeeId);
     const p=policy(projectId);const e=dependencies.employees().find(e=>e.id===employeeId);const profileValue=profile(employeeId);const account=accounts().find(a=>a.id===profileValue.accountId);
@@ -168,9 +264,18 @@ export function createScheduling(store: Store, dependencies: {
     if(spec.estimateMinor!==null && account?.type!=='api')reasons.push('费用上界需要 API 账户');
     return {reasons:[...new Set(reasons)],warnings,account};
   }
+  /** 查询员工历史执行统计（样本数、验收率、返工率、平均耗时） */
   function history(employeeId: string, model: string, kind: string) {
     return row<{samples:number;accepted:number;rework:number;averageMs:number|null}>(`SELECT COUNT(*) AS samples,COALESCE(SUM(json_extract(e.payload,'$.accepted')=1),0) AS accepted,COALESCE(SUM(json_extract(e.payload,'$.accepted')=0),0) AS rework,AVG(CASE WHEN r.ended_at IS NOT NULL THEN (julianday(r.ended_at)-julianday(r.started_at))*86400000 END) AS averageMs FROM scheduling_attempts a JOIN runs r ON r.id=a.run_id JOIN events e ON e.run_id=r.id AND e.kind='task_reviewed' AND e.source='user' AND json_type(e.payload,'$.type') IS NULL AND json_type(e.payload,'$.accepted') IN ('true','false') WHERE a.employee_id=? AND a.model=? AND a.model!='' AND a.observed_model=a.model AND a.kind=?`,employeeId,model,kind)!;
   }
+  /**
+   * candidates - 为任务生成排序后的候选员工列表
+   * @param projectId - 项目 ID
+   * @param spec - 任务画像
+   * @param preferred - 优先选择的员工 ID（可选）
+   * @returns 按综合打分排序的候选列表（eligible 优先，然后按费用、历史、熟悉度等排序）
+   * 设计意图：多维度排序确保选择最合适的员工，而不是最简单的匹配。
+   */
   function candidates(projectId: string, spec: TaskProfile, preferred: string | null = null) {
     const items=dependencies.employees().map(e=>{
       const p=profile(e.id);const gate=check(projectId,e.id,spec,true);const stats=history(e.id,p.model,spec.kind);
@@ -187,36 +292,59 @@ export function createScheduling(store: Store, dependencies: {
       const forecasts=items.filter(i=>i.eligible && i.forecastMinor!==null);const comparableForecast=forecasts.length>0 && forecasts.every(i=>i.forecastCurrency===forecasts[0]!.forecastCurrency);
       return items.sort((a,b)=>Number(b.eligible)-Number(a.eligible) || (comparableForecast?(Number(a.forecastMinor===null)-Number(b.forecastMinor===null) || (a.forecastMinor??0)-(b.forecastMinor??0)):0) || Number(!!a.waiting)-Number(!!b.waiting) || b.history.accepted/Math.max(1,b.history.samples)-a.history.accepted/Math.max(1,a.history.samples) || a.queuedTasks-b.queuedTasks || Number(b.preferred)-Number(a.preferred) || a.employeeId.localeCompare(b.employeeId));
     }
-    // Missing fees are never zero, and different currencies are never converted implicitly.
+    // 排序逻辑：eligible 优先，然后按费用、历史表现、熟悉度、负载等综合打分
+    // 缺失费率不能视为零，不同币种不能隐式换算
     return items.sort((a,b)=>Number(b.eligible)-Number(a.eligible) || Number(!!a.waiting)-Number(!!b.waiting) || Number(b.history.samples>=3 && b.history.accepted===b.history.samples)-Number(a.history.samples>=3 && a.history.accepted===a.history.samples) || Number(b.projectFamiliar)-Number(a.projectFamiliar) || (comparable?(Number(a.estimateMinor===null)-Number(b.estimateMinor===null) || (a.estimateMinor ?? 0)-(b.estimateMinor ?? 0)):0) || Number(a.minutes===null)-Number(b.minutes===null) || (a.minutes ?? 0)-(b.minutes ?? 0) || a.queuedTasks-b.queuedTasks || Number(b.preferred)-Number(a.preferred) || a.employeeId.localeCompare(b.employeeId));
   }
+  /**
+   * assign - 为计划步骤分配员工并校验约束
+   * @param projectId - 项目 ID
+   * @param steps - 计划步骤列表
+   * @param reselect - 是否重新选择最优员工（false=保持原选择）
+   * @returns 分配完成的步骤列表（含调度决策记录）
+   * 设计意图：校验并行任务的文件范围不重叠，审查步骤尽量分配独立员工。
+   */
   function assign(projectId: string, steps: PlanStep[], reselect: boolean) {
     if(steps.some((s,i)=>s.dependsOn.some(n=>!Number.isInteger(n) || n<0 || n>=i)))throw new Error('依赖只能引用前序步骤');
     const selected=steps.map(step=>{const spec=taskProfile(step.scheduling);const options=candidates(projectId,spec,step.employeeId);const chosen=reselect?options.find(e=>e.eligible):options.find(e=>e.employeeId===step.employeeId && e.eligible);
       if(!chosen)throw new Error('没有满足任务能力、权限及预算约束的员工，请检查候选原因');
       return {...step,employeeId:chosen.employeeId,scheduling:spec,decision:{strategy:'balanced',selectedEmployeeId:chosen.employeeId,candidates:options,estimateSource:'user_approved_upper_bound'}};
     });
+    // 审查步骤尽量分配独立员工（避免自审）
     for(const step of selected)if(step.scheduling.kind==='review'){
       const authors=step.dependsOn.map(n=>selected[n]!.employeeId);
       if(reselect){const independent=step.decision.candidates.find(e=>e.eligible && !authors.includes(e.employeeId));if(independent){step.employeeId=independent.employeeId;step.decision.selectedEmployeeId=independent.employeeId;}}
       Object.assign(step.decision,{reviewMode:!authors.length?'unverified_independence':authors.includes(step.employeeId)?'self_review':'independent'});
     }
     function depends(index:number,other:number):boolean{return selected[index]!.dependsOn.some(n=>n===other || depends(n,other));}
+    // 校验并行任务写入范围不重叠（防止并发写冲突）
     for(let i=0;i<selected.length;i++)for(let j=0;j<i;j++)if(!depends(i,j) && overlaps(selected[i]!.scheduling.writePaths,selected[j]!.scheduling.writePaths))throw new Error('并行任务写入范围重叠，请增加依赖或调整文件归属');
     return selected;
   }
+  /** 绑定任务与调度决策（持久化到 scheduling_tasks 表） */
   function bind(taskId: string,spec: unknown,decision: unknown,projectId?:string) {const d=object(decision);db.prepare('INSERT INTO scheduling_tasks VALUES (?,?,?)').run(taskId,JSON.stringify(taskProfile(spec)),JSON.stringify({...d,configuration:projectId?fingerprint(projectId,[String(d.selectedEmployeeId)]):null}));}
+  /** 批准任务绑定（更新员工选择和配置指纹） */
   function approveBinding(taskId:string,projectId:string,employeeId:string) {
     const saved=row<{decision:string}>('SELECT decision FROM scheduling_tasks WHERE task_id=?',taskId);
     if(saved)db.prepare('UPDATE scheduling_tasks SET decision=? WHERE task_id=?').run(JSON.stringify({...JSON.parse(saved.decision),selectedEmployeeId:employeeId,configuration:fingerprint(projectId,[employeeId])}),taskId);
   }
+  /** 获取任务的调度画像 */
   function taskSpec(taskId:string):TaskProfile {const saved=row<{body:string}>('SELECT body FROM scheduling_tasks WHERE task_id=?',taskId);return taskProfile(saved?JSON.parse(saved.body):undefined);}
+  /** 断言任务绑定配置未变化（防止能力/账户变化后执行已过时的决策） */
   function assertBinding(taskId:string,projectId:string,employeeId:string){const saved=row<{decision:string}>('SELECT decision FROM scheduling_tasks WHERE task_id=?',taskId);const binding=saved?JSON.parse(saved.decision).configuration as string|null:null;if(binding && binding!==fingerprint(projectId,[employeeId]))throw new Error('能力、账户或调度配置已变化，请检查后重新批准任务');}
+  /** 准入检查：返回任务是否可执行（null=通过，否则返回拒绝原因） */
   function admission(task:{id:string;project_id:string;employee_id:string}) {
     const saved=row<{decision:string}>('SELECT decision FROM scheduling_tasks WHERE task_id=?',task.id);const binding=saved?JSON.parse(saved.decision).configuration as string|null:null;
     if(binding && binding!==fingerprint(task.project_id,[task.employee_id]))return '能力、账户或调度配置已变化，请检查后重新批准任务';
     return check(task.project_id,task.employee_id,taskSpec(task.id)).reasons.join('；') || null;
   }
+  /**
+   * reserve - 预留任务预算（SAVEPOINT 事务保证原子性）
+   * @param id - 预留 ID
+   * @param projectId - 项目 ID
+   * @param employeeId - 员工 ID
+   * @param spec - 任务画像
+   */
   function reserve(id:string,projectId:string,employeeId:string,spec:TaskProfile) {
     spec=forEmployee(spec,employeeId);
     db.exec('SAVEPOINT budget_admission');
@@ -228,11 +356,18 @@ export function createScheduling(store: Store, dependencies: {
       db.exec('RELEASE budget_admission');
     }catch(error){db.exec('ROLLBACK TO budget_admission');db.exec('RELEASE budget_admission');throw error;}
   }
+  /**
+   * settle - 结算预留记录（实际费用已知时调用）
+   * @param id - 预留 ID
+   * @param actual - 实际费用（null=未测量）
+   * @param unused - 是否未使用（true=释放预留）
+   */
   function settle(id:string,actual:number|null,unused=false) {
     activeManagers.delete(id);
     const amount=integer(actual,'观测费用');
     db.prepare("UPDATE scheduling_reservations SET state=?,actual=? WHERE id=? AND state='reserved'").run(unused?'released':amount===null?'unmeasured':'settled',amount,id);
   }
+  /** 人工核对结算（用户确认费用后调用） */
   function settleReported(projectId:string,input:Record<string,unknown>) {
     const id=text(input.id,200);const existing=row<{state:string}>('SELECT state FROM scheduling_reservations WHERE id=? AND project_id=?',id,projectId);
     if(!existing || !['unmeasured','reserved'].includes(existing.state) || input.reviewed!==true)throw new Error('只能明确审查后结算尚未测量的记录');
@@ -247,6 +382,12 @@ export function createScheduling(store: Store, dependencies: {
     if(updated.changes!==1)throw new Error('此费用记录已由其他请求处理，请刷新');
     return view(projectId);
   }
+  /**
+   * reserveManager - 为 ApiX 推理预留预算
+   * @param id - 预留 ID
+   * @param projectId - 项目 ID
+   * @returns true=预留成功，false=无需预留（无严格预算策略）
+   */
   function reserveManager(id:string,projectId:string) {
     const p=policy(projectId);const account=accounts().find(a=>a.id===p.managerAccountId);
     const unresolved=rows<{id:string}>("SELECT id FROM scheduling_reservations WHERE state='reserved' AND id LIKE 'assistant:%' AND (project_id=? OR account_id=?)",projectId,p.managerAccountId).find(r=>!activeManagers.has(r.id));
@@ -268,14 +409,24 @@ export function createScheduling(store: Store, dependencies: {
       db.exec('RELEASE manager_budget');activeManagers.add(id);return true;
     }catch(error){db.exec('ROLLBACK TO manager_budget');db.exec('RELEASE manager_budget');throw error;}
   }
+  /** 记录员工执行尝试（用于历史统计） */
   function attempt(runId:string,taskId:string,employeeId:string) {const p=profile(employeeId);db.prepare('INSERT INTO scheduling_attempts(run_id,employee_id,model,kind) VALUES (?,?,?,?)').run(runId,employeeId,p.model,taskSpec(taskId).kind);}
+  /** 观测实际使用的模型（用于校验员工是否按档案声明的模型执行） */
   function observeModel(runId:string,item:Record<string,unknown>) {
     const message=item.message && typeof item.message==='object'?item.message as Record<string,unknown>:{};
     const model=item.model ?? message.model;if(typeof model!=='string' || !model.trim() || model.length>200)return;
     db.prepare("UPDATE scheduling_attempts SET observed_model=CASE WHEN observed_model IS NULL OR observed_model=? THEN ? ELSE '[mixed models]' END WHERE run_id=?").run(model,model,runId);
   }
+  /** 查看项目调度全景（策略、账户、档案、预留记录） */
   function view(projectId:string) {const p=policy(projectId);const currencies=rows<{currency:string}>("SELECT DISTINCT currency FROM scheduling_reservations WHERE project_id=? AND amount IS NOT NULL AND state!='released'",projectId);return {strategy:'balanced',policy:p,accounts:accounts().map(a=>({...a,source:'manual',confidence:'user_reported',quotaState:quota(a,p),pause:row('SELECT * FROM scheduling_account_pauses WHERE account_id=?',a.id)??null,committedMinor:usage(projectId,a.id)})),profiles:dependencies.employees().map(e=>({employeeId:e.id,...profile(e.id)})),committedMinor:currencies.length>1?null:usage(projectId,null),ledger:rows('SELECT * FROM scheduling_reservations WHERE project_id=? ORDER BY rowid DESC LIMIT 100',projectId)};}
+  /** 获取计划的调度报告（每个任务的画像和决策） */
   function reports(planId:string) {return rows<{task_id:string;body:string;decision:string}>('SELECT s.* FROM scheduling_tasks s JOIN tasks t ON t.id=s.task_id WHERE t.plan_id=?',planId).map(r=>({taskId:r.task_id,profile:JSON.parse(r.body),decision:JSON.parse(r.decision)}));}
+  /**
+   * fingerprint - 计算调度配置指纹（用于检测配置变化）
+   * @param projectId - 项目 ID
+   * @param employeeIds - 相关员工 ID 列表（可选）
+   * @returns SHA-256 哈希值
+   */
   function fingerprint(projectId:string,employeeIds?:string[]) {const p=policy(projectId);const employees=dependencies.employees().filter(e=>!employeeIds || employeeIds.includes(e.id)).map(e=>({id:e.id,enabled:e.enabled,runtime:e.runtime,denied:dependencies.denied(projectId,e.id),available:dependencies.available(e.runtime),profile:profile(e.id)}));const accountIds=employees.map(e=>e.profile.accountId).concat(p.managerAccountId);return createHash('sha256').update(JSON.stringify({policy:p,accounts:accounts().filter(a=>accountIds.includes(a.id)),employees})).digest('hex');}
   return {profile,saveProfile,accounts,saveAccount,pauseAccount,pauseAccountId,resumeAccount,policy,savePolicy,candidates,assign,bind,approveBinding,taskSpec,assertBinding,admission,reserve,reserveManager,settle,settleReported,attempt,observeModel,view,reports,fingerprint};
 }
