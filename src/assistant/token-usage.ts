@@ -3,6 +3,7 @@ import type {Store} from '../coordination/contracts.js';
 import {unknownUsage,type ModelAttempt,type ModelUsage} from '../models/model-usage.js';
 interface UsageTotals extends ModelUsage {calls:number;invocations:number;failed:number;pending:number;incomplete:number;retries:number;durationMs:number;estimatedPromptTokens:number}
 
+/** 附加用量账本按请求尝试记账；独立于已有费用预留，不根据 token 推算或结算金额。 */
 export function createTokenUsage({db,row,rows,now}:Store){
   db.exec(`CREATE TABLE IF NOT EXISTS model_token_usage(
     id TEXT PRIMARY KEY,invocation_id TEXT NOT NULL,attempt INTEGER NOT NULL,project_id TEXT NOT NULL,
@@ -12,10 +13,12 @@ export function createTokenUsage({db,row,rows,now}:Store){
     estimated_prompt_tokens INTEGER NOT NULL,duration_ms INTEGER,created_at TEXT NOT NULL,
     UNIQUE(invocation_id,attempt));
     CREATE INDEX IF NOT EXISTS model_token_usage_scope ON model_token_usage(project_id,session_id,task_id,created_at);`);
+  // 网络调用前持久化 pending；进程意外退出后保留待确认状态，不伪造成功或零消耗。
   function start(input:{invocationId:string;attempt:number;projectId:string;sessionId?:string;taskId?:string;purpose:string;provider:string;model:string;apiType:string;estimatedPromptTokens:number}){
     const id=randomUUID();db.prepare('INSERT INTO model_token_usage(id,invocation_id,attempt,project_id,session_id,task_id,purpose,provider,model,api_type,status,estimated_prompt_tokens,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,\'pending\',?,?)')
       .run(id,input.invocationId,input.attempt,input.projectId,input.sessionId??null,input.taskId??null,input.purpose,input.provider,input.model,input.apiType,input.estimatedPromptTokens,now());return id;
   }
+  // 只允许 pending 记录结算一次，防止重复回调覆盖真实结果或掩盖保存失败。
   function finish(id:string,value:ModelAttempt){
     const u=value.usage;const result=db.prepare('UPDATE model_token_usage SET status=?,usage_complete=?,input_tokens=?,output_tokens=?,cached_input_tokens=?,cache_write_tokens=?,reasoning_tokens=?,duration_ms=? WHERE id=? AND status=\'pending\'')
       .run(value.status,Number(value.usageComplete),u.inputTokens,u.outputTokens,u.cachedInputTokens,u.cacheWriteTokens,u.reasoningTokens,value.durationMs,id);
@@ -31,14 +34,16 @@ export function createTokenUsage({db,row,rows,now}:Store){
         SUM(CAST(cache_write_tokens AS REAL)) cacheWriteTokens,SUM(CAST(reasoning_tokens AS REAL)) reasoningTokens,
         COALESCE(SUM(estimated_prompt_tokens),0) estimatedPromptTokens
         FROM model_token_usage WHERE project_id=? ${scope}`,projectId,...params)!;
-      // Untrusted provider counters must not overflow SQLite or become rounded actual totals.
+      // 先避免 SQLite 整数求和溢出，再拒绝超出安全整数范围的合计，不能把舍入值当精确用量。
       for(const key of Object.keys(unknownUsage()) as (keyof ModelUsage)[])if(r[key]!==null&&!Number.isSafeInteger(r[key]))r[key]=null;
+      // 各字段分别统计观测覆盖率：已有输入计数，不代表缓存、输出或推理计数也齐全。
       const coverage=Object.fromEntries(Object.keys(unknownUsage()).map(key=>{
         const column=({inputTokens:'input_tokens',outputTokens:'output_tokens',cachedInputTokens:'cached_input_tokens',cacheWriteTokens:'cache_write_tokens',reasoningTokens:'reasoning_tokens'} as Record<string,string>)[key]!;
         return [key,row<{known:number}>(`SELECT COUNT(${column}) known FROM model_token_usage WHERE project_id=? ${scope}`,projectId,...params)!.known];
       }));
       return {...r,coverage,cost:null};
     };
+    // 没有任务 ID 时只统计该会话的无任务记录，不能退化为整个项目或其他任务的数据。
     const scope=taskId?'AND session_id=? AND task_id=?':'AND session_id=? AND task_id IS NULL',params=taskId?[sessionId,taskId]:[sessionId];
     const recent=rows<Record<string,unknown>>(`SELECT id,attempt,purpose,provider,model,api_type apiType,status,usage_complete usageComplete,input_tokens inputTokens,output_tokens outputTokens,cached_input_tokens cachedInputTokens,cache_write_tokens cacheWriteTokens,reasoning_tokens reasoningTokens,estimated_prompt_tokens estimatedPromptTokens,duration_ms durationMs,created_at createdAt FROM model_token_usage WHERE project_id=? ${scope} ORDER BY created_at DESC,rowid DESC LIMIT 30`,projectId,...params);
     return {schema:1,source:'provider_usage',taskId,task:aggregate(scope,params),session:aggregate('AND session_id=?',[sessionId]),project:aggregate('',[]),recent,historyLimit:30,cost:null,externalCliUsage:'unknown'};

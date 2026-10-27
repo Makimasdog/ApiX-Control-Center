@@ -1046,10 +1046,12 @@ function managerApiKeys(){
   return [...new Set([...agentProviders.keyNames(),...settings.filter(Boolean).map(s=>s.apiKeyEnv||(!s.baseUrl?getProviderConfig(s.provider)?.defaultApiKeyEnv:'')).filter(Boolean)])];
 }
 
+// usageScope 只负责计量归属；与执行上下文分开，以兼容不改变生命周期的遗留入口。
 async function inferManager(prompt,onDelta,context,usageScope=context) {
   if(context&&!row('SELECT id FROM projects WHERE id=?',context.projectId))throw new Error('推理项目不存在');
   const settings=context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings());
   const invocationId=randomUUID(),taskId=context?.purpose==='assistant_loop'&&context.sessionId?row("SELECT e.body FROM assistant_events e JOIN assistant_sessions s ON s.id=e.session_id WHERE s.id=? AND s.project_id=? AND e.kind='task_started' ORDER BY e.id DESC LIMIT 1",context.sessionId,context.projectId)?.body:null;
+  // 请求开始即冻结任务归属，后续切换任务不能把本次消耗记到新任务。
   const frozenTaskId=taskId?JSON.parse(taskId).id:undefined;
   const purpose=usageScope?.usagePurpose??usageScope?.purpose??'unknown';
   let usageId;
@@ -1111,7 +1113,7 @@ export async function sendDirectorMessage(input) {
   let result;
   let fallbackReason = "";
   try {
-    // Attribute legacy usage without changing its frozen model/permission lifecycle.
+    // 只补遗留入口的用量归属，保持其冻结的模型选择、权限与执行生命周期。
     const raw = await inferManager(directorPrompt(project, history, employees, progress, content),undefined,undefined,{projectId:project.id,sessionId:thread.id,purpose:'legacy_director'});
     const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ""));
     if (!parsed || typeof parsed !== "object") throw new Error("答复格式无效");

@@ -37,6 +37,7 @@ export function createAssistantInference(deps:Dependencies){
     try{result=await deps.infer(prompt,undefined,{projectId,purpose:'assistant_loop',usagePurpose,sessionId,signal,modelSettings:settings});}
     catch(error:unknown){
       primary=error instanceof ModelCleanupUnknownError?new ModelCleanupUnknownError(safe(error)):error instanceof FaultError?new FaultError(safe(error),error.fault,error.retryAfterMs):new Error(safe(error));
+      // 用量持久化失败沿用费用账本的阻断机制，禁止静默丢账后继续同项目或共享账户推理。
       if(error instanceof InferenceAccountingError)record('token_usage',error);
       if(error instanceof FaultError?error.fault.category==='quota':deps.quotaFailure(error instanceof Error?error.message:'')){try{deps.pause(accountId,id);}catch(pauseError){record('pause',pauseError);}}
     }finally{if(reserved){try{deps.settle(id,null);}catch(error){record('settle',error);try{deps.pause(accountId,id);}catch(pauseError){record('pause',pauseError);}}}}

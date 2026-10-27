@@ -1,7 +1,9 @@
 import {html} from './html.js';
 import type {TokenUsageReport} from '../src/assistant/token-usage.js';
+// 缺失计数显示“未知”，不能用零替代，也不能把估算冒充供应商实际计数。
 const number=(value:unknown)=>typeof value==='number'?value.toLocaleString():'未知';
 const purposes:Record<string,string>={assistant_loop:'任务推理',compaction:'历史压缩',format_repair:'格式纠正',planning:'规划',discussion:'讨论',connection_test:'连接测试',legacy_director:'遗留规划'};
+/** 展示已知小计和逐字段覆盖率；缓存、推理是细分项，不能与输入、输出再次相加。 */
 export function tokenUsageView(value:TokenUsageReport){
   const task=value.task;
   const metrics=[['inputTokens','输入（含缓存）'],['outputTokens','输出（含推理）'],['cachedInputTokens','缓存读取'],['cacheWriteTokens','缓存写入'],['reasoningTokens','推理输出']] as const;

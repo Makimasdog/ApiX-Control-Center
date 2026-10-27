@@ -28,7 +28,7 @@ async function fixture(t,handler,work){
 for(const headers of [false,true])test(`deadline destroys request stalled at ${headers?'body':'headers'}`,{timeout:3000},async t=>{
   await fixture(t,(res,ready)=>{if(headers){res.writeHead(200,{'Content-Type':'application/json'});res.flushHeaders();}ready(headers?'body':'headers');},async(settings,s)=>{
     const result=inferModel(settings,'fixture',undefined,{timeoutMs:150});await s.entered;
-    // Setup and accounting share the deadline, so the attempt may have less than 150 ms left.
+    // 准备与记账共用截止时间，因此本次请求剩余时限可能不足 150ms。
     await assert.rejects(result,timeoutError);await s.closed;assert.equal(s.count(),1);
   });
 });

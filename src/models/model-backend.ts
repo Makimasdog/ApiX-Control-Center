@@ -53,10 +53,12 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
   if(!Number.isSafeInteger(attempts)||attempts<1||attempts>3)throw new Error('模型重试次数应为 1–3');
   for(let attempt=1;;attempt++){
     const started=Date.now();let usage=unknownUsage(),usageComplete=false,status:ModelAttempt['status']='failed',primary:unknown;
+    // 登记失败时直接停止，确保请求不会在缺少账本记录的情况下发往供应商。
     options.onAttemptStart?.(attempt);
     try{
       try{const result=await inferAttempt(saved,prompt,onDelta,{...options,timeoutMs:Math.max(1,deadline-Date.now()),onUsage:(value,complete)=>{usage=value;usageComplete=complete;}});status='completed';return result;}
       catch(error){primary=error;throw error;}
+      // 清理未知是更高优先级的安全事实；记账再次失败时补充说明，不覆盖原来的清理错误。
       finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageComplete});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
     }catch(error){
     if(!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
@@ -73,6 +75,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
   // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
   const stream=true;
   const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
+  // Chat Completions 的流式用量在额外终端块中返回，需要显式请求。
   if(api==='openai-completions')Object.assign(body,{stream_options:{include_usage:true}});
   Object.assign(body,reasoningParameters(settings));
   const headers:Record<string,string>={'Content-Type':'application/json','Accept':stream?'text/event-stream':'application/json'};
@@ -91,6 +94,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
   try{
     let bytes=0,raw='',answer='',pending='',complete=false,terminal=false;const decoder=new TextDecoder();
     let usage=unknownUsage(),usageSeen=false;
+    // 中途保留已观测值；只有成功终端事件且输入、输出均已知，才标记用量完整。
     const observe=(value:unknown,final=false)=>{if(value&&typeof value==='object'&&!Array.isArray(value)){usage=modelUsage(api,value as Json,usage);usageSeen=true;}if(usageSeen)options.onUsage?.(usage,final&&usage.inputTokens!==null&&usage.outputTokens!==null);};
     const append=(value:unknown)=>{if(typeof value!=='string')return;answer+=value;if(answer.length>100000)throw new Error('模型输出超过 100000 字符');onDelta?.(value);};
     const event=(frame:string)=>{

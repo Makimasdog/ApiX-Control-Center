@@ -38,4 +38,8 @@
 
 Node 22.19–22.x 或 24.22–24.x。`npm test` 包含 `token-usage`、`token-usage-http`；`npm run check` 检查编译、孤儿 dist 产物及 lint。浏览器使用 `npm run test:ui:tokens`，可用 `APIX_PLAYWRIGHT_MODULE` 指向本机 Playwright；无需付费模型。另回归 `test:ui:html`、`test:ui:memory`。本轮记录见 [2026-10-27 自审](../协作/2026-10-27-Token用量与上下文优化自审.md)。
 
+## 源码阅读入口
+
+关键口径与边界已补充中文注释：`src/models/model-usage.ts` 解释各协议的累计快照和未知值；`src/assistant/token-usage.ts` 解释请求登记、一次性结算、覆盖率和任务隔离；`context-optimizer.ts` 与 `assistant-context.ts` 解释目录精简和完整结果回读。调用入口、主循环及前端注释分别说明计量归属与执行权限的区别、设置事务，以及异步视图防过期覆盖。注释维护不改变功能契约，验证见 [中文注释自审](../协作/2026-10-27-Token功能中文注释自审.md)。
+
 协议参考：[Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)、[Responses 流事件](https://developers.openai.com/api/reference/resources/responses/streaming-events)、[Anthropic 流式消息](https://platform.claude.com/docs/en/build-with-claude/streaming)。
