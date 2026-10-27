@@ -85,3 +85,43 @@ test('saving history preserves flags and complete session-scoped output referenc
  assert(estimateTokens(saving)<estimateTokens(normal));
  }finally{s.db.close();}
 });
+
+test('saving keeps bounded file pages visible after aging without changing standard history or raw events',()=>{
+ const s=store();try{
+ s.db.exec("CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES ('s')");const outputs=createContextOutputs(s);
+ const pages=[1201,8001].map((size,i)=>({id:i+1,role:'tool',kind:'tool_result',body:JSON.stringify({tool:'read_file',ok:true,result:{path:'file-'+i,content:'x'.repeat(size),sha256:'v'+i,hasMore:true,nextCursor:'page-'+i,lineTruncated:false}})}));
+ const events=[...pages,...Array.from({length:12},(_,i)=>({id:i+3,role:'system',kind:'activity',body:'{}'}))],before=JSON.stringify(events);
+ const saving=outputs.history('s',events,true,true);assert.equal(outputs.index('s').length,0);
+ for(let i=0;i<pages.length;i++){assert.equal(saving[i].body.result.content.length,[1201,8001][i]);assert.equal(saving[i].body.result.hasMore,true);assert.equal(saving[i].body.result.nextCursor,'page-'+i);}
+ assert(outputs.history('s',events,true)[0].body.result.outputRef);assert.equal(JSON.stringify(events),before);
+ }finally{s.db.close();}
+});
+
+test('saving file retention has UTF-8 page and aggregate limits, retains latest pages and preserves failure metadata',()=>{
+ const s=store();try{
+ s.db.exec("CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES ('s')");const outputs=createContextOutputs(s);
+ const file=(id,content)=>({id,role:'tool',kind:'tool_result',body:JSON.stringify({tool:'read_file',ok:true,result:{path:'p'+id,content,sha256:'v'+id,unknown:true,hasMore:true,nextCursor:'continue',lineTruncated:true}})});
+ const events=[file(1,'a'.repeat(14000)),file(2,'b'.repeat(14000)),file(3,'c'.repeat(14000)),file(4,'中文'.repeat(4500))];
+ const result=outputs.history('s',events,true,true);assert(result[0].body.result.outputRef);assert.equal(result[1].body.result.content.length,14000);assert.equal(result[2].body.result.content.length,14000);assert(result[3].body.result.outputRef);
+ for(const i of [0,3]){const ref=result[i].body.result;assert.equal(ref.unknown,true);assert.equal(ref.lineTruncated,true);assert.equal(ref.hasMore,true);assert.equal(ref.nextCursor,'continue');assert.equal(outputs.read('s',{id:ref.outputRef,limit:6000}).nextOffset,6000);}
+ }finally{s.db.close();}
+});
+
+test('saving deduplicates only identical visible pages and re-emits content when the earlier event leaves history',()=>{
+ const s=store();try{
+ s.db.exec("CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES ('s'),('other')");const outputs=createContextOutputs(s);
+ const event=(id,tool,result)=>({id,role:'tool',kind:'tool_result',body:JSON.stringify({tool,ok:true,result})});
+ const file={path:'x',sha256:'old',content:'a'.repeat(12000),hasMore:true,nextCursor:'next',lineTruncated:false};
+ const page={id:'ref',sha256:'sha',offset:0,text:'first page',nextOffset:10,characters:20};
+ const events=[event(1,'read_file',file),event(2,'read_file',file),event(3,'read_file',{...file,sha256:'new',content:'new'}),event(4,'read_context',page),event(5,'read_context',page),event(6,'read_context',{...page,offset:10,text:'next page',nextOffset:null}),event(7,'read_context',{...page,sha256:'different'})];
+ const before=JSON.stringify(events),result=outputs.history('s',events,true,true);
+ assert.equal(outputs.history('s',[{id:20,role:'system',kind:'activity',body:'null'}],true,true)[0].body,null);
+ assert.equal(result[0].body.result.content,file.content);assert.equal(result[1].body.result.content,undefined);assert.equal(result[1].body.result.duplicateOfEventId,1);assert.equal(result[1].body.result.sha256,'old');assert.equal(result[1].body.result.nextCursor,'next');assert.equal(result[2].body.result.content,'new');
+ assert.equal(result[4].body.result.text,undefined);assert.equal(result[4].body.result.duplicateOfEventId,4);assert.equal(result[4].body.result.nextOffset,10);assert.equal(result[5].body.result.text,'next page');assert.equal(result[6].body.result.text,'first page');
+ assert.equal(outputs.history('s',events.slice(4),true,true)[0].body.result.text,page.text);assert(outputs.history('s',events,true)[1].body.result.outputRef);assert.equal(outputs.history('s',events,true)[1].body.result.duplicateOfEventId,undefined);assert.equal(JSON.stringify(events),before);
+ assert.throws(()=>outputs.read('other',{id:'ref'}),/不属于/);
+ const failed=JSON.stringify({tool:'read_file',ok:false,result:{...file,unknown:true,error:'not confirmed'}});
+ const failures=outputs.history('s',[{id:8,role:'tool',kind:'tool_result',body:failed},{id:9,role:'tool',kind:'tool_result',body:failed}],true,true);
+ assert(failures.every(e=>e.body.ok===false&&e.body.result.unknown===true&&e.body.result.error==='not confirmed'&&e.body.result.duplicateOfEventId===undefined));
+ }finally{s.db.close();}
+});

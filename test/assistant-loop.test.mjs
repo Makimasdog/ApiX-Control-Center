@@ -31,6 +31,18 @@ test('optimization mode, session version and audit event roll back together on p
  assert.equal((await h.service.details(h.id)).version,s.version);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'standard');assert.equal(h.db.prepare('SELECT COUNT(*) n FROM assistant_optimization').get().n,0);
 }));
 
+test('saving loop retains normal file pages and links repeated reads without re-reading a folded reference',()=>fixture(async h=>{
+ const s=await h.service.details(h.id);await h.service.setOptimization(h.id,{version:s.version,mode:'saving'});
+ const content='const checked = true;\n'.repeat(450);h.deps.execute=async()=>({path:'README.md',content,sha256:'same',hasMore:false,lineTruncated:false});
+ h.answer(tool('read_file'),tool('read_file'),prompt=>{
+  const ctx=JSON.parse(prompt.split('当前上下文：')[1]),results=ctx.history.filter(e=>e.kind==='tool_result');
+  assert.equal(results[0].body.result.content,content);assert.equal(results[1].body.result.content,undefined);assert.equal(results[1].body.result.duplicateOfEventId,results[0].id);assert(ctx.contextReadPolicy.includes('不能把部分页当成完整文件'));return JSON.stringify(finish);
+ });
+ await h.service.message(h.id,{content:'只读核查文件'});assert.equal((await wait(h.service,h.id)).status,'completed');
+ // UI 仍用原有折叠视图，模型专用保留/去重不会删除或改写数据库事件。
+ const raw=h.db.prepare("SELECT body FROM assistant_events WHERE kind='tool_result' ORDER BY id").all();assert(raw.every(e=>JSON.parse(e.body).result.content===content));
+}));
+
 test('named builtin discovery matches its advertised contract in standard mode',()=>fixture(async h=>{
  h.answer(tool('search_tools',{query:'read_memory',limit:1}),finish);await h.service.message(h.id,{content:'发现读取记忆的工具'});const s=await wait(h.service,h.id);
  const result=s.events.find(e=>e.kind==='tool_result'&&e.body.tool==='search_tools').body.result;assert.equal(result.tools[0].name,'read_memory');assert(result.tools[0].inputSchema);assert.equal(s.optimizationMode,'standard');
