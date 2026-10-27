@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "asOf": "2026-10-27",
+  "status": "design_only",
+  "head": "3e5cf738f3ba9cf589241834affe586569fad8c5",
+  "workingTreeDirty": true,
+  "scope": "Selected files copied for read-only intake; not a full-repository or implementation verification",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "39707222e91e78991a9789dfae14d4baed12b18d115f7a25aa36ef5002bef643",
+      "bytes": 1985
+    },
+    {
+      "path": "package.json",
+      "sha256": "f5a79b44bfe89a26aa75bd09dacf6a0e1e34e8cb94f4e1cc23826867cf62e0cc",
+      "bytes": 8683
+    },
+    {
+      "path": "control-plane.mjs",
+      "sha256": "fef5467b4d48c7b1a75bbc6601eb49fcee247744e38bdda5ddd902ae56bc2649",
+      "bytes": 166847
+    },
+    {
+      "path": "src/assistant/assistant-loop.ts",
+      "sha256": "e54d6f275651bfe0e3ce8a8132e601d895fc97acd7a196ecbe68c240ee5f2178",
+      "bytes": 80541
+    },
+    {
+      "path": "src/assistant/assistant-context.ts",
+      "sha256": "1533c87209d3085b0c3e3ca1fda71bc5577f92be432b54ba0019f6013d52bd9a",
+      "bytes": 8082
+    },
+    {
+      "path": "src/assistant/context-optimizer.ts",
+      "sha256": "3feb60fd4b126a285fe8f32e6bdbf886057b3f4b0e4003cc8e8322bd6eb9e812",
+      "bytes": 2068
+    },
+    {
+      "path": "src/assistant/assistant-inference.ts",
+      "sha256": "9567dec1f75900510ed4d9e1224337e90a61ae7a69dd292be5a763cc7db482d1",
+      "bytes": 6090
+    },
+    {
+      "path": "src/assistant/token-usage.ts",
+      "sha256": "f7fb2a3eece5934a33127caba0d02775d06e73b9726c4d19e2fc5be25d062dfc",
+      "bytes": 6738
+    },
+    {
+      "path": "src/assistant/assistant-result.ts",
+      "sha256": "f6771e9b8b7690a7076526279792b6882ab6875796b83c5ac90f7a474407960e",
+      "bytes": 3142
+    },
+    {
+      "path": "src/assistant/assistant-tools.ts",
+      "sha256": "2bafc8b498806ac0201431c0925783c604b3d08aafba0a373f04e365dbf2fd89",
+      "bytes": 11189
+    },
+    {
+      "path": "src/assistant/tool-registry.ts",
+      "sha256": "c13ea5fa03af39e7bbf6c1eba21667e3126f51fc1d2bf372dd999738578b5d72",
+      "bytes": 11987
+    },
+    {
+      "path": "src/assistant/tool-governance.ts",
+      "sha256": "315c23f5a8fb9f0b34fb374e894eaf799198bb3927e337c1895754ff27b235c9",
+      "bytes": 8803
+    },
+    {
+      "path": "src/assistant/project-memory.ts",
+      "sha256": "550c3076d42396527708321bec8885ea651d22788a3d734b438b9ad61e27f2f1",
+      "bytes": 13858
+    },
+    {
+      "path": "src/models/model-backend.ts",
+      "sha256": "6293b41d0044a992c420abb83fc93091e1372523588f5b513f02730be53449e7",
+      "bytes": 19333
+    },
+    {
+      "path": "src/models/model-usage.ts",
+      "sha256": "393f9774f45a6ae751ed1b61c9fa2030fc9d1d72514e1564979825e831ae3f34",
+      "bytes": 4282
+    },
+    {
+      "path": "src/models/conversation-models.ts",
+      "sha256": "1269299e2ea2c90aac9325e601b4aa20d0cdb5a23b86526f41b8ea423577106c",
+      "bytes": 7718
+    },
+    {
+      "path": "src/models/model-providers.ts",
+      "sha256": "94174c925af005122a314a8ea67797891def87eb8c558a8ff95a5a0be797e60a",
+      "bytes": 12508
+    },
+    {
+      "path": "src/infrastructure/api-routes.mjs",
+      "sha256": "1156b7e831d326c64e0fc7acce68dd4fd0f51224d809817506794ec5287c080c",
+      "bytes": 27211
+    },
+    {
+      "path": "web/assistant.ts",
+      "sha256": "cc7857a1cd8dea1b3e6e74e3937f54c68593778b044d25c77f03ceecd62fbdbe",
+      "bytes": 37502
+    },
+    {
+      "path": "docs/Token用量与优化.md",
+      "sha256": "61cc610090b264e6032ecd59692ca71c9a97d611514aa404cfc54988c8919b18",
+      "bytes": 6968
+    },
+    {
+      "path": "协作/2026-10-27-Token模式真实对照实测.md",
+      "sha256": "30d818d741b5a0b0ab9ceed2432749cbaff717ddea4afc8dda0e4e1db95188c6",
+      "bytes": 5631
+    },
+    {
+      "path": "test/token-usage.test.mjs",
+      "sha256": "279c5a05454ec37348b644f31969fc6c1d3535888feeb60a0e114f54bdcfb121",
+      "bytes": 11177
+    },
+    {
+      "path": "test/token-usage-http.test.mjs",
+      "sha256": "7524bb47347bb629caa6b1d55437a7921609490df41e6f14f85d443ce528d06d",
+      "bytes": 4877
+    }
+  ]
+}
