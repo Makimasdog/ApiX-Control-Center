@@ -18,6 +18,23 @@ async function fixture(work){
   const service=createAssistantLoop(deps);const s=(await service.create({projectId:'p'}));
   try{await work({db,deps,service,id:s.id,calls,prompts,answer:(...values)=>queue.push(...values),policy:value=>policy=value,childReady:()=>childComplete=true});}finally{db.close();}
 }
+
+test('saving mode keeps permission guards and rejects changes while a user decision is pending',()=>fixture(async h=>{
+ let s=await h.service.details(h.id);await h.service.setOptimization(h.id,{version:s.version,mode:'saving'});
+ h.policy({mode:'read_only',version:1});h.answer(tool('write_file'));await h.service.message(h.id,{content:'尝试修改'});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'saving');
+ h.answer({action:'ask',question:'需要信息',options:['a','b'],multiple:false});await h.service.message(h.id,{content:'先询问信息'});s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'standard'}),/仍在执行|安全状态/);
+}));
+
+test('optimization mode, session version and audit event roll back together on persistence failure',()=>fixture(async h=>{
+ const s=await h.service.details(h.id);h.db.exec("CREATE TRIGGER fail_optimization BEFORE INSERT ON assistant_events WHEN NEW.kind='optimization_changed' BEGIN SELECT RAISE(ABORT,'optimization event failed'); END");
+ await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'saving'}),/optimization event failed/);
+ assert.equal((await h.service.details(h.id)).version,s.version);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'standard');assert.equal(h.db.prepare('SELECT COUNT(*) n FROM assistant_optimization').get().n,0);
+}));
+
+test('named builtin discovery matches its advertised contract in standard mode',()=>fixture(async h=>{
+ h.answer(tool('search_tools',{query:'read_memory',limit:1}),finish);await h.service.message(h.id,{content:'发现读取记忆的工具'});const s=await wait(h.service,h.id);
+ const result=s.events.find(e=>e.kind==='tool_result'&&e.body.tool==='search_tools').body.result;assert.equal(result.tools[0].name,'read_memory');assert(result.tools[0].inputSchema);assert.equal(s.optimizationMode,'standard');
+}));
 test('default loop performs tools, verifies changes and delivers without any registered employee',()=>fixture(async h=>{
   h.answer(tool('write_file',{path:'a.txt',content:'good'}),tool('verify',{executable:'node',args:['test.mjs']}),finish);
   (await h.service.message(h.id,{content:'实现文件并验证'}));const s=await wait(h.service,h.id);

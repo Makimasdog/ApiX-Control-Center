@@ -6,6 +6,7 @@ import {request as httpRequest, type ClientRequest, type IncomingMessage} from '
 import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
 import {modelEndpoint} from './model-endpoint.js';
+import {modelUsage,unknownUsage,type ModelUsage,type ModelAttempt} from './model-usage.js';
 
 export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string;contextWindow?:number|null}
 // Only host-created instances may retain this code across inference boundaries.
@@ -44,13 +45,20 @@ function finalText(data:Json,api:string):string {
   return parts(data.content);
 }
 
-interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void}
+interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void;onAttemptStart?:(attempt:number)=>void;onAttempt?:(value:ModelAttempt)=>void;onUsage?:(usage:ModelUsage,complete:boolean)=>void}
 export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(delta:string)=>void,options:InferenceOptions={}):Promise<string>{
   const attempts=options.maxAttempts??3,totalMs=options.timeoutMs??90000;
   if(!Number.isSafeInteger(totalMs)||totalMs<=0||totalMs>2147483647)throw new Error('模型请求超时配置无效');
   const deadline=Date.now()+totalMs;
   if(!Number.isSafeInteger(attempts)||attempts<1||attempts>3)throw new Error('模型重试次数应为 1–3');
-  for(let attempt=1;;attempt++){try{return await inferAttempt(saved,prompt,onDelta,{...options,timeoutMs:Math.max(1,deadline-Date.now())});}catch(error){
+  for(let attempt=1;;attempt++){
+    const started=Date.now();let usage=unknownUsage(),usageComplete=false,status:ModelAttempt['status']='failed',primary:unknown;
+    options.onAttemptStart?.(attempt);
+    try{
+      try{const result=await inferAttempt(saved,prompt,onDelta,{...options,timeoutMs:Math.max(1,deadline-Date.now()),onUsage:(value,complete)=>{usage=value;usageComplete=complete;}});status='completed';return result;}
+      catch(error){primary=error;throw error;}
+      finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageComplete});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
+    }catch(error){
     if(!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
     const delayMs=Math.ceil(retryDelay(attempt,error.retryAfterMs));if(!Number.isFinite(delayMs)||Date.now()+delayMs>=deadline)throw error;
     options.onRetry?.({attempt:attempt+1,delayMs,fault:error.fault});
@@ -65,6 +73,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
   // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
   const stream=true;
   const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
+  if(api==='openai-completions')Object.assign(body,{stream_options:{include_usage:true}});
   Object.assign(body,reasoningParameters(settings));
   const headers:Record<string,string>={'Content-Type':'application/json','Accept':stream?'text/event-stream':'application/json'};
   if(key)headers[api==='anthropic-messages'?'x-api-key':'Authorization']=api==='anthropic-messages'?key:'Bearer '+key;
@@ -81,24 +90,27 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
   const abort=()=>finish(new Error(`模型请求已停止（${phase}）`));
   try{
     let bytes=0,raw='',answer='',pending='',complete=false,terminal=false;const decoder=new TextDecoder();
+    let usage=unknownUsage(),usageSeen=false;
+    const observe=(value:unknown,final=false)=>{if(value&&typeof value==='object'&&!Array.isArray(value)){usage=modelUsage(api,value as Json,usage);usageSeen=true;}if(usageSeen)options.onUsage?.(usage,final&&usage.inputTokens!==null&&usage.outputTokens!==null);};
     const append=(value:unknown)=>{if(typeof value!=='string')return;answer+=value;if(answer.length>100000)throw new Error('模型输出超过 100000 字符');onDelta?.(value);};
     const event=(frame:string)=>{
       const payload=frame.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');if(!payload)return;
-      if(payload==='[DONE]'){if(api!=='openai-completions'||!complete)throw new Error('模型流结束标记不符合协议');terminal=true;return;}
+      if(payload==='[DONE]'){if(api!=='openai-completions'||!complete)throw new Error('模型流结束标记不符合协议');observe(null,true);terminal=true;return;}
       const data=JSON.parse(payload) as Json;
       if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('模型流事件格式无效');
+      observe(api==='openai-responses'?data.response?.usage:api==='anthropic-messages'&&data.type==='message_start'?data.message?.usage:data.usage);
       if(data.error||['error','response.failed','response.incomplete'].includes(data.type))throw serviceFailure(data);
       if(api==='openai-completions'){
         const c=data.choices?.[0];if(!c)return;if(c.index!==undefined&&c.index!==0)return;
         append(c.delta?.content);if(c.finish_reason){if(c.finish_reason!=='stop')throw new Error('模型流被截断或包含未提供的工具');complete=true;}
       }else if(api==='openai-responses'){
         if(data.type==='response.output_text.delta')append(data.delta);
-        if(data.type==='response.completed'){const full=finalText(data.response,api);if(!answer)append(full);else if(full!==answer)throw new Error('模型流与最终文本不一致');complete=true;terminal=true;}
+        if(data.type==='response.completed'){const full=finalText(data.response,api);if(!answer)append(full);else if(full!==answer)throw new Error('模型流与最终文本不一致');observe(null,true);complete=true;terminal=true;}
       }else{
         if(data.type==='content_block_start'&&data.content_block?.type==='text')append(data.content_block.text);
         if(data.type==='content_block_delta'&&data.delta?.type==='text_delta')append(data.delta.text);
         if(data.type==='message_delta'&&data.delta?.stop_reason){if(!['end_turn','stop_sequence'].includes(data.delta.stop_reason))throw new Error('模型消息流未完整结束');complete=true;}
-        if(data.type==='message_stop'){if(!complete)throw new Error('模型消息流缺少停止原因');terminal=true;}
+        if(data.type==='message_stop'){if(!complete)throw new Error('模型消息流缺少停止原因');observe(null,true);terminal=true;}
       }
     };
     return await new Promise<string>((resolve,reject)=>{
@@ -146,7 +158,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
               // SSE events require a blank line; EOF must not promote a partial terminal frame.
               if(!complete||!terminal)throw new Error('模型流中断，未收到完整结束标记');
             }else{
-              answer=finalText(JSON.parse(raw+tail) as Json,api);
+              const data=JSON.parse(raw+tail) as Json;observe(data.usage);answer=finalText(data,api);observe(null,true);
               if(answer.length>100000)throw new Error('模型输出超过 100000 字符');onDelta?.(answer);
             }
             phase='protocol';finish(undefined,answer);

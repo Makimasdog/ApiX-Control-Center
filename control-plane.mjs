@@ -49,7 +49,9 @@ import {createAutonomy} from './dist/src/coordination/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant/assistant-loop.js';
 import {createAssistantCommands} from './dist/src/assistant/assistant-commands.js';
 import {createAssistantCoding} from './dist/src/assistant/assistant-coding.js';
-import {createAssistantInference,managerInferenceError} from './dist/src/assistant/assistant-inference.js';
+import {createAssistantInference,managerInferenceError,InferenceAccountingError} from './dist/src/assistant/assistant-inference.js';
+import {createTokenUsage} from './dist/src/assistant/token-usage.js';
+import {estimateTokens} from './dist/src/assistant/assistant-context.js';
 import {createMcpManager} from './dist/src/assistant/mcp-manager.js';
 import {createChatHistory} from './dist/src/assistant/chat-history.js';
 
@@ -355,6 +357,7 @@ export async function scanRuntimes() { await Promise.all([refreshExecutables(),s
 const rows = (sql, ...params) => db.prepare(sql).all(...params);
 const row = (sql, ...params) => db.prepare(sql).get(...params);
 const store = { db, row, rows, now };
+const tokenUsage=createTokenUsage(store);
 const projectMemory=createProjectMemory(store);
 const employeeInsights = createEmployeeInsights(store);
 const memory = createEventMemory(store);
@@ -1043,12 +1046,20 @@ function managerApiKeys(){
   return [...new Set([...agentProviders.keyNames(),...settings.filter(Boolean).map(s=>s.apiKeyEnv||(!s.baseUrl?getProviderConfig(s.provider)?.defaultApiKeyEnv:'')).filter(Boolean)])];
 }
 
-async function inferManager(prompt,onDelta,context) {
+async function inferManager(prompt,onDelta,context,usageScope=context) {
   if(context&&!row('SELECT id FROM projects WHERE id=?',context.projectId))throw new Error('推理项目不存在');
+  const settings=context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings());
+  const invocationId=randomUUID(),taskId=context?.purpose==='assistant_loop'&&context.sessionId?row("SELECT e.body FROM assistant_events e JOIN assistant_sessions s ON s.id=e.session_id WHERE s.id=? AND s.project_id=? AND e.kind='task_started' ORDER BY e.id DESC LIMIT 1",context.sessionId,context.projectId)?.body:null;
+  const frozenTaskId=taskId?JSON.parse(taskId).id:undefined;
+  const purpose=usageScope?.usagePurpose??usageScope?.purpose??'unknown';
+  let usageId;
   const controller=new AbortController(),version=context?permissions.get(context.projectId).version:null;
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
-  try{return await inferModel(context?.modelSettings??(context?.sessionId?conversationModels.get('coordination',context.sessionId).settings:coordinator.getSettings()),prompt,onDelta,{signal:controller.signal,onRetry:info=>{if(context?.sessionId){const table=context.purpose==='assistant_loop'?'assistant_events':null;if(table)db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','model_retry',?,?)").run(context.sessionId,JSON.stringify(info),now());else memory.append(context.projectId,context.sessionId,'model.retry',info);}}});}
+  try{return await inferModel(settings,prompt,onDelta,{signal:controller.signal,
+    onAttemptStart:attempt=>{try{if(usageScope)usageId=tokenUsage.start({invocationId,attempt,projectId:usageScope.projectId,sessionId:usageScope.sessionId,taskId:frozenTaskId,purpose,provider:settings.provider,model:settings.model,apiType:settings.apiType,estimatedPromptTokens:estimateTokens(prompt)});}catch{throw new InferenceAccountingError('Token 用量账本请求登记失败；没有启动本次请求');}},
+    onAttempt:value=>{try{if(usageId)tokenUsage.finish(usageId,value);}catch{throw new InferenceAccountingError('Token 用量账本最终记录失败，请核对后恢复');}},
+    onRetry:info=>{if(context?.sessionId){const table=context.purpose==='assistant_loop'?'assistant_events':null;if(table)db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','model_retry',?,?)").run(context.sessionId,JSON.stringify(info),now());else memory.append(context.projectId,context.sessionId,'model.retry',info);}}});}
   catch(error){throw managerInferenceError(error,revoked);}
   finally{if(watch)clearInterval(watch);context?.signal?.removeEventListener('abort',abort);}
 }
@@ -1100,7 +1111,8 @@ export async function sendDirectorMessage(input) {
   let result;
   let fallbackReason = "";
   try {
-    const raw = await inferManager(directorPrompt(project, history, employees, progress, content));
+    // Attribute legacy usage without changing its frozen model/permission lifecycle.
+    const raw = await inferManager(directorPrompt(project, history, employees, progress, content),undefined,undefined,{projectId:project.id,sessionId:thread.id,purpose:'legacy_director'});
     const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ""));
     if (!parsed || typeof parsed !== "object") throw new Error("答复格式无效");
     result = parsed;
@@ -1413,6 +1425,7 @@ export const assistantStop=assistant.stop;
 export const assistantResume=assistant.resume;
 export const assistantEditMemory=assistant.editMemory;
 export const assistantContext=assistant.contextInfo;
+export const assistantOptimization=assistant.setOptimization;
 export const assistantCompact=assistant.compact;
 export const assistantEvents=assistant.eventPage;
 export const assistantOutput=assistant.readOutput;

@@ -5,7 +5,7 @@
 import {ToolError} from '../../dist/src/assistant/tool-governance.js';
 import {changeBus} from './change-bus.mjs';
 import {browseFolders} from '../projects/project-folders.mjs';
-import {projectMemoryState,saveProjectMemorySettings,assistantContext,assistantCompact} from '../../control-plane.mjs';
+import {projectMemoryState,saveProjectMemorySettings,assistantContext,assistantCompact,assistantOptimization} from '../../control-plane.mjs';
 import {assistantProjectDiagnosis,assistantNpmProposal,assistantApproveNpm} from '../../control-plane.mjs';
 import {conversationModel,saveConversationModel} from '../../control-plane.mjs';
 import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider,adoptAgentProvider} from '../../control-plane.mjs';
@@ -82,6 +82,7 @@ export const apiRoutes=[
   post(/^\/api\/assistant\/sessions\/([^/]+)\/reply$/,async({m,body})=>assistantReply(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/stop$/,({m})=>assistantStop(m[1])),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/resume$/,({m,body})=>assistantResume(m[1],body)),
+  post(/^\/api\/assistant\/sessions\/([^/]+)\/optimization$/,({m,body})=>assistantOptimization(m[1],body),configLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/compact$/,async({m,body})=>assistantCompact(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/memory$/,({m,body})=>assistantEditMemory(m[1],body)),
   post(/^\/api\/projects\/([^/]+)\/memory-settings$/,({m,body})=>saveProjectMemorySettings(m[1],body),configLimit),

@@ -10,6 +10,7 @@ const signal=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {pr
 const frame=data=>'data: '+(typeof data==='string'?data:JSON.stringify(data))+'\n\n';
 const delta=frame({choices:[{delta:{content:'ok'}}]});
 const stop=frame({choices:[{delta:{},finish_reason:'stop'}]});
+const timeoutError=error=>{const match=error.message.match(/模型请求超时（(\d+) ms/);assert(match);assert(Number(match[1])>0&&Number(match[1])<=150);return true;};
 async function fixture(t,handler,work){
   const entered=signal(),closed=signal();let phase='connection',count=0,expired=false;
   const server=createServer(async(req,res)=>{
@@ -27,7 +28,8 @@ async function fixture(t,handler,work){
 for(const headers of [false,true])test(`deadline destroys request stalled at ${headers?'body':'headers'}`,{timeout:3000},async t=>{
   await fixture(t,(res,ready)=>{if(headers){res.writeHead(200,{'Content-Type':'application/json'});res.flushHeaders();}ready(headers?'body':'headers');},async(settings,s)=>{
     const result=inferModel(settings,'fixture',undefined,{timeoutMs:150});await s.entered;
-    await assert.rejects(result,/150 ms/);await s.closed;assert.equal(s.count(),1);
+    // Setup and accounting share the deadline, so the attempt may have less than 150 ms left.
+    await assert.rejects(result,timeoutError);await s.closed;assert.equal(s.count(),1);
   });
 });
 test('partial body cancellation closes transport, repeated abort is harmless',{timeout:3000},async t=>{
@@ -67,15 +69,15 @@ test('timeout outcome survives cancellation arriving during transport close',{ti
   const controller=new AbortController();
   await fixture(t,(res,ready)=>{res.once('close',()=>controller.abort());res.write('{');ready();},async(settings,s)=>{
     const result=inferModel(settings,'fixture',undefined,{timeoutMs:150,signal:controller.signal});await s.entered;
-    await assert.rejects(result,/超时（150 ms/);await s.closed;assert(controller.signal.aborted);assert.equal(getEventListeners(controller.signal,'abort').length,0);
+    await assert.rejects(result,timeoutError);await s.closed;assert(controller.signal.aborted);assert.equal(getEventListeners(controller.signal,'abort').length,0);
   });
 });
-test('missing close acknowledgement reports unknown cleanup within its budget',{timeout:4000},async t=>{
+test('missing close acknowledgement preserves unknown cleanup even if usage recording fails',{timeout:4000},async t=>{
   const original=http.request,controller=new AbortController();let socket,emit;
   // Fault injection suppresses acknowledgement, not actual socket destruction.
   http.request=(...args)=>{const req=original(...args);req.once('socket',assigned=>{socket=assigned;emit=assigned.emit;assigned.emit=function(event,...values){return event==='close'?false:emit.call(this,event,...values);};});return req;};syncBuiltinESMExports();
   try{await fixture(t,res=>{res.setHeader('Content-Type','text/event-stream');res.write(delta+stop+frame('[DONE]'));},async(settings,s)=>{
-    const started=performance.now();await assert.rejects(inferModel(settings,'fixture',undefined,{signal:controller.signal,timeoutMs:150}),e=>e.code==='MODEL_CLEANUP_UNKNOWN'&&/清理未确认.*资源状态未知/.test(e.message));
+    const started=performance.now();await assert.rejects(inferModel(settings,'fixture',undefined,{signal:controller.signal,timeoutMs:150,onAttempt:()=>{throw new Error('usage persistence failure');}}),e=>e.code==='MODEL_CLEANUP_UNKNOWN'&&/清理未确认.*资源状态未知/.test(e.message)&&e.message.includes('Token 用量记录未确认'));
     assert(performance.now()-started<1800);assert(socket.destroyed);assert.equal(s.count(),1);assert.equal(getEventListeners(controller.signal,'abort').length,0);controller.abort();
   });}finally{http.request=original;syncBuiltinESMExports();if(socket&&emit){socket.emit=emit;socket.emit('close',false);}}
 });
