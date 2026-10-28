@@ -1,5 +1,6 @@
-# =============================================================================
+﻿# =============================================================================
 # windows-command.ps1 - PowerShell 启动脚本：调用 C# 监督器的入口
+# 保留文件 UTF-8 BOM，避免 Windows PowerShell 5.1 按系统 ANSI 编码误读中文注释与脚本。
 #
 # 所属层级：执行层（src/execution/）
 # 核心功能：
@@ -28,7 +29,7 @@ $ErrorActionPreference='Stop'
 
 # 动态编译并加载同目录下的 C# 源代码（windows-command.cs）
 # Add-Type 会将 C# 代码编译为内存中的程序集，使 ApiXCommandJob 类可用
-Add-Type -TypeDefinition (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-command.cs') -Raw)
+Add-Type -TypeDefinition (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'windows-command.cs') -Raw -Encoding UTF8)
 
 # 检查模式：直接调用 C# 的 Inspect 方法查询 Job Object 状态，然后退出
 # Inspect 模式用于在命令执行期间或之后检查进程组是否仍然活跃
@@ -36,12 +37,19 @@ if($Inspect){[ApiXCommandJob]::Inspect($JobName,$Terminate.IsPresent,$OwnerPid,$
 
 # 监督执行模式：从 stdin 读取 JSON 格式的命令配置
 # 配置格式示例：{"executable":"git","args":["status"],"cwd":"C:\\project","timeoutMs":30000,"env":{...}}
-$config=[Console]::In.ReadLine() | ConvertFrom-Json
-if($null -eq $config){exit 1}
-
-# 将 JSON 中的 env 对象转换为 PowerShell 哈希表（C# 方法需要 IDictionary 类型）
-$environment=@{}
-foreach($entry in $config.env.PSObject.Properties){$environment[$entry.Name]=[string]$entry.Value}
+try {
+ $raw=[Console]::In.ReadLine()
+ # 5.1 的管道会展开单元素数组；入口只接受 JSON 对象，不能将数组误当作一条命令。
+ if($null -eq $raw -or !$raw.TrimStart().StartsWith('{')){throw 'Invalid command configuration'}
+ $config=$raw | ConvertFrom-Json -ErrorAction Stop
+ if($config -isnot [pscustomobject] -or $config.env -isnot [pscustomobject]){throw 'Invalid command configuration'}
+ $environment=@{}
+ foreach($entry in $config.env.PSObject.Properties){$environment[$entry.Name]=[string]$entry.Value}
+} catch {
+ # 原生解析异常会附带整段 JSON，可能包含凭据；仅输出既有协议的固定启动失败消息。
+ [Console]::Out.WriteLine('error|'+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('Invalid command configuration'))+'|no_worker')
+ exit 1
+}
 
 # 调用 C# 监督器的 Run 方法，启动受管命令执行
 # 参数依次为：Job 名称、可执行文件路径、参数数组、工作目录、超时毫秒数、环境变量表

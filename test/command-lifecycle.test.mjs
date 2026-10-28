@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,resolve,dirname} from 'node:path';
+import {join,resolve,dirname,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import cp from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
@@ -19,6 +19,28 @@ function fixture(){
  return {root,command:mode=>({executable:'powershell.exe',args:['-NoProfile','-NonInteractive','-File',join(root,'parent.ps1'),mode]}),alive,cleanup:()=>{let fallback=false;if(alive()){fallback=true;const pid=Number(readFileSync(join(root,'owned.pid'),'utf8'));if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-Command',`$p=Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}';if($p.CommandLine.Contains('${root.replaceAll("'","''")}')){Stop-Process -Id ${pid} -Force}`],{windowsHide:true});else process.kill(pid,'SIGKILL');}assert(resolve(root).startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true,maxRetries:15,retryDelay:100});return fallback;}};
 }
 const ready=root=>waitForFile(join(root,'ready'));
+
+test('Windows command entry preserves UTF-8 arguments, environment and cwd under Windows PowerShell 5.1',{skip:process.platform!=='win32',timeout:25000},async()=>{
+ assert.deepEqual([...readFileSync('src/execution/windows-command.ps1').subarray(0,3)],[0xef,0xbb,0xbf],'Windows PowerShell 5.1 requires the explicit UTF-8 script marker');
+ const root=mkdtempSync(join(tmpdir(),'apix-command-中文-')),value='中文😀 "quote" \\ path\nnext line';
+ try{
+  const result=await commandTool(root,{executable:process.execPath,args:['-e',"process.stdout.write(JSON.stringify({arg:process.argv[1],env:process.env.APIX_UTF8_FIXTURE,cwd:process.cwd()}))",value]}, {...process.env,APIX_UTF8_FIXTURE:value},new AbortController().signal);
+  assert.equal(result.exitCode,0);assert.equal(result.executionComplete,true);assert.equal(result.processesEnded,true);
+  assert.deepEqual(JSON.parse(result.output),{arg:value,env:value,cwd:root});
+ }finally{assert(resolve(root).startsWith(resolve(tmpdir())+sep));rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
+});
+
+test('Windows JSON entry rejects malformed or missing configuration without exposing input or starting a worker',{skip:process.platform!=='win32',timeout:25000},async()=>{
+ const helper=resolve('src/execution/windows-command.ps1'),powershell=join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe');
+ const marker='private-json-fixture-do-not-log',inputs=['{"env":{"PRIVATE":"'+marker+'"}',JSON.stringify({env:null,private:marker}),JSON.stringify([{env:{PRIVATE:marker}}]),''];
+ for(const input of inputs){
+  const child=cp.spawn(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',helper,'-JobName','Local\\ApiX-Rejected-Input-'+Date.now()],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+  let stdout='',stderr='';child.stdout.on('data',c=>stdout+=c);child.stderr.on('data',c=>stderr+=c);child.stdin.on('error',()=>{});
+  const timer=setTimeout(()=>child.kill(),6000);child.stdin.end(input+'\n');let code;try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);});}finally{clearTimeout(timer);}
+  assert.equal(code,1);assert.equal(stderr,'');assert(!stdout.includes(marker));assert(!stdout.includes('job|'));assert(!stdout.includes('started|'));
+  const frame=stdout.trim().split('|');assert.equal(frame[0],'error');assert.equal(frame[2],'no_worker');assert.equal(Buffer.from(frame[1],'base64').toString('utf8'),'Invalid command configuration');
+ }
+});
 test('parent exit zero with a writing descendant is not successful delivery',{timeout:25000},async()=>{
  const h=fixture();let fallback=false;try{const result=await commandTool(h.root,{...h.command('exit'),timeoutMs:10000},process.env,new AbortController().signal);assert.equal(result.executionComplete,false);assert.equal(result.sideEffectsNeedReview,true);assert.equal(result.processesEnded,true);assert.equal(h.alive(),false);}finally{fallback=h.cleanup();}assert.equal(fallback,false,'fixture fallback must not substitute for runtime termination');
 });

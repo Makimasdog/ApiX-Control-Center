@@ -50,11 +50,17 @@ npm run desktop:pack
 
 Windows PowerShell 必须可用。Git、Codex、Claude 等员工工具仍需单独安装及认证；沿用本机账户和 PATH，也可在桌面 `.env` 配置真实的 `APIX_*_ENTRY`。桌面包带 Node/npm，不带这些第三方 CLI。新增安装 CLI 后重启桌面程序以刷新环境。
 
+命令与桌面后端共用 `src/execution/windows-command.ps1`。该脚本必须以 **UTF-8 with BOM** 保存，供 Windows PowerShell 5.1 正确识别中文脚本；它显式按 UTF-8 读取同目录 C# 源码，stdin/stdout 也使用 UTF-8。单行 JSON 配置中的参数、目录和环境变量可包含中文、emoji、引号及转义换行。
+
+入口只接受 JSON 对象及对象形式的 `env`。空输入、畸形 JSON、顶层数组或无效 `env` 会在启动 Job/worker 前返回固定 `error|<Base64 错误>|no_worker`，退出码 1；不会回显配置原文或环境变量。已打包的旧程序需要重新构建才能包含修复；本轮不追溯清理旧版本留下的错误日志。
+
 ## 验证
 
 ```powershell
+npm run build
 npm run check
 npm run test:desktop
+node --test --test-concurrency=1 test/command-lifecycle.test.mjs test/assistant-tools.test.mjs test/command-bridge.test.mjs test/command-logs.test.mjs
 # 构建后验收真实 exe（隔离数据，不调用模型）
 npm run test:desktop:app
 ```
@@ -64,6 +70,8 @@ npm run test:desktop:app
 应用验收还会创建隔离项目，核对项目 Worker 完整扫描、项目指令和上下文读取、npm 方案使用包内 Node/npm，以及渲染错误为零。宿主安装了 Git 时同时检查 Git 诊断与仓库登记；未安装时跳过这两项。验收不调用模型、不安装项目依赖，也不运行项目检查脚本。超时失败时等待 Electron 关闭后清理临时程序副本，数据与日志保留用于排错。
 
 指定其他输出目录的应用可运行 `npm run test:desktop:app -- "完整 exe 路径"`。旧包缺少新增探针证据时会明确报错，需要重新构建。最近实际运行记录见[2026-10-26 Electron 实际运行验证与自审](../协作/2026-10-26-Electron实际运行验证与自审.md)。
+
+2026-10-28 的编码修复、40 项命令/桌面回归与真实 Electron 开发版冒烟见 [Windows 命令入口 UTF-8 修复自审](../协作/2026-10-28-Windows命令入口UTF8修复自审.md)。该轮没有重建安装包。
 
 `--smoke-test` 参数仅用于自动验收：隐藏窗口，加载真实网页并请求 `/api/snapshot`，将结果写入隔离数据目录的 `smoke-result.json` 并保存 `window.png` 后退出；不调用模型或派发员工。
 
