@@ -22,7 +22,7 @@ for(const api of Object.keys(finals))test(`${api} direct HTTP preserves model, b
   },(_req,res)=>res.end(JSON.stringify(finals[api]('实际答复'))));}finally{if(previous===undefined)delete process.env.APIX_TEST_DIRECT_KEY;else process.env.APIX_TEST_DIRECT_KEY=previous;}
 });
 for(const api of Object.keys(finals))test(`${api} parses real SSE and requires a successful terminal event`,async()=>{
-  await fixture(async(settings)=>{let parts='';assert.equal(await inferModel({...settings,apiType:api},'stream',p=>parts+=p),'中文');assert.equal(parts,'中文');},(_req,res)=>{
+  await fixture(async(settings)=>{let parts='',attempt;assert.equal(await inferModel({...settings,apiType:api},'stream',p=>parts+=p,{onAttempt:value=>attempt=value}),'中文');assert.equal(parts,'中文');assert.equal(attempt.transportObservation.terminal,true);assert.equal(attempt.transportObservation.responseHeaders,true);},(_req,res)=>{
     const events=api==='openai-completions'?[{choices:[{index:0,delta:{reasoning_content:'hidden',content:'中文'}}]},{choices:[{index:0,delta:{},finish_reason:'stop'}]},'[DONE]']:api==='openai-responses'?[{type:'response.reasoning_text.delta',delta:'hidden'},{type:'response.output_text.delta',delta:'中文'},{type:'response.completed',response:finals[api]('中文')}]:[{type:'content_block_delta',delta:{type:'thinking_delta',thinking:'hidden'}},{type:'content_block_delta',delta:{type:'text_delta',text:'中文'}},{type:'message_delta',delta:{stop_reason:'end_turn'}},{type:'message_stop'}];
     const bytes=Buffer.from(events.map(e=>'data: '+(typeof e==='string'?e:JSON.stringify(e))+'\r\n\r\n').join(''));res.setHeader('Content-Type','text/event-stream');for(let i=0;i<bytes.length;i+=7)res.write(bytes.subarray(i,i+7));res.end();
   });

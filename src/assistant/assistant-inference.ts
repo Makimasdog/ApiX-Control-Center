@@ -15,6 +15,7 @@
 import {FaultError} from '../recovery/fault-policy.js';
 import {randomUUID} from 'node:crypto';
 import {ModelCleanupUnknownError,type ModelSettings} from '../models/model-backend.js';
+import type {PromptDescriptor} from '../models/prompt-diagnostics.js';
 
 /** 推理账本依赖接口 — 定义外部账本系统必须提供的能力 */
 interface Dependencies {
@@ -25,7 +26,7 @@ interface Dependencies {
   pause(accountId:string|null,id:string):unknown;
   recordFailure?(record:{id:string;projectId:string;sessionId?:string;stage:string;error:string}):void;
   quotaFailure(message:string):boolean;
-  infer(prompt:string,onDelta:undefined,context:{projectId:string;purpose:string;usagePurpose?:string;sessionId?:string;signal?:AbortSignal;modelSettings:ModelSettings}):Promise<string>;
+  infer(prompt:string,onDelta:undefined,context:{projectId:string;purpose:string;usagePurpose?:string;sessionId?:string;signal?:AbortSignal;modelSettings:ModelSettings;promptDescriptor?:PromptDescriptor}):Promise<string>;
 }
 /** 推理账本状态未确认错误 — 当账本持久化失败时抛出，阻断后续推理调用 */
 export class InferenceAccountingError extends Error {readonly code='INFERENCE_ACCOUNTING_UNKNOWN';}
@@ -51,7 +52,7 @@ export function managerInferenceError(error:unknown,revoked:boolean):unknown {
 export function createAssistantInference(deps:Dependencies){
   /** blocked — 账本状态未确认的项目/账户集合，一旦失败即阻断后续调用 */
   const blocked=new Set<string>();
-  return async(projectId:string,prompt:string,signal?:AbortSignal,sessionId?:string,usagePurpose='assistant_loop')=>{
+  return async(projectId:string,prompt:string,signal?:AbortSignal,sessionId?:string,usagePurpose='assistant_loop',promptDescriptor?:PromptDescriptor)=>{
     const id='assistant:'+randomUUID(),accountId=deps.account(projectId),settings=deps.settings(sessionId),secret=process.env[settings.apiKeyEnv];
     const key=accountId??projectId;
     if(blocked.has(key))throw new InferenceAccountingError('推理账本状态未确认，请核对账本并重启后恢复');
@@ -67,7 +68,7 @@ export function createAssistantInference(deps:Dependencies){
     };
     // 调用底层 LLM 推理接口，捕获并分类处理各类失败
     let result:string|undefined,primary:Error|undefined;
-    try{result=await deps.infer(prompt,undefined,{projectId,purpose:'assistant_loop',usagePurpose,sessionId,signal,modelSettings:settings});}
+    try{result=await deps.infer(prompt,undefined,{projectId,purpose:'assistant_loop',usagePurpose,sessionId,signal,modelSettings:settings,promptDescriptor});}
     catch(error:unknown){
       primary=error instanceof ModelCleanupUnknownError?new ModelCleanupUnknownError(safe(error)):error instanceof FaultError?new FaultError(safe(error),error.fault,error.retryAfterMs):new Error(safe(error));
       // 用量持久化失败沿用费用账本的阻断机制，禁止静默丢账后继续同项目或共享账户推理。

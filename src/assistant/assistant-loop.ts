@@ -39,6 +39,8 @@ import {diagnoseNodeProject} from '../validation/node-project.js';
 import {createAssistantDelivery} from './assistant-delivery.js';
 import {createTokenUsage} from './token-usage.js';
 import {optimizedCatalog} from './context-optimizer.js';
+import {legacyAssistantPrompt} from './prompt-descriptor.js';
+import type {PromptDescriptor} from '../models/prompt-diagnostics.js';
 
 /** 助手会话数据结构 — 对应 assistant_sessions 表的一行 */
 export interface AssistantSession {id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;compacted_through:number;pending:string|null;child_session_id:string|null;needs_verification:number;verification:string|null;started_at:string;updated_at:string;task_id?:string|null}
@@ -53,7 +55,7 @@ interface Dependencies extends Store {
   onCreated?(id:string):void;
   policy(projectId:string):Policy;
   describe(session:AssistantSession):unknown;
-  infer(projectId:string,prompt:string,signal?:AbortSignal,sessionId?:string,usagePurpose?:string):Promise<string>;
+  infer(projectId:string,prompt:string,signal?:AbortSignal,sessionId?:string,usagePurpose?:string,promptDescriptor?:PromptDescriptor):Promise<string>;
   execute(session:AssistantSession,tool:string,args:Record<string,unknown>,signal:AbortSignal,userApproved?:boolean):Promise<unknown>;
   fingerprint(projectId:string):string|Promise<string>;
   projectRoot?(projectId:string):string;
@@ -423,9 +425,9 @@ export function createAssistantLoop(deps:Dependencies){
         const currentContext=await context(s);s=get(id);if(s.status!=='running')break;
         const revision=s.version;db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);
         // 第 2 阶段：拼接系统指令 + 工具目录 + 上下文，发送给 LLM
-        const prompt='APIX_AGENT_LOOP_JSON\n'+instruction+'\n工具目录：'+JSON.stringify(catalog(s).tools)+'\n当前上下文：'+JSON.stringify(currentContext);
+        const {prompt,descriptor}=legacyAssistantPrompt(instruction,catalog(s).tools,currentContext);
         let decision:Record<string,unknown>;let malformed='';
-        try{malformed=await deps.infer(s.project_id,prompt,controllers.get(id)?.signal,id);decision=parseAction(malformed);}catch(error){if(!(error instanceof SyntaxError))throw error;
+        try{malformed=await deps.infer(s.project_id,prompt,controllers.get(id)?.signal,id,'assistant_loop',descriptor);decision=parseAction(malformed);}catch(error){if(!(error instanceof SyntaxError))throw error;
           // 格式修复：LLM 首次返回非 JSON 时，发送一次纠正提示要求严格 JSON 格式
           event(id,'system','protocol_repair',{content:'模型未按 JSON 动作契约回复，正在请求一次格式纠正；未执行任何工具。'});
           const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=24)throw new Error('已达到本轮步数上限，未执行格式无效的操作');

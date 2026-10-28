@@ -76,6 +76,7 @@ export function modelUsage(api:string,raw:Record<string,any>,previous=unknownUsa
  * completed 只表示模型传输完成，不代表任务已验收
  */
 export interface ModelAttempt {
+  transportObservation?:import('./prompt-diagnostics.js').TransportObservation;
   /** 第几次尝试（从 1 开始） */
   attempt:number;
   /** 尝试状态：成功或失败 */

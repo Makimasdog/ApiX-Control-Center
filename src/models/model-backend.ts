@@ -5,7 +5,7 @@
  * 核心功能：
  *   1. directModelSettings() 解析并验证用户保存的模型设置
  *   2. inferModel() 带重试和超时的模型推理入口，支持流式输出
- *   3. inferAttempt() 单次请求实现：构建请求体、处理 SSE 流、解析各协议响应
+ *   3. inferAttempt() 单次请求实现：发送已准备的请求体、处理 SSE 流、解析各协议响应
  *   4. 安全机制：API Key 脱敏、传输资源清理、超时保护
  * 依赖关系：
  *   - 依赖 model-providers.ts 获取提供商配置
@@ -17,18 +17,15 @@
  */
 import {setTimeout as sleep} from 'node:timers/promises';
 import {classifyFault,FaultError,retryDelay,retryAfter} from '../recovery/fault-policy.js';
-import {reasoningParameters} from './conversation-models.js';
-import {getProviderConfig,isLoopbackModelUrl,validateModelConfig} from './model-providers.js';
 import {request as httpRequest, type ClientRequest, type IncomingMessage} from 'node:http';
 import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
-import {modelEndpoint} from './model-endpoint.js';
 import {modelUsage,unknownUsage,type ModelUsage,type ModelAttempt} from './model-usage.js';
 
-/**
- * ModelSettings - 模型设置的完整配置接口
- */
-export interface ModelSettings {provider:string;model:string;baseUrl:string;apiType:string;apiKeyEnv:string;reasoningEffort?:string;contextWindow?:number|null}
+import {prepareModelRequest,type PreparedModelRequest,type ModelSettings} from './model-request.js';
+import {createPromptDiagnostics,emptyTransport,type DiagnosticScope,type PromptDescriptor,type RequestDiagnostic} from './prompt-diagnostics.js';
+export {directModelSettings,type ModelSettings} from './model-request.js';
+const defaultDiagnostics=createPromptDiagnostics();
 
 /**
  * ModelCleanupUnknownError - 模型传输清理未确认时抛出的安全错误
@@ -39,24 +36,6 @@ export class ModelCleanupUnknownError extends Error {
   readonly code='MODEL_CLEANUP_UNKNOWN';
 }
 
-/**
- * directModelSettings - 解析并验证用户保存的模型设置
- * 自动填充预设的 Base URL 和 API Key 环境变量，确保配置完整可用
- * @param saved - 用户保存的原始设置
- * @returns 验证通过的完整设置
- */
-export function directModelSettings(saved:ModelSettings):ModelSettings {
-  const preset=!saved.baseUrl?getProviderConfig(saved.provider):undefined;
-  const settings=preset?{...saved,baseUrl:preset.baseUrl,apiType:preset.apiType,apiKeyEnv:saved.apiKeyEnv||preset.defaultApiKeyEnv||''}:saved;
-  if(!settings.baseUrl||!settings.model)throw new Error('请先配置 ApiX 的模型 API 地址与模型 ID；Pi、Codex、Claude 是可选执行 Agent，不是推理底座。');
-  const check=validateModelConfig(settings);if(!check.valid)throw new Error(check.error);
-  if(settings.apiKeyEnv&&!process.env[settings.apiKeyEnv])throw new Error('模型密钥环境变量未设置，请配置后重启 ApiX');
-  if(!settings.apiKeyEnv&&!isLoopbackModelUrl(settings.baseUrl))throw new Error('远程模型必须配置 API Key 环境变量');
-  return settings;
-}
-
-// ApiX 模型调用的系统提示词：明确模型角色为“决策组件”，禁止模型虚构操作或启动 Agent
-const system='你是 ApiX 的独立模型决策组件。工具、Skills、上下文、委派、权限与验收由 ApiX 宿主管理；模型本身没有本机工具，不得虚构操作或自行启动其他 Agent。遵守输入中的 JSON 契约，只返回一个完整 JSON 对象，不加 Markdown 或前言。公开回复放在契约指定的 question、reply、message 或 summary 字段，不输出隐藏推理过程。';
 type Json=Record<string,any>;
 
 /**
@@ -98,7 +77,7 @@ function finalText(data:Json,api:string):string {
 /**
  * InferenceOptions - 推理请求的可选项配置
  */
-interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void;onAttemptStart?:(attempt:number)=>void;onAttempt?:(value:ModelAttempt)=>void;onUsage?:(usage:ModelUsage,complete:boolean)=>void}
+interface InferenceOptions {signal?:AbortSignal;timeoutMs?:number;maxAttempts?:number;onRetry?:(info:{attempt:number;delayMs:number;fault:ReturnType<typeof classifyFault>})=>void;onAttemptStart?:(attempt:number)=>void;onAttempt?:(value:ModelAttempt)=>void;onUsage?:(usage:ModelUsage,complete:boolean)=>void;onRequestPrepared?:(attempt:number,value:RequestDiagnostic)=>void;promptDescriptor?:PromptDescriptor;diagnostics?:{scope:DiagnosticScope;usageId:()=>string;tracker?:ReturnType<typeof createPromptDiagnostics>}}
 
 /**
  * inferModel - 带重试和超时的模型推理入口
@@ -114,45 +93,50 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
   if(!Number.isSafeInteger(totalMs)||totalMs<=0||totalMs>2147483647)throw new Error('模型请求超时配置无效');
   const deadline=Date.now()+totalMs;
   if(!Number.isSafeInteger(attempts)||attempts<1||attempts>3)throw new Error('模型重试次数应为 1–3');
-  for(let attempt=1;;attempt++){
-    const started=Date.now();let usage=unknownUsage(),usageComplete=false,status:ModelAttempt['status']='failed',primary:unknown;
+  let prepared:PreparedModelRequest|undefined,eligible:ReturnType<ReturnType<typeof createPromptDiagnostics>['prepare']>|undefined;
+  const tracker=options.diagnostics?.tracker??defaultDiagnostics;
+  try{for(let attempt=1;;attempt++){
+    const started=Date.now();let usage=unknownUsage(),usageComplete=false,status:ModelAttempt['status']='failed',primary:unknown,networkReady=false;
+    const transportObservation=emptyTransport();
     // 登记失败时直接停止，确保请求不会在缺少账本记录的情况下发往供应商。
     options.onAttemptStart?.(attempt);
     try{
-      try{const result=await inferAttempt(saved,prompt,onDelta,{...options,timeoutMs:Math.max(1,deadline-Date.now()),onUsage:(value,complete)=>{usage=value;usageComplete=complete;}});status='completed';return result;}
+      try{
+        prepared=options.onRequestPrepared?(prepared??prepareModelRequest(saved,prompt)):prepareModelRequest(saved,prompt);
+        let diagnostic:ReturnType<typeof tracker.prepare>|undefined;
+        if(options.onRequestPrepared){
+          if(!options.diagnostics)throw new Error('请求诊断缺少宿主作用域');
+          diagnostic=tracker.prepare(options.diagnostics.scope,options.diagnostics.usageId(),attempt,prepared,options.promptDescriptor);
+          const hookResult:unknown=options.onRequestPrepared(attempt,diagnostic.metadata);
+          if(hookResult&&typeof (hookResult as PromiseLike<unknown>).then==='function'){void Promise.resolve(hookResult).catch(()=>{});throw new Error('请求诊断保存只支持同步回调；没有启动网络请求');}
+        }
+        const remaining=deadline-Date.now();
+        if(remaining<=0)throw new Error('模型请求准备或记账已超过总时限；没有启动网络请求');
+        if(options.signal?.aborted)throw new Error('模型请求已停止');
+        networkReady=true;
+        const result=await inferAttempt(prepared,onDelta,{...options,timeoutMs:remaining,onUsage:(value,complete)=>{usage=value;usageComplete=complete;}},transportObservation,()=>{if(diagnostic){tracker.headers(diagnostic);eligible=diagnostic;}});status='completed';return result;
+      }
       catch(error){primary=error;throw error;}
       // 清理未知是更高优先级的安全事实；记账再次失败时补充说明，不覆盖原来的清理错误。
-      finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageComplete});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
+      finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageComplete,transportObservation});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
     }catch(error){
-    if(!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
+    if(!networkReady||!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
     const delayMs=Math.ceil(retryDelay(attempt,error.retryAfterMs));if(!Number.isFinite(delayMs)||Date.now()+delayMs>=deadline)throw error;
     options.onRetry?.({attempt:attempt+1,delayMs,fault:error.fault});
     try{await sleep(delayMs,undefined,{signal:options.signal});}catch{throw new Error('模型退避等待已停止');}
     if(Date.now()>=deadline)throw error;
-  }}
+  }}}finally{if(eligible)tracker.commit(eligible);}
 }
 /**
  * inferAttempt - 执行单次模型推理请求
- * 负责构建请求体、发起 HTTP 请求、解析 SSE 流、处理各协议响应格式
- * @param saved - 模型设置
- * @param prompt - 用户提示词
+ * 负责发送冻结的请求体、解析 SSE 流和清理传输资源
+ * @param prepared - 已验证的最终请求
  * @param onDelta - 流式输出回调
  * @param options - 推理选项
  * @returns 模型返回的文本
  */
-async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:string)=>void)|undefined,options:InferenceOptions):Promise<string>{
-  const settings=directModelSettings(saved),api=settings.apiType,key=settings.apiKeyEnv?process.env[settings.apiKeyEnv]:undefined;
-  if(Buffer.byteLength(prompt)>512*1024)throw new Error('模型上下文超过 512 KiB，请整理或拆分任务');
-  const endpoint=modelEndpoint(settings.baseUrl,api);
-  // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
-  const stream=true;
-  const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
-  // Chat Completions 的流式用量在额外终端块中返回，需要显式请求。
-  if(api==='openai-completions')Object.assign(body,{stream_options:{include_usage:true}});
-  Object.assign(body,reasoningParameters(settings));
-  const headers:Record<string,string>={'Content-Type':'application/json','Accept':stream?'text/event-stream':'application/json'};
-  if(key)headers[api==='anthropic-messages'?'x-api-key':'Authorization']=api==='anthropic-messages'?key:'Bearer '+key;
-  if(api==='anthropic-messages')headers['anthropic-version']='2023-06-01';
+async function inferAttempt(prepared:PreparedModelRequest,onDelta:((delta:string)=>void)|undefined,options:InferenceOptions,observation:ReturnType<typeof emptyTransport>,onHeaders:()=>void):Promise<string>{
+  const {settings,api,key,headers,bodyText}=prepared,endpoint=new URL(prepared.endpoint);
   const timeoutMs=options.timeoutMs??90000;
   if(!Number.isSafeInteger(timeoutMs)||timeoutMs<=0||timeoutMs>2147483647)throw new Error('模型请求超时配置无效');
   if(options.signal?.aborted)throw new Error('模型请求已停止');
@@ -171,7 +155,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
     const append=(value:unknown)=>{if(typeof value!=='string')return;answer+=value;if(answer.length>100000)throw new Error('模型输出超过 100000 字符');onDelta?.(value);};
     const event=(frame:string)=>{
       const payload=frame.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');if(!payload)return;
-      if(payload==='[DONE]'){if(api!=='openai-completions'||!complete)throw new Error('模型流结束标记不符合协议');observe(null,true);terminal=true;return;}
+      if(payload==='[DONE]'){if(api!=='openai-completions'||!complete)throw new Error('模型流结束标记不符合协议');observe(null,true);terminal=true;observation.terminal=true;return;}
       const data=JSON.parse(payload) as Json;
       if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('模型流事件格式无效');
       observe(api==='openai-responses'?data.response?.usage:api==='anthropic-messages'&&data.type==='message_start'?data.message?.usage:data.usage);
@@ -181,12 +165,12 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
         append(c.delta?.content);if(c.finish_reason){if(c.finish_reason!=='stop')throw new Error('模型流被截断或包含未提供的工具');complete=true;}
       }else if(api==='openai-responses'){
         if(data.type==='response.output_text.delta')append(data.delta);
-        if(data.type==='response.completed'){const full=finalText(data.response,api);if(!answer)append(full);else if(full!==answer)throw new Error('模型流与最终文本不一致');observe(null,true);complete=true;terminal=true;}
+        if(data.type==='response.completed'){const full=finalText(data.response,api);if(!answer)append(full);else if(full!==answer)throw new Error('模型流与最终文本不一致');observe(null,true);complete=true;terminal=true;observation.terminal=true;}
       }else{
         if(data.type==='content_block_start'&&data.content_block?.type==='text')append(data.content_block.text);
         if(data.type==='content_block_delta'&&data.delta?.type==='text_delta')append(data.delta.text);
         if(data.type==='message_delta'&&data.delta?.stop_reason){if(!['end_turn','stop_sequence'].includes(data.delta.stop_reason))throw new Error('模型消息流未完整结束');complete=true;}
-        if(data.type==='message_stop'){if(!complete)throw new Error('模型消息流缺少停止原因');observe(null,true);terminal=true;}
+        if(data.type==='message_stop'){if(!complete)throw new Error('模型消息流缺少停止原因');observe(null,true);terminal=true;observation.terminal=true;}
       }
     };
     return await new Promise<string>((resolve,reject)=>{
@@ -205,7 +189,7 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
       options.signal?.addEventListener('abort',abort,{once:true});
       try{
         request=(endpoint.protocol==='https:'?httpsRequest:httpRequest)(endpoint,{method:'POST',headers,agent:false},incoming=>{
-          response=incoming;if(settled){incoming.destroy();return;}phase='headers';
+          response=incoming;observation.responseHeaders=true;onHeaders();if(settled){incoming.destroy();return;}phase='headers';
           incoming.on('error',failed);
           incoming.on('aborted',failed);
           const status=incoming.statusCode??0;
@@ -234,18 +218,19 @@ async function inferAttempt(saved:ModelSettings,prompt:string,onDelta:((delta:st
               // SSE events require a blank line; EOF must not promote a partial terminal frame.
               if(!complete||!terminal)throw new Error('模型流中断，未收到完整结束标记');
             }else{
-              const data=JSON.parse(raw+tail) as Json;observe(data.usage);answer=finalText(data,api);observe(null,true);
+              const data=JSON.parse(raw+tail) as Json;observe(data.usage);answer=finalText(data,api);observation.terminal=true;observe(null,true);
               if(answer.length>100000)throw new Error('模型输出超过 100000 字符');onDelta?.(answer);
             }
             phase='protocol';finish(undefined,answer);
           }));
           incoming.on('close',()=>{if(!incoming.complete)failed();});
         });
+        observation.requestCreated=true;
         request.on('socket',assigned=>{socket=assigned;assigned.once('connect',()=>{connected=true;});assigned.once('close',close);if(settled)assigned.destroy();});
         request.on('close',()=>{if(!socket)close();});
         request.on('error',failed);
-        request.once('finish',()=>{if(!settled&&phase==='connection')phase='headers';});
-        request.end(JSON.stringify(body));
+        request.once('finish',()=>{observation.writeCompleted=true;if(!settled&&phase==='connection')phase='headers';});
+        request.end(bodyText);
       }catch(error){finish(error);}
     });
   }catch(error){

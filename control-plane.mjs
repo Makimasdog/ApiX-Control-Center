@@ -1278,11 +1278,14 @@ async function inferManager(prompt,onDelta,context,usageScope=context) {
   // 请求开始即冻结任务归属，后续切换任务不能把本次消耗记到新任务。
   const frozenTaskId=taskId?JSON.parse(taskId).id:undefined;
   const purpose=usageScope?.usagePurpose??usageScope?.purpose??'unknown';
+  const diagnosticsEnabled=context?.purpose==='assistant_loop'&&context.sessionId;let diagnosticScope;
   let usageId;
   const controller=new AbortController(),version=context?permissions.get(context.projectId).version:null;
   let revoked=false;const abort=()=>controller.abort();context?.signal?.addEventListener('abort',abort,{once:true});if(context?.signal?.aborted)abort();
   const watch=context?setInterval(()=>{if(permissions.get(context.projectId).version!==version){revoked=true;controller.abort();}},200):null;
   try{return await inferModel(settings,prompt,onDelta,{signal:controller.signal,
+    promptDescriptor:context?.promptDescriptor,
+    ...(diagnosticsEnabled?{diagnostics:{get scope(){try{return diagnosticScope??=tokenUsage.diagnosticScope(context.projectId,context.sessionId,purpose,settings,row("SELECT version FROM conversation_models WHERE kind='assistant' AND session_id=?",context.sessionId)?.version,context.promptDescriptor?.layout??'opaque-v1');}catch{throw new InferenceAccountingError('最终请求诊断范围未确认；没有启动本次网络请求');}},usageId:()=>usageId},onRequestPrepared:(attempt,value)=>{try{tokenUsage.attachDiagnostic(usageId,attempt,value);}catch{throw new InferenceAccountingError('最终请求诊断保存失败；没有启动本次网络请求');}}}:{}),
     onAttemptStart:attempt=>{try{if(usageScope)usageId=tokenUsage.start({invocationId,attempt,projectId:usageScope.projectId,sessionId:usageScope.sessionId,taskId:frozenTaskId,purpose,provider:settings.provider,model:settings.model,apiType:settings.apiType,estimatedPromptTokens:estimateTokens(prompt)});}catch{throw new InferenceAccountingError('Token 用量账本请求登记失败；没有启动本次请求');}},
     onAttempt:value=>{try{if(usageId)tokenUsage.finish(usageId,value);}catch{throw new InferenceAccountingError('Token 用量账本最终记录失败，请核对后恢复');}},
     onRetry:info=>{if(context?.sessionId){const table=context.purpose==='assistant_loop'?'assistant_events':null;if(table)db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','model_retry',?,?)").run(context.sessionId,JSON.stringify(info),now());else memory.append(context.projectId,context.sessionId,'model.retry',info);}}});}
