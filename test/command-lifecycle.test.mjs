@@ -1,7 +1,7 @@
 import {waitForFile} from './wait-for-file.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,dirname,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -26,7 +26,8 @@ test('Windows command entry preserves UTF-8 arguments, environment and cwd under
  try{
   const result=await commandTool(root,{executable:process.execPath,args:['-e',"process.stdout.write(JSON.stringify({arg:process.argv[1],env:process.env.APIX_UTF8_FIXTURE,cwd:process.cwd()}))",value]}, {...process.env,APIX_UTF8_FIXTURE:value},new AbortController().signal);
   assert.equal(result.exitCode,0);assert.equal(result.executionComplete,true);assert.equal(result.processesEnded,true);
-  assert.deepEqual(JSON.parse(result.output),{arg:value,env:value,cwd:root});
+  const output=JSON.parse(result.output);
+  assert.deepEqual({...output,cwd:realpathSync.native(output.cwd)},{arg:value,env:value,cwd:realpathSync.native(root)});
  }finally{assert(resolve(root).startsWith(resolve(tmpdir())+sep));rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 });
 

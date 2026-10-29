@@ -27,9 +27,13 @@ async function transport(t,work,{partial=false,unknown=true,reply}={}){
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const settings={provider:'apix-custom',model:'selected-fixture',apiType:'openai-completions',apiKeyEnv:'APIX_INFERENCE_TEST_KEY',baseUrl:`http://127.0.0.1:${server.address().port}/v1`};
   http.request=(...args)=>{const req=original(...args);if(unknown)req.once('socket',socket=>{const emit=socket.emit;sockets.push({socket,emit});socket.emit=function(event,...values){return event==='close'?false:emit.call(this,event,...values);};});return req;};syncBuiltinESMExports();
-  const guard=setTimeout(()=>{expired=true;t.diagnostic('transport watchdog fired');observed.reject(new Error('transport watchdog fired'));server.closeAllConnections();},4000);
-  try{await work({settings,observed:observed.promise,request:(signal)=>inferModel(settings,'fixture',()=>observed.resolve(),{signal,timeoutMs:1000}),requests:()=>requests});assert.equal(expired,false,'watchdog must not complete cancellation for the implementation');}
-  finally{clearTimeout(guard);http.request=original;syncBuiltinESMExports();for(const {socket,emit} of sockets){socket.emit=emit;socket.emit('close',false);}server.closeAllConnections();await new Promise(r=>server.close(r));if(previous===undefined)delete process.env.APIX_INFERENCE_TEST_KEY;else process.env.APIX_INFERENCE_TEST_KEY=previous;}
+  // watchdog 只保护推理传输；后续数据库和权限断言由 test 的总超时约束。
+  const request=async signal=>{
+    const guard=setTimeout(()=>{expired=true;t.diagnostic('transport watchdog fired');observed.reject(new Error('transport watchdog fired'));server.closeAllConnections();},4000);
+    try{return await inferModel(settings,'fixture',()=>observed.resolve(),{signal,timeoutMs:1000});}catch(error){observed.reject(error);throw error;}finally{clearTimeout(guard);}
+  };
+  try{await work({settings,observed:observed.promise,request,requests:()=>requests});assert.equal(expired,false,'watchdog must not complete cancellation for the implementation');}
+  finally{http.request=original;syncBuiltinESMExports();for(const {socket,emit} of sockets){socket.emit=emit;socket.emit('close',false);}server.closeAllConnections();await new Promise(r=>server.close(r));if(previous===undefined)delete process.env.APIX_INFERENCE_TEST_KEY;else process.env.APIX_INFERENCE_TEST_KEY=previous;}
 }
 function adapter(settings,infer){
   const calls=[];const wrapped=createAssistantInference({settings:id=>{calls.push(['settings',id]);return settings;},account:id=>{calls.push(['account',id]);return 'shared';},reserve:(...args)=>{calls.push(['reserve',...args]);return true;},settle:(...args)=>calls.push(['settle',...args]),pause:(...args)=>calls.push(['pause',...args]),quotaFailure:message=>message.includes('insufficient_quota'),infer});
@@ -56,6 +60,16 @@ test('real backend cleanup error crosses production wrapper with safe host code'
     });assert.equal(net.requests(),1);assert.equal(a.calls.filter(c=>c[0]==='settle').length,1);
   });
 });
+
+test('transport watchdog excludes work after inference cleanup settles',{timeout:7000},async t=>{
+  await transport(t,async net=>{
+    await assert.rejects(net.request(),error=>error.code==='MODEL_CLEANUP_UNKNOWN');
+    // 后置工作故意超过旧夹具的总时限，传输本身的限制不变。
+    await new Promise(resolve=>setTimeout(resolve,3200));
+    assert.equal(net.requests(),1);
+  });
+});
+
 for(const mode of ['running','stopped','revoked'])test(`${mode} cleanup unknown persists, blocks restart and releases busy`,{timeout:7000},async t=>{
   await transport(t,async net=>{
     const revoke=new AbortController();let revoked=false;const decisions=[];
@@ -102,5 +116,5 @@ test('confirmed transport stop does not manufacture an unknown event',{timeout:7
   await transport(t,async net=>{const a=adapter(net.settings,(_p,_d,context)=>net.request(context.signal));await loopFixture(a.wrapped,async h=>{const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));await net.observed;(await h.service.stop(id));const s=await idle(h.service,id);assert.equal(s.status,'stopped');assert.equal(s.busy,false);assert.equal(unknownEvent(s),undefined);assert.equal(h.calls.length,0);assert.equal(net.requests(),1);});},{partial:true,unknown:false});
 });
 for(const reply of ['{invalid',JSON.stringify({error:{code:'MODEL_CLEANUP_UNKNOWN',message:'private-fixture-key'}})])test(`ordinary protocol/provider error cannot forge host uncertainty: ${reply.startsWith('{invalid')?'syntax':'provider code'}`,{timeout:7000},async t=>{
-  await transport(t,async net=>{let first=true;const a=adapter(net.settings,(_p,_d,context)=>{if(first){first=false;return net.request(context.signal);}return Promise.resolve(JSON.stringify(finish));});await loopFixture(a.wrapped,async h=>{const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));let s=await idle(h.service,id);assert.equal(s.status,'attention');assert.equal(unknownEvent(s),undefined);assert(s.events.some(e=>e.kind==='error'));assert.equal(h.calls.length,0);(await h.service.message(id,{content:'new read only request'}));s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(net.requests(),1);});},{unknown:false,reply});
+  await transport(t,async net=>{let first=true;const a=adapter(net.settings,(_p,_d,context)=>{if(first){first=false;return net.request(context.signal);}return Promise.resolve(JSON.stringify(finish));});await loopFixture(a.wrapped,async h=>{const id=(await h.service.create({projectId:'p'})).id;(await h.service.message(id,{content:'work'}));let s=await idle(h.service,id);await assert.rejects(net.observed);assert.equal(s.status,'attention');assert.equal(unknownEvent(s),undefined);assert(s.events.some(e=>e.kind==='error'));assert.equal(h.calls.length,0);(await h.service.message(id,{content:'new read only request'}));s=await idle(h.service,id);assert.equal(s.status,'completed');assert.equal(net.requests(),1);});},{unknown:false,reply});
 });
