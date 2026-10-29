@@ -1,0 +1,363 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-16T11:40:41.251Z",
+  "specification": {
+    "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\candidate.json",
+    "sha256": "cc31fa72f8300de92f5d7c37004c4ea55a9f8ed9fdffe37ae12a44488b2c1e4a",
+    "bytes": 6366
+  },
+  "artifact": {
+    "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+    "sha256": "bb19521ae61cb6374f811e92de53957568c245ac724f284fc031773560dc22e7",
+    "bytes": 759743
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "C:\\Users\\1\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "C:\\Users\\1\\.codex\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\candidate.json",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "E:\\Projects\\wyy\\ApiX-Control-Center",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "cc31fa72f8300de92f5d7c37004c4ea55a9f8ed9fdffe37ae12a44488b2c1e4a",
+          "bytes": 6366
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 2730,
+      "command": [
+        "C:\\Users\\1\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "C:\\Users\\1\\.codex\\skills\\archify\\bin\\archify.mjs",
+        "deliver",
+        "architecture",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\candidate.json",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "E:\\Projects\\wyy\\ApiX-Control-Center",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "989e6bb6-1b1f-4959-b5b4-0162fbc18864",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\candidate.json",
+        "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "specification": {
+          "sha256": "cc31fa72f8300de92f5d7c37004c4ea55a9f8ed9fdffe37ae12a44488b2c1e4a",
+          "bytes": 6366
+        },
+        "artifact": {
+          "sha256": "bb19521ae61cb6374f811e92de53957568c245ac724f284fc031773560dc22e7",
+          "bytes": 759743
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://github.com/Makimasdog/ApiX-Control-Center",
+          "revision": "3f5f22c62d3b072c88af2ef91ef7963e86d4fcb5",
+          "references": 18,
+          "linkMode": "local-only"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 567,
+      "command": [
+        "C:\\Users\\1\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "C:\\Users\\1\\.codex\\skills\\archify\\bin\\archify.mjs",
+        "check",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "artifact": {
+          "sha256": "bb19521ae61cb6374f811e92de53957568c245ac724f284fc031773560dc22e7",
+          "bytes": 759743
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 20,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 7.5,
+            "maxBends": 2,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 55,
+            "minInteriorSegmentPx": 213,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 50,
+            "emptyTopRatio": 0.078,
+            "occupiedTop": 50,
+            "viewBoxTop": 0,
+            "canvasHeight": 640,
+            "typicalNodeHeight": 82,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1012.5,
+            "actualBudgetPx": 1012.5,
+            "actualReaderWidth": 1042.5,
+            "desiredReaderWidth": 1042.5,
+            "viewportCap": 1376,
+            "limit": "source-size",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": true,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "web-host",
+              "from": "web",
+              "to": "host"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 7.5,
+            "semanticTextCount": 23
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "989e6bb6-1b1f-4959-b5b4-0162fbc18864"
+      }
+    },
+    "browser-check": {
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 292,
+      "command": [
+        "C:\\Users\\1\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe",
+        "C:\\Users\\1\\.codex\\skills\\archify\\bin\\archify.mjs",
+        "browser-check",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+        "--json",
+        "--require-provenance",
+        "--out-dir",
+        "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\review-2"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "fail",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "989e6bb6-1b1f-4959-b5b4-0162fbc18864",
+        "artifact": {
+          "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html",
+          "sha256": "bb19521ae61cb6374f811e92de53957568c245ac724f284fc031773560dc22e7",
+          "bytes": 759743
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "available",
+          "executable": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/browser-check-runtime",
+            "severity": "error",
+            "message": "browser-check could not complete its Chrome inspection.",
+            "subject": {
+              "artifact": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html"
+            },
+            "evidence": {
+              "reason": "Chrome DevTools write pipe failed: stream closed\nChrome process: still running.\nChrome transport: Node v24.19.0, libuv 1.52.1, win32; pid=33168, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=false, ended=true, destroyed=true, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+            },
+            "supportedFixes": [
+              "resolve the reported Chrome inspection error, then rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "fail",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "fail",
+          "viewports": []
+        },
+        "readability": {
+          "status": "fail",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "fail",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\review-2",
+          "receipt": "overview.browser-check.json",
+          "files": []
+        },
+        "error": "Chrome DevTools write pipe failed: stream closed\nChrome process: still running.\nChrome transport: Node v24.19.0, libuv 1.52.1, win32; pid=33168, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=false, ended=true, destroyed=true, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\overview.html"
+      },
+      "evidence": {
+        "reason": "Chrome DevTools write pipe failed: stream closed\nChrome process: still running.\nChrome transport: Node v24.19.0, libuv 1.52.1, win32; pid=33168, exitCode=null, signalCode=null.\nChrome read pipe: readable=true, ended=false, destroyed=false, receivedBytes=0, messages=0, bufferedBytes=0.\nChrome write pipe: writable=false, ended=true, destroyed=true, completedWrites=1, writtenBytes=50, bufferedBytes=0."
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\review-2\\overview.finalize.json",
+    "summaryReceipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\review-2\\overview.finalize-summary.json",
+    "browserCheckReceipt": "E:\\Projects\\wyy\\ApiX-Control-Center\\.archify\\architecture-apix-current-20261016-192305\\overview\\review-2\\overview.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-16T11:40:48.340Z",
+  "durationMs": 7088
+}

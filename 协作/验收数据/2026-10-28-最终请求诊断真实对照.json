@@ -1,0 +1,2247 @@
+{
+  "schema": 1,
+  "date": "2026-10-28",
+  "timezone": "Asia/Hong_Kong",
+  "baseCommit": "441bfd462fee1c94aebce37357d6f47efe6a565a",
+  "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+  "model": {
+    "provider": "apix-custom",
+    "model": "qwen3.8-flash",
+    "apiType": "openai-completions",
+    "contextWindow": null
+  },
+  "prompt": "请执行一次只读源码核查，禁止修改文件、保存记忆、运行命令或委派。必须实际用 read_file 读取 package.json、src/assistant/context-optimizer.ts、src/models/model-usage.ts，依据文件回答以下7项，每项注明文件路径和关键标识符，不要凭先验猜测。1. 项目版本和支持的 Node 版本范围；2. npm start 是否会先构建及启动入口；3. 标准模式返回的工具目录与 deferred；4. 节省模式固定常驻工具数量，以及已发现工具如何处理；5. 目录估算减少量如何计算，是否扣除发现索引；6. 用量字段 null 的含义、缓存与推理是否应重复加到总量；7. Anthropic 总输入如何计算、缓存字段缺失时怎么办，以及流快照是覆盖还是累加。请只做这些读取与核查，最终用简洁中文逐项给出结论。",
+  "promptSha256": "1485ef77601ba9e49792c90ade5ddfabe8272b95d580b9dfb96d77b31068fc38",
+  "sourceFiles": {
+    "package.json": "c426b34260069708e1273410d2fa2457cc3cd6551de49fa47f45b62cf069c37e",
+    "src/assistant/context-optimizer.ts": "3feb60fd4b126a285fe8f32e6bdbf886057b3f4b0e4003cc8e8322bd6eb9e812",
+    "src/models/model-usage.ts": "739eaf0784216ce07975b97725596bca77fecd15d3e4d8db4f98245cfa8aee2f"
+  },
+  "savedConfigurationEqualityChecked": true,
+  "configurationVersion": 1,
+  "singleDiagnosticProcess": true,
+  "order": [
+    "standard",
+    "saving",
+    "saving",
+    "standard"
+  ],
+  "definitions": {
+    "totalTokens": "inputTokens + outputTokens；cache 属于输入、reasoning 属于输出，不重复加",
+    "requestHit": "COUNT(cachedInputTokens>0) / COUNT(已观测缓存计数的请求)",
+    "tokenCache": "SUM(cachedInputTokens) / SUM(inputTokens)，仅已观测配对，全部25/25覆盖",
+    "wallMs": "提交任务至会话非busy且completed的轮询壁钟时间；含宿主工作与约2秒轮询分辨率",
+    "modelMs": "实际请求尝试账本 durationMs 合计，含准备和传输清理",
+    "uncachedInputTokens": "inputTokens - cachedInputTokens；不据此推算费用"
+  },
+  "runs": [
+    {
+      "number": 1,
+      "mode": "standard",
+      "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+      "taskId": "332f9706-9d30-4cfe-9e9e-b457f806deba",
+      "startedAt": "2026-10-28T06:44:40.661Z",
+      "finishedAt": "2026-10-28T06:46:58.785Z",
+      "wallMs": 138118,
+      "modelMs": 125196,
+      "manifest": "0cb9427ac24ed4d82ee93960bc3fe60d79bb7dcd96ed08074599f3cd923d1cc2",
+      "status": "completed",
+      "inputTokens": 70033,
+      "outputTokens": 6215,
+      "totalTokens": 76248,
+      "cachedInputTokens": 36864,
+      "uncachedInputTokens": 33169,
+      "cacheWriteTokens": null,
+      "reasoningTokens": 5275,
+      "requests": 7,
+      "requestsWithCache": 6,
+      "requestHitPercent": 85.71428571428571,
+      "tokenCachePercent": 52.638042065883226,
+      "usageCoverage": "7/7",
+      "tools": {
+        "read_file": 3,
+        "read_context": 3
+      },
+      "toolErrors": [
+        {
+          "id": 341,
+          "tool": "read_context"
+        }
+      ],
+      "extraReadFileCalls": 0,
+      "answerSha256": "b0037ffbabb0914a8cff47973c977f9d28440be704710f554d9c62eb929f5923",
+      "correctAnswers": 7,
+      "expectedAnswers": 7,
+      "effectReview": "Codex 对照源码逐项自审；7项结论正确，3个必读文件均实际读取；只读交付无源码变更",
+      "attempts": [
+        {
+          "number": 1,
+          "usageId": "a5deecc0-6413-4629-8468-02ece5c8ff1b",
+          "invocationId": "e41bca6b-2b9e-4209-92e4-d17995e800e6",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 7194,
+          "outputTokens": 210,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 165,
+          "durationMs": 5028,
+          "createdAt": "2026-10-28T06:44:44.817Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "a5deecc0-6413-4629-8468-02ece5c8ff1b",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "806576265ff3a2ec00b607a2ac6f2eb1a7db82d3986a9a2ce4e03b6348836f74",
+            "wireBodyBytes": 29523,
+            "promptSha256": "3043ab62ea379fba6c91754673ede4b855a5954e49a67049a4c1bb949f6473af",
+            "logicalInputHash": "d4329f8e9ce957dba2a288cfb8cddccf5a81d3b73fe9603096f7e0b087cbc405",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "287ba07ce384d9c11e6ac314c3fd94d668760cf96899bb773cc4c482cce72870",
+            "baselineUsageId": null,
+            "comparisonState": "unavailable",
+            "baselineUnavailableReason": "first_request",
+            "wireBodyPrefixBytes": null,
+            "logicalInputPrefixBytes": null,
+            "firstChangedRegion": null,
+            "firstChangedHostField": null,
+            "firstChangedEventId": null,
+            "historyMutation": "unknown",
+            "historyChanges": [],
+            "changedHostFields": [],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 2,
+          "usageId": "e4280735-1c02-4591-8104-bdfe518eabb2",
+          "invocationId": "891923d3-f4c4-48fa-9715-5d6e47168802",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 7767,
+          "outputTokens": 458,
+          "cachedInputTokens": 5120,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 371,
+          "durationMs": 9191,
+          "createdAt": "2026-10-28T06:44:49.970Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "e4280735-1c02-4591-8104-bdfe518eabb2",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "ea522b1f6ed5ea58e017bdacae1126e6808dd3e314a2a3780907dc94f027e774",
+            "wireBodyBytes": 31030,
+            "promptSha256": "f80c19917c4b29fb1daed00da47be788ae46e0b852709d3a0ef88452d2cc8249",
+            "logicalInputHash": "f03e27b0a4d9146090326d57545127b4b52cc301ad306ced4218369603f98990",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "8df89036844612c01b3e1ee7d15b73a5477f38c203ec5cb293a02cb3917dad15",
+            "baselineUsageId": "a5deecc0-6413-4629-8468-02ece5c8ff1b",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 24968,
+            "logicalInputPrefixBytes": 22650,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 3,
+          "usageId": "aed817b3-d774-47fc-99b0-eb0afa376be7",
+          "invocationId": "24d87b33-01dc-46a1-8d67-9da620d0e229",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 7885,
+          "outputTokens": 635,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 546,
+          "durationMs": 11477,
+          "createdAt": "2026-10-28T06:44:59.270Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "aed817b3-d774-47fc-99b0-eb0afa376be7",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "a307a2ee872c8822b1a7a99a7ecb0081c774b8402966231bff79700a274a2892",
+            "wireBodyBytes": 31587,
+            "promptSha256": "7f3129fc7701f159153e2c083c4bb254802840874cc512cb7be174e47602437c",
+            "logicalInputHash": "0397ea7e4326c9b642911b272ba6788adb8a26b8ddcaf6d3978c701bca945da8",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "526fcc0a9e07140dab746970cf4dea8ee47046ebb31ed4941183645f9628eceb",
+            "baselineUsageId": "e4280735-1c02-4591-8104-bdfe518eabb2",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26308,
+            "logicalInputPrefixBytes": 23780,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 4,
+          "usageId": "5e6f6d4f-bbb7-446e-a30c-d8c379781a8d",
+          "invocationId": "91504976-8286-427b-819f-a5d6121aa987",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9969,
+          "outputTokens": 920,
+          "cachedInputTokens": 5120,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 828,
+          "durationMs": 22173,
+          "createdAt": "2026-10-28T06:45:10.854Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "5e6f6d4f-bbb7-446e-a30c-d8c379781a8d",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "b2c8f60fcbf96e2b0c061705c00a26c45df3d9aa28f93761a31b4898d1452870",
+            "wireBodyBytes": 39398,
+            "promptSha256": "fb6e10921d88cd2e61cdccff405bceae763273a0b3311865c50700087cbc547f",
+            "logicalInputHash": "d6aaf90cd9b3903f6d7b08d5d8c324f4a0502ff7ef02f1a44c64d86fa0c7f0ee",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "22c4f2c2c512b8081e71e8f9d3477443f0d0cce5a8d7b381aded6b9e56b02877",
+            "baselineUsageId": "aed817b3-d774-47fc-99b0-eb0afa376be7",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 24979,
+            "logicalInputPrefixBytes": 22659,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 336,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 336,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 5,
+          "usageId": "bdc75c39-f9c4-47b9-8f6f-08098935280d",
+          "invocationId": "73d9766f-d688-44a1-8162-401a717fa5bd",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 11442,
+          "outputTokens": 435,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 372,
+          "durationMs": 10514,
+          "createdAt": "2026-10-28T06:45:33.132Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "bdc75c39-f9c4-47b9-8f6f-08098935280d",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "1d8704adbcbc7291a153c717946f333943121fc7fca056b36b93eee8dfc16aa8",
+            "wireBodyBytes": 44287,
+            "promptSha256": "47d3e7440766cfe8f9639cdb5a7d96724b6bb3e8048cde2bb498ad3d7b27a0ca",
+            "logicalInputHash": "0fb3e829b3ab85d66ec32f10c319f4c7e3c4d714822a7af37270a40c7c8eadb9",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "0ecd7d07725c8c3e53eac8ced248cc64069dbb4a6339419644bfc38ab25180d6",
+            "baselineUsageId": "5e6f6d4f-bbb7-446e-a30c-d8c379781a8d",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26135,
+            "logicalInputPrefixBytes": 23621,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 340,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 340,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 6,
+          "usageId": "a757e0b6-d10b-4ad6-9503-73276c8ed70a",
+          "invocationId": "0f380745-b8ff-435a-b6bd-4f56b5c9fb39",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 12190,
+          "outputTokens": 535,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 456,
+          "durationMs": 11259,
+          "createdAt": "2026-10-28T06:45:43.769Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "a757e0b6-d10b-4ad6-9503-73276c8ed70a",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "bd728ed445ef09975078c362d5cfe61c9a2e36943753896b7edd6c6f647fb6e9",
+            "wireBodyBytes": 47066,
+            "promptSha256": "24cb3c17c3a0d2b99644af403653a22d9e57f0bc2fe2e7b9481fa5c55b9dae41",
+            "logicalInputHash": "d663677f8d9904a25a9e79d2dc1d3b6f182301e1e1e894c92f950f6de3e050da",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "667453280db5cc4fd535ac7383865a9b3f177df0e5eb76460084d87ef4b77eba",
+            "baselineUsageId": "bdc75c39-f9c4-47b9-8f6f-08098935280d",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26504,
+            "logicalInputPrefixBytes": 23942,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 343,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 343,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 7,
+          "usageId": "41ac9705-2f27-4df7-8b3b-b0e78c1643bd",
+          "invocationId": "1d0e17d8-e417-4de4-8997-27c2b7441836",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 13586,
+          "outputTokens": 3022,
+          "cachedInputTokens": 8192,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 2537,
+          "durationMs": 55554,
+          "createdAt": "2026-10-28T06:45:55.180Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "41ac9705-2f27-4df7-8b3b-b0e78c1643bd",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "802f83cb-1229-4d0e-98e1-d4062bd6a9f2",
+              "purpose": "assistant_loop",
+              "routeScopeId": "aa6fd689-502a-48e1-b0f5-3843fe6ffb3d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "a40de350152f505370e480db898663f6768a91e1f9d4ef9e4c217508db4c407a",
+            "wireBodyBytes": 52352,
+            "promptSha256": "a006dda24ac89b04f0712d09b31f895ecab388c3df48eb46d77754528fafcab0",
+            "logicalInputHash": "08bb7a75e57be78f428e225dc6d6900f3007b48833c1edd93b1ec9405c5d59eb",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "2a94334d21421c261846e344723e1ffed700ff1e9c81a91610bded4cdfc49f59",
+            "baselineUsageId": "a757e0b6-d10b-4ad6-9503-73276c8ed70a",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 34291,
+            "logicalInputPrefixBytes": 30853,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 347,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 347,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        }
+      ],
+      "drops": [
+        {
+          "from": 3,
+          "to": 4,
+          "fromUsageId": "aed817b3-d774-47fc-99b0-eb0afa376be7",
+          "toUsageId": "5e6f6d4f-bbb7-446e-a30c-d8c379781a8d",
+          "fromCached": 6144,
+          "toCached": 5120,
+          "previousWirePrefix": 26308,
+          "currentWirePrefix": 24979,
+          "previousPromptPrefix": 23780,
+          "currentPromptPrefix": 22659,
+          "firstChangedRegion": "context",
+          "firstChangedHostField": "history",
+          "firstChangedEvent": {
+            "id": 336,
+            "role": "assistant",
+            "kind": "activity"
+          },
+          "historyChanges": [
+            "remove"
+          ],
+          "changedParameters": [],
+          "providerCacheCause": "unknown",
+          "ageFilterReplay": {
+            "before": {
+              "budgetEventId": 342,
+              "trailingRawEvents": 5,
+              "includedByTrimHistory": true
+            },
+            "after": {
+              "budgetEventId": 346,
+              "trailingRawEvents": 9,
+              "includedByTrimHistory": false
+            },
+            "rule": "activity is included only while index >= rawHistory.length - 8",
+            "boundary": "history assembled before its context_budget event is appended"
+          }
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "mode": "saving",
+      "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+      "taskId": "44444cf3-ddba-4a0f-b187-ab8b20ce0731",
+      "startedAt": "2026-10-28T06:46:59.006Z",
+      "finishedAt": "2026-10-28T06:48:56.790Z",
+      "wallMs": 117782,
+      "modelMs": 105268,
+      "manifest": "0cb9427ac24ed4d82ee93960bc3fe60d79bb7dcd96ed08074599f3cd923d1cc2",
+      "status": "completed",
+      "inputTokens": 48204,
+      "outputTokens": 5634,
+      "totalTokens": 53838,
+      "cachedInputTokens": 23552,
+      "uncachedInputTokens": 24652,
+      "cacheWriteTokens": null,
+      "reasoningTokens": 4866,
+      "requests": 5,
+      "requestsWithCache": 5,
+      "requestHitPercent": 100,
+      "tokenCachePercent": 48.85901584930711,
+      "usageCoverage": "5/5",
+      "tools": {
+        "read_file": 4
+      },
+      "toolErrors": [],
+      "extraReadFileCalls": 1,
+      "answerSha256": "d1f68294a71a26bddc696853453564bc5e78101637802f3908b8e2dcc71fb8f9",
+      "correctAnswers": 7,
+      "expectedAnswers": 7,
+      "effectReview": "Codex 对照源码逐项自审；7项结论正确，3个必读文件均实际读取；只读交付无源码变更",
+      "attempts": [
+        {
+          "number": 1,
+          "usageId": "8e76799b-c3c3-4be3-8560-1f0716d599ad",
+          "invocationId": "4a155024-ebca-4b09-aac2-1efeda64c392",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 6250,
+          "outputTokens": 499,
+          "cachedInputTokens": 1024,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 444,
+          "durationMs": 10448,
+          "createdAt": "2026-10-28T06:47:03.035Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "8e76799b-c3c3-4be3-8560-1f0716d599ad",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+              "purpose": "assistant_loop",
+              "routeScopeId": "61197a56-1098-4eaa-a2d7-5eddfa9f2efe",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "6830c0a90c2c2599d55569a1f01e9499ab67d7ee99b86871d1ac62c7c4e48cbb",
+            "wireBodyBytes": 25533,
+            "promptSha256": "c8b749209178acbf9733af3744532fc66dd09e7ec8cf20bba414a7dfe1947e21",
+            "logicalInputHash": "a7128ba8219e22acbdfb49c4f854c17bb3395bd77f0b2a6387253074bb30f633",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "bbf6628857b3a508522995d4383f963c02e8275cea5e06db21f33a625b38a0dd",
+            "baselineUsageId": null,
+            "comparisonState": "unavailable",
+            "baselineUnavailableReason": "first_request",
+            "wireBodyPrefixBytes": null,
+            "logicalInputPrefixBytes": null,
+            "firstChangedRegion": null,
+            "firstChangedHostField": null,
+            "firstChangedEventId": null,
+            "historyMutation": "unknown",
+            "historyChanges": [],
+            "changedHostFields": [],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 2,
+          "usageId": "a17d2b1f-bdaf-484a-a84f-e6b3c6357dbe",
+          "invocationId": "169f6764-ba60-44d2-aeba-0d47923b2572",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9041,
+          "outputTokens": 332,
+          "cachedInputTokens": 4096,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 264,
+          "durationMs": 6764,
+          "createdAt": "2026-10-28T06:47:13.605Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "a17d2b1f-bdaf-484a-a84f-e6b3c6357dbe",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+              "purpose": "assistant_loop",
+              "routeScopeId": "61197a56-1098-4eaa-a2d7-5eddfa9f2efe",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "5fe007c44e51071ed07d163ee82576c69a3d9974f769834fed720536e30a1764",
+            "wireBodyBytes": 36228,
+            "promptSha256": "46c77314eeca2302e92f5bac90e1a606cbbe0ed112a99a27c7b059ab5d3d5559",
+            "logicalInputHash": "7e2a3697d16e31ede26419ae4582a65ff278620a397365cdae9b0103fb6de4c3",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "f85e1210186ef5402e053eed73bd2014d0076c05a4534fc5428f9711b1f089ec",
+            "baselineUsageId": "8e76799b-c3c3-4be3-8560-1f0716d599ad",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 19237,
+            "logicalInputPrefixBytes": 17593,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 3,
+          "usageId": "06d4ca24-1611-49fd-9f0d-513ab649fb11",
+          "invocationId": "c3fdb33b-8c67-4bf7-bde1-eb01fea2fe79",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9972,
+          "outputTokens": 401,
+          "cachedInputTokens": 7168,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 310,
+          "durationMs": 6401,
+          "createdAt": "2026-10-28T06:47:20.498Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "06d4ca24-1611-49fd-9f0d-513ab649fb11",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+              "purpose": "assistant_loop",
+              "routeScopeId": "61197a56-1098-4eaa-a2d7-5eddfa9f2efe",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "f5b12abc93438f54843b290c96750ad7a42bc7e4a4eff90736ee0b475f37cb96",
+            "wireBodyBytes": 39447,
+            "promptSha256": "63502125f1e34e9bce3e87c099ea83f74da1f1f2d1d43d489a5dbaea04318d80",
+            "logicalInputHash": "f89e696381b77cb77207c2a9f24ed3d027fdcdedd851c3b309246befcdc2ca83",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "ee0daf7c9291bb35797940c7733c04c8b4eb72077c2edc4e1683131bcb16f84d",
+            "baselineUsageId": "a17d2b1f-bdaf-484a-a84f-e6b3c6357dbe",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 29932,
+            "logicalInputPrefixBytes": 27540,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 4,
+          "usageId": "06daf81a-0b2f-482f-b37d-d555a5f47a36",
+          "invocationId": "6c122531-b767-4757-9397-5cabb083e616",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 11350,
+          "outputTokens": 398,
+          "cachedInputTokens": 4096,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 344,
+          "durationMs": 7723,
+          "createdAt": "2026-10-28T06:47:27.048Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "06daf81a-0b2f-482f-b37d-d555a5f47a36",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+              "purpose": "assistant_loop",
+              "routeScopeId": "61197a56-1098-4eaa-a2d7-5eddfa9f2efe",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "b7521cf58d5a3e23368cd6b219844acd1d41d062821e2245e0442af508a4adac",
+            "wireBodyBytes": 44674,
+            "promptSha256": "4100a1a95c588b10883a5a4cdd3aa1a2fba8a6e5a1d36b791353d039c26ea3a7",
+            "logicalInputHash": "08eaac8f0de1d7e72e8cc258baaad13a4cca340f9b7b2e05b8cdb3f0454b2d0b",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "c40c6477286cc2180841634aad90c0930b6bf233cb68fd7b5d9625036d30a965",
+            "baselineUsageId": "06d4ca24-1611-49fd-9f0d-513ab649fb11",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 19248,
+            "logicalInputPrefixBytes": 17602,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 370,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 370,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 5,
+          "usageId": "ce47295e-796d-4a42-8528-f382d5b51d57",
+          "invocationId": "c51fd0e9-1d2f-4a39-8d09-c0256fa711c2",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 11591,
+          "outputTokens": 4004,
+          "cachedInputTokens": 7168,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 3504,
+          "durationMs": 73932,
+          "createdAt": "2026-10-28T06:47:34.902Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "ce47295e-796d-4a42-8528-f382d5b51d57",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "8688d4e2-94d0-4382-a063-c2a4e57529d8",
+              "purpose": "assistant_loop",
+              "routeScopeId": "61197a56-1098-4eaa-a2d7-5eddfa9f2efe",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "2e4997e4579670933e943f6f6db93108685e516c1c1a53e67ca2e319bb68681c",
+            "wireBodyBytes": 45313,
+            "promptSha256": "c1e00e8eadfb28fc8ed4ff93e0fcc0a9ab397c9290ac85e8aa6d489f8f00c530",
+            "logicalInputHash": "0a7ecb4f35ad3da051902418dd8832198d3865faefbce5a62538eaf426775ad1",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "82a769cc8352be55264e182036a0527a05f366a30c19f606b194cf7ba1f5da7f",
+            "baselineUsageId": "06daf81a-0b2f-482f-b37d-d555a5f47a36",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 29750,
+            "logicalInputPrefixBytes": 27372,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 374,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 374,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        }
+      ],
+      "drops": [
+        {
+          "from": 3,
+          "to": 4,
+          "fromUsageId": "06d4ca24-1611-49fd-9f0d-513ab649fb11",
+          "toUsageId": "06daf81a-0b2f-482f-b37d-d555a5f47a36",
+          "fromCached": 7168,
+          "toCached": 4096,
+          "previousWirePrefix": 29932,
+          "currentWirePrefix": 19248,
+          "previousPromptPrefix": 27540,
+          "currentPromptPrefix": 17602,
+          "firstChangedRegion": "context",
+          "firstChangedHostField": "history",
+          "firstChangedEvent": {
+            "id": 370,
+            "role": "assistant",
+            "kind": "activity"
+          },
+          "historyChanges": [
+            "remove"
+          ],
+          "changedParameters": [],
+          "providerCacheCause": "unknown",
+          "ageFilterReplay": {
+            "before": {
+              "budgetEventId": 377,
+              "trailingRawEvents": 6,
+              "includedByTrimHistory": true
+            },
+            "after": {
+              "budgetEventId": 381,
+              "trailingRawEvents": 10,
+              "includedByTrimHistory": false
+            },
+            "rule": "activity is included only while index >= rawHistory.length - 8",
+            "boundary": "history assembled before its context_budget event is appended"
+          }
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "mode": "saving",
+      "sessionId": "ae7c818b-c283-400e-b536-e379b1c46e49",
+      "taskId": "97a13117-87fa-4f77-ba66-d0b3a68638c1",
+      "startedAt": "2026-10-28T06:48:57.019Z",
+      "finishedAt": "2026-10-28T06:50:13.455Z",
+      "wallMs": 76431,
+      "modelMs": 64441,
+      "manifest": "0cb9427ac24ed4d82ee93960bc3fe60d79bb7dcd96ed08074599f3cd923d1cc2",
+      "status": "completed",
+      "inputTokens": 36673,
+      "outputTokens": 3814,
+      "totalTokens": 40487,
+      "cachedInputTokens": 18432,
+      "uncachedInputTokens": 18241,
+      "cacheWriteTokens": null,
+      "reasoningTokens": 3126,
+      "requests": 4,
+      "requestsWithCache": 4,
+      "requestHitPercent": 100,
+      "tokenCachePercent": 50.26040956562048,
+      "usageCoverage": "4/4",
+      "tools": {
+        "read_file": 3
+      },
+      "toolErrors": [],
+      "extraReadFileCalls": 0,
+      "answerSha256": "142cd2c0274ada5607f0c40acb0b9e503b97cf7ad809336e9038383a295a7a56",
+      "correctAnswers": 7,
+      "expectedAnswers": 7,
+      "effectReview": "Codex 对照源码逐项自审；7项结论正确，3个必读文件均实际读取；只读交付无源码变更",
+      "attempts": [
+        {
+          "number": 1,
+          "usageId": "0e915ff9-b245-4232-adc8-0d1da2995712",
+          "invocationId": "0800d4fe-19b4-41d5-abca-c020c5352927",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 6277,
+          "outputTokens": 338,
+          "cachedInputTokens": 3072,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 288,
+          "durationMs": 7338,
+          "createdAt": "2026-10-28T06:49:00.994Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "0e915ff9-b245-4232-adc8-0d1da2995712",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "ae7c818b-c283-400e-b536-e379b1c46e49",
+              "purpose": "assistant_loop",
+              "routeScopeId": "b4525328-2d1f-4491-847a-8ca7b983122f",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "66e7d2611f5df388a83cd05a13df39cb26cc4c52359d4f3426e8562516d0633e",
+            "wireBodyBytes": 25533,
+            "promptSha256": "47a045a7aac5827c8f342a22c2311b884984d47fd3dbbbfc2b8f113d1eae3834",
+            "logicalInputHash": "19a1629118f26738ce0b518a0f205420eeebee9760942c7d6f8f2a4019c4bf21",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "4bf3082774c9177e71c5c133c18615176ea0cd34aef21f160b918dc8613d960d",
+            "baselineUsageId": null,
+            "comparisonState": "unavailable",
+            "baselineUnavailableReason": "first_request",
+            "wireBodyPrefixBytes": null,
+            "logicalInputPrefixBytes": null,
+            "firstChangedRegion": null,
+            "firstChangedHostField": null,
+            "firstChangedEventId": null,
+            "historyMutation": "unknown",
+            "historyChanges": [],
+            "changedHostFields": [],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 2,
+          "usageId": "b3db9c19-db21-4efc-afe9-d199dff3de8b",
+          "invocationId": "6d33f5b6-48cc-4309-a18f-0cff292caa8a",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9045,
+          "outputTokens": 426,
+          "cachedInputTokens": 4096,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 352,
+          "durationMs": 8017,
+          "createdAt": "2026-10-28T06:49:08.454Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "b3db9c19-db21-4efc-afe9-d199dff3de8b",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "ae7c818b-c283-400e-b536-e379b1c46e49",
+              "purpose": "assistant_loop",
+              "routeScopeId": "b4525328-2d1f-4491-847a-8ca7b983122f",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "7a3f948135b9f86d5cdffe3e5b1a28722d6c09ed3b06c266f003647a1f651e99",
+            "wireBodyBytes": 36162,
+            "promptSha256": "2f43db56112c117965de941013c3b0698c77dc85c07c4c3638be906850bef42c",
+            "logicalInputHash": "474fba249dd11b4fc262af9bca9d8d75b5a8ca561c0be0ae3586d76446469c72",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "99af505976979684a47215a85ddccae50b14d64e3b933635ce8f4579844a72e7",
+            "baselineUsageId": "0e915ff9-b245-4232-adc8-0d1da2995712",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 19237,
+            "logicalInputPrefixBytes": 17593,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 3,
+          "usageId": "d509de53-b50e-474f-ad30-ebe9fe6d2ad6",
+          "invocationId": "069e8239-ed51-4262-b67f-afe7e5822e83",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9985,
+          "outputTokens": 266,
+          "cachedInputTokens": 7168,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 201,
+          "durationMs": 7120,
+          "createdAt": "2026-10-28T06:49:16.601Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "d509de53-b50e-474f-ad30-ebe9fe6d2ad6",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "ae7c818b-c283-400e-b536-e379b1c46e49",
+              "purpose": "assistant_loop",
+              "routeScopeId": "b4525328-2d1f-4491-847a-8ca7b983122f",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "f5e0a78666f9e1adb6e895d8c6e6849aea6dd4d3ac741d363e055a5296a25655",
+            "wireBodyBytes": 39370,
+            "promptSha256": "27af2794cf16e1cbf9f6070ba66b6e3cdb6030fa490c1c08b4592fea76be0207",
+            "logicalInputHash": "1f1e242daff846e06e479cb42d95b8b3b594fe995e6a15e1f5034ddeca5a2419",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "ede7ac1bb69365203bebbf80d723b96a873903ef753f7f6655208dfd016a5a82",
+            "baselineUsageId": "b3db9c19-db21-4efc-afe9-d199dff3de8b",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 29866,
+            "logicalInputPrefixBytes": 27482,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 4,
+          "usageId": "770754ba-6aea-4ccd-bb2d-358193df7dd0",
+          "invocationId": "0bc7147e-835e-4a97-96f8-bdbc1a85a3cd",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 11366,
+          "outputTokens": 2784,
+          "cachedInputTokens": 4096,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 2285,
+          "durationMs": 41966,
+          "createdAt": "2026-10-28T06:49:23.868Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "770754ba-6aea-4ccd-bb2d-358193df7dd0",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "ae7c818b-c283-400e-b536-e379b1c46e49",
+              "purpose": "assistant_loop",
+              "routeScopeId": "b4525328-2d1f-4491-847a-8ca7b983122f",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "bc5eaa6561d38cb29146001fdd6a9bad176cc0ced52a8980321b70de8e310044",
+            "wireBodyBytes": 44593,
+            "promptSha256": "9fc0b2bd6fdb3ea46990a44e70214c9510113a205bd6e79fc4df114d42ca049d",
+            "logicalInputHash": "05138ab0f18ac6d62dec06dc2dfb171cde3b3edb82162fa913dd1aa20038fe76",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "2a69c1bb317e451da4c6f6acf53a026c85c4d0021cbbb0b4b48f84f4e560212a",
+            "baselineUsageId": "d509de53-b50e-474f-ad30-ebe9fe6d2ad6",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 19248,
+            "logicalInputPrefixBytes": 17602,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 397,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 397,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        }
+      ],
+      "drops": [
+        {
+          "from": 3,
+          "to": 4,
+          "fromUsageId": "d509de53-b50e-474f-ad30-ebe9fe6d2ad6",
+          "toUsageId": "770754ba-6aea-4ccd-bb2d-358193df7dd0",
+          "fromCached": 7168,
+          "toCached": 4096,
+          "previousWirePrefix": 29866,
+          "currentWirePrefix": 19248,
+          "previousPromptPrefix": 27482,
+          "currentPromptPrefix": 17602,
+          "firstChangedRegion": "context",
+          "firstChangedHostField": "history",
+          "firstChangedEvent": {
+            "id": 397,
+            "role": "assistant",
+            "kind": "activity"
+          },
+          "historyChanges": [
+            "remove"
+          ],
+          "changedParameters": [],
+          "providerCacheCause": "unknown",
+          "ageFilterReplay": {
+            "before": {
+              "budgetEventId": 404,
+              "trailingRawEvents": 6,
+              "includedByTrimHistory": true
+            },
+            "after": {
+              "budgetEventId": 408,
+              "trailingRawEvents": 10,
+              "includedByTrimHistory": false
+            },
+            "rule": "activity is included only while index >= rawHistory.length - 8",
+            "boundary": "history assembled before its context_budget event is appended"
+          }
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "mode": "standard",
+      "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+      "taskId": "0afe6945-a23b-49ff-ad26-2a2fd680179f",
+      "startedAt": "2026-10-28T06:50:13.668Z",
+      "finishedAt": "2026-10-28T06:53:32.607Z",
+      "wallMs": 198933,
+      "modelMs": 185977,
+      "manifest": "0cb9427ac24ed4d82ee93960bc3fe60d79bb7dcd96ed08074599f3cd923d1cc2",
+      "status": "completed",
+      "inputTokens": 94401,
+      "outputTokens": 10002,
+      "totalTokens": 104403,
+      "cachedInputTokens": 53248,
+      "uncachedInputTokens": 41153,
+      "cacheWriteTokens": null,
+      "reasoningTokens": 8913,
+      "requests": 9,
+      "requestsWithCache": 9,
+      "requestHitPercent": 100,
+      "tokenCachePercent": 56.406182137901084,
+      "usageCoverage": "9/9",
+      "tools": {
+        "read_file": 6,
+        "read_context": 2
+      },
+      "toolErrors": [],
+      "extraReadFileCalls": 3,
+      "answerSha256": "c4338ce688832498fe546d500d69522fbe09c9fc3e3a773eba561148f1270fc9",
+      "correctAnswers": 7,
+      "expectedAnswers": 7,
+      "effectReview": "Codex 对照源码逐项自审；7项结论正确，3个必读文件均实际读取；只读交付无源码变更",
+      "attempts": [
+        {
+          "number": 1,
+          "usageId": "82d3b8e5-b288-4229-85bd-3730ebed1475",
+          "invocationId": "8731cb7a-345e-4134-bfa8-f511bddf2f9c",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 7180,
+          "outputTokens": 173,
+          "cachedInputTokens": 4096,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 127,
+          "durationMs": 3443,
+          "createdAt": "2026-10-28T06:50:17.556Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "82d3b8e5-b288-4229-85bd-3730ebed1475",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "0175272f91c96b6f1105750b3be00bf38dc3bb259e9b5009db8ae7c9d231c9cf",
+            "wireBodyBytes": 29523,
+            "promptSha256": "5d331fff938c12d5061048bb8312959c490121b26383a6652a35624938e27d8c",
+            "logicalInputHash": "465bda430569e52a5bfcc9c3623ba412399a430397e8c966f1650a44a181fc8f",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "db521aedcee31da59fc12ba4a85a34c2e1fdf16bf5046043aaf694d7819d3a47",
+            "baselineUsageId": null,
+            "comparisonState": "unavailable",
+            "baselineUnavailableReason": "first_request",
+            "wireBodyPrefixBytes": null,
+            "logicalInputPrefixBytes": null,
+            "firstChangedRegion": null,
+            "firstChangedHostField": null,
+            "firstChangedEventId": null,
+            "historyMutation": "unknown",
+            "historyChanges": [],
+            "changedHostFields": [],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 2,
+          "usageId": "bfc8a2d4-f082-404a-a064-a1522fed571f",
+          "invocationId": "7d5adb0c-548e-41b9-8fe0-63a1d6f5b0b4",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 7751,
+          "outputTokens": 603,
+          "cachedInputTokens": 5120,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 533,
+          "durationMs": 13324,
+          "createdAt": "2026-10-28T06:50:21.116Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "bfc8a2d4-f082-404a-a064-a1522fed571f",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "a427c428fad6b52bcae88f8328f157f4e5126e248298d614f09b53e3facc92e8",
+            "wireBodyBytes": 31035,
+            "promptSha256": "aef4dd7b4c92f75f33cc9cd5bbd2d0edf50a98606a7b369161cc6bf8167a7400",
+            "logicalInputHash": "a85d90e7fd65f2e08ef9e35a1e47b5519f4d7b11bb02555fad3ba9a92a8aa1ea",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "b9b6441704e9a47f6af9aeb758bcb0b7281bdf50fddd54b0b85a563bab2e2baf",
+            "baselineUsageId": "82d3b8e5-b288-4229-85bd-3730ebed1475",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 24968,
+            "logicalInputPrefixBytes": 22650,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 3,
+          "usageId": "a787fd08-dc55-461d-9d27-4e8c779826a6",
+          "invocationId": "980ec6d5-e1eb-4d0b-ac25-db2d14e330f2",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 8571,
+          "outputTokens": 633,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 542,
+          "durationMs": 11874,
+          "createdAt": "2026-10-28T06:50:34.601Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "a787fd08-dc55-461d-9d27-4e8c779826a6",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "01e058d1092931bbc3bc18934cd61353d508bd6194d3a588c94dec8ac16a0428",
+            "wireBodyBytes": 34074,
+            "promptSha256": "3cf08fa28901555a1c9742115d73b68e7009a8c042ae27c63b2c77e76c78d5f0",
+            "logicalInputHash": "1f01fb508ef44d00c10fdaba3c45ae9262e95e5e08487f48155f2355f7e3dcdb",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "385901ce9d97880135d14185f25303090cb5ee38735f07eb92e28e40c66418dd",
+            "baselineUsageId": "bfc8a2d4-f082-404a-a064-a1522fed571f",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26313,
+            "logicalInputPrefixBytes": 23785,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": null,
+            "historyMutation": "none",
+            "historyChanges": [],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": null
+        },
+        {
+          "number": 4,
+          "usageId": "486e9e78-2e8c-448b-ae3b-2df21d5a1f3b",
+          "invocationId": "7b155bb9-97f5-413e-8b70-229974922242",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 9950,
+          "outputTokens": 502,
+          "cachedInputTokens": 5120,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 448,
+          "durationMs": 9761,
+          "createdAt": "2026-10-28T06:50:46.626Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "486e9e78-2e8c-448b-ae3b-2df21d5a1f3b",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "1355108d5c8b7985298435d50b3ce6f5921884d83ba1790f5ab40850af9fc073",
+            "wireBodyBytes": 39310,
+            "promptSha256": "ab99224bb1c8780bd108694db04049bdc58a69b252338039b0b3a4b7f8f7ec24",
+            "logicalInputHash": "b4b8faf8112e0f4440d6b0bdc7446ebf9b6ef5c512244506e57d1053cc31c405",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "cf4331e30777e83849cf287b59452673bd2841ed6a1940e45317636947856192",
+            "baselineUsageId": "a787fd08-dc55-461d-9d27-4e8c779826a6",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 24979,
+            "logicalInputPrefixBytes": 22659,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 420,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 420,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 5,
+          "usageId": "4924d116-2782-4a91-9f77-cfa34f1ad7b5",
+          "invocationId": "ce0328ec-d36f-4e89-ba7c-72b75a2edec9",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 10515,
+          "outputTokens": 636,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 535,
+          "durationMs": 14341,
+          "createdAt": "2026-10-28T06:50:56.554Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "4924d116-2782-4a91-9f77-cfa34f1ad7b5",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "04f772ac807f40a3e3ccc77ae0ad6e1430ccfdf91cb971e5ac97cd51acb77a71",
+            "wireBodyBytes": 40709,
+            "promptSha256": "199992a08f6d3a07475ce706d589046d330dd673725c09c3f2b59b41a1512b71",
+            "logicalInputHash": "1dd7a9574dfa435f1a27fbe453af202534d793ea9ddebdb12fd6367539900ece",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "67009577dcf58de5d84e42405cb9a2a8017fbcf2d8f5d4d5028bab0b9183085d",
+            "baselineUsageId": "486e9e78-2e8c-448b-ae3b-2df21d5a1f3b",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26135,
+            "logicalInputPrefixBytes": 23621,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 424,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 424,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 6,
+          "usageId": "520cb07e-6e55-4eed-82bf-536a9545645b",
+          "invocationId": "86544ed4-3163-4417-b3ab-d1d5d2afc6ea",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 10867,
+          "outputTokens": 1998,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 1910,
+          "durationMs": 36499,
+          "createdAt": "2026-10-28T06:51:11.048Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "520cb07e-6e55-4eed-82bf-536a9545645b",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "cf9aa74491dfba2981450545a1bb806811ad2e27adda61b28a131ab80bef3a0e",
+            "wireBodyBytes": 40738,
+            "promptSha256": "6b3f1a676cabb3d470bbfc12562dec41d3e487ff57f273e515ab39271fbb7895",
+            "logicalInputHash": "5341e0115f2755dbabbd16021a2801e665425ff613a5c9bfb7b234b88fd891bc",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "1a25d91648b57214bd5ae90649139248397c8053ed2cb46b2d2e3cc9010aff1a",
+            "baselineUsageId": "4924d116-2782-4a91-9f77-cfa34f1ad7b5",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 26572,
+            "logicalInputPrefixBytes": 24001,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 426,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove",
+              "rewrite"
+            ],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 426,
+            "role": "tool",
+            "kind": "tool_result"
+          }
+        },
+        {
+          "number": 7,
+          "usageId": "de9bb5f3-f8a3-4985-a503-8a7ee6b1a02d",
+          "invocationId": "ca6c5f04-19c3-4e5b-9e16-9d539312caed",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 12132,
+          "outputTokens": 1364,
+          "cachedInputTokens": 6144,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 1280,
+          "durationMs": 23726,
+          "createdAt": "2026-10-28T06:51:47.684Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "de9bb5f3-f8a3-4985-a503-8a7ee6b1a02d",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "3800ed96ea1803b4f450f79ca1b004bf4e4d17578c12bae7207970bd5d1841af",
+            "wireBodyBytes": 44731,
+            "promptSha256": "be5e3cbf310e0191025a99fc4679a180947863edcaa0c7c28a3f95de19eeaaea",
+            "logicalInputHash": "e1582746eb31aebb6422ddecd3ea0b5a1578fa1ea30796d5004fac9af2fbeda7",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "62593171e53f52355fd9804a3fbb195f16bf2441f82f186767ab48844f3e273d",
+            "baselineUsageId": "520cb07e-6e55-4eed-82bf-536a9545645b",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 27819,
+            "logicalInputPrefixBytes": 25112,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 430,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove",
+              "rewrite"
+            ],
+            "changedHostFields": [
+              "history",
+              "outputIndex"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 430,
+            "role": "tool",
+            "kind": "tool_result"
+          }
+        },
+        {
+          "number": 8,
+          "usageId": "3ee8e65a-125b-4328-9d19-b0ab306ecba3",
+          "invocationId": "950bc7f5-ddc8-486e-9e4b-7bc2b3ae3cd5",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 12924,
+          "outputTokens": 1120,
+          "cachedInputTokens": 7168,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 1031,
+          "durationMs": 18975,
+          "createdAt": "2026-10-28T06:52:11.603Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "3ee8e65a-125b-4328-9d19-b0ab306ecba3",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "e08ef07a294fbe1e3ef3fae7eb40ff51196ec718f703d23dba99fa863d285957",
+            "wireBodyBytes": 47652,
+            "promptSha256": "90f489e8ec85df4f79aad4f37c7fa7f8398c06ffeb699856803228436248c09a",
+            "logicalInputHash": "0cc272f3f8ce48752dd54b3371e4e2c23aae34499708b47822a57b3ea029c2da",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "3ecf4d8877d06a31f3dd6fd62e8acc27247544842ec769a3021796a14d47b891",
+            "baselineUsageId": "de9bb5f3-f8a3-4985-a503-8a7ee6b1a02d",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 29923,
+            "logicalInputPrefixBytes": 26931,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 436,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 436,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        },
+        {
+          "number": 9,
+          "usageId": "9dbb93a4-ef2e-4f2b-9aaa-bb5afe3f6ba8",
+          "invocationId": "dfd961c2-95fd-4e85-aeec-f1f9f36649ab",
+          "attempt": 1,
+          "purpose": "assistant_loop",
+          "status": "completed",
+          "usageComplete": true,
+          "inputTokens": 14511,
+          "outputTokens": 2973,
+          "cachedInputTokens": 7168,
+          "cacheWriteTokens": null,
+          "reasoningTokens": 2507,
+          "durationMs": 54034,
+          "createdAt": "2026-10-28T06:52:30.723Z",
+          "diagnostic": {
+            "schema": 1,
+            "processInstanceId": "7116c1e2-ffda-4434-a386-5cc1a6140667",
+            "usageId": "9dbb93a4-ef2e-4f2b-9aaa-bb5afe3f6ba8",
+            "attempt": 1,
+            "scope": {
+              "projectId": "0c3316cb-fe0f-4465-b2b3-9fac1bbaa800",
+              "sessionId": "e105ed49-4463-47cb-90ca-b7a647b185a6",
+              "purpose": "assistant_loop",
+              "routeScopeId": "eeabd307-7556-46f2-ae93-55fbc14fb20d",
+              "configurationRevision": 1
+            },
+            "layout": "legacy-v1",
+            "generation": null,
+            "wireBodyHash": "27c8e0a93f4fbc2fa957f9b2e6755521b69667073df2f0cf6577607f61a3eab9",
+            "wireBodyBytes": 53403,
+            "promptSha256": "a913dcfc9701c75f65bc7a0df49fc5c6ad3d65e0592d8715077f983699849adb",
+            "logicalInputHash": "a06845369d4b8163d8afee86468eb12c38f0bd4ac3a1cdabf576fc1faf160b64",
+            "systemHash": "783e361f111922e0a56a22d5d38c121d68381972f83f4ab0d087352859ef5235",
+            "parameterHashes": {
+              "model": "7d265003c2f738aa347d1818c1168fccd50f5f93d2dfba1b91106b5186500e22",
+              "stream": "21467dacbd2848fa67b1610970f5c6cd377333ea45637ba5a22c1bc1a0ff6a98",
+              "store": "4cb6802b6b00ce74ba797e74914abf309c71d090a88c1e10e5d504dd14a1208b",
+              "max_tokens": "74a5412b6c328b9678d490ebd4f6ce781a3fd97fbf0c62e458ab52cb1a226058",
+              "stream_options": "14d7a6918adac1f2f8149f5f4d78c205d2ac514a81d2f243dd04884dd3c49201",
+              "reasoning": "97e10470ce399525567257ab4d3e622e909ecdaf5369a11d3f7ac2914b575a9e",
+              "reasoning_effort": "b3702a5084c40980ae23e70eef6fdc5df1ac8f3a152820606b0732dd70fffa1d",
+              "thinking": "6f0bb34bcc2df27b3789d0ab8d929f2a1619d2c2729f53200654c260905d6760",
+              "output_config": "b4825424d3b0afe54629cb877a33beafc84fbbeeca9c670c87a9d0306e89ead8"
+            },
+            "carriedHistoryHash": "e34206ed280d0043f683a84dc156d380d9463bc9f76678b8f1b68bfd769ca95e",
+            "baselineUsageId": "3ee8e65a-125b-4328-9d19-b0ab306ecba3",
+            "comparisonState": "available",
+            "baselineUnavailableReason": null,
+            "wireBodyPrefixBytes": 31194,
+            "logicalInputPrefixBytes": 27996,
+            "firstChangedRegion": "context",
+            "firstChangedHostField": "history",
+            "firstChangedEventId": 440,
+            "historyMutation": "remove",
+            "historyChanges": [
+              "remove"
+            ],
+            "changedHostFields": [
+              "history"
+            ],
+            "changedParameters": [],
+            "providerCacheCause": "unknown",
+            "transportObservation": {
+              "requestCreated": true,
+              "writeCompleted": true,
+              "responseHeaders": true,
+              "terminal": true
+            }
+          },
+          "firstChangedEvent": {
+            "id": 440,
+            "role": "assistant",
+            "kind": "activity"
+          }
+        }
+      ],
+      "drops": [
+        {
+          "from": 3,
+          "to": 4,
+          "fromUsageId": "a787fd08-dc55-461d-9d27-4e8c779826a6",
+          "toUsageId": "486e9e78-2e8c-448b-ae3b-2df21d5a1f3b",
+          "fromCached": 6144,
+          "toCached": 5120,
+          "previousWirePrefix": 26313,
+          "currentWirePrefix": 24979,
+          "previousPromptPrefix": 23785,
+          "currentPromptPrefix": 22659,
+          "firstChangedRegion": "context",
+          "firstChangedHostField": "history",
+          "firstChangedEvent": {
+            "id": 420,
+            "role": "assistant",
+            "kind": "activity"
+          },
+          "historyChanges": [
+            "remove"
+          ],
+          "changedParameters": [],
+          "providerCacheCause": "unknown",
+          "ageFilterReplay": {
+            "before": {
+              "budgetEventId": 427,
+              "trailingRawEvents": 6,
+              "includedByTrimHistory": true
+            },
+            "after": {
+              "budgetEventId": 431,
+              "trailingRawEvents": 10,
+              "includedByTrimHistory": false
+            },
+            "rule": "activity is included only while index >= rawHistory.length - 8",
+            "boundary": "history assembled before its context_budget event is appended"
+          }
+        }
+      ]
+    }
+  ],
+  "aggregate": {
+    "standard": {
+      "mode": "standard",
+      "tasks": 2,
+      "requests": 16,
+      "inputTokens": 164434,
+      "outputTokens": 16217,
+      "totalTokens": 180651,
+      "cachedInputTokens": 90112,
+      "uncachedInputTokens": 74322,
+      "reasoningTokens": 14188,
+      "wallMs": 337051,
+      "modelMs": 311173,
+      "requestHits": 15,
+      "requestHitPercent": 93.75,
+      "tokenCachePercent": 54.801318462118545,
+      "readFileCalls": 9,
+      "readContextCalls": 5,
+      "toolErrors": 1,
+      "extraReadFileCalls": 3,
+      "correctAnswers": 14
+    },
+    "saving": {
+      "mode": "saving",
+      "tasks": 2,
+      "requests": 9,
+      "inputTokens": 84877,
+      "outputTokens": 9448,
+      "totalTokens": 94325,
+      "cachedInputTokens": 41984,
+      "uncachedInputTokens": 42893,
+      "reasoningTokens": 7992,
+      "wallMs": 194213,
+      "modelMs": 169709,
+      "requestHits": 9,
+      "requestHitPercent": 100,
+      "tokenCachePercent": 49.464519245496426,
+      "readFileCalls": 7,
+      "readContextCalls": 0,
+      "toolErrors": 0,
+      "extraReadFileCalls": 1,
+      "correctAnswers": 14
+    }
+  },
+  "reductionPercent": {
+    "inputTokens": 48.38232968850724,
+    "outputTokens": 41.740149226120735,
+    "totalTokens": 47.786062629047166,
+    "wallMs": 42.37874980344221,
+    "modelMs": 45.46152783178489,
+    "uncachedInputTokens": 42.28761335809047
+  },
+  "pairs": [
+    {
+      "standardRun": 1,
+      "savingRun": 2,
+      "totalTokenReductionPercent": 29.390934844192635,
+      "wallReductionPercent": 14.723642103129208
+    },
+    {
+      "standardRun": 4,
+      "savingRun": 3,
+      "totalTokenReductionPercent": 61.22046301351494,
+      "wallReductionPercent": 61.57952677534647
+    }
+  ],
+  "limitations": [
+    "两组配对小样本，完整prompt中的会话/任务身份与历史不同，非逐字节相同请求",
+    "没有清空供应商缓存，不假设首请求为冷；ABBA仍不能隔离供应商路由/TTL和模型随机性",
+    "activity移除与前缀变化已观测，供应商内部缓存下降的唯一因果及Token量分解未知",
+    "仅Codex自审效果，无独立审查；没有价格/账单，费用和缓存写入未知"
+  ]
+}

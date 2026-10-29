@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "asOf": "2026-10-28",
+  "revision": "R2",
+  "status": "design_only",
+  "head": "4daf698aa24526d860cf58386db426ec1de1bd4b",
+  "workingTreeDirty": false,
+  "scope": "Selected-source snapshot; not full repository or implementation verification",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "a39b47af6a876b8608fc44a7f10e85248c6ac635ec2c4a5d267adae5b409b109",
+      "bytes": 1983
+    },
+    {
+      "path": "package.json",
+      "sha256": "f5a79b44bfe89a26aa75bd09dacf6a0e1e34e8cb94f4e1cc23826867cf62e0cc",
+      "bytes": 8683
+    },
+    {
+      "path": "control-plane.mjs",
+      "sha256": "fef5467b4d48c7b1a75bbc6601eb49fcee247744e38bdda5ddd902ae56bc2649",
+      "bytes": 166847
+    },
+    {
+      "path": "src/assistant/assistant-loop.ts",
+      "sha256": "607a1373eba8eda034ec7270325e1e6a983851e592a5db3db9ee4193409eb087",
+      "bytes": 80924
+    },
+    {
+      "path": "src/assistant/assistant-context.ts",
+      "sha256": "5567f86d6a865679ef97f9da885f3c46c521463e7466e1dee8af84455186327d",
+      "bytes": 9396
+    },
+    {
+      "path": "src/assistant/context-optimizer.ts",
+      "sha256": "3feb60fd4b126a285fe8f32e6bdbf886057b3f4b0e4003cc8e8322bd6eb9e812",
+      "bytes": 2068
+    },
+    {
+      "path": "src/assistant/assistant-inference.ts",
+      "sha256": "9567dec1f75900510ed4d9e1224337e90a61ae7a69dd292be5a763cc7db482d1",
+      "bytes": 6090
+    },
+    {
+      "path": "src/assistant/token-usage.ts",
+      "sha256": "f7fb2a3eece5934a33127caba0d02775d06e73b9726c4d19e2fc5be25d062dfc",
+      "bytes": 6738
+    },
+    {
+      "path": "src/assistant/assistant-result.ts",
+      "sha256": "f6771e9b8b7690a7076526279792b6882ab6875796b83c5ac90f7a474407960e",
+      "bytes": 3142
+    },
+    {
+      "path": "src/assistant/assistant-tools.ts",
+      "sha256": "2bafc8b498806ac0201431c0925783c604b3d08aafba0a373f04e365dbf2fd89",
+      "bytes": 11189
+    },
+    {
+      "path": "src/assistant/tool-registry.ts",
+      "sha256": "c13ea5fa03af39e7bbf6c1eba21667e3126f51fc1d2bf372dd999738578b5d72",
+      "bytes": 11987
+    },
+    {
+      "path": "src/assistant/tool-governance.ts",
+      "sha256": "315c23f5a8fb9f0b34fb374e894eaf799198bb3927e337c1895754ff27b235c9",
+      "bytes": 8803
+    },
+    {
+      "path": "src/assistant/project-memory.ts",
+      "sha256": "550c3076d42396527708321bec8885ea651d22788a3d734b438b9ad61e27f2f1",
+      "bytes": 13858
+    },
+    {
+      "path": "src/models/model-backend.ts",
+      "sha256": "6293b41d0044a992c420abb83fc93091e1372523588f5b513f02730be53449e7",
+      "bytes": 19333
+    },
+    {
+      "path": "src/models/model-usage.ts",
+      "sha256": "393f9774f45a6ae751ed1b61c9fa2030fc9d1d72514e1564979825e831ae3f34",
+      "bytes": 4282
+    },
+    {
+      "path": "src/models/conversation-models.ts",
+      "sha256": "1269299e2ea2c90aac9325e601b4aa20d0cdb5a23b86526f41b8ea423577106c",
+      "bytes": 7718
+    },
+    {
+      "path": "src/models/model-providers.ts",
+      "sha256": "94174c925af005122a314a8ea67797891def87eb8c558a8ff95a5a0be797e60a",
+      "bytes": 12508
+    },
+    {
+      "path": "src/infrastructure/api-routes.mjs",
+      "sha256": "1156b7e831d326c64e0fc7acce68dd4fd0f51224d809817506794ec5287c080c",
+      "bytes": 27211
+    },
+    {
+      "path": "web/assistant.ts",
+      "sha256": "cc7857a1cd8dea1b3e6e74e3937f54c68593778b044d25c77f03ceecd62fbdbe",
+      "bytes": 37502
+    },
+    {
+      "path": "docs/Token用量与优化.md",
+      "sha256": "2afc31373ce437f9cdce3dbba8c729a1292e664af769185896ee899ed5069668",
+      "bytes": 8621
+    },
+    {
+      "path": "协作/2026-10-27-Token模式真实对照实测.md",
+      "sha256": "30d818d741b5a0b0ab9ceed2432749cbaff717ddea4afc8dda0e4e1db95188c6",
+      "bytes": 5631
+    },
+    {
+      "path": "test/token-usage.test.mjs",
+      "sha256": "a43a078cc122e11bbf0e8493da67708c15fce2854cb53e69d69b28ba9e92bd38",
+      "bytes": 16024
+    },
+    {
+      "path": "test/token-usage-http.test.mjs",
+      "sha256": "7524bb47347bb629caa6b1d55437a7921609490df41e6f14f85d443ce528d06d",
+      "bytes": 4877
+    },
+    {
+      "path": "协作/2026-10-28-节省模式补读优化与真实对照自审.md",
+      "sha256": "7feb8ae1f7a3f6e03fe367501c21807d4691483d81c2add194b9467db7e40a3e",
+      "bytes": 8974
+    },
+    {
+      "path": "协作/验收数据/2026-10-28-节省模式真实对照.json",
+      "sha256": "7b9e9284db3d7bb7c4cf651450925c62d7968b46b9e2c1811b3895f8269590aa",
+      "bytes": 19428
+    },
+    {
+      "path": "协作/2026-10-28-供应商缓存命中率实测.md",
+      "sha256": "ab7dcb5045f68a38b3289af03cb5e8fae76aeb1de106d7367f13f8cf25818811",
+      "bytes": 5121
+    },
+    {
+      "path": "协作/验收数据/2026-10-28-缓存命中率.json",
+      "sha256": "107a5c456ade2aca904afdfe7c29d9192e200b152d4d87940f939b6e098d4cbf",
+      "bytes": 7181
+    },
+    {
+      "path": "协作/2026-10-28-Windows命令入口UTF8修复自审.md",
+      "sha256": "5a51548ec881a81a4f3c4d8270f5aa4b944034887d873979f6601dee5f3b986f",
+      "bytes": 5580
+    }
+  ]
+}

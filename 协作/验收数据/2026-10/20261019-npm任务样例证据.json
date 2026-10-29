@@ -1,0 +1,3948 @@
+{
+  "schemaVersion": 1,
+  "runType": "deterministic-engineering",
+  "head": "4037213fbf5f5cda9de7c33578793db272b19d8e",
+  "frozenSourceSha256": "6ba3ebd2e3b7693ac7e5ad1cb5c9029d7079bd2dc4840b9f7533938c596d5bfc",
+  "paidModelRequests": 0,
+  "samples": [
+    {
+      "scenario": "logic",
+      "runType": "deterministic-engineering",
+      "paidModelRequests": 0,
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt",
+      "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+      "delivery": {
+        "id": "28ffef15-0e59-4ff0-9fdd-8b6e744343fa",
+        "version": 2,
+        "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+        "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+        "projectId": "p",
+        "description": "修复加法，保留用户已有修改，运行全部必要 npm 检查",
+        "createdAt": "2026-10-19T07:29:10.670Z",
+        "baselineRef": "review-f4394e42-16da-4a79-b7e1-45ff6fec68be",
+        "baselineVersion": "a14c11526c833a5020223ef5ba5ce9590003fd8c628c03afd7c29059e20281e5",
+        "finalRef": "review-a680eb3c-efec-4abf-a14b-130c14643edb",
+        "manifest": "7006af0e2ba653e2a5b728ad867961b8f7e894e06c39ab4732dc478da603c563",
+        "fingerprint": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+        "netChanges": [
+          {
+            "path": "src/add.cjs",
+            "kind": "modified",
+            "beforeSha256": "64443af1c4d48065f4d2c6dde77406e364814aface158d734fe92e596846e746",
+            "afterSha256": "77148771a6294e30439e73d005165d7b9605ae93a7a670cbbcf755bb29a8426b",
+            "beforeBytes": 85,
+            "afterBytes": 96,
+            "source": "agent_file_operations",
+            "diff": "@@ line 1 @@\n+const {number}=require('apix-number');exports.add=(a,b)=>number(a)+number(b); // addition fixed\n-const {number}=require('apix-number');exports.add=(a,b)=>number(a)-number(b); // BUG",
+            "diffComplete": true
+          }
+        ],
+        "scope": {
+          "included": "项目内普通文件；文件字节，不包含目录属性",
+          "excluded": [
+            ".git",
+            "node_modules",
+            "凭据文件",
+            "符号链接（拒绝）",
+            "dist",
+            "coverage"
+          ]
+        },
+        "requiresVerification": true,
+        "verification": {
+          "verificationStatus": "verified",
+          "contract": {
+            "source": "user_approved",
+            "authorized": true,
+            "checks": [
+              {
+                "id": "npm-project",
+                "args": [
+                  "npm-project"
+                ],
+                "timeoutMs": 120000
+              }
+            ],
+            "writablePaths": [
+              "src"
+            ],
+            "protectedFingerprint": "059e18689e3a6bf61631b903f18239fb5571f57bfaf3f81287d6665531c6d917",
+            "runtime": {
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "nodeVersion": "v22.19.0"
+            },
+            "npm": {
+              "schemaVersion": 1,
+              "artifacts": [
+                "dist",
+                "coverage"
+              ],
+              "trustedPaths": [
+                "scripts/post.cjs",
+                "scripts/pre.cjs",
+                "test/check.cjs"
+              ],
+              "installArgs": [
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "scripts": [
+                {
+                  "id": "npm-project",
+                  "sequence": [
+                    "pretest",
+                    "test",
+                    "posttest"
+                  ],
+                  "commands": [
+                    {
+                      "name": "pretest",
+                      "command": "node scripts/pre.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "pretest"
+                      ]
+                    },
+                    {
+                      "name": "test",
+                      "command": "node test/check.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "test"
+                      ]
+                    },
+                    {
+                      "name": "posttest",
+                      "command": "node scripts/post.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "posttest"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "network": false,
+              "runtime": {
+                "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                "nodeVersion": "v22.19.0",
+                "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "npmVersion": "10.9.2",
+                "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+              },
+              "installPolicy": "ci-ignore-scripts-v1",
+              "environmentPolicy": "minimal-v1"
+            },
+            "version": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6"
+          },
+          "checks": [
+            {
+              "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+              "runId": "746625ef-c0de-4656-8a3d-626be9f6af61",
+              "checkId": "npm-project",
+              "checkContractVersion": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6",
+              "source": "user_approved",
+              "executable": "node",
+              "args": [
+                "npm-project"
+              ],
+              "timeoutMs": 120000,
+              "startedAt": "2026-10-19T07:28:49.368Z",
+              "projectFingerprint": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+              "hostResultVersion": 1,
+              "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "passed": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stdout",
+                "stderrRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stderr"
+              },
+              "finishedAt": "2026-10-19T07:29:10.317Z",
+              "outputRef": "55b323f7-6662-4850-95ec-93a68d2405ef",
+              "outputPreview": "",
+              "verificationStatus": "passed",
+              "codeAndContractUnchanged": true,
+              "npmValidation": {
+                "schemaVersion": 1,
+                "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+                "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+                "projectId": "p",
+                "contractVersion": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6",
+                "sourceFingerprint": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+                "source": {
+                  "hash": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+                  "files": 8,
+                  "bytes": 10668
+                },
+                "runtime": {
+                  "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                  "nodeVersion": "v22.19.0",
+                  "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                  "npmVersion": "10.9.2",
+                  "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+                },
+                "installPolicy": "ci-ignore-scripts-v1",
+                "environmentPolicy": "minimal-v1",
+                "network": false,
+                "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol",
+                "checkId": "npm-project",
+                "startedAt": "2026-10-19T07:28:55.058Z",
+                "status": "passed",
+                "commands": [
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 23,
+                      "observedBytes": 23,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-3caf63dc-07d4-4893-bc5e-2df3239977a3-stdout",
+                      "stderrRef": "log-3caf63dc-07d4-4893-bc5e-2df3239977a3-stderr"
+                    },
+                    "outputRef": "71d1aa4d-b258-4bf8-89d3-48491e2a6f89",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "ci",
+                      "--ignore-scripts",
+                      "--no-audit",
+                      "--no-fund",
+                      "--engine-strict",
+                      "--include=dev",
+                      "--include=optional",
+                      "--registry=https://registry.npmjs.org",
+                      "--offline"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "a392ab5e-a062-4c4a-88b7-1161b7d9b72e",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "a392ab5e-a062-4c4a-88b7-1161b7d9b72e",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 75,
+                      "observedBytes": 75,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-a392ab5e-a062-4c4a-88b7-1161b7d9b72e-stdout",
+                      "stderrRef": "log-a392ab5e-a062-4c4a-88b7-1161b7d9b72e-stderr"
+                    },
+                    "outputRef": "0d059fd3-9b15-440d-822b-860d22973b11",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "pretest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "e6b68fb7-1300-41f9-8213-aa44797ab237",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "e6b68fb7-1300-41f9-8213-aa44797ab237",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 54,
+                      "observedBytes": 54,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-e6b68fb7-1300-41f9-8213-aa44797ab237-stdout",
+                      "stderrRef": "log-e6b68fb7-1300-41f9-8213-aa44797ab237-stderr"
+                    },
+                    "outputRef": "3a07ed74-35a7-4dc7-a330-fdc2165b959f",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "test"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 78,
+                      "observedBytes": 78,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stdout",
+                      "stderrRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stderr"
+                    },
+                    "outputRef": "b10090ea-407a-48bc-b479-6b3d068ef5ed",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "posttest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+                  }
+                ],
+                "artifacts": [
+                  {
+                    "path": "dist",
+                    "items": 0,
+                    "bytes": 0,
+                    "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                    "files": [],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:28:55.058Z"
+                  },
+                  {
+                    "path": "coverage",
+                    "items": 1,
+                    "bytes": 2,
+                    "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+                    "files": [
+                      {
+                        "path": "result.json",
+                        "size": 2,
+                        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                      }
+                    ],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:28:55.058Z"
+                  }
+                ],
+                "dependencies": {
+                  "items": 5,
+                  "bytes": 9437624,
+                  "hash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+                  "files": 4
+                },
+                "preparation": {
+                  "strategy": "fresh-npm-ci",
+                  "lockHash": "ec1b1d96ffba2299f7c9087f3fa28b9dffa7351bd830ba82c5aeab811bdd5424",
+                  "dependencyHash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+                  "installOperationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+                  "ignoreScripts": true
+                },
+                "finishedAt": "2026-10-19T07:29:10.226Z"
+              }
+            }
+          ]
+        },
+        "modelSummary": "delivery evidence available; not formally accepted",
+        "execution": {
+          "sideEffects": "按现有恢复门槛核对",
+          "checks": [
+            {
+              "runId": "746625ef-c0de-4656-8a3d-626be9f6af61",
+              "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+              "outputRef": "55b323f7-6662-4850-95ec-93a68d2405ef",
+              "log": {
+                "version": 1,
+                "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stdout",
+                "stderrRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stderr"
+              },
+              "executionComplete": true,
+              "evidencePersisted": true
+            }
+          ]
+        },
+        "eventId": 102,
+        "status": "accepted",
+        "staleReason": null,
+        "historicalAcceptance": {
+          "deliveryId": "28ffef15-0e59-4ff0-9fdd-8b6e744343fa",
+          "deliveryVersion": 2,
+          "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+          "requestId": "accept",
+          "comment": "",
+          "at": "2026-10-19T07:29:11.385Z",
+          "eventId": 105
+        },
+        "feedback": []
+      },
+      "firstValidation": {
+        "schemaVersion": 1,
+        "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+        "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+        "projectId": "p",
+        "contractVersion": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6",
+        "sourceFingerprint": "5c947b22c054f09566c2eb8c2665df615f3deb1b23b623a9a18660aba579920f",
+        "source": {
+          "hash": "5c947b22c054f09566c2eb8c2665df615f3deb1b23b623a9a18660aba579920f",
+          "files": 8,
+          "bytes": 10657
+        },
+        "runtime": {
+          "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+          "nodeVersion": "v22.19.0",
+          "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "npmVersion": "10.9.2",
+          "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+        },
+        "installPolicy": "ci-ignore-scripts-v1",
+        "environmentPolicy": "minimal-v1",
+        "network": false,
+        "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r",
+        "checkId": "npm-project",
+        "startedAt": "2026-10-19T07:28:31.941Z",
+        "status": "passed",
+        "commands": [
+          {
+            "hostResultVersion": 1,
+            "operationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 23,
+              "observedBytes": 23,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-b411d1fc-80ec-493d-868b-354c70f53072-stdout",
+              "stderrRef": "log-b411d1fc-80ec-493d-868b-354c70f53072-stderr"
+            },
+            "outputRef": "758c6077-4ce7-43de-bac7-df6cd616b503",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "ci",
+              "--ignore-scripts",
+              "--no-audit",
+              "--no-fund",
+              "--engine-strict",
+              "--include=dev",
+              "--include=optional",
+              "--registry=https://registry.npmjs.org",
+              "--offline"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 75,
+              "observedBytes": 75,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163-stdout",
+              "stderrRef": "log-3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163-stderr"
+            },
+            "outputRef": "0a7b7a32-a346-4f36-b27e-84cf6f579516",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "pretest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "dd4db162-087c-4b74-8e50-2e20c519f06b",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "dd4db162-087c-4b74-8e50-2e20c519f06b",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 54,
+              "observedBytes": 54,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-dd4db162-087c-4b74-8e50-2e20c519f06b-stdout",
+              "stderrRef": "log-dd4db162-087c-4b74-8e50-2e20c519f06b-stderr"
+            },
+            "outputRef": "44013f84-e5ba-462f-a6b0-fbff0519a4a2",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "test"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "7f92951b-cff0-4bd8-82c1-58f0af1bd728",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "7f92951b-cff0-4bd8-82c1-58f0af1bd728",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 78,
+              "observedBytes": 78,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-7f92951b-cff0-4bd8-82c1-58f0af1bd728-stdout",
+              "stderrRef": "log-7f92951b-cff0-4bd8-82c1-58f0af1bd728-stderr"
+            },
+            "outputRef": "c5371f04-3473-401e-abf3-e8fcc9d786e9",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "posttest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+          }
+        ],
+        "artifacts": [
+          {
+            "path": "dist",
+            "items": 0,
+            "bytes": 0,
+            "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "files": [],
+            "fresh": true,
+            "owner": "2026-10-19T07:28:31.941Z"
+          },
+          {
+            "path": "coverage",
+            "items": 1,
+            "bytes": 2,
+            "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+            "files": [
+              {
+                "path": "result.json",
+                "size": 2,
+                "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+              }
+            ],
+            "fresh": true,
+            "owner": "2026-10-19T07:28:31.941Z"
+          }
+        ],
+        "dependencies": {
+          "items": 5,
+          "bytes": 9437624,
+          "hash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+          "files": 4
+        },
+        "preparation": {
+          "strategy": "fresh-npm-ci",
+          "lockHash": "ec1b1d96ffba2299f7c9087f3fa28b9dffa7351bd830ba82c5aeab811bdd5424",
+          "dependencyHash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+          "installOperationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+          "ignoreScripts": true
+        },
+        "finishedAt": "2026-10-19T07:28:47.284Z"
+      },
+      "completedAt": "2026-10-19T07:29:12.243Z",
+      "validation": [
+        {
+          "schemaVersion": 1,
+          "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+          "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+          "projectId": "p",
+          "contractVersion": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6",
+          "sourceFingerprint": "5c947b22c054f09566c2eb8c2665df615f3deb1b23b623a9a18660aba579920f",
+          "source": {
+            "hash": "5c947b22c054f09566c2eb8c2665df615f3deb1b23b623a9a18660aba579920f",
+            "files": 8,
+            "bytes": 10657
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:28:31.941Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 23,
+                "observedBytes": 23,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-b411d1fc-80ec-493d-868b-354c70f53072-stdout",
+                "stderrRef": "log-b411d1fc-80ec-493d-868b-354c70f53072-stderr"
+              },
+              "outputRef": "758c6077-4ce7-43de-bac7-df6cd616b503",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163-stdout",
+                "stderrRef": "log-3bee4cdb-2a48-4b4c-bf56-ad4c6cab6163-stderr"
+              },
+              "outputRef": "0a7b7a32-a346-4f36-b27e-84cf6f579516",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "dd4db162-087c-4b74-8e50-2e20c519f06b",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "dd4db162-087c-4b74-8e50-2e20c519f06b",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 54,
+                "observedBytes": 54,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-dd4db162-087c-4b74-8e50-2e20c519f06b-stdout",
+                "stderrRef": "log-dd4db162-087c-4b74-8e50-2e20c519f06b-stderr"
+              },
+              "outputRef": "44013f84-e5ba-462f-a6b0-fbff0519a4a2",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "7f92951b-cff0-4bd8-82c1-58f0af1bd728",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "7f92951b-cff0-4bd8-82c1-58f0af1bd728",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-7f92951b-cff0-4bd8-82c1-58f0af1bd728-stdout",
+                "stderrRef": "log-7f92951b-cff0-4bd8-82c1-58f0af1bd728-stderr"
+              },
+              "outputRef": "c5371f04-3473-401e-abf3-e8fcc9d786e9",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-4H4F9r\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 0,
+              "bytes": 0,
+              "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+              "files": [],
+              "fresh": true,
+              "owner": "2026-10-19T07:28:31.941Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:28:31.941Z"
+            }
+          ],
+          "dependencies": {
+            "items": 5,
+            "bytes": 9437624,
+            "hash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+            "files": 4
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "ec1b1d96ffba2299f7c9087f3fa28b9dffa7351bd830ba82c5aeab811bdd5424",
+            "dependencyHash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+            "installOperationId": "b411d1fc-80ec-493d-868b-354c70f53072",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:28:47.284Z"
+        },
+        {
+          "schemaVersion": 1,
+          "taskId": "d01aa2a1-bd42-418a-929c-b98d1c432fe7",
+          "sessionId": "65e28c1d-8f9f-463d-8673-61e3ad5d43ee",
+          "projectId": "p",
+          "contractVersion": "55574148e9c589fa18e7b1fd25fd13825125859e45ef810f9aafec61bc0521c6",
+          "sourceFingerprint": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+          "source": {
+            "hash": "b6d8e14c1bd55d10efe74fcc6cb8b815d959fa712039e4c250e6ee8cfe01ef70",
+            "files": 8,
+            "bytes": 10668
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:28:55.058Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 23,
+                "observedBytes": 23,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-3caf63dc-07d4-4893-bc5e-2df3239977a3-stdout",
+                "stderrRef": "log-3caf63dc-07d4-4893-bc5e-2df3239977a3-stderr"
+              },
+              "outputRef": "71d1aa4d-b258-4bf8-89d3-48491e2a6f89",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "a392ab5e-a062-4c4a-88b7-1161b7d9b72e",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "a392ab5e-a062-4c4a-88b7-1161b7d9b72e",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-a392ab5e-a062-4c4a-88b7-1161b7d9b72e-stdout",
+                "stderrRef": "log-a392ab5e-a062-4c4a-88b7-1161b7d9b72e-stderr"
+              },
+              "outputRef": "0d059fd3-9b15-440d-822b-860d22973b11",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "e6b68fb7-1300-41f9-8213-aa44797ab237",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "e6b68fb7-1300-41f9-8213-aa44797ab237",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 54,
+                "observedBytes": 54,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-e6b68fb7-1300-41f9-8213-aa44797ab237-stdout",
+                "stderrRef": "log-e6b68fb7-1300-41f9-8213-aa44797ab237-stderr"
+              },
+              "outputRef": "3a07ed74-35a7-4dc7-a330-fdc2165b959f",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stdout",
+                "stderrRef": "log-fc3fb964-bbc9-4090-a7b6-4f4f133a2dfd-stderr"
+              },
+              "outputRef": "b10090ea-407a-48bc-b479-6b3d068ef5ed",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-zjCKNt\\npm-validation\\run-TyJvol\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 0,
+              "bytes": 0,
+              "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+              "files": [],
+              "fresh": true,
+              "owner": "2026-10-19T07:28:55.058Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:28:55.058Z"
+            }
+          ],
+          "dependencies": {
+            "items": 5,
+            "bytes": 9437624,
+            "hash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+            "files": 4
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "ec1b1d96ffba2299f7c9087f3fa28b9dffa7351bd830ba82c5aeab811bdd5424",
+            "dependencyHash": "6ffd9385ce0704711fb5413723b44d9d033f01ef6e1b01f57fcc5eed3c9de884",
+            "installOperationId": "3caf63dc-07d4-4893-bc5e-2df3239977a3",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:29:10.226Z"
+        }
+      ],
+      "tailReads": [],
+      "evidenceOutputCount": 33,
+      "evidenceOutputHashesValid": true
+    },
+    {
+      "scenario": "multi",
+      "runType": "deterministic-engineering",
+      "paidModelRequests": 0,
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9",
+      "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+      "delivery": {
+        "id": "f00ffa54-0f76-4101-9cc4-58de66d4e022",
+        "version": 2,
+        "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+        "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+        "projectId": "p",
+        "description": "修复加法，保留用户已有修改，运行全部必要 npm 检查，同时修复乘法",
+        "createdAt": "2026-10-19T07:30:17.673Z",
+        "baselineRef": "review-6e6a39b7-9b57-413a-bef0-90c8d957c9d5",
+        "baselineVersion": "047b4464214ce2f9a722ae5938699fc48aed7ce474b9db2f842816df1055ed11",
+        "finalRef": "review-4e5489ea-0871-4a62-b0b1-8e5b26ba08c0",
+        "manifest": "7264fe9595f8414ed5f1bf4f2b20e05ce7e0d22356a18e8943886e1cb82d411a",
+        "fingerprint": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+        "netChanges": [
+          {
+            "path": "src/add.cjs",
+            "kind": "modified",
+            "beforeSha256": "64443af1c4d48065f4d2c6dde77406e364814aface158d734fe92e596846e746",
+            "afterSha256": "77148771a6294e30439e73d005165d7b9605ae93a7a670cbbcf755bb29a8426b",
+            "beforeBytes": 85,
+            "afterBytes": 96,
+            "source": "agent_file_operations",
+            "diff": "@@ line 1 @@\n+const {number}=require('apix-number');exports.add=(a,b)=>number(a)+number(b); // addition fixed\n-const {number}=require('apix-number');exports.add=(a,b)=>number(a)-number(b); // BUG",
+            "diffComplete": true
+          },
+          {
+            "path": "src/multiply.cjs",
+            "kind": "modified",
+            "beforeSha256": "dfae26b86f5f248da6e94230d3e0382fc2ede5ad7f2b411f75145f61fc91ad76",
+            "afterSha256": "dacfeabb2abc9ef06d7068d52223d8945c4e89d68d6b77421520cc7647d8a1b3",
+            "beforeBytes": 36,
+            "afterBytes": 36,
+            "source": "agent_file_operations",
+            "diff": "@@ line 1 @@\n+exports.multiply=(a,b)=>a*b; // BUG\n-exports.multiply=(a,b)=>a+b; // BUG",
+            "diffComplete": true
+          }
+        ],
+        "scope": {
+          "included": "项目内普通文件；文件字节，不包含目录属性",
+          "excluded": [
+            ".git",
+            "node_modules",
+            "凭据文件",
+            "符号链接（拒绝）",
+            "dist",
+            "coverage"
+          ]
+        },
+        "requiresVerification": true,
+        "verification": {
+          "verificationStatus": "verified",
+          "contract": {
+            "source": "user_approved",
+            "authorized": true,
+            "checks": [
+              {
+                "id": "npm-project",
+                "args": [
+                  "npm-project"
+                ],
+                "timeoutMs": 120000
+              }
+            ],
+            "writablePaths": [
+              "src"
+            ],
+            "protectedFingerprint": "aafc3f05f85158564a8e2a3baa8747e498fe39cfe37dd7ad71799cc01e58e025",
+            "runtime": {
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "nodeVersion": "v22.19.0"
+            },
+            "npm": {
+              "schemaVersion": 1,
+              "artifacts": [
+                "dist",
+                "coverage"
+              ],
+              "trustedPaths": [
+                "scripts/post.cjs",
+                "scripts/pre.cjs",
+                "test/check.cjs",
+                "tsconfig.json"
+              ],
+              "installArgs": [
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "scripts": [
+                {
+                  "id": "npm-project",
+                  "sequence": [
+                    "typecheck",
+                    "build",
+                    "pretest",
+                    "test",
+                    "posttest"
+                  ],
+                  "commands": [
+                    {
+                      "name": "typecheck",
+                      "command": "tsc --noEmit",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "typecheck"
+                      ]
+                    },
+                    {
+                      "name": "build",
+                      "command": "tsc",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "build"
+                      ]
+                    },
+                    {
+                      "name": "pretest",
+                      "command": "node scripts/pre.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "pretest"
+                      ]
+                    },
+                    {
+                      "name": "test",
+                      "command": "node test/check.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "test"
+                      ]
+                    },
+                    {
+                      "name": "posttest",
+                      "command": "node scripts/post.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "posttest"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "network": false,
+              "runtime": {
+                "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                "nodeVersion": "v22.19.0",
+                "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "npmVersion": "10.9.2",
+                "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+              },
+              "installPolicy": "ci-ignore-scripts-v1",
+              "environmentPolicy": "minimal-v1"
+            },
+            "version": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475"
+          },
+          "checks": [
+            {
+              "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+              "runId": "4f1ae0f2-161f-4aa0-811b-e6b294e6b99b",
+              "checkId": "npm-project",
+              "checkContractVersion": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475",
+              "source": "user_approved",
+              "executable": "node",
+              "args": [
+                "npm-project"
+              ],
+              "timeoutMs": 120000,
+              "startedAt": "2026-10-19T07:29:44.830Z",
+              "projectFingerprint": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+              "hostResultVersion": 1,
+              "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "passed": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stdout",
+                "stderrRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stderr"
+              },
+              "finishedAt": "2026-10-19T07:30:17.043Z",
+              "outputRef": "ac6136af-9aa4-48c7-a336-cb0e15c19843",
+              "outputPreview": "",
+              "verificationStatus": "passed",
+              "codeAndContractUnchanged": true,
+              "npmValidation": {
+                "schemaVersion": 1,
+                "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+                "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+                "projectId": "p",
+                "contractVersion": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475",
+                "sourceFingerprint": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+                "source": {
+                  "hash": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+                  "files": 11,
+                  "bytes": 4405063
+                },
+                "runtime": {
+                  "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                  "nodeVersion": "v22.19.0",
+                  "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                  "npmVersion": "10.9.2",
+                  "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+                },
+                "installPolicy": "ci-ignore-scripts-v1",
+                "environmentPolicy": "minimal-v1",
+                "network": false,
+                "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF",
+                "checkId": "npm-project",
+                "startedAt": "2026-10-19T07:29:50.913Z",
+                "status": "passed",
+                "commands": [
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "39b84164-820d-47fb-b487-113b0dc44911",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "39b84164-820d-47fb-b487-113b0dc44911",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 24,
+                      "observedBytes": 24,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-39b84164-820d-47fb-b487-113b0dc44911-stdout",
+                      "stderrRef": "log-39b84164-820d-47fb-b487-113b0dc44911-stderr"
+                    },
+                    "outputRef": "4c1f535c-be4d-4c81-9851-8e04076ebc55",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "ci",
+                      "--ignore-scripts",
+                      "--no-audit",
+                      "--no-fund",
+                      "--engine-strict",
+                      "--include=dev",
+                      "--include=optional",
+                      "--registry=https://registry.npmjs.org",
+                      "--offline"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "98d9a92b-99b6-4060-9905-e93a84e71dac",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "98d9a92b-99b6-4060-9905-e93a84e71dac",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 52,
+                      "observedBytes": 52,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-98d9a92b-99b6-4060-9905-e93a84e71dac-stdout",
+                      "stderrRef": "log-98d9a92b-99b6-4060-9905-e93a84e71dac-stderr"
+                    },
+                    "outputRef": "2a349e3c-66b0-4b0e-b619-f6e7c8cbb687",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "typecheck"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "d6334a64-316d-4591-87f9-f1e58af1481d",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "d6334a64-316d-4591-87f9-f1e58af1481d",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 39,
+                      "observedBytes": 39,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-d6334a64-316d-4591-87f9-f1e58af1481d-stdout",
+                      "stderrRef": "log-d6334a64-316d-4591-87f9-f1e58af1481d-stderr"
+                    },
+                    "outputRef": "2f4159b3-c525-49ac-b6a1-94be6c0b3202",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "build"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "45e9439a-9908-40ed-a5d1-1a2e5e495c37",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "45e9439a-9908-40ed-a5d1-1a2e5e495c37",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 75,
+                      "observedBytes": 75,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-45e9439a-9908-40ed-a5d1-1a2e5e495c37-stdout",
+                      "stderrRef": "log-45e9439a-9908-40ed-a5d1-1a2e5e495c37-stderr"
+                    },
+                    "outputRef": "b504549a-459b-4e95-bf67-9b7f9a5a1a6c",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "pretest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "b8f7c691-4cb5-449a-8a63-c081200d7399",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "b8f7c691-4cb5-449a-8a63-c081200d7399",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 54,
+                      "observedBytes": 54,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-b8f7c691-4cb5-449a-8a63-c081200d7399-stdout",
+                      "stderrRef": "log-b8f7c691-4cb5-449a-8a63-c081200d7399-stderr"
+                    },
+                    "outputRef": "1d18c5cf-e4af-4f69-bfe1-a3245214b1f8",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "test"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 78,
+                      "observedBytes": 78,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stdout",
+                      "stderrRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stderr"
+                    },
+                    "outputRef": "a1f0fda2-1124-47bc-9020-6f9af3f9cf18",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "posttest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+                  }
+                ],
+                "artifacts": [
+                  {
+                    "path": "dist",
+                    "items": 2,
+                    "bytes": 179,
+                    "hash": "877d4a4ada9b6f95c1e1c65ed1c28ab5f2bdd1f08052534ce2c12fafc423fbd6",
+                    "files": [
+                      {
+                        "path": "add.cjs",
+                        "size": 122,
+                        "sha256": "0cede89c18e47ecfd9abf5189e9a4e7ab2685aa9e1d113635fddf55d5594cca6"
+                      },
+                      {
+                        "path": "multiply.cjs",
+                        "size": 57,
+                        "sha256": "d511de66cb07f9d2b6fca51a8ac502ae200a1cec6de42666ff42281c3745ecb9"
+                      }
+                    ],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:29:50.913Z"
+                  },
+                  {
+                    "path": "coverage",
+                    "items": 1,
+                    "bytes": 2,
+                    "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+                    "files": [
+                      {
+                        "path": "result.json",
+                        "size": 2,
+                        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                      }
+                    ],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:29:50.913Z"
+                  }
+                ],
+                "dependencies": {
+                  "items": 159,
+                  "bytes": 23628867,
+                  "hash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+                  "files": 141
+                },
+                "preparation": {
+                  "strategy": "fresh-npm-ci",
+                  "lockHash": "4022e73807729e7b79aa4a2a96b4a85a5f0c65b44e5337b461a35f21bbb07e35",
+                  "dependencyHash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+                  "installOperationId": "39b84164-820d-47fb-b487-113b0dc44911",
+                  "ignoreScripts": true
+                },
+                "finishedAt": "2026-10-19T07:30:16.928Z"
+              }
+            }
+          ]
+        },
+        "modelSummary": "delivery evidence available; not formally accepted",
+        "execution": {
+          "sideEffects": "按现有恢复门槛核对",
+          "checks": [
+            {
+              "runId": "4f1ae0f2-161f-4aa0-811b-e6b294e6b99b",
+              "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+              "outputRef": "ac6136af-9aa4-48c7-a336-cb0e15c19843",
+              "log": {
+                "version": 1,
+                "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stdout",
+                "stderrRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stderr"
+              },
+              "executionComplete": true,
+              "evidencePersisted": true
+            }
+          ]
+        },
+        "eventId": 138,
+        "status": "accepted",
+        "staleReason": null,
+        "historicalAcceptance": {
+          "deliveryId": "f00ffa54-0f76-4101-9cc4-58de66d4e022",
+          "deliveryVersion": 2,
+          "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+          "requestId": "accept",
+          "comment": "",
+          "at": "2026-10-19T07:30:18.576Z",
+          "eventId": 141
+        },
+        "feedback": []
+      },
+      "firstValidation": {
+        "schemaVersion": 1,
+        "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+        "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+        "projectId": "p",
+        "contractVersion": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475",
+        "sourceFingerprint": "e19c9bdc80860402ca2d4cc8d10d5fcb52fd705c1b467676c215111e3a1eff79",
+        "source": {
+          "hash": "e19c9bdc80860402ca2d4cc8d10d5fcb52fd705c1b467676c215111e3a1eff79",
+          "files": 11,
+          "bytes": 4405052
+        },
+        "runtime": {
+          "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+          "nodeVersion": "v22.19.0",
+          "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "npmVersion": "10.9.2",
+          "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+        },
+        "installPolicy": "ci-ignore-scripts-v1",
+        "environmentPolicy": "minimal-v1",
+        "network": false,
+        "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW",
+        "checkId": "npm-project",
+        "startedAt": "2026-10-19T07:29:14.943Z",
+        "status": "passed",
+        "commands": [
+          {
+            "hostResultVersion": 1,
+            "operationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 24,
+              "observedBytes": 24,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-27f641e3-c661-4e93-91c0-14f3970ab2aa-stdout",
+              "stderrRef": "log-27f641e3-c661-4e93-91c0-14f3970ab2aa-stderr"
+            },
+            "outputRef": "b1edf15f-af74-4672-8d2e-b056ea3b70fb",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "ci",
+              "--ignore-scripts",
+              "--no-audit",
+              "--no-fund",
+              "--engine-strict",
+              "--include=dev",
+              "--include=optional",
+              "--registry=https://registry.npmjs.org",
+              "--offline"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "b315b5c4-568f-46fa-90ed-f13ec0bc3b00",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "b315b5c4-568f-46fa-90ed-f13ec0bc3b00",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-b315b5c4-568f-46fa-90ed-f13ec0bc3b00-stdout",
+              "stderrRef": "log-b315b5c4-568f-46fa-90ed-f13ec0bc3b00-stderr"
+            },
+            "outputRef": "589a1241-edd0-4db7-8ff4-6dbdd1778616",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "typecheck"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "58e2b01b-074b-40c5-8e15-3806c4c58e55",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "58e2b01b-074b-40c5-8e15-3806c4c58e55",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 39,
+              "observedBytes": 39,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-58e2b01b-074b-40c5-8e15-3806c4c58e55-stdout",
+              "stderrRef": "log-58e2b01b-074b-40c5-8e15-3806c4c58e55-stderr"
+            },
+            "outputRef": "116caf43-eeb5-4391-b72d-cdfb3f26fed7",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "build"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "5212584f-581a-4bee-b622-ea20f455dbc1",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "5212584f-581a-4bee-b622-ea20f455dbc1",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 75,
+              "observedBytes": 75,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-5212584f-581a-4bee-b622-ea20f455dbc1-stdout",
+              "stderrRef": "log-5212584f-581a-4bee-b622-ea20f455dbc1-stderr"
+            },
+            "outputRef": "583ccce5-cad9-4049-9d77-5b601124d721",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "pretest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "8674e15d-ed77-48bd-a438-76bb8042d832",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "8674e15d-ed77-48bd-a438-76bb8042d832",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 54,
+              "observedBytes": 54,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-8674e15d-ed77-48bd-a438-76bb8042d832-stdout",
+              "stderrRef": "log-8674e15d-ed77-48bd-a438-76bb8042d832-stderr"
+            },
+            "outputRef": "bf5aeb47-cd79-4989-9c17-93279938628b",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "test"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "5bd0d436-6043-457f-9343-f4c40d4cbad6",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "5bd0d436-6043-457f-9343-f4c40d4cbad6",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 78,
+              "observedBytes": 78,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-5bd0d436-6043-457f-9343-f4c40d4cbad6-stdout",
+              "stderrRef": "log-5bd0d436-6043-457f-9343-f4c40d4cbad6-stderr"
+            },
+            "outputRef": "3a1d351b-fce0-4ee3-85d1-f72972bd7331",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "posttest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+          }
+        ],
+        "artifacts": [
+          {
+            "path": "dist",
+            "items": 2,
+            "bytes": 168,
+            "hash": "b1af462d86035853fa1e19878aeba5362ab80949607758d16e70310ffcf04c08",
+            "files": [
+              {
+                "path": "add.cjs",
+                "size": 111,
+                "sha256": "46d8591d928e4b96e3dadfb5caf47470521e5b8be694d4c053c9886ad1b92861"
+              },
+              {
+                "path": "multiply.cjs",
+                "size": 57,
+                "sha256": "d511de66cb07f9d2b6fca51a8ac502ae200a1cec6de42666ff42281c3745ecb9"
+              }
+            ],
+            "fresh": true,
+            "owner": "2026-10-19T07:29:14.943Z"
+          },
+          {
+            "path": "coverage",
+            "items": 1,
+            "bytes": 2,
+            "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+            "files": [
+              {
+                "path": "result.json",
+                "size": 2,
+                "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+              }
+            ],
+            "fresh": true,
+            "owner": "2026-10-19T07:29:14.943Z"
+          }
+        ],
+        "dependencies": {
+          "items": 159,
+          "bytes": 23628867,
+          "hash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+          "files": 141
+        },
+        "preparation": {
+          "strategy": "fresh-npm-ci",
+          "lockHash": "4022e73807729e7b79aa4a2a96b4a85a5f0c65b44e5337b461a35f21bbb07e35",
+          "dependencyHash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+          "installOperationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+          "ignoreScripts": true
+        },
+        "finishedAt": "2026-10-19T07:29:42.348Z"
+      },
+      "completedAt": "2026-10-19T07:30:19.762Z",
+      "validation": [
+        {
+          "schemaVersion": 1,
+          "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+          "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+          "projectId": "p",
+          "contractVersion": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475",
+          "sourceFingerprint": "e19c9bdc80860402ca2d4cc8d10d5fcb52fd705c1b467676c215111e3a1eff79",
+          "source": {
+            "hash": "e19c9bdc80860402ca2d4cc8d10d5fcb52fd705c1b467676c215111e3a1eff79",
+            "files": 11,
+            "bytes": 4405052
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:29:14.943Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 24,
+                "observedBytes": 24,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-27f641e3-c661-4e93-91c0-14f3970ab2aa-stdout",
+                "stderrRef": "log-27f641e3-c661-4e93-91c0-14f3970ab2aa-stderr"
+              },
+              "outputRef": "b1edf15f-af74-4672-8d2e-b056ea3b70fb",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "b315b5c4-568f-46fa-90ed-f13ec0bc3b00",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "b315b5c4-568f-46fa-90ed-f13ec0bc3b00",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 52,
+                "observedBytes": 52,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-b315b5c4-568f-46fa-90ed-f13ec0bc3b00-stdout",
+                "stderrRef": "log-b315b5c4-568f-46fa-90ed-f13ec0bc3b00-stderr"
+              },
+              "outputRef": "589a1241-edd0-4db7-8ff4-6dbdd1778616",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "typecheck"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "58e2b01b-074b-40c5-8e15-3806c4c58e55",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "58e2b01b-074b-40c5-8e15-3806c4c58e55",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 39,
+                "observedBytes": 39,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-58e2b01b-074b-40c5-8e15-3806c4c58e55-stdout",
+                "stderrRef": "log-58e2b01b-074b-40c5-8e15-3806c4c58e55-stderr"
+              },
+              "outputRef": "116caf43-eeb5-4391-b72d-cdfb3f26fed7",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "build"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "5212584f-581a-4bee-b622-ea20f455dbc1",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "5212584f-581a-4bee-b622-ea20f455dbc1",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-5212584f-581a-4bee-b622-ea20f455dbc1-stdout",
+                "stderrRef": "log-5212584f-581a-4bee-b622-ea20f455dbc1-stderr"
+              },
+              "outputRef": "583ccce5-cad9-4049-9d77-5b601124d721",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "8674e15d-ed77-48bd-a438-76bb8042d832",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "8674e15d-ed77-48bd-a438-76bb8042d832",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 54,
+                "observedBytes": 54,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-8674e15d-ed77-48bd-a438-76bb8042d832-stdout",
+                "stderrRef": "log-8674e15d-ed77-48bd-a438-76bb8042d832-stderr"
+              },
+              "outputRef": "bf5aeb47-cd79-4989-9c17-93279938628b",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "5bd0d436-6043-457f-9343-f4c40d4cbad6",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "5bd0d436-6043-457f-9343-f4c40d4cbad6",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-5bd0d436-6043-457f-9343-f4c40d4cbad6-stdout",
+                "stderrRef": "log-5bd0d436-6043-457f-9343-f4c40d4cbad6-stderr"
+              },
+              "outputRef": "3a1d351b-fce0-4ee3-85d1-f72972bd7331",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-WXU6SW\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 2,
+              "bytes": 168,
+              "hash": "b1af462d86035853fa1e19878aeba5362ab80949607758d16e70310ffcf04c08",
+              "files": [
+                {
+                  "path": "add.cjs",
+                  "size": 111,
+                  "sha256": "46d8591d928e4b96e3dadfb5caf47470521e5b8be694d4c053c9886ad1b92861"
+                },
+                {
+                  "path": "multiply.cjs",
+                  "size": 57,
+                  "sha256": "d511de66cb07f9d2b6fca51a8ac502ae200a1cec6de42666ff42281c3745ecb9"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:29:14.943Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:29:14.943Z"
+            }
+          ],
+          "dependencies": {
+            "items": 159,
+            "bytes": 23628867,
+            "hash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+            "files": 141
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "4022e73807729e7b79aa4a2a96b4a85a5f0c65b44e5337b461a35f21bbb07e35",
+            "dependencyHash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+            "installOperationId": "27f641e3-c661-4e93-91c0-14f3970ab2aa",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:29:42.348Z"
+        },
+        {
+          "schemaVersion": 1,
+          "taskId": "e2d5e5e8-6a89-4c2e-a2c4-1eee506241cb",
+          "sessionId": "094b37c5-6eb0-45ae-ba5e-39767f97bd08",
+          "projectId": "p",
+          "contractVersion": "2825a5fa777e20a7b3d7c91a0c47265f4be4c6e576c804d7aa3b48f169cd4475",
+          "sourceFingerprint": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+          "source": {
+            "hash": "62ebbd4f1a10f91d4785c7ccc307bd61c0b21d35504124012dc6649a9f9f0c34",
+            "files": 11,
+            "bytes": 4405063
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:29:50.913Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "39b84164-820d-47fb-b487-113b0dc44911",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "39b84164-820d-47fb-b487-113b0dc44911",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 24,
+                "observedBytes": 24,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-39b84164-820d-47fb-b487-113b0dc44911-stdout",
+                "stderrRef": "log-39b84164-820d-47fb-b487-113b0dc44911-stderr"
+              },
+              "outputRef": "4c1f535c-be4d-4c81-9851-8e04076ebc55",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "98d9a92b-99b6-4060-9905-e93a84e71dac",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "98d9a92b-99b6-4060-9905-e93a84e71dac",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 52,
+                "observedBytes": 52,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-98d9a92b-99b6-4060-9905-e93a84e71dac-stdout",
+                "stderrRef": "log-98d9a92b-99b6-4060-9905-e93a84e71dac-stderr"
+              },
+              "outputRef": "2a349e3c-66b0-4b0e-b619-f6e7c8cbb687",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "typecheck"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "d6334a64-316d-4591-87f9-f1e58af1481d",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "d6334a64-316d-4591-87f9-f1e58af1481d",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 39,
+                "observedBytes": 39,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-d6334a64-316d-4591-87f9-f1e58af1481d-stdout",
+                "stderrRef": "log-d6334a64-316d-4591-87f9-f1e58af1481d-stderr"
+              },
+              "outputRef": "2f4159b3-c525-49ac-b6a1-94be6c0b3202",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "build"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "45e9439a-9908-40ed-a5d1-1a2e5e495c37",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "45e9439a-9908-40ed-a5d1-1a2e5e495c37",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-45e9439a-9908-40ed-a5d1-1a2e5e495c37-stdout",
+                "stderrRef": "log-45e9439a-9908-40ed-a5d1-1a2e5e495c37-stderr"
+              },
+              "outputRef": "b504549a-459b-4e95-bf67-9b7f9a5a1a6c",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "b8f7c691-4cb5-449a-8a63-c081200d7399",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "b8f7c691-4cb5-449a-8a63-c081200d7399",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 54,
+                "observedBytes": 54,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-b8f7c691-4cb5-449a-8a63-c081200d7399-stdout",
+                "stderrRef": "log-b8f7c691-4cb5-449a-8a63-c081200d7399-stderr"
+              },
+              "outputRef": "1d18c5cf-e4af-4f69-bfe1-a3245214b1f8",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "54438de4-b4da-446d-a997-e41b6883197f",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stdout",
+                "stderrRef": "log-54438de4-b4da-446d-a997-e41b6883197f-stderr"
+              },
+              "outputRef": "a1f0fda2-1124-47bc-9020-6f9af3f9cf18",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-roQ5c9\\npm-validation\\run-EnROLF\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 2,
+              "bytes": 179,
+              "hash": "877d4a4ada9b6f95c1e1c65ed1c28ab5f2bdd1f08052534ce2c12fafc423fbd6",
+              "files": [
+                {
+                  "path": "add.cjs",
+                  "size": 122,
+                  "sha256": "0cede89c18e47ecfd9abf5189e9a4e7ab2685aa9e1d113635fddf55d5594cca6"
+                },
+                {
+                  "path": "multiply.cjs",
+                  "size": 57,
+                  "sha256": "d511de66cb07f9d2b6fca51a8ac502ae200a1cec6de42666ff42281c3745ecb9"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:29:50.913Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:29:50.913Z"
+            }
+          ],
+          "dependencies": {
+            "items": 159,
+            "bytes": 23628867,
+            "hash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+            "files": 141
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "4022e73807729e7b79aa4a2a96b4a85a5f0c65b44e5337b461a35f21bbb07e35",
+            "dependencyHash": "967b9a3097a17932610a0c37d6d1eff25d3717f7ab7d19886beba10527543dfb",
+            "installOperationId": "39b84164-820d-47fb-b487-113b0dc44911",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:30:16.928Z"
+        }
+      ],
+      "tailReads": [],
+      "evidenceOutputCount": 51,
+      "evidenceOutputHashesValid": true
+    },
+    {
+      "scenario": "long-log",
+      "runType": "deterministic-engineering",
+      "paidModelRequests": 0,
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO",
+      "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+      "delivery": {
+        "id": "9048eb91-b615-487f-afca-21f5af302d60",
+        "version": 2,
+        "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+        "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+        "projectId": "p",
+        "description": "修复加法，保留用户已有修改，运行全部必要 npm 检查",
+        "createdAt": "2026-10-19T07:31:19.219Z",
+        "baselineRef": "review-2116efbe-98b3-4f80-8495-4c1185cd33d1",
+        "baselineVersion": "372143f314e179b8e5aa63e7a5fee9293e4fdc830277f85f4b9dfdbdbbe8e274",
+        "finalRef": "review-e217b497-cba4-4396-a127-9da68aa73fa8",
+        "manifest": "7fca2f529e88836c25146a7cd2ed7f2f0c0b489144f98c45eee1ce1d48de991a",
+        "fingerprint": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+        "netChanges": [
+          {
+            "path": "src/add.cjs",
+            "kind": "modified",
+            "beforeSha256": "64443af1c4d48065f4d2c6dde77406e364814aface158d734fe92e596846e746",
+            "afterSha256": "77148771a6294e30439e73d005165d7b9605ae93a7a670cbbcf755bb29a8426b",
+            "beforeBytes": 85,
+            "afterBytes": 96,
+            "source": "agent_file_operations",
+            "diff": "@@ line 1 @@\n+const {number}=require('apix-number');exports.add=(a,b)=>number(a)+number(b); // addition fixed\n-const {number}=require('apix-number');exports.add=(a,b)=>number(a)-number(b); // BUG",
+            "diffComplete": true
+          }
+        ],
+        "scope": {
+          "included": "项目内普通文件；文件字节，不包含目录属性",
+          "excluded": [
+            ".git",
+            "node_modules",
+            "凭据文件",
+            "符号链接（拒绝）",
+            "dist",
+            "coverage"
+          ]
+        },
+        "requiresVerification": true,
+        "verification": {
+          "verificationStatus": "verified",
+          "contract": {
+            "source": "user_approved",
+            "authorized": true,
+            "checks": [
+              {
+                "id": "npm-project",
+                "args": [
+                  "npm-project"
+                ],
+                "timeoutMs": 120000
+              }
+            ],
+            "writablePaths": [
+              "src"
+            ],
+            "protectedFingerprint": "d2b97baaa06d886da9096fc23e3c800cd23a549d7029e1ae6726e73dba8ec602",
+            "runtime": {
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "nodeVersion": "v22.19.0"
+            },
+            "npm": {
+              "schemaVersion": 1,
+              "artifacts": [
+                "dist",
+                "coverage"
+              ],
+              "trustedPaths": [
+                "scripts/post.cjs",
+                "scripts/pre.cjs",
+                "test/check.cjs"
+              ],
+              "installArgs": [
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "scripts": [
+                {
+                  "id": "npm-project",
+                  "sequence": [
+                    "pretest",
+                    "test",
+                    "posttest"
+                  ],
+                  "commands": [
+                    {
+                      "name": "pretest",
+                      "command": "node scripts/pre.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "pretest"
+                      ]
+                    },
+                    {
+                      "name": "test",
+                      "command": "node test/check.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "test"
+                      ]
+                    },
+                    {
+                      "name": "posttest",
+                      "command": "node scripts/post.cjs",
+                      "npmArgs": [
+                        "run",
+                        "--ignore-scripts",
+                        "posttest"
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "network": false,
+              "runtime": {
+                "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                "nodeVersion": "v22.19.0",
+                "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "npmVersion": "10.9.2",
+                "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+              },
+              "installPolicy": "ci-ignore-scripts-v1",
+              "environmentPolicy": "minimal-v1"
+            },
+            "version": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9"
+          },
+          "checks": [
+            {
+              "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+              "runId": "a2a630ec-cac7-4096-8ac6-0f5028bfe857",
+              "checkId": "npm-project",
+              "checkContractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+              "source": "user_approved",
+              "executable": "node",
+              "args": [
+                "npm-project"
+              ],
+              "timeoutMs": 120000,
+              "startedAt": "2026-10-19T07:30:57.170Z",
+              "projectFingerprint": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+              "hostResultVersion": 1,
+              "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "passed": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stdout",
+                "stderrRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stderr"
+              },
+              "finishedAt": "2026-10-19T07:31:18.756Z",
+              "outputRef": "1b20fa47-90c8-4617-ad0e-a7dc788eae69",
+              "outputPreview": "",
+              "verificationStatus": "passed",
+              "codeAndContractUnchanged": true,
+              "npmValidation": {
+                "schemaVersion": 1,
+                "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+                "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+                "projectId": "p",
+                "contractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+                "sourceFingerprint": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+                "source": {
+                  "hash": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+                  "files": 8,
+                  "bytes": 1496
+                },
+                "runtime": {
+                  "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                  "nodeVersion": "v22.19.0",
+                  "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                  "npmVersion": "10.9.2",
+                  "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+                },
+                "installPolicy": "ci-ignore-scripts-v1",
+                "environmentPolicy": "minimal-v1",
+                "network": false,
+                "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ",
+                "checkId": "npm-project",
+                "startedAt": "2026-10-19T07:31:03.369Z",
+                "status": "passed",
+                "commands": [
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 23,
+                      "observedBytes": 23,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-df696f87-0bc4-433e-9393-8a97ab949c65-stdout",
+                      "stderrRef": "log-df696f87-0bc4-433e-9393-8a97ab949c65-stderr"
+                    },
+                    "outputRef": "c52181e7-3f7f-4ce5-b139-bb7c02e46c2d",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "ci",
+                      "--ignore-scripts",
+                      "--no-audit",
+                      "--no-fund",
+                      "--engine-strict",
+                      "--include=dev",
+                      "--include=optional",
+                      "--registry=https://registry.npmjs.org",
+                      "--offline"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "a99f4255-0d65-46c3-aa55-2bf1e46318ab",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "a99f4255-0d65-46c3-aa55-2bf1e46318ab",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 75,
+                      "observedBytes": 75,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-a99f4255-0d65-46c3-aa55-2bf1e46318ab-stdout",
+                      "stderrRef": "log-a99f4255-0d65-46c3-aa55-2bf1e46318ab-stderr"
+                    },
+                    "outputRef": "f2651c9d-7754-41d7-93b1-d67027cb6d14",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "pretest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "9cb09be1-d3cb-4f80-8221-4b39543f5100",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": true,
+                    "log": {
+                      "version": 1,
+                      "operationId": "9cb09be1-d3cb-4f80-8221-4b39543f5100",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 36055,
+                      "observedBytes": 36055,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-9cb09be1-d3cb-4f80-8221-4b39543f5100-stdout",
+                      "stderrRef": "log-9cb09be1-d3cb-4f80-8221-4b39543f5100-stderr"
+                    },
+                    "outputRef": "a3134ec9-f265-4a4a-903a-e04afd5de0a5",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "test"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+                  },
+                  {
+                    "hostResultVersion": 1,
+                    "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+                    "reason": "exit",
+                    "processesEnded": true,
+                    "executionComplete": true,
+                    "sideEffectsNeedReview": false,
+                    "evidencePersisted": true,
+                    "exitCode": 0,
+                    "timedOut": false,
+                    "aborted": false,
+                    "unknown": false,
+                    "truncated": false,
+                    "log": {
+                      "version": 1,
+                      "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+                      "complete": true,
+                      "status": "complete",
+                      "reason": null,
+                      "capturedBytes": 78,
+                      "observedBytes": 78,
+                      "limitBytes": 262144,
+                      "tailBytes": 8192,
+                      "retentionDays": 7,
+                      "stdoutRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stdout",
+                      "stderrRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stderr"
+                    },
+                    "outputRef": "834344e6-dae9-4747-a6ac-3cb93f420b37",
+                    "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+                    "args": [
+                      "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                      "run",
+                      "--ignore-scripts",
+                      "posttest"
+                    ],
+                    "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+                  }
+                ],
+                "artifacts": [
+                  {
+                    "path": "dist",
+                    "items": 0,
+                    "bytes": 0,
+                    "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+                    "files": [],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:31:03.369Z"
+                  },
+                  {
+                    "path": "coverage",
+                    "items": 1,
+                    "bytes": 2,
+                    "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+                    "files": [
+                      {
+                        "path": "result.json",
+                        "size": 2,
+                        "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                      }
+                    ],
+                    "fresh": true,
+                    "owner": "2026-10-19T07:31:03.369Z"
+                  }
+                ],
+                "dependencies": {
+                  "items": 4,
+                  "bytes": 440,
+                  "hash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+                  "files": 3
+                },
+                "preparation": {
+                  "strategy": "fresh-npm-ci",
+                  "lockHash": "32ac5713edeb7f94fd5f94d33d31ea80d1a1f3ca94b16f46be6ad62b0f05cb45",
+                  "dependencyHash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+                  "installOperationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+                  "ignoreScripts": true
+                },
+                "finishedAt": "2026-10-19T07:31:18.664Z"
+              }
+            }
+          ]
+        },
+        "modelSummary": "delivery evidence available; not formally accepted",
+        "execution": {
+          "sideEffects": "按现有恢复门槛核对",
+          "checks": [
+            {
+              "runId": "a2a630ec-cac7-4096-8ac6-0f5028bfe857",
+              "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+              "outputRef": "1b20fa47-90c8-4617-ad0e-a7dc788eae69",
+              "log": {
+                "version": 1,
+                "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stdout",
+                "stderrRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stderr"
+              },
+              "executionComplete": true,
+              "evidencePersisted": true
+            }
+          ]
+        },
+        "eventId": 134,
+        "status": "accepted",
+        "staleReason": null,
+        "historicalAcceptance": {
+          "deliveryId": "9048eb91-b615-487f-afca-21f5af302d60",
+          "deliveryVersion": 2,
+          "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+          "requestId": "accept",
+          "comment": "",
+          "at": "2026-10-19T07:31:19.894Z",
+          "eventId": 137
+        },
+        "feedback": []
+      },
+      "firstValidation": {
+        "schemaVersion": 1,
+        "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+        "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+        "projectId": "p",
+        "contractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+        "sourceFingerprint": "9e5af9993c01636bf17a2b96a9bbd50fa91105b093dcd62e1403b945e3e5080a",
+        "source": {
+          "hash": "9e5af9993c01636bf17a2b96a9bbd50fa91105b093dcd62e1403b945e3e5080a",
+          "files": 8,
+          "bytes": 1485
+        },
+        "runtime": {
+          "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+          "nodeVersion": "v22.19.0",
+          "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+          "npmVersion": "10.9.2",
+          "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+        },
+        "installPolicy": "ci-ignore-scripts-v1",
+        "environmentPolicy": "minimal-v1",
+        "network": false,
+        "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X",
+        "checkId": "npm-project",
+        "startedAt": "2026-10-19T07:30:39.661Z",
+        "status": "passed",
+        "commands": [
+          {
+            "hostResultVersion": 1,
+            "operationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 23,
+              "observedBytes": 23,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-fd5e7d66-1b1a-4626-87ae-5de714d3ecc0-stdout",
+              "stderrRef": "log-fd5e7d66-1b1a-4626-87ae-5de714d3ecc0-stderr"
+            },
+            "outputRef": "16de09f2-8291-4176-8843-aad01296b5c8",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "ci",
+              "--ignore-scripts",
+              "--no-audit",
+              "--no-fund",
+              "--engine-strict",
+              "--include=dev",
+              "--include=optional",
+              "--registry=https://registry.npmjs.org",
+              "--offline"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "f244a347-7238-441b-9409-991f1e860f2e",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "f244a347-7238-441b-9409-991f1e860f2e",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 75,
+              "observedBytes": 75,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-f244a347-7238-441b-9409-991f1e860f2e-stdout",
+              "stderrRef": "log-f244a347-7238-441b-9409-991f1e860f2e-stderr"
+            },
+            "outputRef": "911b0fb5-9de9-4937-a6af-7e17f06ba68f",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "pretest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "71600a9c-e6e3-41c9-9067-b84f4721a0b2",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": true,
+            "log": {
+              "version": 1,
+              "operationId": "71600a9c-e6e3-41c9-9067-b84f4721a0b2",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 36055,
+              "observedBytes": 36055,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-71600a9c-e6e3-41c9-9067-b84f4721a0b2-stdout",
+              "stderrRef": "log-71600a9c-e6e3-41c9-9067-b84f4721a0b2-stderr"
+            },
+            "outputRef": "e42dbfd6-9433-4d22-be12-bd41b538603f",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "test"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+          },
+          {
+            "hostResultVersion": 1,
+            "operationId": "8d7b8526-14d5-47da-b53d-f420a4318934",
+            "reason": "exit",
+            "processesEnded": true,
+            "executionComplete": true,
+            "sideEffectsNeedReview": false,
+            "evidencePersisted": true,
+            "exitCode": 0,
+            "timedOut": false,
+            "aborted": false,
+            "unknown": false,
+            "truncated": false,
+            "log": {
+              "version": 1,
+              "operationId": "8d7b8526-14d5-47da-b53d-f420a4318934",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 78,
+              "observedBytes": 78,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-8d7b8526-14d5-47da-b53d-f420a4318934-stdout",
+              "stderrRef": "log-8d7b8526-14d5-47da-b53d-f420a4318934-stderr"
+            },
+            "outputRef": "45370d4d-7cd6-415f-9d28-af5dd5e3aaae",
+            "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "args": [
+              "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+              "run",
+              "--ignore-scripts",
+              "posttest"
+            ],
+            "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+          }
+        ],
+        "artifacts": [
+          {
+            "path": "dist",
+            "items": 0,
+            "bytes": 0,
+            "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "files": [],
+            "fresh": true,
+            "owner": "2026-10-19T07:30:39.661Z"
+          },
+          {
+            "path": "coverage",
+            "items": 1,
+            "bytes": 2,
+            "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+            "files": [
+              {
+                "path": "result.json",
+                "size": 2,
+                "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+              }
+            ],
+            "fresh": true,
+            "owner": "2026-10-19T07:30:39.661Z"
+          }
+        ],
+        "dependencies": {
+          "items": 4,
+          "bytes": 440,
+          "hash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+          "files": 3
+        },
+        "preparation": {
+          "strategy": "fresh-npm-ci",
+          "lockHash": "32ac5713edeb7f94fd5f94d33d31ea80d1a1f3ca94b16f46be6ad62b0f05cb45",
+          "dependencyHash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+          "installOperationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+          "ignoreScripts": true
+        },
+        "finishedAt": "2026-10-19T07:30:55.077Z"
+      },
+      "completedAt": "2026-10-19T07:31:20.769Z",
+      "validation": [
+        {
+          "schemaVersion": 1,
+          "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+          "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+          "projectId": "p",
+          "contractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+          "sourceFingerprint": "2ff49c911168afbb5e14cba01db3e9252cc2cdf9354376385e0e9f1846ad9f6e",
+          "source": {
+            "hash": "2ff49c911168afbb5e14cba01db3e9252cc2cdf9354376385e0e9f1846ad9f6e",
+            "files": 8,
+            "bytes": 1485
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-eUyybN",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:30:20.874Z",
+          "status": "failed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "2828a9b1-8b5b-44e9-9f60-565dd2c5b274",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "2828a9b1-8b5b-44e9-9f60-565dd2c5b274",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 23,
+                "observedBytes": 23,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-2828a9b1-8b5b-44e9-9f60-565dd2c5b274-stdout",
+                "stderrRef": "log-2828a9b1-8b5b-44e9-9f60-565dd2c5b274-stderr"
+              },
+              "outputRef": "67fe0258-21a5-42ed-b87f-f8927dd63f24",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-eUyybN\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "9c79c1e4-e9bb-44b7-bbcd-f8e9689736c7",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "9c79c1e4-e9bb-44b7-bbcd-f8e9689736c7",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-9c79c1e4-e9bb-44b7-bbcd-f8e9689736c7-stdout",
+                "stderrRef": "log-9c79c1e4-e9bb-44b7-bbcd-f8e9689736c7-stderr"
+              },
+              "outputRef": "8486e7d4-02f2-42e8-8101-f9e4d6c185a4",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-eUyybN\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "159e8448-ca2c-4001-b185-db3df0e4ff79",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 1,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": true,
+              "log": {
+                "version": 1,
+                "operationId": "159e8448-ca2c-4001-b185-db3df0e4ff79",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 37000,
+                "observedBytes": 37000,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-159e8448-ca2c-4001-b185-db3df0e4ff79-stdout",
+                "stderrRef": "log-159e8448-ca2c-4001-b185-db3df0e4ff79-stderr"
+              },
+              "outputRef": "9a2b57d5-6039-4910-b4d6-3fbcdb14d7d0",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-eUyybN\\workspace"
+            }
+          ],
+          "artifacts": [],
+          "dependencies": {
+            "items": 4,
+            "bytes": 440,
+            "hash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "files": 3
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "32ac5713edeb7f94fd5f94d33d31ea80d1a1f3ca94b16f46be6ad62b0f05cb45",
+            "dependencyHash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "installOperationId": "2828a9b1-8b5b-44e9-9f60-565dd2c5b274",
+            "ignoreScripts": true
+          },
+          "error": "准备或检查失败；请读取 command outputRef/operationId 的尾部日志",
+          "finishedAt": "2026-10-19T07:30:33.275Z"
+        },
+        {
+          "schemaVersion": 1,
+          "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+          "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+          "projectId": "p",
+          "contractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+          "sourceFingerprint": "9e5af9993c01636bf17a2b96a9bbd50fa91105b093dcd62e1403b945e3e5080a",
+          "source": {
+            "hash": "9e5af9993c01636bf17a2b96a9bbd50fa91105b093dcd62e1403b945e3e5080a",
+            "files": 8,
+            "bytes": 1485
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:30:39.661Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 23,
+                "observedBytes": 23,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-fd5e7d66-1b1a-4626-87ae-5de714d3ecc0-stdout",
+                "stderrRef": "log-fd5e7d66-1b1a-4626-87ae-5de714d3ecc0-stderr"
+              },
+              "outputRef": "16de09f2-8291-4176-8843-aad01296b5c8",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "f244a347-7238-441b-9409-991f1e860f2e",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "f244a347-7238-441b-9409-991f1e860f2e",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-f244a347-7238-441b-9409-991f1e860f2e-stdout",
+                "stderrRef": "log-f244a347-7238-441b-9409-991f1e860f2e-stderr"
+              },
+              "outputRef": "911b0fb5-9de9-4937-a6af-7e17f06ba68f",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "71600a9c-e6e3-41c9-9067-b84f4721a0b2",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": true,
+              "log": {
+                "version": 1,
+                "operationId": "71600a9c-e6e3-41c9-9067-b84f4721a0b2",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 36055,
+                "observedBytes": 36055,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-71600a9c-e6e3-41c9-9067-b84f4721a0b2-stdout",
+                "stderrRef": "log-71600a9c-e6e3-41c9-9067-b84f4721a0b2-stderr"
+              },
+              "outputRef": "e42dbfd6-9433-4d22-be12-bd41b538603f",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "8d7b8526-14d5-47da-b53d-f420a4318934",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "8d7b8526-14d5-47da-b53d-f420a4318934",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-8d7b8526-14d5-47da-b53d-f420a4318934-stdout",
+                "stderrRef": "log-8d7b8526-14d5-47da-b53d-f420a4318934-stderr"
+              },
+              "outputRef": "45370d4d-7cd6-415f-9d28-af5dd5e3aaae",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-8VI17X\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 0,
+              "bytes": 0,
+              "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+              "files": [],
+              "fresh": true,
+              "owner": "2026-10-19T07:30:39.661Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:30:39.661Z"
+            }
+          ],
+          "dependencies": {
+            "items": 4,
+            "bytes": 440,
+            "hash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "files": 3
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "32ac5713edeb7f94fd5f94d33d31ea80d1a1f3ca94b16f46be6ad62b0f05cb45",
+            "dependencyHash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "installOperationId": "fd5e7d66-1b1a-4626-87ae-5de714d3ecc0",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:30:55.077Z"
+        },
+        {
+          "schemaVersion": 1,
+          "taskId": "79b9cdfb-8c3f-4a14-8ca1-5071a2e2678e",
+          "sessionId": "5a5eb146-0ed9-49ea-bfff-997a0e305a7d",
+          "projectId": "p",
+          "contractVersion": "4cca4c7d9c139fb68631f0bde5655e19fe2f9dd4afd1ab8972a930097cfaf2e9",
+          "sourceFingerprint": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+          "source": {
+            "hash": "f58a4203d105472ae2ca8bcd988e9a3440d99362155c16361def6ed8c7a79f72",
+            "files": 8,
+            "bytes": 1496
+          },
+          "runtime": {
+            "node": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+            "nodeVersion": "v22.19.0",
+            "npm": "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+            "npmVersion": "10.9.2",
+            "npmSha256": "3ce7cba6f5128dd5f54c98b6a5036b0f850496878cc2e21044b675fe3c594e3e"
+          },
+          "installPolicy": "ci-ignore-scripts-v1",
+          "environmentPolicy": "minimal-v1",
+          "network": false,
+          "ownedDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ",
+          "checkId": "npm-project",
+          "startedAt": "2026-10-19T07:31:03.369Z",
+          "status": "passed",
+          "commands": [
+            {
+              "hostResultVersion": 1,
+              "operationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 23,
+                "observedBytes": 23,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-df696f87-0bc4-433e-9393-8a97ab949c65-stdout",
+                "stderrRef": "log-df696f87-0bc4-433e-9393-8a97ab949c65-stderr"
+              },
+              "outputRef": "c52181e7-3f7f-4ce5-b139-bb7c02e46c2d",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+                "--engine-strict",
+                "--include=dev",
+                "--include=optional",
+                "--registry=https://registry.npmjs.org",
+                "--offline"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "a99f4255-0d65-46c3-aa55-2bf1e46318ab",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "a99f4255-0d65-46c3-aa55-2bf1e46318ab",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 75,
+                "observedBytes": 75,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-a99f4255-0d65-46c3-aa55-2bf1e46318ab-stdout",
+                "stderrRef": "log-a99f4255-0d65-46c3-aa55-2bf1e46318ab-stderr"
+              },
+              "outputRef": "f2651c9d-7754-41d7-93b1-d67027cb6d14",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "pretest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "9cb09be1-d3cb-4f80-8221-4b39543f5100",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": true,
+              "log": {
+                "version": 1,
+                "operationId": "9cb09be1-d3cb-4f80-8221-4b39543f5100",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 36055,
+                "observedBytes": 36055,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-9cb09be1-d3cb-4f80-8221-4b39543f5100-stdout",
+                "stderrRef": "log-9cb09be1-d3cb-4f80-8221-4b39543f5100-stderr"
+              },
+              "outputRef": "a3134ec9-f265-4a4a-903a-e04afd5de0a5",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "test"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+            },
+            {
+              "hostResultVersion": 1,
+              "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+              "reason": "exit",
+              "processesEnded": true,
+              "executionComplete": true,
+              "sideEffectsNeedReview": false,
+              "evidencePersisted": true,
+              "exitCode": 0,
+              "timedOut": false,
+              "aborted": false,
+              "unknown": false,
+              "truncated": false,
+              "log": {
+                "version": 1,
+                "operationId": "3520cdb0-43ed-4e84-a8e9-682f74b2ed97",
+                "complete": true,
+                "status": "complete",
+                "reason": null,
+                "capturedBytes": 78,
+                "observedBytes": 78,
+                "limitBytes": 262144,
+                "tailBytes": 8192,
+                "retentionDays": 7,
+                "stdoutRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stdout",
+                "stderrRef": "log-3520cdb0-43ed-4e84-a8e9-682f74b2ed97-stderr"
+              },
+              "outputRef": "834344e6-dae9-4747-a6ac-3cb93f420b37",
+              "executable": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-p0-p2\\node22\\node.exe",
+              "args": [
+                "D:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+                "run",
+                "--ignore-scripts",
+                "posttest"
+              ],
+              "cwd": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-YcR5lZ\\workspace"
+            }
+          ],
+          "artifacts": [
+            {
+              "path": "dist",
+              "items": 0,
+              "bytes": 0,
+              "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+              "files": [],
+              "fresh": true,
+              "owner": "2026-10-19T07:31:03.369Z"
+            },
+            {
+              "path": "coverage",
+              "items": 1,
+              "bytes": 2,
+              "hash": "832cdfa63bb2514fee370ef2ed7464fff5cbed7bf6d26a5b50852091741b3b61",
+              "files": [
+                {
+                  "path": "result.json",
+                  "size": 2,
+                  "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+                }
+              ],
+              "fresh": true,
+              "owner": "2026-10-19T07:31:03.369Z"
+            }
+          ],
+          "dependencies": {
+            "items": 4,
+            "bytes": 440,
+            "hash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "files": 3
+          },
+          "preparation": {
+            "strategy": "fresh-npm-ci",
+            "lockHash": "32ac5713edeb7f94fd5f94d33d31ea80d1a1f3ca94b16f46be6ad62b0f05cb45",
+            "dependencyHash": "928b0754831ded242ef01a55b2b91e4cbe7eea4594c531aefef051b86d13323b",
+            "installOperationId": "df696f87-0bc4-433e-9393-8a97ab949c65",
+            "ignoreScripts": true
+          },
+          "finishedAt": "2026-10-19T07:31:18.664Z"
+        }
+      ],
+      "tailReads": [
+        {
+          "operationId": "159e8448-ca2c-4001-b185-db3df0e4ff79",
+          "channel": "stderr",
+          "mode": "tail",
+          "text": "node:assert:150\r\n  throw new AssertionError(obj);\r\n  ^\r\n\r\nAssertionError [ERR_ASSERTION]: TAIL_ERROR:add\r\n\r\n-1 !== 5\r\n\r\n    at Object.<anonymous> (C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-mvp-49U1YO\\npm-validation\\run-eUyybN\\workspace\\test\\check.cjs:1:180)\r\n    at Module._compile (node:internal/modules/cjs/loader:1706:14)\r\n    at Object..js (node:internal/modules/cjs/loader:1839:10)\r\n    at Module.load (node:internal/modules/cjs/loader:1441:32)\r\n    at Function._load (node:internal/modules/cjs/loader:1263:12)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:322:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\r\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\r\n    at node:internal/main/run_main_module:36:49 {\r\n  generatedMessage: false,\r\n  code: 'ERR_ASSERTION',\r\n  actual: -1,\r\n  expected: 5,\r\n  operator: 'strictEqual',\r\n  diff: 'simple'\r\n}\r\n\r\nNode.js v22.19.0\r\n",
+          "offset": 0,
+          "offsetUnit": "utf16_characters_from_end",
+          "nextOffset": null,
+          "characters": 945,
+          "complete": true,
+          "status": "complete",
+          "reason": null,
+          "observedBytes": 945,
+          "capturedBytes": 945,
+          "gap": false,
+          "sha256": "c6998be19e586e17e3a97b2b2b306ca96ee4063546b1fdd43792a992b7b8c066"
+        }
+      ],
+      "evidenceOutputCount": 43,
+      "evidenceOutputHashesValid": true
+    }
+  ]
+}

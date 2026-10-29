@@ -1,0 +1,11 @@
+import {html} from './html.js';
+type TaskEvent={id?:string;kind:string;created_at:string;payload:unknown};
+function payloadText(payload:unknown){return typeof payload==='string'?payload:JSON.stringify(payload,null,2)??'';}
+export function taskEventList(events:TaskEvent[],filter='',query=''){
+  const matches=events.filter(e=>(!filter||e.kind===filter)&&(!query||`${e.kind} ${payloadText(e.payload)}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())));
+  return html`<p class="task-event-count" role="status">显示 ${matches.length} / ${events.length} 条已加载事件 · 最新在前</p>`+matches.map(e=>{const text=payloadText(e.payload);return html`<details class="task-event-card"><summary><span class="task-event-kind ${/error|fail|stderr/i.test(e.kind)?'is-warning':''}">${e.kind}</span><time>${new Date(e.created_at).toLocaleString('zh-CN')}</time><span class="task-event-preview">${text.slice(0,180)}${text.length>180?'…':''}</span></summary><pre tabindex="0" aria-label="原始事件内容">${text}</pre></details>`;}).join('')+(matches.length?'':'<p class="task-event-empty">没有符合条件的事件。</p>');
+}
+export function showTaskEvents(container:HTMLElement,task:{prompt:string;result?:string;employee_name?:string;runtime:string;status:string},events:TaskEvent[],status:string){
+  const loaded=events.slice(-100).reverse();container.innerHTML=html`<section class="task-event-overview"><span class="task-event-kind">${status}</span><strong>${task.employee_name??task.runtime}</strong><p>${task.prompt}</p>` + (task.result?html`<details><summary>员工报告</summary><pre>${task.result}</pre></details>`:'') + html`</section><div class="task-event-toolbar"><label>事件类型 <select aria-label="筛选事件类型"><option value="">全部类型</option>` + ([...new Set(loaded.map(e=>e.kind))].sort().map(k=>html`<option value="${k}">${k}</option>`).join('')) + html`</select></label><label>搜索 <input type="search" placeholder="搜索日志内容" aria-label="搜索事件内容"></label><small>最近最多 100 条，展开查看原始内容</small></div><div class="task-event-list"></div>`;
+  const list=container.querySelector<HTMLElement>('.task-event-list')!,select=container.querySelector('select')!,input=container.querySelector('input')!;const render=()=>{list.innerHTML=taskEventList(loaded,select.value,input.value);};select.addEventListener('change',render);input.addEventListener('input',render);render();
+}

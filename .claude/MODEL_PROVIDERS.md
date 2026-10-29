@@ -98,16 +98,16 @@ ApiX 管理者 Agent 现已支持多种主流 AI 模型平台，包括国内外�
 ### 方法一：通过 Web 界面配置
 
 1. 访问 `http://localhost:4173/`
-2. 进入「协调器」页面
-3. 找到「ApiX 的推理模型」配置区域
-4. 选择模型平台（如 DeepSeek）
-5. 选择具体模型（如 deepseek-chat）
-6. 确认 API Key 环境变量名
-7. 点击「保存模型配置」
+2. 进入「应用与协作设置」页面
+3. 找到「Agent 供应商中心」
+4. 新建供应商并填写 Base URL、模型 ID、协议和 API Key（本地回环服务可免密钥）
+5. 点击「保存供应商」
+6. 在「ApiX 模型通道」选择该供应商并点击「应用到 ApiX」
+7. Codex 与 Claude Code 员工也在同一页面选择供应商并应用
 
-### 方法二：设置环境变量
+### 方法二：环境变量与兼容引用
 
-在启动 ApiX 之前设置对应的环境变量：
+新建供应商时不要求环境变量名，直接在表单填写 API Key 即可。根目录 `.env` 会自动加载，进程已有同名变量优先；已有管理者设置或员工 CLI 继续引用环境变量时仍然兼容。
 
 **Windows (PowerShell)**:
 ```powershell
@@ -127,50 +127,47 @@ export DEEPSEEK_API_KEY="sk-xxxxx"
 npm start
 ```
 
-**注意**：本项目当前不自动加载 `.env` 文件。如需持久化环境变量，请在启动前手动设置，或使用系统级环境变量配置。
+单独设置环境变量不会自动创建供应商；仍需在供应商中心填写 Base URL、模型 ID 与 API Key。
 
 ### 方法三：自定义 URL
 
 如果需要使用代理或自建服务：
 
-1. 在界面中选择「自定义 URL」
+1. 在供应商中心选择「OpenAI Chat Completions」等协议，或从内置预设填充后修改
 2. 输入自定义 API URL（如 `http://proxy.example.com/v1`）
 3. 输入模型 ID
 4. 选择 API 类型（通常为 OpenAI Chat Completions）
-5. 输入 API Key 环境变量名
+5. 填写 API Key
    - **本地服务**（如 `http://127.0.0.1` 或 `http://localhost`）：可留空
-   - **远程服务**：必须填写有效的环境变量名
+   - **远程服务**：必须填写有效密钥
+6. 保存供应商，再应用到 ApiX 或执行员工
 
 ## 使用示例
 
 ### 示例 1：使用 DeepSeek 作为 ApiX 推理底座
 
 ```bash
-# 1. 设置环境变量
-export DEEPSEEK_API_KEY="sk-your-key-here"
-
-# 2. 启动服务
+# 1. 启动服务
 npm start
 
-# 3. 在界面配置
-# - 选择平台: DeepSeek 深度求索
-# - 选择模型: deepseek-chat
-# - 保存配置
+# 2. 在供应商中心配置
+# - 从预设选择 DeepSeek，或填写 Base URL 和协议
+# - 模型: deepseek-chat
+# - 填写 API Key 并保存
+# - 在“ApiX 模型通道”应用该供应商
 ```
 
 ### 示例 2：使用阿里云通义千问
 
 ```bash
-# 1. 设置环境变量
-export DASHSCOPE_API_KEY="sk-your-key-here"
-
-# 2. 启动服务
+# 1. 启动服务
 npm start
 
-# 3. 在界面配置
-# - 选择平台: 阿里云百炼 (通义千问)
-# - 选择模型: qwen-max
-# - 保存配置
+# 2. 在供应商中心配置
+# - 从预设选择阿里云百炼 (通义千问)
+# - 模型: qwen-max
+# - 填写 API Key 并保存
+# - 在“ApiX 模型通道”应用该供应商
 ```
 
 ### 示例 3：使用本地 Ollama
@@ -182,10 +179,11 @@ ollama serve
 # 2. 拉取模型
 ollama pull qwen2.5:32b
 
-# 3. 在界面配置
-# - 选择平台: Ollama (本地)
-# - 选择模型: qwen2.5:32b
-# - 保存配置（无需 API Key）
+# 3. 在供应商中心配置
+# - Base URL: http://127.0.0.1:11434/v1
+# - 模型: qwen2.5:32b
+# - 本地回环服务可留空 API Key
+# - 保存后应用到 ApiX
 ```
 
 ## 价格对比参考
@@ -216,7 +214,7 @@ ollama pull qwen2.5:32b
 
 ### 员工 Agent 建议
 
-员工 Agent (Pi, Codex, Claude 等) 使用各自独立的配置，不受此处设置影响。
+员工 Agent (Pi, Codex, Claude 等) 也在 Agent 供应商中心绑定供应商；未绑定时沿用各自本机 CLI 配置。
 
 ## 接入状态说明
 

@@ -1,0 +1,23 @@
+import {html} from './html.js';
+const root=document.querySelector<HTMLElement>('#mcp-grid')!;let projectId='',generation=0;
+root.classList.remove('resource-grid');
+type Config={id:string;name:string;transport:string;enabled:boolean;version:number;[key:string]:unknown};
+let servers:Config[]=[];
+async function api(path:string,body?:unknown){const response=await fetch(path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await response.json();if(!response.ok)throw new Error(data.error??'MCP 请求失败');return data;}
+function draft(c?:Config){return JSON.stringify(c??{id:'my-service',name:'我的 MCP 服务',transport:'stdio',command:'',args:[],env:[],headerEnv:{},enabled:false,version:0},null,2);}
+async function load(){const id=projectId,revision=++generation;if(!id){root.innerHTML='<p>请先选择项目，MCP 配置按项目隔离。</p>';return;}
+  try{const data=await api(`/api/projects/${encodeURIComponent(id)}/mcp`);if(id!==projectId||revision!==generation)return;servers=data.servers;document.querySelector('#mcp-tab-count')!.textContent=String(servers.length);
+    root.innerHTML=html`<div class="surface-card stacked-form"><h3>项目 MCP 服务</h3><p>服务程序以本机账户权限运行。只启用你信任的服务；项目目录提示不是操作系统沙箱。工具调用仍受 ApiX 审批与项目权限约束。凭据只引用环境变量名称，不粘贴密钥。</p><div>` + (servers.map(c=>html`<p><strong>${c.name}</strong> · ${c.transport} · ${c.enabled?'已启用':'已停用'} · 配置 v${c.version} <button type="button" class="text-action" data-mcp-edit="${c.id}">编辑</button></p>`).join('')||'<p>尚未配置。原浏览器中的 MCP 备注不会自动启用。</p>') + html`</div><button type="button" class="outline-button" data-mcp-discover>连接并发现已启用服务的工具</button><p data-mcp-result role="status"></p><div data-mcp-tools>` + (data.tools.map((t:{name:string;description:string})=>html`<details><summary>${t.name}</summary><p>${t.description}</p></details>`).join('')) + html`</div><details id="mcp-config"><summary>添加或编辑服务</summary><form class="stacked-form" data-mcp-save><label>配置 JSON<textarea name="config" rows="12" maxlength="16000" required aria-label="MCP 配置 JSON">${draft()}</textarea></label><p>stdio：command 为可执行文件或 JS 入口的绝对路径，args 为参数数组。http：transport="http" 并填写 url。env 为传给服务的环境变量名称数组；headerEnv 为请求头名到环境变量名称的映射。HTTP URL 不携带查询参数或凭据。</p><label><input name="enabled" type="checkbox">启用，并批准连接该服务或执行该服务器程序</label><button class="primary-button">保存 MCP 配置</button></form></details></div>`;
+  }catch(error){if(id===projectId&&revision===generation)root.innerHTML=html`<p role="alert">${error instanceof Error?error.message:error}</p>`;}
+}
+root.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('button');if(!button)return;const id=projectId,revision=generation;
+  if(button.dataset.mcpEdit){const c=servers.find(c=>c.id===button.dataset.mcpEdit);if(!c)return;(root.querySelector('#mcp-config') as HTMLDetailsElement).open=true;root.querySelector<HTMLTextAreaElement>('[name=config]')!.value=draft(c);root.querySelector<HTMLInputElement>('[name=enabled]')!.checked=c.enabled;}
+  if(button.hasAttribute('data-mcp-discover')){const result=root.querySelector<HTMLElement>('[data-mcp-result]')!;(button as HTMLButtonElement).disabled=true;result.textContent='正在连接并发现工具…';void api(`/api/projects/${encodeURIComponent(id)}/mcp/discover`,{}).then(data=>{if(id!==projectId||revision!==generation)return;result.textContent=`已发现 ${data.tools.length} 个工具。${data.errors.join('；')}`;root.querySelector<HTMLElement>('[data-mcp-tools]')!.textContent=data.tools.map((t:{description:string})=>t.description).join('\n');}).catch(error=>{if(id===projectId)result.textContent=String(error.message);}).finally(()=>{(button as HTMLButtonElement).disabled=false;});}
+});
+root.addEventListener('submit',event=>{event.preventDefault();const form=event.target as HTMLFormElement;if(!form.hasAttribute('data-mcp-save'))return;const id=projectId,result=root.querySelector<HTMLElement>('[data-mcp-result]')!;
+  try{const config=JSON.parse(root.querySelector<HTMLTextAreaElement>('[name=config]')!.value);config.enabled=root.querySelector<HTMLInputElement>('[name=enabled]')!.checked;config.approved=config.enabled;void api(`/api/projects/${encodeURIComponent(id)}/mcp`,config).then(()=>{if(id===projectId)void load();}).catch(error=>{if(id===projectId)result.textContent=error.message;});}catch{result.textContent='请输入有效的配置 JSON。';}
+});
+document.addEventListener('apix:configure-mcp',()=>{const details=root.querySelector<HTMLDetailsElement>('#mcp-config');if(details){details.open=true;root.querySelector<HTMLTextAreaElement>('[name=config]')!.focus();}else void load();});
+document.addEventListener('apix:snapshot',((event:CustomEvent<{projectId:string}>)=>{if(projectId!==event.detail.projectId){projectId=event.detail.projectId;void load();}}) as EventListener);
+
+void load();

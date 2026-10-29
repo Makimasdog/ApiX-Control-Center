@@ -1,0 +1,146 @@
+/**
+ * 项目基线管理 - 为 Git 和非 Git 项目建立版本快照基线
+ *
+ * 所属层级：项目层
+ * 核心功能：
+ *   - projectSourceVersion：获取项目当前版本（Git commit hash 或目录内容哈希）
+ *   - projectBaseline：为非 Git 项目创建托管 Git 基线副本
+ *   - 安全限制：排除 .git / node_modules / .env / 密钥文件等敏感目录和文件
+ *   - 容量限制：最多 20000 条目、100 MiB 总大小
+ *   - 原子性写入：通过临时目录 + rename 保证基线创建的原子性
+ * 依赖关系：
+ *   - 被 ← [→ 见 src/projects/project-io-worker.mjs] 通过 IO 线程池调用
+ *   - 被 ← [→ 见 src/projects/task-delivery.mjs] 获取源版本
+ */
+import {createHash,randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {existsSync,mkdirSync,realpathSync,readdirSync,lstatSync,readFileSync,writeFileSync,copyFileSync,renameSync,rmSync} from 'node:fs';
+import {join,resolve,relative,isAbsolute} from 'node:path';
+
+/**
+ * git - 同步执行 git 命令并返回去除末尾换行的输出
+ * @param cwd - 工作目录
+ * @param args - git 命令参数
+ * @param options - execFileSync 选项
+ * @returns git 命令输出（去除末尾换行）
+ */
+const git=(cwd,args,options={})=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:20000,maxBuffer:10000000,windowsHide:true,stdio:['pipe','pipe','pipe'],...options}).replace(/\r?\n$/,'');
+/** excluded - 判断文件名是否应被排除（敏感文件、密钥等） */
+const excluded=name=>/^(?:\.git|node_modules|\.apix-agent-os)$/i.test(name) || /^\.env(?:\.|$)/i.test(name) || /^(?:id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx)$/i.test(name);
+/** inside - 判断 path 是否在 parent 目录内部（防止路径穿越） */
+function inside(parent,path){const rel=relative(parent,path);return rel!=='' && !isAbsolute(rel) && rel!=='..' && !rel.startsWith('..\\') && !rel.startsWith('../');}
+/**
+ * projectSourceVersion - 获取项目的版本标识
+ * @param sourcePath - 项目源目录路径
+ * @param dataDir - ApiX 数据目录（用于排除）
+ * @returns Git 项目返回 commit hash；非 Git 项目返回 'directory:<sha256>' 格式的目录内容哈希
+ */
+export function projectSourceVersion(sourcePath,dataDir){
+  // 优先尝试 Git commit hash
+  try{return git(sourcePath,['rev-parse','HEAD']);}catch{}
+  // 非 Git 项目：遍历目录计算内容哈希
+  const source=realpathSync.native(sourcePath),digest=createHash('sha256');let entries=0,bytes=0;
+  /** inspect - 递归遍历目录，收集文件元数据和内容到哈希 */
+  function inspect(path){
+    for(const name of readdirSync(path).sort()){
+      if(excluded(name))continue;
+      const input=join(path,name);if(dataDir && resolve(input)===resolve(dataDir))continue;
+      if(++entries>20000)throw new Error('源目录过大，请重新安排计划');
+      const stat=lstatSync(input);if(stat.isSymbolicLink())throw new Error('源目录包含链接，不能核对恢复版本');
+      // 将文件元数据（路径、大小、修改时间等）加入哈希
+      digest.update(JSON.stringify([relative(source,input),stat.size,stat.mtimeMs,stat.ctimeMs,stat.isDirectory()]));
+      if(stat.isDirectory())inspect(input);
+      else if(stat.isFile()){
+        if((bytes+=stat.size)>100*1024*1024)throw new Error('源目录检查超过 100 MiB，请重新安排计划');
+        digest.update(readFileSync(input));
+      }else throw new Error('源目录包含不支持的文件类型');
+    }
+  }
+  inspect(source);return 'directory:'+digest.digest('hex');
+}
+// A non-Git project gets a plan-scoped private baseline, never an implicit git init in the user's folder.
+/**
+ * projectBaseline - 为非 Git 项目建立托管的 Git 基线副本
+ *
+ * 对于 Git 项目直接返回仓库根目录；对于非 Git 项目，在 dataDir/project-baselines/ 下
+ * 创建一份完整副本并初始化为 Git 仓库，作为后续操作的稳定基线。
+ * @param sourcePath - 项目源目录
+ * @param planId - 计划 ID（基线与计划绑定）
+ * @param dataDir - ApiX 数据目录
+ * @param options.create - 是否允许创建新基线，默认 true
+ * @returns 基线仓库的绝对路径
+ */
+export function projectBaseline(sourcePath,planId,dataDir,{create=true}={}){
+  const source=realpathSync.native(sourcePath);
+  if(source===(existsSync(dataDir)?realpathSync.native(dataDir):resolve(dataDir)))throw new Error('ApiX 数据目录不能作为项目输入快照');
+  const storage=resolve(dataDir,'project-baselines');
+  // 基线键值由 planId + 源路径共同决定
+  const key=createHash('sha256').update(JSON.stringify([planId,source])).digest('hex');
+  const saved=join(storage,key),repo=join(saved,'repo');
+  // 如果基线已存在，验证其完整性后直接返回
+  if(existsSync(saved)){
+    if(realpathSync.native(saved)!==join(realpathSync.native(storage),key) || realpathSync.native(repo)!==join(realpathSync.native(saved),'repo'))throw new Error('托管项目基线路径已变化');
+    const manifest=JSON.parse(readFileSync(join(saved,'source.json'),'utf8'));
+    if(manifest.source!==source || manifest.planId!==planId || git(repo,['rev-parse','HEAD'])!==manifest.head || realpathSync.native(git(repo,['rev-parse','--show-toplevel']))!==realpathSync.native(repo))throw new Error('托管项目基线已变化');
+    return repo;
+  }
+  // 如果源是 Git 项目，直接返回 Git 仓库根目录
+  try{const root=git(source,['rev-parse','--show-toplevel']);git(root,['rev-parse','HEAD']);return realpathSync.native(root);}catch{}
+  if(!create)throw new Error('非 Git 项目尚未建立托管基线');
+  // 非 Git 项目：创建基线副本
+  mkdirSync(storage,{recursive:true});
+  // 先写入临时目录，完成后原子 rename 到最终位置
+  const staging=join(storage,key+'-'+randomUUID()),target=join(staging,'repo');
+  mkdirSync(target,{recursive:true});
+  try{
+    git(target,['init']);git(target,['config','core.autocrlf','false']);
+    let files=0,bytes=0,entries=0;
+    /** copy - 递归复制项目文件到基线仓库，遵守排除规则和 .gitignore */
+    function copy(from,to){
+      const names=readdirSync(from);
+      // 复制 .gitignore 以便后续 check-ignore 过滤
+      if(names.includes('.gitignore')){
+        if(!lstatSync(join(from,'.gitignore')).isFile() || lstatSync(join(from,'.gitignore')).isSymbolicLink())throw new Error('项目忽略规则必须是普通文件');
+        copyFileSync(join(from,'.gitignore'),join(to,'.gitignore'));
+      }
+      let ignored=[];
+      // 使用 git check-ignore 检查哪些文件应被忽略
+      if(names.length)try{ignored=git(target,['check-ignore','--no-index','-z','--stdin'],{input:names.map(n=>relative(source,join(from,n)).replaceAll('\\','/')+(lstatSync(join(from,n)).isDirectory()?'/':'')).join('\0')+'\0'}).split('\0').map(p=>p.replace(/\/$/,''));}catch(error){if(error.status!==1)throw error;}
+      for(const name of names){
+        if(excluded(name))continue;
+        const input=join(from,name),output=join(to,name);
+        if(resolve(input)===resolve(dataDir) || resolve(input)===storage || ignored.includes(relative(source,input).replaceAll('\\','/')))continue;
+        if(++entries>20000)throw new Error('项目目录条目过多，请配置忽略目录或使用 Git 项目');
+        const stat=lstatSync(input);
+        if(stat.isSymbolicLink())throw new Error(`项目包含链接，请先明确独立工作区的输入范围：${relative(source,input)}`);
+        if(stat.isDirectory()){mkdirSync(output,{recursive:true});copy(input,output);}
+        else if(stat.isFile()){
+          if(++files>10000 || (bytes+=stat.size)>100*1024*1024)throw new Error('非 Git 项目快照超过 10000 个文件或 100 MiB，请配置忽略目录或使用 Git 项目');
+          copyFileSync(input,output);
+        }else throw new Error('项目包含不支持的文件类型');
+      }
+    }
+    copy(source,target);
+    // 将所有未忽略的文件添加到 Git 暂存区
+    const paths=git(target,['ls-files','--others','--exclude-standard','-z']).split('\0').filter(Boolean);
+    if(paths.length)git(target,['add','--pathspec-from-file=-','--pathspec-file-nul'],{input:paths.join('\0')+'\0'});
+    // 创建 Git tree 对象和 commit，作为基线快照
+    const tree=git(target,['write-tree']);
+    const head=git(target,['-c','user.name=ApiX','-c','user.email=apix@local.invalid','commit-tree',tree,'-m','ApiX project input snapshot']);
+    git(target,['update-ref','HEAD',head]);
+    // 写入来源清单文件，记录源路径、计划 ID 和 commit hash
+    writeFileSync(join(staging,'source.json'),JSON.stringify({source,planId,head}));
+    // 原子 rename：Windows 上可能遇到文件锁，最多重试 5 次
+    for(let attempt=0;;attempt++){
+      try{renameSync(staging,saved);break;}catch(error){
+        if(process.platform!=='win32'||!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt>=5)throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,50*(attempt+1));
+      }
+    }
+    return repo;
+  }catch(error){
+    // 失败时清理临时目录（需确认在 storage 范围内，防止误删）
+    if(inside(realpathSync.native(storage),realpathSync.native(staging)))rmSync(staging,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+    throw new Error(`无法建立非 Git 项目基线：${error.message}`);
+  }
+}

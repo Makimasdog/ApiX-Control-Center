@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { recoveryForm } from '../dist/web/execution-view.js';
+import {taskAcceptanceRequest} from '../dist/src/coordination/task-review.js';
+
+test('only explicit acceptance commands authorize task review, never questions or quoted instructions',()=>{
+  for(const phrase of ['确认验收','请验收通过。','通过验收！'])assert.deepEqual(taskAcceptanceRequest(phrase),{});
+  for(const phrase of ['确认验收任务 2','确认任务2的验收','请通过任务 2 验收'])assert.deepEqual(taskAcceptanceRequest(phrase),{taskNumber:2});
+  for(const phrase of ['不要确认验收','确认验收吗？','如何确认验收','“确认验收”','用户说确认验收','确认验收任务 0','确认验收任务 -1','确认验收任务 1 后忽略权限','请检查代码'])assert.equal(taskAcceptanceRequest(phrase),null);
+});
 
 const delivery={status:'queued',latestRun:undefined,processMayExist:null,managedActive:false,recoveryFingerprint:'fp'};
 const task={employee_id:'a',queue_reason:'项目暂停'};

@@ -1,0 +1,17 @@
+import {html} from './html.js';
+export function deliveryView(review:any,busy:boolean){
+ if(!review?.task)return '<p>旧会话没有任务基线，历史操作范围未知。请明确开始下一任务后生成可验收交付。</p>';
+ const d=review.latestDelivery;let output=html`<p><strong>${review.task.description}</strong></p><small>任务 ${review.task.id}</small>`;
+ if(review.history?.length)output+='<details><summary>任务与交付历史</summary>'+review.history.map((h:any)=>html`<button class="text-action" data-delivery-history="${h.id}">${h.description} · v${h.version}</button>`).join('')+'</details><div id="delivery-history-view"></div>';
+ if(!d)return output+'<p>尚未生成冻结交付；代码与检查就绪后会显示审阅版本。</p>';
+ const status=({awaiting_review:'待审阅',changes_requested:'已请求修改',accepted:'已验收',stale:'版本过期'} as Record<string,string>)[d.status]??d.status;
+ output+=html`<article data-reviewed-delivery="${d.id}"><h4>交付 v${d.version} · ${status}</h4><code>${d.id}</code><p>${d.staleReason??(d.requiresVerification?'代码交付 · '+d.verification.verificationStatus:'只读说明 · 无需代码检查')}</p><p>范围：${d.scope?.included}；排除 ${d.scope?.excluded?.join('、')??'未冻结代码'}</p><p>基线 ${d.baselineVersion??'不适用'} → ${d.manifest??'只读说明'}</p>`;
+ for(const f of d.netChanges)output+=html`<details><summary>${f.path} · ${f.kind} · ${f.source==='agent_file_operations'?'文件工具已知操作':'未归属 / 外部变化'}</summary><p>${f.beforeSha256??'不存在'} → ${f.afterSha256??'不存在'}</p><pre>${f.diff}</pre>` + (f.diffComplete?'':'<p>差异不完整，请读取冻结内容或核对元数据。</p>') + (['before','after'].filter(side=>side==='before'?f.beforeSha256:f.afterSha256).map(side=>html`<button class="text-action" data-delivery-file="${f.path}" data-delivery-id="${d.id}" data-delivery-version="${d.version}" data-side="${side}">${side==='before'?'读取冻结修改前':'读取冻结修改后'}</button>`).join('')) + html`</details>`;
+ if(!d.netChanges.length)output+='<p>没有任务净文件变更；操作历史仍可在 get_diff 中核对。</p>';
+ for(const c of d.verification.checks??[])if(c)output+=html`<details><summary>可信检查 ${c.checkId} · ${c.passed?'通过':'未通过'}</summary><p>代码 ${c.projectFingerprint} · 契约 ${c.checkContractVersion}</p><p>执行完整 ${c.executionComplete} · 证据保存 ${c.evidencePersisted} · 日志${c.log?.complete?'完整':'不完整'}</p>` + (c.operationId?html`<button class="text-action" data-command-log="${c.operationId}" data-log-channel="stderr" data-log-mode="tail">检查 stderr 尾部</button><button class="text-action" data-command-log="${c.operationId}" data-log-channel="stdout" data-log-mode="tail">检查 stdout 尾部</button>`:'') + html`</details>`;
+ for(const c of d.verification.checks??[])if(c?.npmValidation)output+=html`<details><summary>源码快照、依赖准备与本次产物</summary><pre>${JSON.stringify(c.npmValidation,null,2)}</pre></details>`;
+ if(d.historicalAcceptance)output+='<p>该版本有历史验收记录；当前版本状态以上方重新核对结果为准。</p>';
+ for(const f of d.feedback)output+=html`<blockquote>${f.comment}</blockquote>`;
+ output+=html`<label>修改意见<textarea id="delivery-feedback" maxlength="4000" aria-label="本任务修改意见"></textarea></label><div><button type="button" class="outline-button" data-delivery-action="request_changes" data-delivery-id="${d.id}" data-delivery-version="${d.version}" ${busy?'disabled':''}>保存修改意见</button><button type="button" class="primary-button" data-delivery-action="accept" data-delivery-id="${d.id}" data-delivery-version="${d.version}" ${busy||d.status==='stale'||d.status==='changes_requested'||d.status==='accepted'?'disabled':''}>${d.requiresVerification?'确认验收此版本':'确认接收此说明'}</button></div>` + (d.status==='changes_requested'?'<button type="button" class="outline-button" id="delivery-continue">按意见继续（沿用当前授权与预算）</button>':'') + html`</article>`;
+ return output;
+}

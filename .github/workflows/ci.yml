@@ -8,11 +8,63 @@ on:
 jobs:
   check:
     runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: 22.19.0
+            npm: 10.9.2
+          - node: 24.x
+            npm: 11.19.0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.19.0'
+          node-version: ${{ matrix.node }}
+      - run: npm install --global npm@${{ matrix.npm }}
       - run: npm ci
+      # 依赖漏洞门禁：high 及以上直接失败，防止回归（此前 body-parser 高危已修）。
+      - run: npm audit --audit-level=high
       - run: npm run check
-      - run: npm test
+      - run: npm run test:desktop
+      - name: Tests with outer deadline and retained diagnostics
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .tmp-ci | Out-Null
+          npm test 2>&1 | Tee-Object -FilePath .tmp-ci/npm-test.log
+          exit $LASTEXITCODE
+      # 全量测试的 pretest 已构建 dist,此时检查编译产物是否有源码对应的孤儿文件。
+      - run: node scripts/check-stale-dist.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-diagnostics-node-${{ matrix.node }}
+          path: .tmp-ci/npm-test.log
+          if-no-files-found: ignore
+
+  # 覆盖率只出报告不设阈值（方案 P4）；独立 job 与 check 并行，不拖慢主门禁。
+  coverage:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      - run: npm install --global npm@10.9.2
+      - run: npm ci
+      - name: Coverage report
+        timeout-minutes: 35
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .tmp-ci | Out-Null
+          npm run test:coverage 2>&1 | Tee-Object -FilePath .tmp-ci/coverage.log
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: .tmp-ci/coverage.log
+          if-no-files-found: ignore

@@ -1,0 +1,25 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {codingFixture} from './coding-harness.mjs';
+import {projectFingerprint} from '../dist/src/assistant/assistant-tools.js';
+import {createCommandLogs,logLimits} from '../dist/src/execution/command-logs.js';
+import {createContextOutputs} from '../dist/src/assistant/assistant-context.js';
+test('real command logs retain late errors, stdout/stderr and cross-chunk redaction after preview truncation',{timeout:25000},()=>codingFixture(async h=>{
+ const key=process.env.APIX_LOG_TEST_KEY;process.env.APIX_LOG_TEST_KEY='fixture-private-log-secret';
+ try{const before=projectFingerprint(h.root),r=await h.commands.execute((await h.service.details(h.id)),'run_command',{executable:'node',args:['-e',"process.stdout.write('fixture-private-');setImmediate(()=>{process.stdout.write('log-secret\\n'+'x'.repeat(25000)+'\\nLATE_REAL_ERROR');process.stderr.write('STDERR_END')})"]},new AbortController().signal);
+ assert.equal(r.executionComplete,true);assert.equal(r.truncated,true);assert.equal(r.log.complete,true);assert(!r.output.includes('LATE_REAL_ERROR'));const tail=h.commands.readOutput(h.id,{operationId:r.operationId,mode:'tail'});assert(tail.text.includes('LATE_REAL_ERROR'));assert.equal(h.commands.readOutput(h.id,{operationId:r.operationId,channel:'stderr',mode:'tail'}).text,'STDERR_END');
+ let text='',offset=0;do{const page=h.commands.readOutput(h.id,{outputRef:r.outputRef,offset,limit:6000});text+=page.text;offset=page.nextOffset;}while(offset!==null);assert(!text.includes('fixture-private-log-secret'));assert(text.includes('<redacted>'));assert(text.includes('LATE_REAL_ERROR'));assert.throws(()=>h.commands.readOutput('other',{operationId:r.operationId}),/本会话|不属于/);assert.equal(projectFingerprint(h.root),before);h.restart();assert(h.commands.readOutput(h.id,{operationId:r.operationId,mode:'tail'}).text.includes('LATE_REAL_ERROR'));
+ }finally{if(key===undefined)delete process.env.APIX_LOG_TEST_KEY;else process.env.APIX_LOG_TEST_KEY=key;}
+}));
+test('log capacity loss is explicit while bounded tail still exposes a late failure',{timeout:25000},()=>codingFixture(async h=>{
+ const r=await h.commands.execute((await h.service.details(h.id)),'run_command',{executable:'node',args:['-e',"process.stdout.write('a'.repeat(400000)+'FINAL_AFTER_CAP')"]},new AbortController().signal);assert.equal(r.executionComplete,true);assert.equal(r.log.complete,false);assert.match(r.log.reason,/capacity/);const tail=h.commands.readOutput(h.id,{operationId:r.operationId,mode:'tail'});assert(tail.text.includes('FINAL_AFTER_CAP'));assert.equal(tail.complete,false);assert(tail.gap);assert(r.log.capturedBytes<=r.log.limitBytes);
+}));
+test('controlled SQLite log storage bounds totals, expires artifacts and never persists cross-chunk secrets',{timeout:15000},()=>codingFixture(async h=>{
+ let clock=Date.now();const store={db:h.db,row:(q,...p)=>h.db.prepare(q).get(...p),rows:(q,...p)=>h.db.prepare(q).all(...p),now:()=>new Date(clock).toISOString()},logs=createCommandLogs(store);
+ function begin(id){h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','command_intent',?,?)").run(h.id,JSON.stringify({operationId:id}),store.now());return logs.start(h.id,id,['FIXTURE-SECRET']);}
+ const collector=begin('one');collector.write('stdout','中文 FIXT');collector.write('stdout','URE-SECRET 🚀 end');const meta=collector.finish();let text='',offset=0;do{const r=logs.read(h.id,{operationId:'one',limit:7,offset});text+=r.text;offset=r.nextOffset;}while(offset!==null);assert.equal(text,'中文 <redacted> 🚀 end');assert(!h.db.prepare('SELECT body FROM assistant_outputs').all().some(r=>r.body.includes('FIXTURE-SECRET')));assert.throws(()=>createContextOutputs(store).read(h.id,{id:meta.stdoutRef}),/read_output/);
+ for(let i=0;i<36;i++){const c=begin('cap-'+i);c.write('stdout','x'.repeat(logLimits.perOperationBytes));c.finish();}const bytes=h.db.prepare("SELECT SUM(length(CAST(body AS BLOB))) n FROM assistant_outputs WHERE json_extract(body,'$.kind')='command_log_v1'").get().n;assert(bytes<=logLimits.totalBytes);assert.equal(logs.read(h.id,{operationId:'one'}).complete,false);
+ clock+=8*86400000;logs.collect();assert.equal(logs.read(h.id,{operationId:'cap-35'}).status,'expired_or_unavailable');
+}));
+test('capture write failure stays explicit and does not invent complete logs',{timeout:15000},()=>codingFixture(async h=>{
+ const store={db:h.db,row:(q,...p)=>h.db.prepare(q).get(...p),rows:(q,...p)=>h.db.prepare(q).all(...p),now:()=>new Date().toISOString()},logs=createCommandLogs(store);h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'system','command_intent',?,?)").run(h.id,JSON.stringify({operationId:'write-fail'}),store.now());const c=logs.start(h.id,'write-fail',[]);h.db.exec("CREATE TRIGGER deny_log BEFORE UPDATE ON assistant_outputs BEGIN SELECT RAISE(FAIL,'no log writes');END;");c.write('stdout','actual text');const r=c.finish();assert.equal(r.complete,false);assert.equal(r.reason,'log_write_failed');h.db.exec('DROP TRIGGER deny_log');
+}));

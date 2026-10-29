@@ -1,0 +1,1074 @@
+{
+  "date": "2026-10-28",
+  "scope": "文档和证据迁移；Markdown 引用随路径更新，图片字节一致，原始 JSON 与 Git 规范化内容一致（工作区 CRLF 保留）",
+  "moves": [
+    {
+      "from": "协作/2026-10-24-全面测试报告.md",
+      "to": "协作/归档/2026-10/2026-10-24-全面测试报告.md",
+      "gitHeadSha256": "a52ed5216b8d6af3ce32e5150f67df4e400c26260c974a6aac8b4f5e8fbab2ca",
+      "workingTreeSha256": "a52ed5216b8d6af3ce32e5150f67df4e400c26260c974a6aac8b4f5e8fbab2ca"
+    },
+    {
+      "from": "协作/2026-10-24-问题解决方案.md",
+      "to": "协作/归档/2026-10/2026-10-24-问题解决方案.md",
+      "gitHeadSha256": "04fd676d698e4c3b836c5d4eb95a54234790e7c8a83f33463a0c3ab6fda2977a",
+      "workingTreeSha256": "bddd734a1d9a8be278415ba2144818b9f848dd53527d6b880a31cebec036b328"
+    },
+    {
+      "from": "协作/2026-10-25-P11-SSE事件驱动实施与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-P11-SSE事件驱动实施与自审.md",
+      "gitHeadSha256": "67180eb9a0d267c9e7073b151638588c9240833aa70a9c5049ce7a8955313189",
+      "workingTreeSha256": "89849a315a70596ebe22fea2e2bc62754d351bd43f3d12d90554e092d85bb47d"
+    },
+    {
+      "from": "协作/2026-10-25-P7-P13路由表与限额实施与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-P7-P13路由表与限额实施与自审.md",
+      "gitHeadSha256": "62819288855ccb668181a0618d01938b5cd50a235a8271b9667c9709a801fa12",
+      "workingTreeSha256": "20a43ffcd10930f498fb5d6fe9f0b0c725b7b04a1c5735206a5c26d461667b2e"
+    },
+    {
+      "from": "协作/2026-10-25-P9剩余视图迁移与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-P9剩余视图迁移与自审.md",
+      "gitHeadSha256": "e00007edc47c13dbbcd4e3ec95301429771a0b7b3cb040c84a274ebfb08266b5",
+      "workingTreeSha256": "e00007edc47c13dbbcd4e3ec95301429771a0b7b3cb040c84a274ebfb08266b5"
+    },
+    {
+      "from": "协作/2026-10-25-P9知识库自动转义实施与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-P9知识库自动转义实施与自审.md",
+      "gitHeadSha256": "7ad2eb37d1c3b9573c669d978d2e86a82ac47cce1bb7c7dca05a0da3101cba9d",
+      "workingTreeSha256": "aaa4a83aae8e1b6bc40d27fc912b3bf16fc0f6603239da955ba3fc7794c524ff"
+    },
+    {
+      "from": "协作/2026-10-25-P9辅助渲染模块迁移与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-P9辅助渲染模块迁移与自审.md",
+      "gitHeadSha256": "ef80c12389a588eb0787768869de7fbfaed0d744a6f9031a2a11ffcce21e30a4",
+      "workingTreeSha256": "ef80c12389a588eb0787768869de7fbfaed0d744a6f9031a2a11ffcce21e30a4"
+    },
+    {
+      "from": "协作/2026-10-25-全量五项失败修复与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-全量五项失败修复与自审.md",
+      "gitHeadSha256": "b7ab8072c44748b75e8f65f25860db2f312e9be0695e2648ee4da7c4485452c7",
+      "workingTreeSha256": "3b7f3a39b74329f62c5f6797faea8b7d895816fcf5c9c4556189456301bbea1c"
+    },
+    {
+      "from": "协作/2026-10-25-方案第一批实施与自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-方案第一批实施与自审.md",
+      "gitHeadSha256": "46300eb09cca00aaf4b92abebb61f37ad0c2ef72a23b7184e446fdaf102c2db1",
+      "workingTreeSha256": "7faf31af233666fe0b9ffb317af25cce255107cf1b1b8f1479bfdf1868a7a850"
+    },
+    {
+      "from": "协作/2026-10-25-生产Git与扫描异步化及自审.md",
+      "to": "协作/归档/2026-10/2026-10-25-生产Git与扫描异步化及自审.md",
+      "gitHeadSha256": "dd0099420c87c2c85aa31e3199fbe271aa14cd64a0cff2695991ac785a236142",
+      "workingTreeSha256": "a91f5a660fd8a1857234bca13b59fbea4e200e1547257b03722fde80a5e6fee6"
+    },
+    {
+      "from": "协作/2026-10-26-Electron实际运行验证与自审.md",
+      "to": "协作/归档/2026-10/2026-10-26-Electron实际运行验证与自审.md",
+      "gitHeadSha256": "730de20c8b602abf1f221b7f8e020c998d66f898cb83c125c33aa87dbc09d62a",
+      "workingTreeSha256": "37cabc59f747b44332d30ac44f86f88dc2f3345139d365b6497f1e73fa2c5f02"
+    },
+    {
+      "from": "协作/2026-10-27-Token功能中文注释自审.md",
+      "to": "协作/归档/2026-10/2026-10-27-Token功能中文注释自审.md",
+      "gitHeadSha256": "12831e37fd5d1e53ac1c0e28c3060c5cbe244b1d43d55b8e93a78b389f62bd8b",
+      "workingTreeSha256": "50abaafb5efe194946fb91f835f6d4ff3b391f740628d8a300eba0f6a6bca5bf"
+    },
+    {
+      "from": "协作/2026-10-27-Token模式真实对照实测.md",
+      "to": "协作/归档/2026-10/2026-10-27-Token模式真实对照实测.md",
+      "gitHeadSha256": "30d818d741b5a0b0ab9ceed2432749cbaff717ddea4afc8dda0e4e1db95188c6",
+      "workingTreeSha256": "30d818d741b5a0b0ab9ceed2432749cbaff717ddea4afc8dda0e4e1db95188c6"
+    },
+    {
+      "from": "协作/2026-10-27-Token用量与上下文优化自审.md",
+      "to": "协作/归档/2026-10/2026-10-27-Token用量与上下文优化自审.md",
+      "gitHeadSha256": "529326bf54e90f9c6b670dc6526c0194d87bfec14676d41ad9b886050c8135f6",
+      "workingTreeSha256": "529326bf54e90f9c6b670dc6526c0194d87bfec14676d41ad9b886050c8135f6"
+    },
+    {
+      "from": "协作/2026-10-27-Token缓存优化设计交接自审.md",
+      "to": "协作/归档/2026-10/2026-10-27-Token缓存优化设计交接自审.md",
+      "gitHeadSha256": "98143c9f2ef27288115aa816c6713e04981e5baa68746c919694795dd4b4ba26",
+      "workingTreeSha256": "98143c9f2ef27288115aa816c6713e04981e5baa68746c919694795dd4b4ba26"
+    },
+    {
+      "from": "协作/2026-10-27-后端中文注释同步自审.md",
+      "to": "协作/归档/2026-10/2026-10-27-后端中文注释同步自审.md",
+      "gitHeadSha256": "0015b147fd427c420fa96e667c3553e9b71fffd038259bcea45f146473499ce4",
+      "workingTreeSha256": "56fb8f7f925c17409058cc061681913129795c19bd8198dad343293eb010456b"
+    },
+    {
+      "from": "协作/2026-10-28-Windows命令入口UTF8修复自审.md",
+      "to": "协作/审查/2026-10/2026-10-28-Windows命令入口UTF8修复自审.md",
+      "gitHeadSha256": "5a51548ec881a81a4f3c4d8270f5aa4b944034887d873979f6601dee5f3b986f",
+      "workingTreeSha256": "5a51548ec881a81a4f3c4d8270f5aa4b944034887d873979f6601dee5f3b986f"
+    },
+    {
+      "from": "协作/2026-10-28-供应商缓存命中率实测.md",
+      "to": "协作/审查/2026-10/2026-10-28-供应商缓存命中率实测.md",
+      "gitHeadSha256": "ab7dcb5045f68a38b3289af03cb5e8fae76aeb1de106d7367f13f8cf25818811",
+      "workingTreeSha256": "162e10b4010cf1ef7cf54cb2da8db209418b7a3856a15321e87aed665983dc1a"
+    },
+    {
+      "from": "协作/2026-10-28-最终请求诊断实施自审.md",
+      "to": "协作/审查/2026-10/2026-10-28-最终请求诊断实施自审.md",
+      "gitHeadSha256": "54169993eb193abbf9543bb5a4be53cdcbd17ae66abcefbe6d024b423b87f727",
+      "workingTreeSha256": "54169993eb193abbf9543bb5a4be53cdcbd17ae66abcefbe6d024b423b87f727"
+    },
+    {
+      "from": "协作/2026-10-28-最终请求诊断真实对照实测.md",
+      "to": "协作/审查/2026-10/2026-10-28-最终请求诊断真实对照实测.md",
+      "gitHeadSha256": "31307bbdbbbdcb63310325c8fcd20654346344fb98fbb3d9ddb599d03dd80c49",
+      "workingTreeSha256": "a6c65f63e23ac7847311c189174ef4a7e448f737bd3451aa85dc7cef9606e0de"
+    },
+    {
+      "from": "协作/2026-10-28-节省模式补读优化与真实对照自审.md",
+      "to": "协作/审查/2026-10/2026-10-28-节省模式补读优化与真实对照自审.md",
+      "gitHeadSha256": "7feb8ae1f7a3f6e03fe367501c21807d4691483d81c2add194b9467db7e40a3e",
+      "workingTreeSha256": "b456a071b11cd77bccd16e04208bfdeedb421db003663c7ba7f2d6d6a179ef5b"
+    },
+    {
+      "from": "协作/2026-10-28-请求诊断与稳定前缀设计更新自审.md",
+      "to": "协作/审查/2026-10/2026-10-28-请求诊断与稳定前缀设计更新自审.md",
+      "gitHeadSha256": "95ce581b7dc2e21a0c1330d84512c541c4d7664630dd3bc909e0336301a6ad38",
+      "workingTreeSha256": "95ce581b7dc2e21a0c1330d84512c541c4d7664630dd3bc909e0336301a6ad38"
+    },
+    {
+      "from": "协作/20261017-事件面板.png",
+      "to": "协作/截图/2026-10/20261017-事件面板.png",
+      "gitHeadSha256": "55dac54387009086a2bdd1ea29d144748b166f5e1fe2e438e76a8f35eac331f9",
+      "workingTreeSha256": "55dac54387009086a2bdd1ea29d144748b166f5e1fe2e438e76a8f35eac331f9"
+    },
+    {
+      "from": "协作/20261017-事件面板窄屏.png",
+      "to": "协作/截图/2026-10/20261017-事件面板窄屏.png",
+      "gitHeadSha256": "694ae0d864bff2186cc6bae5ae223554bbc1d0509de43e1f54bfd157f586a3ad",
+      "workingTreeSha256": "694ae0d864bff2186cc6bae5ae223554bbc1d0509de43e1f54bfd157f586a3ad"
+    },
+    {
+      "from": "协作/20261017-对话模型与事件面板自审.md",
+      "to": "协作/归档/2026-10/20261017-对话模型与事件面板自审.md",
+      "gitHeadSha256": "43e048c72bb7331a6a952082e9e3d50aabb9bb4400b123a7f56e0785df59ac94",
+      "workingTreeSha256": "17a0fd17e37cbcbcc0c8f958a5140c8d826660708a08c584508c4125aba14622"
+    },
+    {
+      "from": "协作/20261017-对话模型选择.png",
+      "to": "协作/截图/2026-10/20261017-对话模型选择.png",
+      "gitHeadSha256": "8f7523e3d28b7139a7b6666074dc43415ead8106dafbaf8f22a2615a36769ab4",
+      "workingTreeSha256": "8f7523e3d28b7139a7b6666074dc43415ead8106dafbaf8f22a2615a36769ab4"
+    },
+    {
+      "from": "协作/20261017Git同步自审.md",
+      "to": "协作/归档/2026-10/20261017Git同步自审.md",
+      "gitHeadSha256": "1d56332795de32192e35bb2602d2123728f83cbe6c3acbf4b96c4ea9bc8ad33a",
+      "workingTreeSha256": "1d56332795de32192e35bb2602d2123728f83cbe6c3acbf4b96c4ea9bc8ad33a"
+    },
+    {
+      "from": "协作/20261018-P0-A1生产推理错误透传与自审.md",
+      "to": "协作/归档/2026-10/20261018-P0-A1生产推理错误透传与自审.md",
+      "gitHeadSha256": "e1b522daa4bf689cee3e9710333ed9028506fdecf8ba50140cf1116f863c3ff0",
+      "workingTreeSha256": "e1b522daa4bf689cee3e9710333ed9028506fdecf8ba50140cf1116f863c3ff0"
+    },
+    {
+      "from": "协作/20261018-P0-A模型终止与自审.md",
+      "to": "协作/归档/2026-10/20261018-P0-A模型终止与自审.md",
+      "gitHeadSha256": "06616281c6a886e757df01fdad30c3463dca23ce34d63cc1bf741fc0607f46a3",
+      "workingTreeSha256": "06616281c6a886e757df01fdad30c3463dca23ce34d63cc1bf741fc0607f46a3"
+    },
+    {
+      "from": "协作/20261018-P0可信验收开发与自审.md",
+      "to": "协作/归档/2026-10/20261018-P0可信验收开发与自审.md",
+      "gitHeadSha256": "46c595be2928411ff5fe70e18328295f4d5371510787687de822d8f44e1da1d7",
+      "workingTreeSha256": "46c595be2928411ff5fe70e18328295f4d5371510787687de822d8f44e1da1d7"
+    },
+    {
+      "from": "协作/20261018-P1-A基线补丁与自审.md",
+      "to": "协作/归档/2026-10/20261018-P1-A基线补丁与自审.md",
+      "gitHeadSha256": "54226e22463dc3de7f8fc083c43d9e7808a657b7e7f3d1add13ed20520f51b2f",
+      "workingTreeSha256": "54226e22463dc3de7f8fc083c43d9e7808a657b7e7f3d1add13ed20520f51b2f"
+    },
+    {
+      "from": "协作/20261018-P1-B代码工具链与自审.md",
+      "to": "协作/归档/2026-10/20261018-P1-B代码工具链与自审.md",
+      "gitHeadSha256": "e81357db4eabc7807310c238d4b0f6b801b027c30f1af4a628ed31ddbae3a0cb",
+      "workingTreeSha256": "e81357db4eabc7807310c238d4b0f6b801b027c30f1af4a628ed31ddbae3a0cb"
+    },
+    {
+      "from": "协作/20261018-P1-Coding-MVP交付与自审.md",
+      "to": "协作/归档/2026-10/20261018-P1-Coding-MVP交付与自审.md",
+      "gitHeadSha256": "b98e7efc1df99fecedd005fc3d8696a7a9d8b2814619863a692b28f9e457d08d",
+      "workingTreeSha256": "fa09510633503f73b8c8e2d2ad9259f4e8309b270d4a08221502f005add15c10"
+    },
+    {
+      "from": "协作/20261018-P1-C日志与界面自审.md",
+      "to": "协作/归档/2026-10/20261018-P1-C日志与界面自审.md",
+      "gitHeadSha256": "3e1b86d75adde4ce812823e0bb42f04cd59f71177ada111233a4136fb57a410a",
+      "workingTreeSha256": "3e1b86d75adde4ce812823e0bb42f04cd59f71177ada111233a4136fb57a410a"
+    },
+    {
+      "from": "协作/20261018-docs精简自审.md",
+      "to": "协作/归档/2026-10/20261018-docs精简自审.md",
+      "gitHeadSha256": "7e3ee36d055bb8e6dff2adc30be741c04875d063be541722b48cb7ce5814312e",
+      "workingTreeSha256": "a2a9adc1336164cfff038cffdec2756c8cbad8485b3de09a400cec03788f2824"
+    },
+    {
+      "from": "协作/20261018-命令生命周期-A次生错误自审.md",
+      "to": "协作/归档/2026-10/20261018-命令生命周期-A次生错误自审.md",
+      "gitHeadSha256": "772a7d64d3e332a984ef6b027f501e8f1ae124aeb9efaa566838ce7d62549322",
+      "workingTreeSha256": "772a7d64d3e332a984ef6b027f501e8f1ae124aeb9efaa566838ce7d62549322"
+    },
+    {
+      "from": "协作/20261018-命令生命周期-B执行托管与自审.md",
+      "to": "协作/归档/2026-10/20261018-命令生命周期-B执行托管与自审.md",
+      "gitHeadSha256": "d171209458c77897072b8bb7da15e65d0ab9d149230d145b4c835ae52174163c",
+      "workingTreeSha256": "d171209458c77897072b8bb7da15e65d0ab9d149230d145b4c835ae52174163c"
+    },
+    {
+      "from": "协作/20261018-项目文档回顾自审.md",
+      "to": "协作/归档/2026-10/20261018-项目文档回顾自审.md",
+      "gitHeadSha256": "b99d7019f84e5d668f73811457a7614e9e4b00a22b07224c1681ab8b650b37f0",
+      "workingTreeSha256": "7b9320cd54712e5c1f1413878abe986664bce91cc2328450bb144484d1fb5a64"
+    },
+    {
+      "from": "协作/20261019-Node-npm接入与验证自审.md",
+      "to": "协作/归档/2026-10/20261019-Node-npm接入与验证自审.md",
+      "gitHeadSha256": "a688356445fb5889665af3a1d85caf6084b64f00787495b3cd0dd69047147427",
+      "workingTreeSha256": "f9fc4b2d81b48fd16ec37c78c151556eb0ceac74f5525b8ef2e2ba01594428a1"
+    },
+    {
+      "from": "协作/20261019-P11-A命令证据一致性自审.md",
+      "to": "协作/归档/2026-10/20261019-P11-A命令证据一致性自审.md",
+      "gitHeadSha256": "4090216ed68e2c24e31110dc9088c58ffd449902e4d51b9138189901189602ef",
+      "workingTreeSha256": "4090216ed68e2c24e31110dc9088c58ffd449902e4d51b9138189901189602ef"
+    },
+    {
+      "from": "协作/20261019-P11-B任务交付自审.md",
+      "to": "协作/归档/2026-10/20261019-P11-B任务交付自审.md",
+      "gitHeadSha256": "d91361ec0f7b0d62c75d9082a62215b86ada97efcd5ba75db78152e0ae676079",
+      "workingTreeSha256": "a00f85abda73d7312412de26627f83d8943a4fd35a3ce762b47dbe14ad7c5526"
+    },
+    {
+      "from": "协作/20261019-P11任务B净变更.png",
+      "to": "协作/截图/2026-10/20261019-P11任务B净变更.png",
+      "gitHeadSha256": "0ab164a9bff84d620ef71af7ea1b08dd796fdcdfd9e9d7efbc7653f0850d78c5",
+      "workingTreeSha256": "0ab164a9bff84d620ef71af7ea1b08dd796fdcdfd9e9d7efbc7653f0850d78c5"
+    },
+    {
+      "from": "协作/20261019-P11任务交付与评测自审.md",
+      "to": "协作/归档/2026-10/20261019-P11任务交付与评测自审.md",
+      "gitHeadSha256": "912f51cb733f9c36bfb8556834d360f78152a37a6a083e8b3adc91c1de2e6feb",
+      "workingTreeSha256": "b507ebbdffc830d6e9edfa48fbec3669b8a16138611c0ed2382e2869613126bd"
+    },
+    {
+      "from": "协作/20261019-P11历史验收.png",
+      "to": "协作/截图/2026-10/20261019-P11历史验收.png",
+      "gitHeadSha256": "23c7de840ef3b5d334376592b51d751592086d67edec4e0230394f017d8a5b93",
+      "workingTreeSha256": "23c7de840ef3b5d334376592b51d751592086d67edec4e0230394f017d8a5b93"
+    },
+    {
+      "from": "协作/20261019-npm-v2验收.png",
+      "to": "协作/截图/2026-10/20261019-npm-v2验收.png",
+      "gitHeadSha256": "9f080073bf356360e71d66df17b05e8e28ae7bffaaffd9bd7ddd0df7fd9f16a6",
+      "workingTreeSha256": "9f080073bf356360e71d66df17b05e8e28ae7bffaaffd9bd7ddd0df7fd9f16a6"
+    },
+    {
+      "from": "协作/20261019-npm任务样例证据.json",
+      "to": "协作/验收数据/2026-10/20261019-npm任务样例证据.json",
+      "gitHeadSha256": "1d6ac3d10dc1f1cdb1f455e83e0ba6545afc3e424beaf5cf9ac91e06605a4a8a",
+      "workingTreeSha256": "1d6ac3d10dc1f1cdb1f455e83e0ba6545afc3e424beaf5cf9ac91e06605a4a8a"
+    },
+    {
+      "from": "协作/20261019-npm失败尾部.png",
+      "to": "协作/截图/2026-10/20261019-npm失败尾部.png",
+      "gitHeadSha256": "cb912e5fc2f90a848313865f045a055795a77c06b86bef0fd62a2303153287a5",
+      "workingTreeSha256": "cb912e5fc2f90a848313865f045a055795a77c06b86bef0fd62a2303153287a5"
+    },
+    {
+      "from": "协作/20261019-npm浏览器证据.json",
+      "to": "协作/验收数据/2026-10/20261019-npm浏览器证据.json",
+      "gitHeadSha256": "c3e07fb333c1b301e77deab0d23c03ea38c06476d38a32c3314dbdf957f424bf",
+      "workingTreeSha256": "c3e07fb333c1b301e77deab0d23c03ea38c06476d38a32c3314dbdf957f424bf"
+    },
+    {
+      "from": "协作/20261019-npm验证源码指纹.json",
+      "to": "协作/验收数据/2026-10/20261019-npm验证源码指纹.json",
+      "gitHeadSha256": "df7bb2f4d4bd62bfc7b388378b8128032841c7c721af28a27a5b685012904478",
+      "workingTreeSha256": "6ba3ebd2e3b7693ac7e5ad1cb5c9029d7079bd2dc4840b9f7533938c596d5bfc"
+    },
+    {
+      "from": "协作/20261020-CI监督进程环境隔离自审.md",
+      "to": "协作/归档/2026-10/20261020-CI监督进程环境隔离自审.md",
+      "gitHeadSha256": "73ead33d24f694f1ddae7eefea3de6ab1b8efe7d85b7a50320cba02a10aa3c52",
+      "workingTreeSha256": "73ead33d24f694f1ddae7eefea3de6ab1b8efe7d85b7a50320cba02a10aa3c52"
+    },
+    {
+      "from": "协作/20261020-src-scripts迁移清单.json",
+      "to": "协作/验收数据/2026-10/20261020-src-scripts迁移清单.json",
+      "gitHeadSha256": "c8eb04aab1cf7e2f00e7468c27bb94ca396acf0d255444ee851651af2c5e5ad3",
+      "workingTreeSha256": "c8eb04aab1cf7e2f00e7468c27bb94ca396acf0d255444ee851651af2c5e5ad3"
+    },
+    {
+      "from": "协作/20261020-src与scripts分层自审.md",
+      "to": "协作/归档/2026-10/20261020-src与scripts分层自审.md",
+      "gitHeadSha256": "4ed64340a8614881fea65041aeb6862a61c865dd20cc643f6a3917fa4b92c680",
+      "workingTreeSha256": "d813aa192c994a701866eac38bd8d54d29bbbd50f7d963e6ce33973c8dea4dd2"
+    },
+    {
+      "from": "协作/20261020-项目目录整理自审.md",
+      "to": "协作/归档/2026-10/20261020-项目目录整理自审.md",
+      "gitHeadSha256": "bc166ac4111e0bc2fc59881c5b303e3594b252aa01f6f9236c54c003628aaf3b",
+      "workingTreeSha256": "bc166ac4111e0bc2fc59881c5b303e3594b252aa01f6f9236c54c003628aaf3b"
+    },
+    {
+      "from": "协作/20261021-HIG-浅色对话.png",
+      "to": "协作/截图/2026-10/20261021-HIG-浅色对话.png",
+      "gitHeadSha256": "c824da038ae524e3f00de883756b2e63c2453a7aa9ca02e5b66901c549d78726",
+      "workingTreeSha256": "c824da038ae524e3f00de883756b2e63c2453a7aa9ca02e5b66901c549d78726"
+    },
+    {
+      "from": "协作/20261021-HIG-深色总览.png",
+      "to": "协作/截图/2026-10/20261021-HIG-深色总览.png",
+      "gitHeadSha256": "5fd8f81b982a67f03c8e572ae36a87f300a7f86e4eba47523bd3a4ca49618e21",
+      "workingTreeSha256": "5fd8f81b982a67f03c8e572ae36a87f300a7f86e4eba47523bd3a4ca49618e21"
+    },
+    {
+      "from": "协作/20261021-HIG-窄屏导航.png",
+      "to": "协作/截图/2026-10/20261021-HIG-窄屏导航.png",
+      "gitHeadSha256": "9c0657195397a5833c0d12536aef0366223d2c3b57a9ce44468343c8bf947974",
+      "workingTreeSha256": "9c0657195397a5833c0d12536aef0366223d2c3b57a9ce44468343c8bf947974"
+    },
+    {
+      "from": "协作/20261021-HIG-窄屏总览.png",
+      "to": "协作/截图/2026-10/20261021-HIG-窄屏总览.png",
+      "gitHeadSha256": "b2d115458e1a052d20e651420668f6ba4b1c9d6699159674e06c2710d015e693",
+      "workingTreeSha256": "b2d115458e1a052d20e651420668f6ba4b1c9d6699159674e06c2710d015e693"
+    },
+    {
+      "from": "协作/20261021-HIG前端优化自审.md",
+      "to": "协作/归档/2026-10/20261021-HIG前端优化自审.md",
+      "gitHeadSha256": "995c04d93cd4ef2dfe728fa3a58f85508dc71946f96425162ee186ca1dd8ad8b",
+      "workingTreeSha256": "e560a285f835162944a93a60cb1cfa664d179d80818ed52887f90bca87ebf398"
+    },
+    {
+      "from": "协作/20261021-Windows-Electron桌面版自审.md",
+      "to": "协作/归档/2026-10/20261021-Windows-Electron桌面版自审.md",
+      "gitHeadSha256": "2e0f9fa906916d3486fb2ed83668dcc7265a636d765c941156afaf8903f714d3",
+      "workingTreeSha256": "5e65e662080ebeb3d26c171b3a9d23ddc7f854f9b78e177d604405ce1fa42fd6"
+    },
+    {
+      "from": "协作/20261021-剩余改动同步自审.md",
+      "to": "协作/归档/2026-10/20261021-剩余改动同步自审.md",
+      "gitHeadSha256": "c363e01d4267af4e487f81f0d67575e2b46576498609f64c3e4c8280fcdca7c8",
+      "workingTreeSha256": "c363e01d4267af4e487f81f0d67575e2b46576498609f64c3e4c8280fcdca7c8"
+    },
+    {
+      "from": "协作/20261022-Agent供应商中心自审.md",
+      "to": "协作/归档/2026-10/20261022-Agent供应商中心自审.md",
+      "gitHeadSha256": "2c168ffaf30836a8ba28d537f0a17f29e888d7ea2ac68be6f9f0494d93b30c70",
+      "workingTreeSha256": "2c168ffaf30836a8ba28d537f0a17f29e888d7ea2ac68be6f9f0494d93b30c70"
+    },
+    {
+      "from": "协作/20261022-Electron-0.2.1打包与启动自审.md",
+      "to": "协作/归档/2026-10/20261022-Electron-0.2.1打包与启动自审.md",
+      "gitHeadSha256": "7a6a94ed51e1465dd2618aa4160c284ebc88f97132ca1fb726ca0dc10ca76ef6",
+      "workingTreeSha256": "7a6a94ed51e1465dd2618aa4160c284ebc88f97132ca1fb726ca0dc10ca76ef6"
+    },
+    {
+      "from": "协作/20261022-Electron-0.3.2打包与启动自审.md",
+      "to": "协作/归档/2026-10/20261022-Electron-0.3.2打包与启动自审.md",
+      "gitHeadSha256": "64fb55ae0e0d3fa0af0ada5abfea9cef47483b8a7056fd2c1bcf7aba2a17b670",
+      "workingTreeSha256": "64fb55ae0e0d3fa0af0ada5abfea9cef47483b8a7056fd2c1bcf7aba2a17b670"
+    },
+    {
+      "from": "协作/20261022-JSON契约与供应商中心自审.md",
+      "to": "协作/归档/2026-10/20261022-JSON契约与供应商中心自审.md",
+      "gitHeadSha256": "539882ae13aa676c7f88ab71e62c6213999c4354fcc64d440f4a81701d7d3381",
+      "workingTreeSha256": "539882ae13aa676c7f88ab71e62c6213999c4354fcc64d440f4a81701d7d3381"
+    },
+    {
+      "from": "协作/20261022-JSON边界与供应商编辑修复自审.md",
+      "to": "协作/归档/2026-10/20261022-JSON边界与供应商编辑修复自审.md",
+      "gitHeadSha256": "bc84db00192281ab9d143816c6119f24b7adc876df97c50aaa4089911b5e6fca",
+      "workingTreeSha256": "bc84db00192281ab9d143816c6119f24b7adc876df97c50aaa4089911b5e6fca"
+    },
+    {
+      "from": "协作/20261022-主对话直接测试.png",
+      "to": "协作/截图/2026-10/20261022-主对话直接测试.png",
+      "gitHeadSha256": "40c8b216b717cce74ff9a73683a08056501525f63886436bf9d13d409cc8d02b",
+      "workingTreeSha256": "40c8b216b717cce74ff9a73683a08056501525f63886436bf9d13d409cc8d02b"
+    },
+    {
+      "from": "协作/20261022-交互执行重构自审.md",
+      "to": "协作/归档/2026-10/20261022-交互执行重构自审.md",
+      "gitHeadSha256": "17b304ceda6f251e20201df6af1b50cede7756c49cc95570ee3d7d95e986c1a9",
+      "workingTreeSha256": "e52aeaa8dbeb4068409c525181529c184f7258fd468fc1bcc9da9638f2f7aef5"
+    },
+    {
+      "from": "协作/20261022-协作任务图与节点详情自审.md",
+      "to": "协作/归档/2026-10/20261022-协作任务图与节点详情自审.md",
+      "gitHeadSha256": "3fb0710523ead424f4f07f32daf76b83318534c29c517131acadd5a7db4a3c5b",
+      "workingTreeSha256": "3fb0710523ead424f4f07f32daf76b83318534c29c517131acadd5a7db4a3c5b"
+    },
+    {
+      "from": "协作/20261022-多Agent失败自动恢复自审.md",
+      "to": "协作/归档/2026-10/20261022-多Agent失败自动恢复自审.md",
+      "gitHeadSha256": "bd86ebd03c3c0ef94aee4b81b58291e44248464de7fb395bc2914355f9a6a4b9",
+      "workingTreeSha256": "bd86ebd03c3c0ef94aee4b81b58291e44248464de7fb395bc2914355f9a6a4b9"
+    },
+    {
+      "from": "协作/20261022-独立应用设置.png",
+      "to": "协作/截图/2026-10/20261022-独立应用设置.png",
+      "gitHeadSha256": "4c35bce19a61f93717ccab20d9f1006ac4ba21aa13e9cb0a4bb1b79b8d0d4c51",
+      "workingTreeSha256": "4c35bce19a61f93717ccab20d9f1006ac4ba21aa13e9cb0a4bb1b79b8d0d4c51"
+    },
+    {
+      "from": "协作/20261022-直接配置API-Key自审.md",
+      "to": "协作/归档/2026-10/20261022-直接配置API-Key自审.md",
+      "gitHeadSha256": "250b876ae0ab22809cfd30f2e8e82f3b2cdc95282e39164a2096eb35383b5475",
+      "workingTreeSha256": "250b876ae0ab22809cfd30f2e8e82f3b2cdc95282e39164a2096eb35383b5475"
+    },
+    {
+      "from": "协作/20261022-统一对话入口与协作进度自审.md",
+      "to": "协作/归档/2026-10/20261022-统一对话入口与协作进度自审.md",
+      "gitHeadSha256": "aa3f3fbcd230240786a9dfb09dc200f3338e9c98b16a3247579b45b95ca9e759",
+      "workingTreeSha256": "aa3f3fbcd230240786a9dfb09dc200f3338e9c98b16a3247579b45b95ca9e759"
+    },
+    {
+      "from": "协作/20261022-记忆与上下文改造计划.md",
+      "to": "协作/归档/2026-10/20261022-记忆与上下文改造计划.md",
+      "gitHeadSha256": "fd4fad0e102fda533f368d7995bee51f74f41c5eb4d9291f8cd13e0e16ed11c0",
+      "workingTreeSha256": "fd4fad0e102fda533f368d7995bee51f74f41c5eb4d9291f8cd13e0e16ed11c0"
+    },
+    {
+      "from": "协作/20261023-Electron开发热更新自审.md",
+      "to": "协作/归档/2026-10/20261023-Electron开发热更新自审.md",
+      "gitHeadSha256": "2ccc3c2229dbe87adc1c4def4e9a273308bc3e474fb58889900234d0594be8e9",
+      "workingTreeSha256": "2ccc3c2229dbe87adc1c4def4e9a273308bc3e474fb58889900234d0594be8e9"
+    },
+    {
+      "from": "协作/20261023-供应商保存与员工应用流程自审.md",
+      "to": "协作/归档/2026-10/20261023-供应商保存与员工应用流程自审.md",
+      "gitHeadSha256": "31ee715d8a4977b0a88402fdb2d6232ef28efdd5a05c0abf6f28bd3b10e8957e",
+      "workingTreeSha256": "31ee715d8a4977b0a88402fdb2d6232ef28efdd5a05c0abf6f28bd3b10e8957e"
+    },
+    {
+      "from": "协作/20261023-统一故障恢复自审.md",
+      "to": "协作/归档/2026-10/20261023-统一故障恢复自审.md",
+      "gitHeadSha256": "af7e0606dcb20d6f4c31918d4b9a08275805a5790cda9cdbac27f45f428ee5d4",
+      "workingTreeSha256": "af7e0606dcb20d6f4c31918d4b9a08275805a5790cda9cdbac27f45f428ee5d4"
+    },
+    {
+      "from": "协作/20261023-记忆与上下文统一自审.md",
+      "to": "协作/归档/2026-10/20261023-记忆与上下文统一自审.md",
+      "gitHeadSha256": "6ec835681a76b7c197c7aab9e0885ef93003249dd32f57af8b404d5f94e4a589",
+      "workingTreeSha256": "04ae5933a3625bb27f32040bc7ef6fd4ff6cb95a23de92da4aebe0e2c81b4cce"
+    },
+    {
+      "from": "协作/20261024-Agent消息幂等开发与自审.md",
+      "to": "协作/归档/2026-10/20261024-Agent消息幂等开发与自审.md",
+      "gitHeadSha256": "3d46e78a427d02e30855404652da2d130cae9984a4936bcb55f33c127d7d251a",
+      "workingTreeSha256": "5f85c865214065c4f1e394b7bbddfb0720aa7b0ddb80022f143ab49d0f6e9334"
+    },
+    {
+      "from": "协作/20261024-SQLite兼容与共享界面优化自审.md",
+      "to": "协作/归档/2026-10/20261024-SQLite兼容与共享界面优化自审.md",
+      "gitHeadSha256": "ce7efca417744fb2fce69cbd80948c7d543f7035fccc23f73a9ced5c051fd6fd",
+      "workingTreeSha256": "5244e813fa850638d38d91fb1c2c09b116d8fb38a4cab3f29d1dfbd1dd7350ca"
+    },
+    {
+      "from": "协作/20261024-四项能力接口与使用说明.md",
+      "to": "docs/参考/四项能力接口与使用说明.md",
+      "gitHeadSha256": "1817a64c33fcac981901626d3ac5c74ea0c6868d5e57b2a801153f87fb47951f",
+      "workingTreeSha256": "aa0a2ad4ac82e962fbe5244a6344d96cb5dbd612fa85468e9db1c37c68276816"
+    },
+    {
+      "from": "协作/20261024-四项能力验证与自审.md",
+      "to": "协作/归档/2026-10/20261024-四项能力验证与自审.md",
+      "gitHeadSha256": "c8517d2f950913b1599250eae38682e44169a71a4e6a930c7fe8746e32e3e979",
+      "workingTreeSha256": "c8517d2f950913b1599250eae38682e44169a71a4e6a930c7fe8746e32e3e979"
+    },
+    {
+      "from": "协作/20261024-工具与意图循环知识库实施方案.md",
+      "to": "协作/归档/2026-10/20261024-工具与意图循环知识库实施方案.md",
+      "gitHeadSha256": "22c2ca7403b4a6f9cb11754b9c0d126bee5c60329b0f0928f0f743d5f3c30f8b",
+      "workingTreeSha256": "22c2ca7403b4a6f9cb11754b9c0d126bee5c60329b0f0928f0f743d5f3c30f8b"
+    },
+    {
+      "from": "协作/20261024-测试报告修复与自审.md",
+      "to": "协作/归档/2026-10/20261024-测试报告修复与自审.md",
+      "gitHeadSha256": "a40405f65c4305a75ba3acd1544da19a154f2860984950a897d85ffeb8702a5b",
+      "workingTreeSha256": "a40405f65c4305a75ba3acd1544da19a154f2860984950a897d85ffeb8702a5b"
+    },
+    {
+      "from": "协作/ApiX主循环图浏览验收.png",
+      "to": "协作/截图/2026-10/ApiX主循环图浏览验收.png",
+      "gitHeadSha256": "8ca8f878c66e0eaac03507afd3cfc82de834cf54703b159ff4ec278b915ff0a7",
+      "workingTreeSha256": "8ca8f878c66e0eaac03507afd3cfc82de834cf54703b159ff4ec278b915ff0a7"
+    },
+    {
+      "from": "协作/ApiX交互与多Agent协作优化.md",
+      "to": "协作/归档/2026-10/ApiX交互与多Agent协作优化.md",
+      "gitHeadSha256": "2828927185f8a99958007e1be6e824d9531bda0cce6a1c57ce21154aa533be9a",
+      "workingTreeSha256": "22187fc73f6e6501feecce414d95414b9ea4dea3305ff72f9f218a46ebe64b40"
+    },
+    {
+      "from": "协作/ApiX工具与任务派发修复审查.md",
+      "to": "协作/归档/2026-10/ApiX工具与任务派发修复审查.md",
+      "gitHeadSha256": "271c8c2f0d8e4a4be452fd01537413bb88da478b9d51bf356df4fc407375d655",
+      "workingTreeSha256": "271c8c2f0d8e4a4be452fd01537413bb88da478b9d51bf356df4fc407375d655"
+    },
+    {
+      "from": "协作/ApiX当前架构图与主循环梳理自审.md",
+      "to": "协作/归档/2026-10/ApiX当前架构图与主循环梳理自审.md",
+      "gitHeadSha256": "94c53e59e01bd6ced23000fe68de05c84f6c98fe19525e7ac01899c69b0c18a6",
+      "workingTreeSha256": "2e2e2ea0a0183122b5103f59058c5006687c7c20110fe1dfb705869efc0a4838"
+    },
+    {
+      "from": "协作/ApiX流式对话需求与验收.md",
+      "to": "协作/归档/2026-10/ApiX流式对话需求与验收.md",
+      "gitHeadSha256": "714bd2fe00765ce581e0818cc9742c8b3035473fd89d6ed20cd4aae4aad13ef4",
+      "workingTreeSha256": "714bd2fe00765ce581e0818cc9742c8b3035473fd89d6ed20cd4aae4aad13ef4"
+    },
+    {
+      "from": "协作/ApiX能力会议预算调度方案.md",
+      "to": "协作/归档/2026-10/ApiX能力会议预算调度方案.md",
+      "gitHeadSha256": "b179735caec89986d4cac9932974674c0c0419c36a955679a1e9229e09ce05e7",
+      "workingTreeSha256": "b179735caec89986d4cac9932974674c0c0419c36a955679a1e9229e09ce05e7"
+    },
+    {
+      "from": "协作/CI短路径与测试清理修复自审.md",
+      "to": "协作/归档/2026-10/CI短路径与测试清理修复自审.md",
+      "gitHeadSha256": "d03138d2e66a672457805f3fef4f9c0694b63a054a42c8979849b9768a0b8759",
+      "workingTreeSha256": "d03138d2e66a672457805f3fef4f9c0694b63a054a42c8979849b9768a0b8759"
+    },
+    {
+      "from": "协作/Claude工作检查与下一步开发计划.md",
+      "to": "协作/归档/2026-10/Claude工作检查与下一步开发计划.md",
+      "gitHeadSha256": "78876b1f3aa0566694bc2d126c95b3ce4784fa45edbf94dc00ec31696767197a",
+      "workingTreeSha256": "78876b1f3aa0566694bc2d126c95b3ce4784fa45edbf94dc00ec31696767197a"
+    },
+    {
+      "from": "协作/Claude工作记录.md",
+      "to": "协作/归档/2026-10/Claude工作记录.md",
+      "gitHeadSha256": "142a586b3768c01221dec2026cacec2c581e04f5779983f22a79687c3694fe1e",
+      "workingTreeSha256": "1764d0c1cb3695296ceb2dc257c2eafc805b5aadbf1901a6d0336919cd96c722"
+    },
+    {
+      "from": "协作/Codex工作记录.md",
+      "to": "协作/归档/2026-10/Codex工作记录.md",
+      "gitHeadSha256": "5bb649c80f16734259339467532540581333a7b31af20e5458dcd3ee4c645d14",
+      "workingTreeSha256": "44322683ed81eaa42cdce1ad928d140249be2790ca86ab3c0661378c6e87eed3"
+    },
+    {
+      "from": "协作/DeepSeek环境示例整理自审.md",
+      "to": "协作/归档/2026-10/DeepSeek环境示例整理自审.md",
+      "gitHeadSha256": "6e54e42cde7464e3c9bd84a0f26e1dfd386611ac384908998a768715c5a9c67b",
+      "workingTreeSha256": "6e54e42cde7464e3c9bd84a0f26e1dfd386611ac384908998a768715c5a9c67b"
+    },
+    {
+      "from": "协作/MewCode机制借鉴自审.md",
+      "to": "协作/归档/2026-10/MewCode机制借鉴自审.md",
+      "gitHeadSha256": "58ed41190ce5f7b55975bea89f54c07e3ec3edb20148240c1c389e6a716afa49",
+      "workingTreeSha256": "e1f2b37d57f29c38bdbcf78e2cd376117f501b2e33e1cfe1a1be205dde701ffb"
+    },
+    {
+      "from": "协作/Mew借鉴-完整结果引用-20261017.png",
+      "to": "协作/截图/2026-10/Mew借鉴-完整结果引用-20261017.png",
+      "gitHeadSha256": "af9de91af9ba1e6d9aaaf078d7d6688d0395c808b199661a7e6f9b39c6709de1",
+      "workingTreeSha256": "af9de91af9ba1e6d9aaaf078d7d6688d0395c808b199661a7e6f9b39c6709de1"
+    },
+    {
+      "from": "协作/Mew借鉴-记忆确认-20261017.png",
+      "to": "协作/截图/2026-10/Mew借鉴-记忆确认-20261017.png",
+      "gitHeadSha256": "69cdf4b6dd28e488f4bae3fb8d7f4ad32240414369aaae36e05ed08a1773cfa0",
+      "workingTreeSha256": "69cdf4b6dd28e488f4bae3fb8d7f4ad32240414369aaae36e05ed08a1773cfa0"
+    },
+    {
+      "from": "协作/P0到P2开发与审查.md",
+      "to": "协作/归档/2026-10/P0到P2开发与审查.md",
+      "gitHeadSha256": "e2a7765f6b13af0d1ae05279761abb38f7e8eda17c583b3eed24a410bbe39d91",
+      "workingTreeSha256": "d135ab7692980f18a4d69453963cdcc5b251cb1b89e0e084eaf9275e9552c8db"
+    },
+    {
+      "from": "协作/P0到P2恢复验收.png",
+      "to": "协作/截图/2026-10/P0到P2恢复验收.png",
+      "gitHeadSha256": "f9a33a0f077745c7bd7a30963e88575f9fbd4a20fabf368d09dc9cb7257aa967",
+      "workingTreeSha256": "f9a33a0f077745c7bd7a30963e88575f9fbd4a20fabf368d09dc9cb7257aa967"
+    },
+    {
+      "from": "协作/P0到P2指导验收.png",
+      "to": "协作/截图/2026-10/P0到P2指导验收.png",
+      "gitHeadSha256": "b346b12048767e61e4ab424ba1cc9773941141adc32ddf46797fd73d69e35931",
+      "workingTreeSha256": "b346b12048767e61e4ab424ba1cc9773941141adc32ddf46797fd73d69e35931"
+    },
+    {
+      "from": "协作/Pi入口检测修复与自审.md",
+      "to": "协作/归档/2026-10/Pi入口检测修复与自审.md",
+      "gitHeadSha256": "83dc7b3e4c87a3928570c9e01956fb77bad436d9fea1f38a8292e34d43d74d82",
+      "workingTreeSha256": "83dc7b3e4c87a3928570c9e01956fb77bad436d9fea1f38a8292e34d43d74d82"
+    },
+    {
+      "from": "协作/README展示风格整理审查.md",
+      "to": "协作/归档/2026-10/README展示风格整理审查.md",
+      "gitHeadSha256": "bcce319d95a0afdc3d2874c3f4690e381f94164f7b48c07e50bafb9ba31eface",
+      "workingTreeSha256": "bcce319d95a0afdc3d2874c3f4690e381f94164f7b48c07e50bafb9ba31eface"
+    },
+    {
+      "from": "协作/availability-review分支采纳评估.md",
+      "to": "协作/归档/2026-10/availability-review分支采纳评估.md",
+      "gitHeadSha256": "e0d8161c62aaddfaa6800f001a94cbe2e85a1f3f261ee5191643aecc9a2cf3f8",
+      "workingTreeSha256": "e0d8161c62aaddfaa6800f001a94cbe2e85a1f3f261ee5191643aecc9a2cf3f8"
+    },
+    {
+      "from": "协作/availability-review改进移植自审.md",
+      "to": "协作/归档/2026-10/availability-review改进移植自审.md",
+      "gitHeadSha256": "6fb788947f1014fd70f47c3a201e8bd30d876e7b34a0180913f95f4a0a085b06",
+      "workingTreeSha256": "6fb788947f1014fd70f47c3a201e8bd30d876e7b34a0180913f95f4a0a085b06"
+    },
+    {
+      "from": "协作/easyreader恢复后真实验收.jpg",
+      "to": "协作/截图/2026-10/easyreader恢复后真实验收.jpg",
+      "gitHeadSha256": "bdbc601dabaf9a96038d348f7d05177b02d0c48a6dd6a1a8f34a98123af945ed",
+      "workingTreeSha256": "bdbc601dabaf9a96038d348f7d05177b02d0c48a6dd6a1a8f34a98123af945ed"
+    },
+    {
+      "from": "协作/easyreader重启与真实自动协作验收.md",
+      "to": "协作/归档/2026-10/easyreader重启与真实自动协作验收.md",
+      "gitHeadSha256": "1ef9c9da1a721f7af4a6654622944624dcb19b483f6d8d6bb6598e6b2500e3cc",
+      "workingTreeSha256": "1ef9c9da1a721f7af4a6654622944624dcb19b483f6d8d6bb6598e6b2500e3cc"
+    },
+    {
+      "from": "协作/qwen测试模型配置自审.md",
+      "to": "协作/归档/2026-10/qwen测试模型配置自审.md",
+      "gitHeadSha256": "2e3fdaff9f0e6d75eaef9e4ad165a80b7e5fba21b3d404cc30c352c411d69898",
+      "workingTreeSha256": "2e3fdaff9f0e6d75eaef9e4ad165a80b7e5fba21b3d404cc30c352c411d69898"
+    },
+    {
+      "from": "协作/主分支集成与Windows路径修复审查.md",
+      "to": "协作/归档/2026-10/主分支集成与Windows路径修复审查.md",
+      "gitHeadSha256": "002cede9b1c9a6bdef0f0b772119414ba01a71a9a44c2efc7a387de794b8c0bd",
+      "workingTreeSha256": "002cede9b1c9a6bdef0f0b772119414ba01a71a9a44c2efc7a387de794b8c0bd"
+    },
+    {
+      "from": "协作/五项使用反馈修复自审.md",
+      "to": "协作/归档/2026-10/五项使用反馈修复自审.md",
+      "gitHeadSha256": "7c26a25cce4c8fc74dcab898782aa314497f904537fe17e011ea61789f1002ae",
+      "workingTreeSha256": "807100594c9937ccf89f659cb9de1f230bd7724487251cb73872a884b8347b76"
+    },
+    {
+      "from": "协作/五项反馈-目录选择创建成功-20261017.png",
+      "to": "协作/截图/2026-10/五项反馈-目录选择创建成功-20261017.png",
+      "gitHeadSha256": "07620254e7970096be6f4601f22c206266b20c3eb563c0a6f883163a920c7297",
+      "workingTreeSha256": "07620254e7970096be6f4601f22c206266b20c3eb563c0a6f883163a920c7297"
+    },
+    {
+      "from": "协作/五项反馈-较早历史边界-20261017.png",
+      "to": "协作/截图/2026-10/五项反馈-较早历史边界-20261017.png",
+      "gitHeadSha256": "809bbb414248e4260d2bb5e4aa46101fbf2429a0fc625955a6825240956fa869",
+      "workingTreeSha256": "809bbb414248e4260d2bb5e4aa46101fbf2429a0fc625955a6825240956fa869"
+    },
+    {
+      "from": "协作/五项反馈-项目与统一历史-20261017.png",
+      "to": "协作/截图/2026-10/五项反馈-项目与统一历史-20261017.png",
+      "gitHeadSha256": "b18c0b628ff60ba50abd1525bd51398621b7c81d5bfbc6f2b7df4904c2230359",
+      "workingTreeSha256": "b18c0b628ff60ba50abd1525bd51398621b7c81d5bfbc6f2b7df4904c2230359"
+    },
+    {
+      "from": "协作/分支项目文档更新审查.md",
+      "to": "协作/归档/2026-10/分支项目文档更新审查.md",
+      "gitHeadSha256": "2dab6b30163513b31b88eaf345e075432ef4370be7c36734becc637c8581a76e",
+      "workingTreeSha256": "2dab6b30163513b31b88eaf345e075432ef4370be7c36734becc637c8581a76e"
+    },
+    {
+      "from": "协作/单Agent修复与验收结果.md",
+      "to": "协作/归档/2026-10/单Agent修复与验收结果.md",
+      "gitHeadSha256": "208d384fdde6cd99addff7b934fa7e1313bd47106213ce48137380d62e928c88",
+      "workingTreeSha256": "2490f785296471c6271f6363c23f6e45ed27659c85eef78d2999310ed0cfca9e"
+    },
+    {
+      "from": "协作/双Agent协作开发任务书.md",
+      "to": "协作/归档/2026-10/双Agent协作开发任务书.md",
+      "gitHeadSha256": "977a1a0f889b2ce4fa5be10a28538c5681946cdd0e3f1a684fd2cddb08348b13",
+      "workingTreeSha256": "1dc4c200a7a7fe82569524adcd37388ff4638ae5a2072786571a42e59b4e5d6b"
+    },
+    {
+      "from": "协作/员工模型与额度浏览器复验.png",
+      "to": "协作/截图/2026-10/员工模型与额度浏览器复验.png",
+      "gitHeadSha256": "42b3c895f5d92bc65c14e107ae918e3256cf719499db54236d7552c4cd723cd3",
+      "workingTreeSha256": "42b3c895f5d92bc65c14e107ae918e3256cf719499db54236d7552c4cd723cd3"
+    },
+    {
+      "from": "协作/对话点击草稿保留验收.jpg",
+      "to": "协作/截图/2026-10/对话点击草稿保留验收.jpg",
+      "gitHeadSha256": "5bdf8f950fb6a353b8692b1571764606428219b72596c06d9d24c3b3b3c1f401",
+      "workingTreeSha256": "5bdf8f950fb6a353b8692b1571764606428219b72596c06d9d24c3b3b3c1f401"
+    },
+    {
+      "from": "协作/对话验收与按钮修复复验.png",
+      "to": "协作/截图/2026-10/对话验收与按钮修复复验.png",
+      "gitHeadSha256": "36ba42a739e5a5c0258cbfe560cfbf1233db2f7f3b3320c0ba6b7e6f564935c4",
+      "workingTreeSha256": "36ba42a739e5a5c0258cbfe560cfbf1233db2f7f3b3320c0ba6b7e6f564935c4"
+    },
+    {
+      "from": "协作/对话验收与验收面板修复自审.md",
+      "to": "协作/归档/2026-10/对话验收与验收面板修复自审.md",
+      "gitHeadSha256": "470328024f4856a315b9bc93ed38e4da92e45f314b76af3ea7a6e164cd3ea7e7",
+      "workingTreeSha256": "8b5c1ec543a2cb19a74ad6e14b3b3001a4c69fffd0f932c705d2bcf559976da2"
+    },
+    {
+      "from": "协作/就绪改进P0到P2开发与审查.md",
+      "to": "协作/归档/2026-10/就绪改进P0到P2开发与审查.md",
+      "gitHeadSha256": "b6b275438847b6fd3b2fe7d7c9ed20e29123a55ba5f430d89ff996db323fa4da",
+      "workingTreeSha256": "b6b275438847b6fd3b2fe7d7c9ed20e29123a55ba5f430d89ff996db323fa4da"
+    },
+    {
+      "from": "协作/就绪改进P0到P2计划.md",
+      "to": "协作/归档/2026-10/就绪改进P0到P2计划.md",
+      "gitHeadSha256": "61ed881f13ff3afd56c30ce2b7a9c696c73db816e8b13288220c0244c2380856",
+      "workingTreeSha256": "61ed881f13ff3afd56c30ce2b7a9c696c73db816e8b13288220c0244c2380856"
+    },
+    {
+      "from": "协作/工具调度桌面验收.png",
+      "to": "协作/截图/2026-10/工具调度桌面验收.png",
+      "gitHeadSha256": "742c69478451b1545f9ba269a42186ee69a11a4e1747be1a5fb890e225fa5945",
+      "workingTreeSha256": "742c69478451b1545f9ba269a42186ee69a11a4e1747be1a5fb890e225fa5945"
+    },
+    {
+      "from": "协作/工具调度窄屏验收.png",
+      "to": "协作/截图/2026-10/工具调度窄屏验收.png",
+      "gitHeadSha256": "c3def67ab51527b549926c7a7912b647be13211b396bae509f2248c990cb8d8b",
+      "workingTreeSha256": "c3def67ab51527b549926c7a7912b647be13211b396bae509f2248c990cb8d8b"
+    },
+    {
+      "from": "协作/开发计划与进度.md",
+      "to": "协作/归档/2026-10/开发计划与进度.md",
+      "gitHeadSha256": "54c4682a404bd6e9cdd0b36038af14eb14b0cdef884e561244f0bc34bcf62d91",
+      "workingTreeSha256": "2df7b880763e3de804b5286121748cd449bdb6d03d30edd3b91b2dab01b8539b"
+    },
+    {
+      "from": "协作/截图-协作前置验收.png",
+      "to": "协作/截图/2026-10/截图-协作前置验收.png",
+      "gitHeadSha256": "c92b917a6aa0e37b9613248a3627b71c7ec56c3bf5faea95b1bc05bc5b7c76f0",
+      "workingTreeSha256": "c92b917a6aa0e37b9613248a3627b71c7ec56c3bf5faea95b1bc05bc5b7c76f0"
+    },
+    {
+      "from": "协作/截图-单Agent流式验收.png",
+      "to": "协作/截图/2026-10/截图-单Agent流式验收.png",
+      "gitHeadSha256": "36e557d6011f17b9363fcf57c6450395634c873e5ab4677d9ed653b0481a2475",
+      "workingTreeSha256": "36e557d6011f17b9363fcf57c6450395634c873e5ab4677d9ed653b0481a2475"
+    },
+    {
+      "from": "协作/截图-本地模型目录验收.png",
+      "to": "协作/截图/2026-10/截图-本地模型目录验收.png",
+      "gitHeadSha256": "54cb6d0457d5ab5e8f3e14a447ca79f0728667db612d2510e3a89597e4eb0e51",
+      "workingTreeSha256": "54cb6d0457d5ab5e8f3e14a447ca79f0728667db612d2510e3a89597e4eb0e51"
+    },
+    {
+      "from": "协作/截图-聊天集成问题.png",
+      "to": "协作/截图/2026-10/截图-聊天集成问题.png",
+      "gitHeadSha256": "72953fe3abaa6a958ba0c8cf19609ae94653e9d0026d06de72f0fe946b708635",
+      "workingTreeSha256": "72953fe3abaa6a958ba0c8cf19609ae94653e9d0026d06de72f0fe946b708635"
+    },
+    {
+      "from": "协作/截图-配置加载失败保护.png",
+      "to": "协作/截图/2026-10/截图-配置加载失败保护.png",
+      "gitHeadSha256": "c26e5c3be6926c593f0606ed9d4af1adfe356bb977b65bf7b478f5c6f5ab3565",
+      "workingTreeSha256": "c26e5c3be6926c593f0606ed9d4af1adfe356bb977b65bf7b478f5c6f5ab3565"
+    },
+    {
+      "from": "协作/提交前审查记录.md",
+      "to": "协作/归档/2026-10/提交前审查记录.md",
+      "gitHeadSha256": "6bff8ef6cc7529e992d21e298dcefebb761364cac5c12ef2b5a32d2b86b94a88",
+      "workingTreeSha256": "664c50f24690d830827ab0dc93513f95ff6b36c1f630d25bfd18ca3d1db517cf"
+    },
+    {
+      "from": "协作/本地模型目录开发与审查.md",
+      "to": "协作/归档/2026-10/本地模型目录开发与审查.md",
+      "gitHeadSha256": "fea1b21adc8150253fb9ddd04168379205a1155b72475cbc42cc2b85c79e113d",
+      "workingTreeSha256": "fe22ff0036360f1c5768429ca357eecf6e7cee5ef46710847eb396e601c00c75"
+    },
+    {
+      "from": "协作/桌面对话与自动协作开发审查.md",
+      "to": "协作/归档/2026-10/桌面对话与自动协作开发审查.md",
+      "gitHeadSha256": "3adcb4c754ca7e88838d005dfeee6adec79f3bf9b1bfc19f9038f2155c7e4dd6",
+      "workingTreeSha256": "32d8c68e9a02c8e30bbcd013d7d1fe9fa18f7aff23898dc6d02c9f00d8301bd0"
+    },
+    {
+      "from": "协作/桌面对话工作区验收.png",
+      "to": "协作/截图/2026-10/桌面对话工作区验收.png",
+      "gitHeadSha256": "007c54ce13338c4d8d35fd1c6be7f1bf9bd6a1238ee741a7f72f7a650a0e1556",
+      "workingTreeSha256": "007c54ce13338c4d8d35fd1c6be7f1bf9bd6a1238ee741a7f72f7a650a0e1556"
+    },
+    {
+      "from": "协作/桌面对话窄屏验收.png",
+      "to": "协作/截图/2026-10/桌面对话窄屏验收.png",
+      "gitHeadSha256": "4b4ae851122768175f4e8f45b4f253a01532b92ca00d0fb310362f023b59114f",
+      "workingTreeSha256": "4b4ae851122768175f4e8f45b4f253a01532b92ca00d0fb310362f023b59114f"
+    },
+    {
+      "from": "协作/模型连接测试开发与审查.md",
+      "to": "协作/归档/2026-10/模型连接测试开发与审查.md",
+      "gitHeadSha256": "9e2119e71801051f3e96b49093695ab427d0cbdacc58bc8ff17ae9b4649c49e3",
+      "workingTreeSha256": "86559d2a13bdaad28e23a54f0f5790716cec90e7e57ab84053eed95054f3032f"
+    },
+    {
+      "from": "协作/独立ApiX开发与自审.md",
+      "to": "协作/归档/2026-10/独立ApiX开发与自审.md",
+      "gitHeadSha256": "ebd515268fa46e3becb70849804bcf78f3e3db8c42a38d2ff22907c820bfa420",
+      "workingTreeSha256": "7bd64c2a39319c256f63fea5a4b53045b89ae791b2166100d2fdeea2df7c6d04"
+    },
+    {
+      "from": "协作/独立ApiX推理后端架构与验收.md",
+      "to": "协作/归档/2026-10/独立ApiX推理后端架构与验收.md",
+      "gitHeadSha256": "5c38ab5e0525cc544d117fc3d348b2af802863bada074081730b73e7ba17bfad",
+      "workingTreeSha256": "5c38ab5e0525cc544d117fc3d348b2af802863bada074081730b73e7ba17bfad"
+    },
+    {
+      "from": "协作/独立ApiX无Pi浏览器验收.jpg",
+      "to": "协作/截图/2026-10/独立ApiX无Pi浏览器验收.jpg",
+      "gitHeadSha256": "dc20a73690dfc8fba51b7cc05e4a71bfb7554b81755d157a6596143e9c5056ca",
+      "workingTreeSha256": "dc20a73690dfc8fba51b7cc05e4a71bfb7554b81755d157a6596143e9c5056ca"
+    },
+    {
+      "from": "协作/独立ApiX模型配置验收.jpg",
+      "to": "协作/截图/2026-10/独立ApiX模型配置验收.jpg",
+      "gitHeadSha256": "842ac415e07e6932c3782d60df8e335301b7f363969e83ea27d133bc99a1e92e",
+      "workingTreeSha256": "842ac415e07e6932c3782d60df8e335301b7f363969e83ea27d133bc99a1e92e"
+    },
+    {
+      "from": "协作/猎必得面试笔记自审.md",
+      "to": "协作/归档/2026-10/猎必得面试笔记自审.md",
+      "gitHeadSha256": "d32be2ed2a8dcd0d7bcafe74c9d7c2351aafa521d94203dd1a9c5d97c397bcda",
+      "workingTreeSha256": "d32be2ed2a8dcd0d7bcafe74c9d7c2351aafa521d94203dd1a9c5d97c397bcda"
+    },
+    {
+      "from": "协作/稳定交付修复与自审.md",
+      "to": "协作/归档/2026-10/稳定交付修复与自审.md",
+      "gitHeadSha256": "ee1c86d189fe878eaed65b185d1b783b4d16a8a0f6f0320bfd166625c582863d",
+      "workingTreeSha256": "f61bdf17285d35009a561affc8f25ee37607bfe985d2aa8e3daed9f20810014d"
+    },
+    {
+      "from": "协作/稳定交付契约复验.json",
+      "to": "协作/验收数据/2026-10/稳定交付契约复验.json",
+      "gitHeadSha256": "3daa11ed0b27929d235d507826da01be0a842e8269e10471dfe3754b72e3b7cf",
+      "workingTreeSha256": "594fc957275b41f92bcdc18b6d00553215e7b88bbc48ed6063829ae3b9c93c20"
+    },
+    {
+      "from": "协作/稳定交付桌面验收.jpg",
+      "to": "协作/截图/2026-10/稳定交付桌面验收.jpg",
+      "gitHeadSha256": "e85ae743dcc9f6e7cd23e83ef1726c2ee718eceaffbdc72bc727d17445d24b12",
+      "workingTreeSha256": "e85ae743dcc9f6e7cd23e83ef1726c2ee718eceaffbdc72bc727d17445d24b12"
+    },
+    {
+      "from": "协作/稳定交付等待验收.jpg",
+      "to": "协作/截图/2026-10/稳定交付等待验收.jpg",
+      "gitHeadSha256": "49b61b44b99b4e0c19683c94c17bba357604e59a8461dd88b5fbcad2d3d73087",
+      "workingTreeSha256": "49b61b44b99b4e0c19683c94c17bba357604e59a8461dd88b5fbcad2d3d73087"
+    },
+    {
+      "from": "协作/第三轮Claude交接.md",
+      "to": "协作/归档/2026-10/第三轮Claude交接.md",
+      "gitHeadSha256": "a533460856586e12514956c9fbde99d2e41bcb86957d8367e6d310fdda54759b",
+      "workingTreeSha256": "da459e709d6b8360431c4f337938c595d27f06698fb6358cc465efe681b6131e"
+    },
+    {
+      "from": "协作/第三轮Claude审查结论.md",
+      "to": "协作/归档/2026-10/第三轮Claude审查结论.md",
+      "gitHeadSha256": "a7973f74f3e378c3ff8439d76addf84a6325b84a52ea2bc42ac4bdb342daa72c",
+      "workingTreeSha256": "e885d91a2f21bbfb613180e8f1fc550637713bcb010a3a7c267f2bf78325c737"
+    },
+    {
+      "from": "协作/第三轮双Agent协作计划.md",
+      "to": "协作/归档/2026-10/第三轮双Agent协作计划.md",
+      "gitHeadSha256": "484562a1a74fb84df8d32ba3ac45c1b1728b6291874d925e1757f6887d37f56e",
+      "workingTreeSha256": "75ed10d9ecb46029d4af1e35bf20661fd7461510b81af52e147905d1534f8524"
+    },
+    {
+      "from": "协作/第二轮修复与验收计划.md",
+      "to": "协作/归档/2026-10/第二轮修复与验收计划.md",
+      "gitHeadSha256": "d960040633e02e7428165c1772334751ebb2727452c64432edd4a0de9083cde0",
+      "workingTreeSha256": "d960040633e02e7428165c1772334751ebb2727452c64432edd4a0de9083cde0"
+    },
+    {
+      "from": "协作/第二轮复验操作与反馈.md",
+      "to": "协作/归档/2026-10/第二轮复验操作与反馈.md",
+      "gitHeadSha256": "ce2be2e3b91fef7553994c03f7d3f61b55abf6010a0d040657c94dcf559e3d7b",
+      "workingTreeSha256": "6242061999050cbe5b00fc6efc7cbbb16922963abf811e7da038771ae7264f8b"
+    },
+    {
+      "from": "协作/第二轮集成审查结果.md",
+      "to": "协作/归档/2026-10/第二轮集成审查结果.md",
+      "gitHeadSha256": "49f7edc1c18b55693b02ff6c3067333f231299c35ec57da60ba1e5fe615b0105",
+      "workingTreeSha256": "07cb2018de4a4dd42a3d43ec790338c1dc2cb49ab6671b607ef107b9c04cc30c"
+    },
+    {
+      "from": "协作/统一Agent循环开发与自审.md",
+      "to": "协作/归档/2026-10/统一Agent循环开发与自审.md",
+      "gitHeadSha256": "0b377fb28d26f866266c6ccaefb18e441c08b262500ebb7a8f7f714b9483becf",
+      "workingTreeSha256": "c711bd8d392da18f0869d489e92ba83c0046a8e248eaa6f79f7dd7d7672554ff"
+    },
+    {
+      "from": "协作/统一Agent循环批准验收.jpg",
+      "to": "协作/截图/2026-10/统一Agent循环批准验收.jpg",
+      "gitHeadSha256": "88c3c2a33c918570641e514d24759c44a998c218e68ef448c993bdfdb21844da",
+      "workingTreeSha256": "88c3c2a33c918570641e514d24759c44a998c218e68ef448c993bdfdb21844da"
+    },
+    {
+      "from": "协作/统一Agent循环架构与验收.md",
+      "to": "协作/归档/2026-10/统一Agent循环架构与验收.md",
+      "gitHeadSha256": "b1127148a975101222a5eb5dc34adfd4ae320c01d8ec9d721deca2f0b0d888f1",
+      "workingTreeSha256": "b1127148a975101222a5eb5dc34adfd4ae320c01d8ec9d721deca2f0b0d888f1"
+    },
+    {
+      "from": "协作/统一Agent循环浏览器验收.jpg",
+      "to": "协作/截图/2026-10/统一Agent循环浏览器验收.jpg",
+      "gitHeadSha256": "fe1e03ec46c82bdd655124fc76f1ff3c4c8cb1bafd251c6ec8c69386d88679b7",
+      "workingTreeSha256": "fe1e03ec46c82bdd655124fc76f1ff3c4c8cb1bafd251c6ec8c69386d88679b7"
+    },
+    {
+      "from": "协作/能力会议预算会议验收.png",
+      "to": "协作/截图/2026-10/能力会议预算会议验收.png",
+      "gitHeadSha256": "872e39ad3a91d631e3fc579252a588be67b4f460e385f52d4d316c58fe8cca04",
+      "workingTreeSha256": "872e39ad3a91d631e3fc579252a588be67b4f460e385f52d4d316c58fe8cca04"
+    },
+    {
+      "from": "协作/能力会议预算开发与审查.md",
+      "to": "协作/归档/2026-10/能力会议预算开发与审查.md",
+      "gitHeadSha256": "f530e4050802d0ea57516fa1a8f85fae123ec7ac5f9fc1f366591c5669fda38f",
+      "workingTreeSha256": "09c0c4227f96e23afffc4d0df829f6346ef9592cf5ef7db13e3c8ab2c81bcdd9"
+    },
+    {
+      "from": "协作/能力会议预算账本验收.png",
+      "to": "协作/截图/2026-10/能力会议预算账本验收.png",
+      "gitHeadSha256": "35d115a06f0693bbbba213b752c0270b3fc671134dfd17ac208828da1b8db4fb",
+      "workingTreeSha256": "35d115a06f0693bbbba213b752c0270b3fc671134dfd17ac208828da1b8db4fb"
+    },
+    {
+      "from": "协作/自主交付PR说明.md",
+      "to": "协作/归档/2026-10/自主交付PR说明.md",
+      "gitHeadSha256": "922287aed1b137da4213ce45040323b8261083eb563bb0c9a6d43fdd02354c88",
+      "workingTreeSha256": "ac57e01a3605ce50493f38bf6d61a794d6a8889901d1a587af9f3e9e5d63c037"
+    },
+    {
+      "from": "协作/自主交付四阶段开发计划.md",
+      "to": "协作/归档/2026-10/自主交付四阶段开发计划.md",
+      "gitHeadSha256": "ffed166c8a6c96a2862dd4659377d521aa6db272de2d81b554fe709b8fa8d8b8",
+      "workingTreeSha256": "ffed166c8a6c96a2862dd4659377d521aa6db272de2d81b554fe709b8fa8d8b8"
+    },
+    {
+      "from": "协作/自主交付开发与审查.md",
+      "to": "协作/归档/2026-10/自主交付开发与审查.md",
+      "gitHeadSha256": "5937153044a65a59324003b6042c03add277224fd0a44160a72d3f16267d6ec9",
+      "workingTreeSha256": "c3ad7ac607c208bee9546df47ecccf2cfcad654368ddb634eab55f71b36f1843"
+    },
+    {
+      "from": "协作/自主交付桌面验收.jpg",
+      "to": "协作/截图/2026-10/自主交付桌面验收.jpg",
+      "gitHeadSha256": "4519b8d1562d0998b21cc2c1bb2b1ba636244aff0a805f97f8d0fec9c4b4e9e7",
+      "workingTreeSha256": "4519b8d1562d0998b21cc2c1bb2b1ba636244aff0a805f97f8d0fec9c4b4e9e7"
+    },
+    {
+      "from": "协作/自动协作开启拦截修复自审.md",
+      "to": "协作/归档/2026-10/自动协作开启拦截修复自审.md",
+      "gitHeadSha256": "ac83eba6bb367e62fec1d88a92dc432bd681bed5a5e311bb5ad9e233fa3b7431",
+      "workingTreeSha256": "ac83eba6bb367e62fec1d88a92dc432bd681bed5a5e311bb5ad9e233fa3b7431"
+    },
+    {
+      "from": "协作/适配器注册提示修复与自审.md",
+      "to": "协作/归档/2026-10/适配器注册提示修复与自审.md",
+      "gitHeadSha256": "e9b2a9d2a461a4e136678b7dcc1904966c2c829de815b8d239e9c08d80727ad2",
+      "workingTreeSha256": "e9b2a9d2a461a4e136678b7dcc1904966c2c829de815b8d239e9c08d80727ad2"
+    },
+    {
+      "from": "协作/阿里模型接入与真实测试.md",
+      "to": "协作/归档/2026-10/阿里模型接入与真实测试.md",
+      "gitHeadSha256": "44ea1f3ca3bfded1ca8367b8c5dc868c6425831c3945bea01b8aec93e2361260",
+      "workingTreeSha256": "44ea1f3ca3bfded1ca8367b8c5dc868c6425831c3945bea01b8aec93e2361260"
+    },
+    {
+      "from": "协作/集成审查与待修复.md",
+      "to": "协作/归档/2026-10/集成审查与待修复.md",
+      "gitHeadSha256": "5864112f6afbe3bae4459f610443986a0b23b38479440ec7cf2ba02e6eb6b90b",
+      "workingTreeSha256": "82c58d095f87352c231db05627bbbc0c5e6646acc748ee6054795856b2d83ccb"
+    },
+    {
+      "from": "协作/非Git项目与对话稳定性修复自审.md",
+      "to": "协作/归档/2026-10/非Git项目与对话稳定性修复自审.md",
+      "gitHeadSha256": "84eb02e58dd2f0f6e503f01acb4559cd720cc8fca8a9c97f13603c26ba9d3aed",
+      "workingTreeSha256": "84eb02e58dd2f0f6e503f01acb4559cd720cc8fca8a9c97f13603c26ba9d3aed"
+    },
+    {
+      "from": "协作/项目技术亮点面试资料自审.md",
+      "to": "协作/归档/2026-10/项目技术亮点面试资料自审.md",
+      "gitHeadSha256": "ecd9573215de2ef89feb64de8c498012c80795930937a04bc28620b3f2e074bb",
+      "workingTreeSha256": "ecd9573215de2ef89feb64de8c498012c80795930937a04bc28620b3f2e074bb"
+    },
+    {
+      "from": "协作/项目目录编码与员工模型额度自审.md",
+      "to": "协作/归档/2026-10/项目目录编码与员工模型额度自审.md",
+      "gitHeadSha256": "ecb58ae5aa7dcb9f68405cc385e00ee6f6c03f3e981dd7e2f830f23f2577b319",
+      "workingTreeSha256": "ecb58ae5aa7dcb9f68405cc385e00ee6f6c03f3e981dd7e2f830f23f2577b319"
+    },
+    {
+      "from": "协作/高度可用契约探测结果.json",
+      "to": "协作/验收数据/2026-10/高度可用契约探测结果.json",
+      "gitHeadSha256": "0b3305fe3b0416f84cf5e88f09f9080d3db83f545cd8c77f785a4a29aa82b21c",
+      "workingTreeSha256": "55b7efa0fb5d2b11d36491fb4c4415f5d1ab68ea03a5b3725cfe1fc939be4509"
+    },
+    {
+      "from": "协作/高度可用测试用例设计.md",
+      "to": "协作/归档/2026-10/高度可用测试用例设计.md",
+      "gitHeadSha256": "052a0dc53b6b9c8cb19176ccfc7f6161e1584a2b2bd337629df9d8848723e8e0",
+      "workingTreeSha256": "f1a058f23f51a19d45a1bfb128c3a82a5a24cf185ae881f4985b6f0b90c07603"
+    },
+    {
+      "from": "协作/高度可用测试结果与自审.md",
+      "to": "协作/归档/2026-10/高度可用测试结果与自审.md",
+      "gitHeadSha256": "c7dd92013d89f8d06a78ce12e142b0f1f99a5d30b3af475359af96659a9b5e7a",
+      "workingTreeSha256": "9aef7ecf1096c62b103c334152b183bcafd440b8ae9feddfae8068ea8ce8f07a"
+    },
+    {
+      "from": "docs/Windows桌面版.md",
+      "to": "docs/专题/Windows桌面版.md",
+      "gitHeadSha256": "88c62289765073c7162b9d7447cd1b42579e798e81bea8998e8701dcd4a7a424",
+      "workingTreeSha256": "cc1d612604c385bb09273587f06b916b1da17ceae9b59095394d5f919fb29ee9"
+    },
+    {
+      "from": "docs/Node-npm项目验证.md",
+      "to": "docs/专题/Node-npm项目验证.md",
+      "gitHeadSha256": "ec11d0a08488ae0f2049fd453c9b6a850d20e3520dc607b25ec60c2117b7538e",
+      "workingTreeSha256": "dc67ffb901f00235dd2b67721b58a59623fb424a4ffc97777fa7aecc3a7ec97c"
+    },
+    {
+      "from": "docs/Token用量与优化.md",
+      "to": "docs/专题/Token用量与优化.md",
+      "gitHeadSha256": "f339e3c1d94141f006ba715a358e16f118e65dafd1b4954e22aba8ae391c58f3",
+      "workingTreeSha256": "0c1582da7777d6d3af571e0c6997d530068fdfd82d3b0d2e7b382475785656a6"
+    },
+    {
+      "from": "docs/界面设计规范.md",
+      "to": "docs/专题/界面设计规范.md",
+      "gitHeadSha256": "0c702eca8cf46178d7ac06dc1e65e6080445c7c0a29a88ad71fe351bfbe5853c",
+      "workingTreeSha256": "bcce3b47e04d3c3e5f8fc5c9ef953ca6a970a4a439be634358460b45ac256e7d"
+    },
+    {
+      "from": "docs/20261022-ApiX交互与执行重构决策.md",
+      "to": "docs/归档/设计/20261022-ApiX交互与执行重构决策.md",
+      "gitHeadSha256": "13bd33e7dcda57a17dbaa0585b296a55931c7255348cbd8d5f856762de0bf9b8",
+      "workingTreeSha256": "19fe3bdcddacca84b61cee68e038588f0074e0a6a34c9311e979823032f11896"
+    },
+    {
+      "from": "docs/zcode测试/2026-10-24-全面测试报告.md",
+      "to": "docs/归档/测试报告/2026-10-24-zcode全面测试报告.md",
+      "gitHeadSha256": "a52ed5216b8d6af3ce32e5150f67df4e400c26260c974a6aac8b4f5e8fbab2ca",
+      "workingTreeSha256": "a52ed5216b8d6af3ce32e5150f67df4e400c26260c974a6aac8b4f5e8fbab2ca"
+    },
+    {
+      "from": "协作/复验环境.mjs",
+      "to": "scripts/verification/legacy/verify-round2.mjs",
+      "gitHeadSha256": "fb9641e1ef2068e1704040d06ba9f479faebb4df970be5d62c594bfa87c0c20c",
+      "workingTreeSha256": "6d78d9c1cdc140957f48e5dfef985fcf0b289feea14e36ba38c4f8db4f99dce4"
+    }
+  ]
+}

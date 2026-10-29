@@ -1,0 +1,18 @@
+{
+  "kind": "architecture capability acceptance",
+  "pass": true,
+  "cases": [
+    {
+      "id": "A05-interface-schema",
+      "expected": "reject malformed JSON Schema",
+      "actual": "rejected",
+      "pass": true
+    },
+    {
+      "id": "A05-data-schema",
+      "expected": "reject malformed JSON Schema",
+      "actual": "rejected",
+      "pass": true
+    }
+  ]
+}

@@ -1,4 +1,6 @@
+import {fetch} from './local-fetch.mjs';
 import { test } from "node:test";
+import {startModelFixture} from './fake-model-http.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
@@ -12,17 +14,17 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 async function isolatedProject(dataDir) {
   const project = join(dataDir, 'project');
   await mkdir(project);
-  execFileSync('git', ['init', '-q', project]);
+  execFileSync('git', ['-c','core.autocrlf=false','init', '-q', project]);
   await writeFile(join(project, 'README.md'), 'Isolated ApiX test project\n');
-  execFileSync('git', ['add', 'README.md'], {cwd: project});
-  execFileSync('git', ['-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
+  execFileSync('git', ['-c','core.autocrlf=false','add', 'README.md'], {cwd: project});
+  execFileSync('git', ['-c','core.autocrlf=false','-c', 'user.name=ApiX Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'fixture'], {cwd: project});
   return project;
 }
 const serverErrors = new Map();
-const post = async (port, path, body) => {
+const post = async (port, path, body, expected = 200) => {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await response.json();
-  assert.equal(response.status, 200, JSON.stringify(data));
+  assert.equal(response.status, expected, JSON.stringify(data));
   return data;
 };
 const snapshot = async (port) => {
@@ -49,11 +51,14 @@ async function freePort() {
   });
 }
 async function startServer(port, dataDir) {
+  const model=await startModelFixture();
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); serverErrors.set(port, stderr); });
   try { await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok; } catch { return false; } }); }
   catch (error) { throw new Error(`ApiX server did not start (exit ${child.exitCode}): ${stderr || error.message}`); }
+  child.once('exit',()=>void model.close());
+  await post(port,'/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''});
   return child;
 }
 
@@ -357,6 +362,7 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.doesNotMatch((await snapshot(port)).tasks.find((item) => item.id === second.taskId).result, /alpha secret context/);
     const taskMemory = (await post(port, "/api/memories", { projectId, taskId: first.taskId, scope: "task", category: "decision", title: "Private thread decision", content: "Use the alpha-only approach" })).id;
     const projectMemory = (await post(port, "/api/memories", { projectId, scope: "project", category: "architecture", title: "Architecture", content: "Use layered architecture" })).id;
+    const duplicateTarget = (await post(port, "/api/memories", { projectId, scope: "project", category: "architecture", title: "Alternative", content: "Keep separate" })).id;
     const profile = await post(port, `/api/projects/${projectId}/profile`, { version: 0, summary: "Project continuity", goals: "Ship safely", constraints: "No secrets", decisions: "Use SQLite" });
     assert.equal(profile.version, 1);
     const search = await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=architecture`)).json();
@@ -365,8 +371,8 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     await post(port, `/api/approvals/${followUp.approvalId}`, { approved: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === followUp.taskId)?.status === "completed");
     const followUpResult = (await snapshot(port)).tasks.find((item) => item.id === followUp.taskId).result;
-    assert.match(followUpResult, /alpha secret context/);
-    assert.match(followUpResult, /Private thread decision/);
+    assert.doesNotMatch(followUpResult, /alpha secret context/);
+    assert.doesNotMatch(followUpResult, /Private thread decision/);
     assert.match(followUpResult, /Project continuity/);
     assert.doesNotMatch(followUpResult, /beta task/);
     const crossProject = await post(port, "/api/tasks", { projectId: otherProjectId, employeeId: secondEmployee, prompt: "other project" });
@@ -375,10 +381,15 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.doesNotMatch((await snapshot(port)).tasks.find((item) => item.id === crossProject.taskId).result, /layered architecture|Project continuity/);
     const changed = await post(port, `/api/memories/${projectMemory}`, { version: 1, title: "Architecture", content: "Use modular architecture" });
     assert.equal(changed.version, 2);
+    const duplicateEdit=await post(port, `/api/memories/${duplicateTarget}`, {version:1,title:'Architecture',content:'Must not replace original'},400);
+    assert.match(duplicateEdit.error,/同范围已有同名/);
+    const retained=(await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=Alternative`)).json()).find(m=>m.id===duplicateTarget);
+    assert.equal(retained.version,1);assert.equal(retained.content,'Keep separate');
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=layered`)).json()).length, 0);
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=modular`)).json()).length, 1);
     await post(port, `/api/memories/${projectMemory}/delete`, { version: 2 });
     await post(port, `/api/memories/${taskMemory}/delete`, { version: 1 });
+    await post(port, `/api/memories/${duplicateTarget}/delete`, {version:1});
     assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/memories/search?projectId=${projectId}&q=modular`)).json()).length, 0);
     const departmentId = (await post(port, "/api/departments", { name: "Continuity department", managerId: firstEmployee })).id;
     const blockedDeletion = await fetch(`http://127.0.0.1:${port}/api/employees/${firstEmployee}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
@@ -428,7 +439,7 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
     assert.equal(unavailable.status, 400);
     const runtimes = (await snapshot(port)).runtimes;
     assert(runtimes.some((item) => item.id === "qoder" && !item.managed));
-    const drafted = await post(port, "/api/director/messages", { projectId, content: "请实现多语言支持" });
+    const drafted = await post(port, "/api/director/messages", { projectId, content: "请记住项目约定：支持多语言，并实现多语言支持" });
     assert.equal(drafted.mode, "pi");
     const draftSnapshot = await snapshot(port);
     assert.equal(draftSnapshot.directorMessages.filter((item) => item.thread_id === drafted.threadId).length, 2);
