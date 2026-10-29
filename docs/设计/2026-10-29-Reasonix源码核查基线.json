@@ -1,0 +1,243 @@
+{
+  "schema": 1,
+  "review_date": "2026-10-29",
+  "reasonix": {
+    "repository": "https://github.com/esengine/DeepSeek-Reasonix",
+    "branch_observed": "studio",
+    "commit": "1da925d0f957662c1531d7afdec99756156dda5e",
+    "commit_time_utc": "2026-10-29T12:14:47Z",
+    "scope": "selected source and test inspection; not full repository audit; upstream tests not executed",
+    "files": [
+      {
+        "path": "internal/assembly/boot/prompt.go",
+        "git_blob_sha": "8d5e26d953ddc1dbb5e108900501ac7ba5aaeb8f",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/assembly/boot/prompt.go",
+        "sha256_utf8_lf": "4e89062490c8e2df45fd69342ba295d4a9d52eb59fe3343aceaae31beb7a2a62"
+      },
+      {
+        "path": "internal/assembly/boot/prefix_boundary_effect_test.go",
+        "git_blob_sha": "8823385ee2695ea39af22c2a28385150985fdaff",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/assembly/boot/prefix_boundary_effect_test.go",
+        "sha256_utf8_lf": "dfeee382ce187dc14298502b35acacc47a15802fcc3c3a4194f0d0f790bd0dfa"
+      },
+      {
+        "path": "internal/assembly/boot/instructions_projection_test.go",
+        "git_blob_sha": "1614dff548ae5defaa6d91119aea6146ea97314f",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/assembly/boot/instructions_projection_test.go",
+        "sha256_utf8_lf": "5df86ccab246ad8033723e51323fa90e2d6bd219dbd840e3ad8e0e34025615b8"
+      },
+      {
+        "path": "internal/assembly/boot/effect_cache_tail_test.go",
+        "git_blob_sha": "ee7a747750d7e65632d8c0774336f2c4a5194be4",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/assembly/boot/effect_cache_tail_test.go",
+        "sha256_utf8_lf": "eb6a2b9508760d05e02597ee73ae3481922cb820eee70c836409f33207762943"
+      },
+      {
+        "path": "internal/runtime/agent/sampling_request.go",
+        "git_blob_sha": "adb40f717e9c22372b1fb6f2266782d172186b98",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/sampling_request.go",
+        "sha256_utf8_lf": "fea64734b17c364f953ef78251836094e9db769a9d785a975e79a5ab5d0a7438"
+      },
+      {
+        "path": "internal/runtime/agent/run_loop.go",
+        "git_blob_sha": "d8867c5bc988f16a56b42f7cb03c362a90d9ec5e",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/run_loop.go",
+        "sha256_utf8_lf": "1897a45301f28f4598a33978cc03604bd6a8aca0a879de9932039d22eb82b8df"
+      },
+      {
+        "path": "internal/runtime/agent/cache_shape.go",
+        "git_blob_sha": "c57968dcb79becf4148b99eee886ea6c2b2d183f",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/cache_shape.go",
+        "sha256_utf8_lf": "b4f70fa8e9d33ef053da453e5ac433e96ae1f4ce421d22dde37dbc28319912b1"
+      },
+      {
+        "path": "internal/runtime/agent/cache_body_test.go",
+        "git_blob_sha": "9f2e4b3e64f834746824b02a56619bd3cf570a36",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/cache_body_test.go",
+        "sha256_utf8_lf": "1b6d08ad6b046baced0367784adcc276815cb4b712e9f93bf14620085f6ae914"
+      },
+      {
+        "path": "internal/runtime/agent/cachehit_e2e_test.go",
+        "git_blob_sha": "d56b034894badd787b51f31a8e1f670cfad97c9c",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/cachehit_e2e_test.go",
+        "sha256_utf8_lf": "faec97d44468fa619b302da62ce8ac9337fea79e983ccd8cdc923f2167ff3cbe"
+      },
+      {
+        "path": "internal/runtime/agent/projection.go",
+        "git_blob_sha": "49556244110580d426ba90b8bec59b77d34958ff",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/projection.go",
+        "sha256_utf8_lf": "06d72dd6c30b8190803c8c420ceb1875f178a0eb422bf9062d37c89d6b2a1b87"
+      },
+      {
+        "path": "internal/runtime/agent/context_manager.go",
+        "git_blob_sha": "abaf1f0b7148ffc5004ddfa1e43cdb811fc420f8",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/context_manager.go",
+        "sha256_utf8_lf": "ab12fa400bc54ae7b398144ff2f9e6dabd7012591bcdb892e10a139379e57ff5"
+      },
+      {
+        "path": "internal/runtime/agent/compact_cache_prefix.go",
+        "git_blob_sha": "766064a266a0c13a180e55d8333716e9fcafc3c6",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/compact_cache_prefix.go",
+        "sha256_utf8_lf": "c968601c9e18179435be03ef922f56cfe621f7676ca8f83c27ce73498b5b4264"
+      },
+      {
+        "path": "internal/runtime/agent/tool_image_aging.go",
+        "git_blob_sha": "f4a4383c994b7ca946944f29eccb607b3b2082f4",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/tool_image_aging.go",
+        "sha256_utf8_lf": "1caa0970f2fd7b7465d81cd5a6f036b9d60fa20ce3703d98544eaf4c5c22e587"
+      },
+      {
+        "path": "internal/state/memory/memory.go",
+        "git_blob_sha": "ca6b744f0352f5f3cc79e8dc04af0412795704d7",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/state/memory/memory.go",
+        "sha256_utf8_lf": "f9386e132696063bf8044964b0c99dbf47381d088a41505173a0934ee7830802"
+      },
+      {
+        "path": "internal/state/memory/memory_test.go",
+        "git_blob_sha": "064b8f205a2d3697afba8c904b30f179caa90d7e",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/state/memory/memory_test.go",
+        "sha256_utf8_lf": "fe25f5402f6f6b7da64577248f76aac3a1f40c2fea711a77239c0943006304bd"
+      },
+      {
+        "path": "internal/state/memory/auto_recall.go",
+        "git_blob_sha": "e001b57934eb566da7c86258debc5e2cae5b6313",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/state/memory/auto_recall.go",
+        "sha256_utf8_lf": "4a400042f854561cd6658ae48db03a8ffb6e345f727fb4e5f8285b241cfa3ace"
+      },
+      {
+        "path": "internal/contract/tool/tool.go",
+        "git_blob_sha": "11cf9ff61c965014c1577bf189a7e89d888b0823",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/contract/tool/tool.go",
+        "sha256_utf8_lf": "7a55875337a67fc918679ba7b8d0def877547aa0201bcf558b2f1bbb0b696460"
+      },
+      {
+        "path": "internal/contract/tool/registry_canon_test.go",
+        "git_blob_sha": "58d858033ee7a0a2cefb9f7bec16bed0a47cdc1e",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/contract/tool/registry_canon_test.go",
+        "sha256_utf8_lf": "30a5f9dc34228720a0f00f4aa51def59a7d70ce81f5a82e9ae980fa58cfe4dba"
+      },
+      {
+        "path": "internal/contract/provider/projection.go",
+        "git_blob_sha": "034771f08edf868684af13de935040b6cce360c1",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/contract/provider/projection.go",
+        "sha256_utf8_lf": "adbc0f924d8dedf7caf79b9e75218c8f4d1264d2e33bed7d73ae236e9f6011b0"
+      },
+      {
+        "path": "internal/model/openai/openai.go",
+        "git_blob_sha": "b56f714fa3512908abd27adb294bbae51e580675",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/model/openai/openai.go",
+        "sha256_utf8_lf": "4859c999a822e8372aaf6f35d3781b10e59ee650892f7b136759a8e2de58d26e"
+      },
+      {
+        "path": "internal/model/openai/reasoning_replay.go",
+        "git_blob_sha": "697647baf93f2bd871027913465de95d78d7440c",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/model/openai/reasoning_replay.go",
+        "sha256_utf8_lf": "67687b2a4d6b808d3a1cf07548ef917683b8cd560106300073ddfa9a239f6e89"
+      },
+      {
+        "path": "internal/model/openai/realcache_test.go",
+        "git_blob_sha": "c65456ecb84b4ab494d18151f8e233fbd8f3a3d3",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/model/openai/realcache_test.go",
+        "sha256_utf8_lf": "c9f18efdb654e828c4393d82ecf4a1322ac450a9bb478c37c924bb14d4e8da5f"
+      },
+      {
+        "path": "internal/state/sessionstore/session.go",
+        "git_blob_sha": "415c467ca45da43fe546195f4f43f0143726673a",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/state/sessionstore/session.go",
+        "sha256_utf8_lf": "f15ec831f554f5ef923c606187de4255c91e16a950c3a58bb0929a570131e7ad"
+      },
+      {
+        "path": "internal/session/control/turn_projection.go",
+        "git_blob_sha": "e5e75a3964e27205e45628630f0df6efd42bbce0",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/session/control/turn_projection.go",
+        "sha256_utf8_lf": "37c755b5d639a685942b84b9e7d1c0ffe969679733ffcb70b62e53a5b561ac8f"
+      },
+      {
+        "path": "internal/session/control/projection_debt.go",
+        "git_blob_sha": "c3ec2430de8827788713b3e7ddfd29474ecdea8b",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/session/control/projection_debt.go",
+        "sha256_utf8_lf": "7e49c5e3634ad53ec0847e77cd5ca278fc4d9c0244347dfb0746a5d24f5b55a3"
+      },
+      {
+        "path": "internal/session/control/memory.go",
+        "git_blob_sha": "0b557b88c9d039abb1a0945b28944d2af68f9c5e",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/session/control/memory.go",
+        "sha256_utf8_lf": "707513cdcb9abccc8af9420bc7cd344e23012fab9a32a471933c87aa1fc5d7d2"
+      },
+      {
+        "path": "internal/session/control/rules_projection.go",
+        "git_blob_sha": "e9c7b7066f3fd0bc158041586329e20a4eb354f7",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/session/control/rules_projection.go",
+        "sha256_utf8_lf": "d5166ea03d08eaf810df895ed7621c439e633c0ed03af494940ace79f9182e30"
+      },
+      {
+        "path": "internal/runtime/agent/compact_commit.go",
+        "git_blob_sha": "c09cb25fe6fcc77296c19424691968baeec37b80",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/compact_commit.go",
+        "sha256_utf8_lf": "dde34571454f1ba79cc6a4b7b19842ee2abf2b31c6eab78981d0255b90cf0e9b"
+      },
+      {
+        "path": "internal/model/openai/summary_request.go",
+        "git_blob_sha": "1af0c968f577c7162acd84ead20ef64feb9d8c2a",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/model/openai/summary_request.go",
+        "sha256_utf8_lf": "c972149d71953de1521ee207bc132a9733a007f27b513e772f7983cd13e5645a"
+      },
+      {
+        "path": "internal/runtime/agent/host_context.go",
+        "git_blob_sha": "2bedd9abaedf66bd86738c6f6ab878fae14597c5",
+        "url": "https://github.com/esengine/DeepSeek-Reasonix/blob/1da925d0f957662c1531d7afdec99756156dda5e/internal/runtime/agent/host_context.go",
+        "sha256_utf8_lf": "dc201ecf623eb4e5f0c2050a9a60c5193aaf5c2efc741b4faa55d2583ca0d00e"
+      }
+    ]
+  },
+  "apix": {
+    "commit": "fe8cf7879d87c071d2168ba93624812ea0746746",
+    "files": [
+      {
+        "path": "src/assistant/assistant-loop.ts",
+        "sha256_raw": "2168fe25c8b1718a4375496b64126e8357fb5ba033ca0069805de93b920adbe2"
+      },
+      {
+        "path": "src/assistant/assistant-context.ts",
+        "sha256_raw": "5567f86d6a865679ef97f9da885f3c46c521463e7466e1dee8af84455186327d"
+      },
+      {
+        "path": "src/assistant/context-optimizer.ts",
+        "sha256_raw": "3feb60fd4b126a285fe8f32e6bdbf886057b3f4b0e4003cc8e8322bd6eb9e812"
+      },
+      {
+        "path": "src/assistant/prompt-descriptor.ts",
+        "sha256_raw": "bd23e4484284305629a3b540869efd15fc47349ff793eb3c3960447ae5dd894b"
+      },
+      {
+        "path": "src/models/model-request.ts",
+        "sha256_raw": "06fa3a88b27a45a30e20f7d45100c7f95a25a51219abbeaed2f1a75129c87245"
+      },
+      {
+        "path": "src/models/model-backend.ts",
+        "sha256_raw": "f4f85e272047f9a67f8fe7348c4fa98c4b2bfff7d59c0b24a8500eeb896b9488"
+      },
+      {
+        "path": "src/models/prompt-diagnostics.ts",
+        "sha256_raw": "3987a254bc2269bb9b7e30a562ba08a8f750e45d6ed2e92abf386eb217ae838c"
+      },
+      {
+        "path": "src/models/model-usage.ts",
+        "sha256_raw": "739eaf0784216ce07975b97725596bca77fecd15d3e4d8db4f98245cfa8aee2f"
+      },
+      {
+        "path": "src/assistant/token-usage.ts",
+        "sha256_raw": "0e1cebca83f2c18e29048ea0043b933701258f0d9a079790355f9b852ce4bf4e"
+      },
+      {
+        "path": "src/assistant/assistant-inference.ts",
+        "sha256_raw": "4b6ce5a9c3383c70ca95b645fffce0248c9e8d1ad1a3279f35e8bbf760cb13a9"
+      }
+    ]
+  },
+  "verification": {
+    "remote_blob_integrity": "PASS: 30 fetched files match GitHub Git blob IDs",
+    "runtime_tests": "NOT_RUN",
+    "paid_model_requests": 0
+  }
+}
