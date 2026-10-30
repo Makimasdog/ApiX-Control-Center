@@ -39,7 +39,7 @@ import {conversationModel,saveConversationModel} from '../../control-plane.mjs';
 // Agent 供应商管理
 import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider,adoptAgentProvider} from '../../control-plane.mjs';
 // 员工运行时检测
-import {inspectEmployeeRuntime} from '../../control-plane.mjs';
+import {runRuntime,runRuntimeEvents,saveEmployeeRuntime,sendRunMessage,runInteractions,answerRunInteraction,inspectEmployeeRuntime} from '../../control-plane.mjs';
 // MCP 服务器管理
 import {mcpServers,saveMcpServer,discoverMcpTools} from '../../control-plane.mjs';
 // 助手输出与日志
@@ -184,6 +184,12 @@ export const apiRoutes=[
   get(/^\/api\/tasks\/([^/]+)\/delivery$/,async({m})=>inspectTaskDelivery(m[1])),
   // 员工与排程查询
   get(/^\/api\/projects\/([^/]+)\/execution$/,({m})=>executionSettings(m[1])),
+  get(/^\/api\/runs\/([^/]+)\/runtime$/,({m})=>runRuntime(m[1])),
+  get(/^\/api\/runs\/([^/]+)\/runtime-events$/,({m,query})=>runRuntimeEvents(m[1],Object.fromEntries(query))),
+  get(/^\/api\/runs\/([^/]+)\/interactions$/,({m})=>runInteractions(m[1])),
+  post(/^\/api\/employees\/([^/]+)\/runtime-settings$/,({m,body})=>saveEmployeeRuntime(m[1],body),configLimit),
+  post(/^\/api\/runs\/([^/]+)\/messages$/,({m,body})=>sendRunMessage(m[1],body),messageLimit),
+  post(/^\/api\/runs\/([^/]+)\/interactions\/([^/]+)\/answer$/,({m,body})=>answerRunInteraction(m[1],m[2],body),messageLimit),
   get(/^\/api\/employees\/([^/]+)\/details$/,({m})=>employeeDetails(m[1])),
   get(/^\/api\/employees\/([^/]+)\/capabilities$/,({m})=>employeeCapability(m[1])),
   get(/^\/api\/projects\/([^/]+)\/scheduling$/,({m})=>schedulingView(m[1])),

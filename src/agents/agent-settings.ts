@@ -12,6 +12,7 @@
  */
 import {spawn,execFile} from 'node:child_process';
 import type {Command} from './runtime-adapters.js';
+import {initializeCodex} from './codex-rpc.js';
 
 /**
  * executionArgs - 根据运行时、配置文件和任务难度，构建传给 AI CLI 的启动参数
@@ -72,8 +73,7 @@ export async function inspectCodex(command:Command,env:NodeJS.ProcessEnv,timeout
   const request=(method:string,params?:unknown)=>new Promise<any>((resolve,reject)=>{if(closed){reject(new Error('Codex 查询连接已关闭'));return;}const next=++id;pending.set(next,{resolve,reject});child.stdin.write(JSON.stringify({id:next,method,...(params===undefined?{}:{params})})+'\n');});
   try{
     // JSON-RPC 握手：先 initialize 再发 initialized 通知，然后并行查询额度和模型列表
-    await request('initialize',{clientInfo:{name:'apix_control_center',title:'ApiX',version:'0.1.0'},capabilities:{}});
-    child.stdin.write('{"method":"initialized"}\n');
+    await initializeCodex(request,method=>child.stdin.write(JSON.stringify({method})+'\n'));
     // Promise.allSettled 保证即使其中一个查询失败，另一个的结果仍然可用
     const [limits,catalog]=await Promise.allSettled([request('account/rateLimits/read'),request('model/list',{limit:100})]);
     const quota=limits.status==='fulfilled'?normalizeQuota(limits.value):{state:'unknown',windows:[],message:limits.reason.message};

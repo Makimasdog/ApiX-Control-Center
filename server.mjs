@@ -25,7 +25,7 @@ import {createOwnerAccess,ownerLoginHtml} from './src/infrastructure/owner-acces
 import { createServer } from "node:http";
 import {staticFilePath} from './src/infrastructure/static-files.mjs';
 import {apiRoutes,requiredProject} from './src/infrastructure/api-routes.mjs';
-import { authenticateAgent, agentTeam, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, closeMcpConnections} from './control-plane.mjs';
+import { authenticateAgent, agentTeam, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, closeAgentRuntimes,closeMcpConnections} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -206,8 +206,8 @@ createServer(async (request,response)=>{
 });
 // ===== 优雅退出 =====
 // SIGINT（Ctrl+C）或 SIGTERM 信号触发：
-// 1. 先通知外部 MCP 服务断开连接（closeMcpConnections）
-// 2. 4 秒兜底定时器防止 MCP 关闭卡死（unref 不阻塞进程退出）
+// 1. 同时关闭外部 MCP 连接与新后端运行，保留旧 CLI 的恢复语义
+// 2. 10 秒兜底定时器避免关闭无限等待；未确认的运行在重启后仍按 unknown 处理（unref 不阻塞进程退出）
 // shuttingDown 标志防止信号重复触发导致多次退出
 let shuttingDown=false;
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),4000).unref();void closeMcpConnections().finally(()=>process.exit(0));});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),10000).unref();void Promise.allSettled([closeMcpConnections(),closeAgentRuntimes()]).finally(()=>process.exit(0));});

@@ -37,6 +37,7 @@ import {createKnowledgeBase} from './dist/src/assistant/knowledge-base.js';
 import {createToolGovernance} from './dist/src/assistant/tool-governance.js';
 import {createToolProgress} from './dist/src/assistant/tool-progress.js';
 import {classifyFault} from './dist/src/recovery/fault-policy.js';
+import {createRuntimeController} from './dist/src/agents/runtime-controller.js';
 import {createAgentHealth} from './src/coordination/agent-health.mjs';
 import {createProjectMemory,sensitiveMemory} from './dist/src/assistant/project-memory.js';
 import {createNpmValidation} from './dist/src/validation/npm-validation.js';
@@ -437,6 +438,7 @@ const employeeInsights = createEmployeeInsights(store);
 const memory = createEventMemory(store);
 const permissions = createPermissions(store, memory);
 const runtimeAdapters = createRuntimeAdapters(store, findExecutable);
+const runtimeController=createRuntimeController(store);
 const agentMailbox = createAgentMailbox(store);
 const codeHandoffs = createCodeHandoffs({...store,dataDir,recordTask:(...args)=>coordinator.recordTask(...args)});
 const executionControl=createExecutionControl({...store,recordEvent:(projectId,kind,payload)=>memory.append(projectId,projectId,kind,payload)});
@@ -452,8 +454,8 @@ const autonomy=createAutonomy({...store,fault:taskFault,permissions,scheduling,
   accept:(id,fingerprint)=>acceptTask(id,true,fingerprint,'apix'),
   review:(...args)=>coordinator.qualityReview(...args),
   retry:retryAutomatically,
-  stop:id=>stopRun(id),sendMessage:input=>sendMessage(input),record:(...args)=>coordinator.recordTask(...args),
-  reassignPending:(taskId,employeeId)=>{coordinator.reassignPending(taskId,employeeId);pumpTasks();},
+  waiting:id=>runtimeController.waiting(id),stop:id=>stopRun(id),sendMessage:input=>sendMessage(input),record:(...args)=>coordinator.recordTask(...args),
+  reassignPending:(taskId,employeeId)=>{coordinator.reassignPending(taskId,employeeId);db.prepare('DELETE FROM agent_runtime_continuations WHERE task_id=?').run(taskId);pumpTasks();},
   activatePending:async planId=>{for(const approval of rows("SELECT a.id FROM approvals a JOIN tasks t ON t.id=a.task_id WHERE t.plan_id=? AND t.status='awaiting_approval' AND a.status='pending'",planId))(await resolveApproval(approval.id,true));pumpTasks();},
   delivered:(sessionId,planId)=>coordinator.delivered(sessionId,planId)
 });
@@ -470,12 +472,12 @@ async function retryAutomatically(task,employeeId,prompt){
 function taskFault(task){if(['completed','needs_revision'].includes(task.status))return classifyFault(new Error('验收校验失败'),{kind:'agent'});const latest=row('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id);const saved=row("SELECT payload FROM apix_ledger WHERE project_id=? AND aggregate_id=? AND kind='agent.failure' ORDER BY sequence DESC LIMIT 1",task.project_id,task.id);if(saved){const event=JSON.parse(saved.payload);if(event.runId===latest?.id)return event.fault;}return classifyFault(new Error(task.result??''),{kind:'agent'});}
 const agentHealth=createAgentHealth({...store,probeMs:Number(process.env.APIX_AGENT_PROBE_MS??60000),silenceMs:Number(process.env.APIX_AGENT_SILENCE_MS??300000),maxRunMs:Number(process.env.APIX_AGENT_MAX_RUN_MS??1800000),owned:id=>running.has(id),uncertain:id=>setRun(id,'unknown','agent-health'),
   record:(...args)=>coordinator.recordTask(...args),
-  probe:(taskId,runId,miss)=>{const task=row('SELECT * FROM tasks WHERE id=?',taskId);if(!task?.employee_id)throw new Error('员工身份不可用');const sent=sendMessage({projectId:task.project_id,taskId,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`agent-health:${runId}:${miss}`,timeoutMs:60000,payload:{kind:'progress_request',source:'apix',content:'请报告当前进度、正在执行的操作及阻塞；宿主检测到长时间无输出。'}});if(sent.status==='rejected')throw new Error('进度探测消息未能送达');},
+  waiting:id=>runtimeController.waiting(id),probe:(taskId,runId,miss)=>{const task=row('SELECT * FROM tasks WHERE id=?',taskId);if(!task?.employee_id)throw new Error('员工身份不可用');const sent=sendMessage({projectId:task.project_id,taskId,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`agent-health:${runId}:${miss}`,timeoutMs:60000,payload:{kind:'progress_request',source:'apix',content:'请报告当前进度、正在执行的操作及阻塞；宿主检测到长时间无输出。'}});if(sent.status==='rejected')throw new Error('进度探测消息未能送达');},
   stop:id=>{const active=running.get(id);if(active){active.healthStop=true;stopRun(id,'health');}}
 });
 const workflowRecovery=createWorkflowRecovery({...store,fault:taskFault,permissions,scheduling,workflow:projectId=>coordinator.workflowSettings(projectId),retry:retryAutomatically,record:(...args)=>coordinator.recordTask(...args)});
 
-const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, notify: change => changeBus.emit(change), recordEvent(projectId, aggregateId, kind, payload, actor) {
+const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listMailboxes, sendMessage:mailboxSendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact } = createMailboxService({ db, row, rows, now, notify: change => changeBus.emit(change), recordEvent(projectId, aggregateId, kind, payload, actor) {
   memory.append(projectId, aggregateId, kind, payload, actor);
   const taskId = payload.taskId ?? row('SELECT task_id FROM agent_messages WHERE id=?', aggregateId)?.task_id;
   if (taskId) coordinator.recordTask(taskId, kind, { messageId: aggregateId, actor, ...payload });
@@ -484,6 +486,12 @@ const { ensureMailbox, appendMessageEvent, publicMessage, registerMailbox, listM
     if(observed)agentHealth.observe(observed.id);
   }
 } });
+
+function sendMessage(input){
+  const message=mailboxSendMessage(input);
+  if(input.payload?.kind==='guidance'&&!input.payload.nativeDelivery){const run=row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.id=? AND r.status='running' ORDER BY r.rowid DESC LIMIT 1",input.taskId);if(run&&runtimeController.details(run.id).backend!=='cli')void runtimeController.deliverExisting(run.id,message.id,String(input.payload.content??'')).catch(error=>event(run.id,'agent-runtime-v1','message.delivery',{messageId:message.id,state:'unknown',code:error.code??'DELIVERY_UNKNOWN'}));}
+  return message;
+}
 
 // ===== 事件记录与工作区管理 =====
 /**
@@ -636,8 +644,9 @@ async function launch(task) {
   const command = commandFor(task.runtime);
   if (!project || !command) throw new Error("Agent 不可用或项目不存在");
   const providerConfig=agentProviders.prepare(task.employee_id,task.runtime,process.env,managerApiKeys());
-  const approvedProfile=task.employee_id?JSON.stringify(scheduling.profile(task.employee_id)):null;
+  const approvedProfile=task.employee_id?JSON.stringify({profile:scheduling.profile(task.employee_id),runtime:runtimeController.settings(task.employee_id)}):null;
   const environment=providerConfig.env;
+  if(task.employee_id&&runtimeController.settings(task.employee_id).backend==='claude-agent-sdk'){if(providerConfig.provider?.apiType!=='anthropic-messages')throw new ToolError('RUNTIME_INCOMPATIBLE','Claude SDK 需要先绑定显式 Anthropic Messages 供应商，不接管本机订阅登录','inspect_result',{},409);environment.CLAUDE_CONFIG_DIR=join(dataDir,'native-runtimes','claude',task.employee_id);mkdirSync(environment.CLAUDE_CONFIG_DIR,{recursive:true});}
   environment.PYTHONUTF8='1';environment.PYTHONIOENCODING='utf-8';
   const repository = task.repository_id ? row("SELECT * FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   const sourcePath = repository?.path ?? project.path;
@@ -665,7 +674,7 @@ async function launch(task) {
     db.prepare("UPDATE tasks SET status='running',queue_reason=NULL,recovery_fingerprint=NULL,updated_at=? WHERE id=?").run(now(), task.id);
     db.exec('RELEASE start_run');
   }catch(error){db.exec('ROLLBACK TO start_run');db.exec('RELEASE start_run');throw error;}
-  let child;
+  let handle;
   let cwd;
   const preparing={cancelled:false};preparingRuns.set(runId,preparing);
   const assertStarting=()=>{
@@ -675,7 +684,7 @@ async function launch(task) {
     const currentProject=row('SELECT path FROM projects WHERE id=?',task.project_id),currentRepository=task.repository_id?row('SELECT path FROM project_repositories WHERE id=? AND project_id=?',task.repository_id,task.project_id):null;
     if((currentRepository?.path??currentProject?.path)!==sourcePath)throw new Error('任务准备期间项目路径已变化');
     coordinator.assertExecution(current);
-    if(task.employee_id&&JSON.stringify(scheduling.profile(task.employee_id))!==approvedProfile)throw new Error('准备期间员工能力配置已变化');
+    if(task.employee_id&&JSON.stringify({profile:scheduling.profile(task.employee_id),runtime:runtimeController.settings(task.employee_id)})!==approvedProfile)throw new Error('准备期间员工能力配置已变化');
     const provider=agentProviders.prepare(task.employee_id,task.runtime,process.env,managerApiKeys());
     if(JSON.stringify(provider.provider)!==JSON.stringify(providerConfig.provider)||JSON.stringify(provider.args)!==JSON.stringify(providerConfig.args))throw new Error('准备期间员工供应商配置已变化');
     if(rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',task.id).some(t=>!['accepted','completed'].includes(t.status)))throw new Error('任务准备期间前置交付已变化');
@@ -695,10 +704,9 @@ async function launch(task) {
   try { if(task.employee_id)args.push(...executionArgs(task.runtime,scheduling.profile(task.employee_id),scheduling.taskSpec(task.id).difficulty,providerConfig.provider?()=>[]:runtimeAdapters.modelArgs));args.push(...providerConfig.args); }
   catch(error){setRun(runId,'failed','configuration');throw error;}
   const token = task.employee_id ? agentMailbox.issue(runId, task.project_id, task.employee_id) : '';
-  try { child = spawn(command.executable, [...command.prefix, ...args], { cwd, stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
-    env: { ...(task.runtime==='pi'?piShellEnvironment(environment):environment), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } }); }
+  try { handle = runtimeController.open({command,args,cwd,runtime:task.runtime,format:runtimeAdapters.format(task.runtime),prompt,runId,fullAccess,model:providerConfig.provider?.model??(task.employee_id?scheduling.profile(task.employee_id).model:''),configArgs:args.flatMap((value,index)=>value==='-c'?['-c',args[index+1]]:[]),env: { ...(task.runtime==='pi'?piShellEnvironment(environment):environment), APIX_AGENT_TOKEN: token, APIX_PROJECT_ID: task.project_id, APIX_AGENT_ID: task.employee_id ?? '', APIX_TASK_ID:task.id, APIX_RUN_ID:runId, APIX_MAILBOX_URL: `http://127.0.0.1:${process.env.PORT ?? 4173}/api/agent` } },task.employee_id??null); }
   catch (error) { setRun(runId, "failed", "spawn"); event(runId, "apix", "spawn_error", { message: error.message }); throw error; }
-  running.set(runId, { child, runtime: task.runtime, output: "", stderr: "", stopped: false, settled: false });
+  running.set(runId, { handle, runtime: task.runtime, output: "", stderr: "", stopped: false, settled: false });
   if (task.employee_id) {
     try {
       const dispatch = sendMessage({ projectId: task.project_id, taskId: task.id, conversationId: task.conversation_id, from: "apix-director", to: task.employee_id, type: "request", timeoutMs: 86400000, idempotencyKey: `task-dispatch:${runId}`, payload: { taskId: task.id, instructionExcerpt: task.prompt.slice(0, 4000), approval: "approved" } });
@@ -706,46 +714,42 @@ async function launch(task) {
       running.get(runId).dispatchMessageId = dispatch.id;
     } catch (error) { event(runId, "apix", "message_dispatch_failed", { error: error.message }); }
   }
-  db.prepare("UPDATE runs SET status='running',status_source='process',pid=? WHERE id=?").run(child.pid ?? null, runId);
-  event(runId, "apix", "run_started", { pid: child.pid ?? null, runtime: task.runtime, cwd, gitRepoCheckSkipped: skipGitRepoCheck, executionArgs:args });
+  db.prepare("UPDATE runs SET status='running',status_source='process',pid=? WHERE id=?").run(handle.pid, runId);
+  event(runId, "apix", "run_started", { pid: handle.pid, runtime: task.runtime, cwd, gitRepoCheckSkipped: skipGitRepoCheck, executionArgs:args });
   if(providerConfig.provider)event(runId,'apix','provider.selected',{id:providerConfig.provider.id,version:providerConfig.provider.version,name:providerConfig.provider.name,baseUrl:providerConfig.provider.baseUrl,model:providerConfig.provider.model,apiType:providerConfig.provider.apiType,authHeader:providerConfig.provider.authHeader});
   appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: task.id, runId, status: "running", runtime: task.runtime });
-  let buffer = "";
-  child.stdout.setEncoding("utf8");
   agentHealth.started(runId,task.id);
-  child.stderr.setEncoding("utf8");
-  child.stdout.on("data", (chunk) => {
-    agentHealth.observe(runId);
-    if (runtimeAdapters.format(task.runtime) === "plain") { running.get(runId).output += chunk; return; }
-    buffer += chunk;
-    let index;
-    // One durable commit per received chunk keeps event bursts from issuing
-    // hundreds of synchronous disk flushes while the HTTP loop is blocked.
-    db.exec('SAVEPOINT runtime_chunk');
-    try {
-      while ((index = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, index).replace(/\r$/, ""); buffer = buffer.slice(index + 1);
-        if (!line.trim()) continue;
-        try { handleNative(runId, task.runtime, JSON.parse(line)); }
-        catch { event(runId, task.runtime, "unparsed_stdout", { text: line.slice(0, 3000) }); }
-      }
-    } finally { db.exec('RELEASE runtime_chunk'); }
+  void consumeRuntime(runId,task,handle).catch(error=>{
+    const active=running.get(runId);if(!active)return;
+    active.healthStop=true;event(runId,'apix','runtime_consumer_error',{message:error.message});
+    handle.interrupt();runtimeController.finish(runId,'unknown');agentHealth.finished(runId);setRun(runId,'unknown','runtime-consumer');running.delete(runId);
   });
-  child.stderr.on("data", (chunk) => {
-    agentHealth.observe(runId);
-    const value = chunk;
-    const active = running.get(runId);
-    if (active) active.stderr = (active.stderr + value).slice(-4000);
-    event(runId, task.runtime, "stderr", { text: value.slice(0, 4000) });
-  });
-  child.stdin.on("error", (error) => event(runId, "process", "stdin_error", { message: error.message }));
-  child.on("error", (error) => { event(runId, "process", "error", { message: error.message }); });
-  child.on("close", (code, signal) => {
+  if (truncated) event(runId, "apix", "context.truncated", { truncatedCount: truncated, budgetChars: 30000 });
+  return runId;
+}
+
+async function consumeRuntime(runId,task,handle){
+  for await(const item of handle.events){
+    consume(item);
+  }
+  function consume(item){
+    const active=running.get(runId);if(!active)return;
+    if(item.kind==='batch'){db.exec('SAVEPOINT runtime_chunk');try{for(const child of item.items)consume(child);}finally{db.exec('RELEASE runtime_chunk');}return;}
+    if(['native','output','stderr'].includes(item.kind))agentHealth.observe(runId);
+    if(item.kind==='native')handleNative(runId,task.runtime,item.item);
+    else if(item.kind==='output')active.output+=runtimeController.details(runId).backend==='cli'?item.text:runtimeController.sanitize(runId,item.text);
+    else if(item.kind==='stderr'){const text=runtimeController.details(runId).backend==='cli'?item.text:runtimeController.sanitize(runId,item.text);active.stderr=(active.stderr+text).slice(-4000);event(runId,task.runtime,'stderr',{text:text.slice(0,4000)});}
+    else if(item.kind==='error'||item.kind==='stdin_error')event(runId,'process',item.kind,{message:item.message});
+    else if(item.kind==='unparsed'||item.kind==='trailing')event(runId,task.runtime,item.kind==='unparsed'?'unparsed_stdout':'trailing_stdout',{text:item.text});
+    else if(item.kind==='runtime'){if(item.name==='runtime.error'){active.failed=true;const message=String(runtimeController.sanitize(runId,item.payload.message??''));active.failure=classifyFault(new Error(message),{kind:'agent',serviceCode:String(item.payload.code??'')});active.quotaBlocked=quotaFailure(message);}runtimeController.observe(runId,item.name,item.payload);}
+    else if(item.kind==='closed')finishRuntime(runId,task,item.code,item.signal,item.evidence,item.outcome);
+  }
+}
+function finishRuntime(runId,task,code,signal,evidence,outcome){
     const active = running.get(runId);
     if (!active) return;
-    if (buffer.trim()) { try { handleNative(runId,task.runtime,JSON.parse(buffer)); } catch { event(runId, task.runtime, "trailing_stdout", { text: buffer.slice(0, 3000) }); } }
-    const confirmedStop = active.aborted || (active.stopped && (signal !== null || code !== 0));
-    const status = active.healthStop ? "unknown" : confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed";
+    const confirmedStop = outcome==='cancelled'||active.aborted || (active.stopped && (signal !== null || code !== 0));
+    const status = evidence==='unknown'||active.healthStop ? "unknown" : outcome??(confirmedStop ? "cancelled" : !active.failed && code === 0 && (task.runtime !== "pi" || active.settled && active.lastStopReason !== "error") ? "completed" : "failed");
     if(status==='failed' && (active.quotaBlocked || quotaFailure(active.stderr))){executionControl.pauseRuntime(task.project_id,task.runtime,'运行时报告额度或速率限制，请检查账户后明确恢复或重新分配',runId);if(task.employee_id)scheduling.pauseAccount(task.employee_id,runId);}
     agentHealth.finished(runId);
     const fault=status==='failed'?(active.failure??classifyFault(new Error(active.stderr))):active.healthStop?classifyFault({code:'AGENT_UNRESPONSIVE'}):status==='cancelled'?classifyFault({code:'CANCELLED',message:'cancelled'}):null;
@@ -758,16 +762,12 @@ async function launch(task) {
       }
       completeMessage(active.dispatchMessageId, { agentId: task.employee_id });
     }
-    setRun(runId, status, "process-exit", code);
+    runtimeController.finish(runId,status,evidence);
+    setRun(runId, status, outcome?"native-runtime":"process-exit", code);
     if(active.healthStop)db.prepare("UPDATE tasks SET result=result||? WHERE id=?").run('\n员工长时间无响应，已请求停止；副作用待核对，未自动重放。',task.id);
     if (status === "failed" && !active.output.trim() && active.stderr.trim()) db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(active.stderr.trim(), now(), task.id);
-    event(runId, "process", "run_exited", { code, signal, status, stopRequested: active.stopped, stopConfirmed: confirmedStop });
+    event(runId, "process", "run_exited", { code, signal, status, ...(outcome?{nativeOutcome:outcome}:{}), stopRequested: active.stopped, stopConfirmed: confirmedStop });
     running.delete(runId);
-  });
-  if (truncated) event(runId, "apix", "context.truncated", { truncatedCount: truncated, budgetChars: 30000 });
-  if (task.runtime === "pi") child.stdin.write(JSON.stringify({ id: runId, type: "prompt", message: prompt }) + "\n");
-  else child.stdin.end(prompt);
-  return runId;
 }
 
 /**
@@ -795,11 +795,11 @@ function handleNative(runId, runtime, item) {
     if(quotaFailure(String(error.code ?? error.type ?? error.status ?? '')) || quotaFailure(typeof error==='string'?error:error.message ?? item.message?.errorMessage ?? item.result ?? textFromMessage(item.message)))active.quotaBlocked=true;
   }
   if (runtime === "pi") {
-    if (type === "response" && item.command === "prompt" && !item.success) { event(runId, "pi-rpc", "prompt_rejected", { error: item.error }); active.child.stdin.end(); }
+    if (type === "response" && item.command === "prompt" && !item.success) { event(runId, "pi-rpc", "prompt_rejected", { error: item.error }); active.handle.closeInput(); }
     if (type === "message_end" && item.message?.role === "assistant") { const value = textFromMessage(item.message); if (value) active.output = value; active.lastStopReason = item.message.stopReason; }
     if (type === "tool_execution_start") event(runId, "pi-rpc", type, { toolName: item.toolName, args: item.args });
     else if (type === "tool_execution_end") event(runId, "pi-rpc", type, { toolName: item.toolName, isError: item.isError });
-    else if (type === "agent_settled" || type === "agent_end") { active.settled = true; active.aborted = item.aborted === true; event(runId, "pi-rpc", type, { aborted: item.aborted }); active.child.stdin.end(); }
+    else if (type === "agent_settled" || type === "agent_end") { active.settled = true; active.aborted = item.aborted === true; event(runId, "pi-rpc", type, { aborted: item.aborted }); active.handle.closeInput(); }
     else if (["agent_start", "message_end", "response"].includes(type)) event(runId, "pi-rpc", type, type === "message_end" ? { role: item.message?.role, text: textFromMessage(item.message).slice(0, 5000) } : item);
   } else if (runtime === "claude") {
     if (type === 'assistant') active.output = textFromMessage(item.message) || active.output;
@@ -851,7 +851,7 @@ export function snapshot(ifNoneMatch) {
     directorProposals: rows("SELECT * FROM director_proposals ORDER BY created_at DESC").map((item) => ({ ...item, steps: JSON.parse(item.steps_json) })),
     tasks: rows("SELECT t.*, p.name AS project_name, e.name AS employee_name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN employees e ON e.id=t.employee_id ORDER BY t.created_at DESC"),
     approvals: rows("SELECT * FROM approvals ORDER BY created_at DESC"),
-    runs: rows("SELECT * FROM runs ORDER BY started_at DESC").map((item) => ({ ...item, status_confidence: item.status_source === "process-exit" ? "confirmed" : item.status_source === "recovery" ? "unavailable" : "observed" })),
+    runs: rows("SELECT r.*,b.phase AS runtime_phase,(SELECT COUNT(*) FROM agent_runtime_interactions i WHERE i.run_id=r.id AND i.state='pending') AS pending_interactions FROM runs r LEFT JOIN agent_run_bindings b ON b.run_id=r.id ORDER BY r.started_at DESC").map((item) => ({ ...item, status_confidence: ["process-exit","native-runtime"].includes(item.status_source) ? "confirmed" : item.status_source === "recovery" ? "unavailable" : "observed" })),
     events: rows("SELECT * FROM events ORDER BY id DESC LIMIT 300").map((item) => ({ ...item, payload: JSON.parse(item.payload) })),
     artifacts: rows("SELECT * FROM artifacts ORDER BY created_at DESC"),
     dependencies: rows("SELECT * FROM task_dependencies"),
@@ -885,7 +885,9 @@ export function taskDetails(id) {
   const runs = rows("SELECT * FROM runs WHERE task_id=? ORDER BY started_at DESC", id);
   return {
     task,
-    runs,
+    coordinationSessionId:task.plan_id?row('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',task.plan_id)?.session_id??null:null,
+    verification:task.plan_id?(autonomy.details(task.plan_id)?.checks??[]).filter(check=>check.task_id===id):[],
+    runs:runs.map(run=>({...run,runtimeInfo:runtimeController.details(run.id)})),
     approvals: rows("SELECT * FROM approvals WHERE task_id=? ORDER BY created_at", id),
     events: rows("SELECT ev.* FROM events ev JOIN runs r ON r.id=ev.run_id WHERE r.task_id=? ORDER BY ev.id", id).map((item) => ({ ...item, payload: JSON.parse(item.payload) })),
     artifacts: rows("SELECT a.* FROM artifacts a JOIN runs r ON r.id=a.run_id WHERE r.task_id=? ORDER BY a.created_at", id),
@@ -1138,9 +1140,7 @@ export function stopRun(id,source='user') {
   db.prepare("UPDATE runs SET status='stopping',status_source='apix-request',stop_requested_at=? WHERE id=?").run(now(), id);
   db.prepare("UPDATE tasks SET status='stopping',updated_at=? WHERE id=(SELECT task_id FROM runs WHERE id=?)").run(now(), id);
   event(id, "apix", "stop_requested");
-  if (active.runtime === "pi" && active.child.stdin.writable) active.child.stdin.write(JSON.stringify({ id: randomUUID(), type: "abort" }) + "\n");
-  else active.child.kill();
-  setTimeout(() => { if (running.has(id)) active.child.kill(); }, 3000).unref();
+  runtimeController.stopped(id);
 }
 export async function acceptTask(id, accepted, fingerprint, source='user') {
   const task = row("SELECT * FROM tasks WHERE id=?", id);
@@ -1599,7 +1599,7 @@ export function closeStore() { db.close(); }
 // coordinator 是核心协调器，负责需求分析、计划生成、任务调度、质量审查等
 // [→ 见 dist/src/coordination/coordinator.js]
 let notifyAssistant=()=>{};
-const coordinator = createCoordinator({ ...store,projectContext:(projectId,query,id)=>projectMemory.context(projectId,query,id,'coordinator'),saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
+const coordinator = createCoordinator({ ...store,nativeDelivery:(id,runId)=>row('SELECT state FROM agent_runtime_deliveries WHERE message_id=? AND run_id=?',id,runId)?.state,projectContext:(projectId,query,id)=>projectMemory.context(projectId,query,id,'coordinator'),saveModelKey:key=>credentials.save(key),onCreated:id=>conversationModels.initialize('coordination',id), memory, permissions, scheduling, autonomy,onTaskEvent:(id,kind)=>{if(!kind.startsWith('runtime.')||['runtime.run_exited','runtime.run_started','runtime.error'].includes(kind))notifyAssistant(id);}, agent: createApiXAgent({ infer:async(prompt,onDelta,context)=>{
   try{return await inferManager(prompt,onDelta,context);}
   catch(error){if(context?.purpose==='connection_test')throw new Error(quotaFailure(error.message)?'模型额度不足或触发速率限制，请核对后恢复账户':'连接测试失败，请检查模型 API 地址、模型 ID 与认证配置（90 秒后请求终止调用）');throw error;}
 } }), resolveApproval, stopRun, sendMessage, capabilities:runtimes,reviewTask:(id,accepted,fingerprint)=>acceptTask(id,accepted,fingerprint),
@@ -1608,9 +1608,19 @@ const coordinator = createCoordinator({ ...store,projectContext:(projectId,query
   employees: () => rows("SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL").filter(e => runtimes().some(r => r.id === e.runtime && r.available && r.managed)) });
 const supervisionTickMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_TICK_MS ?? 15000)) : 15000;
 const supervisionAfterMs = Number.isFinite(Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) ? Math.max(100, Number(process.env.APIX_SUPERVISION_AFTER_MS ?? 60000)) : 60000;
-setInterval(() => {try{agentHealth.tick();coordinator.superviseActiveRuns(supervisionAfterMs);}catch{process.stderr.write('Agent 健康检查失败，请核对任务状态。\n');}}, supervisionTickMs).unref();
+setInterval(() => {try{agentHealth.tick();runtimeController.tick();coordinator.superviseActiveRuns(supervisionAfterMs,id=>runtimeController.waiting(id));}catch{process.stderr.write('Agent 健康检查失败，请核对任务状态。\n');}}, supervisionTickMs).unref();
 setInterval(() => {void autonomy.tick().catch(()=>process.stderr.write('自主交付监督发生错误，请检查当前目标状态。\n'));},supervisionTickMs).unref();
 setInterval(() => {void workflowRecovery.tick().catch(()=>process.stderr.write('自动协作恢复发生错误，请检查任务记录。\n'));},supervisionTickMs).unref();
+function runtimeExecutor(runtime){const command=commandFor(runtime);if(!command)throw new Error('运行时不可用');return [command.executable,...command.prefix].filter(path=>existsSync(path)).map(path=>{const stat=statSync(path);return {path,size:stat.size,mtime:stat.mtimeMs};});}
+runtimeController.setHooks({
+  snapshot:id=>{const run=row('SELECT * FROM runs WHERE id=?',id),task=row('SELECT * FROM tasks WHERE id=?',run.task_id);return {employee:task.employee_id,runtime:task.runtime,prompt:task.prompt,plan:task.plan_id,profile:task.employee_id?scheduling.profile(task.employee_id):null,backend:task.employee_id?runtimeController.settings(task.employee_id):null,permission:permissions.get(task.project_id),employeePermission:permissions.get(task.project_id,task.employee_id),decision:permissions.decision(task.project_id,task.employee_id),provider:agentProviders.prepare(task.employee_id,task.runtime,process.env,managerApiKeys()).provider,executor:runtimeExecutor(task.runtime),sdkVersion:'0.3.314'};},
+  assert:id=>{const run=row('SELECT * FROM runs WHERE id=?',id),task=run?row('SELECT * FROM tasks WHERE id=?',run.task_id):null;if(!task||run.status!=='running'||task.status!=='running')throw new ToolError('RUN_NOT_ACTIVE','运行不再接收输入','inspect_result',{},409);coordinator.assertExecution(task);},
+  message:(id,input)=>{const run=row('SELECT * FROM runs WHERE id=?',id),task=row('SELECT * FROM tasks WHERE id=?',run.task_id);return sendMessage({projectId:task.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:'runtime:'+id+':'+input.requestId,payload:{kind:'guidance',source:'user',content:input.content,nativeDelivery:true}});},
+  claimed:(id,runId)=>{const task=row('SELECT t.employee_id FROM tasks t JOIN runs r ON r.task_id=t.id WHERE r.id=?',runId);ackMessage(id,{agentId:task.employee_id});},
+  stop:id=>stopRun(id,'interaction'),
+  settingsChanged:id=>{const profile=scheduling.profile(id);scheduling.saveProfile(id,{...profile,version:profile.version});},
+  record:(id,name,payload)=>event(id,'agent-runtime-v1',name,payload)
+});
 for (const task of recoveredTasks) coordinator.recordTask(task.id, 'runtime.recovery', {status:'unknown',reason:'服务重启，无法重新接管原进程'});
 export const listCoordinationSessions = coordinator.listSessions;
 export const coordinationSessionDetails = coordinator.sessionDetails;
@@ -1759,8 +1769,9 @@ export const registerRuntimeAdapter = runtimeAdapters.register;
 export const instructCoordinationEmployee = coordinator.instructEmployee;
 export const superviseWorkerMessage = coordinator.superviseWorkerMessage;
 export const authenticateAgent = agentMailbox.authenticate;
-export const taskDelivery=createTaskDelivery({row,codeHandoffs,dataDir,isActive:id=>running.get(id)?.child.exitCode===null});
-export const inspectTaskDelivery=createDeliveryInspection({database:join(dataDir,'apix.sqlite'),dataDir,row,isActive:id=>running.get(id)?.child.exitCode===null});
+export const taskDelivery=createTaskDelivery({row,codeHandoffs,dataDir,isActive:id=>runtimeController.isActive(id)});
+const inspectDelivery=createDeliveryInspection({database:join(dataDir,'apix.sqlite'),dataDir,row,isActive:id=>runtimeController.isActive(id)});
+export async function inspectTaskDelivery(id){const result=await inspectDelivery(id);return {...result,nativeRecovery:result.latestRun?runtimeController.details(result.latestRun.id).recoveryAvailable:false};}
 export function executionSettings(projectId){return executionControl.get(projectId);}
 export function saveExecutionSettings(projectId,input){const result=executionControl.save(projectId,input);pumpTasks();return result;}
 export function changeRuntimePause(projectId,input){const result=executionControl.setRuntime(projectId,input);pumpTasks();return result;}
@@ -1808,9 +1819,11 @@ export async function recoverTask(id,input,source='user',repairPrompt) {
   coordinator.assertRetry(id,input);
   if(currentInspection && (resolution ? currentInspection.tree!==resolution.tree : currentInspection.fingerprint!==checked.inspection.fingerprint))throw new Error('恢复检查后工作区已变化，请重新检查');
   const workspaceFingerprint=currentInspection?.fingerprint ?? 'head:'+checked.sourceHead;
+  if(input.continuation!==undefined&&!['fresh','native'].includes(input.continuation))throw new Error('恢复方式无效');
+  if(input.continuation==='native'){if(source!=='user'||input.resumeFromRunId!==checked.latestRun?.id)throw new Error('请明确选择当前运行作为延续来源');runtimeController.continuation(task.id,input.resumeFromRunId,input.employeeId??task.employee_id);}else db.prepare('DELETE FROM agent_runtime_continuations WHERE task_id=?').run(task.id);
   if(checked.latestRun?.status==='unknown'){db.prepare("UPDATE runs SET status='cancelled',status_source='user-recovery-confirmed',ended_at=? WHERE id=?").run(now(),checked.latestRun.id);scheduling.settle(checked.latestRun.id,null);}
   db.prepare("UPDATE agent_messages SET status='rejected',error='旧运行已结束，恢复时不重放旧指导',completed_at=? WHERE target_task_id=? AND status IN ('queued','delivered','processing')").run(now(),id);
-  const approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint},source,repairPrompt);
+  let approved;try{approved=coordinator.authorizeRetry(id,{...input,workspaceFingerprint},source,repairPrompt);}catch(error){db.prepare('DELETE FROM agent_runtime_continuations WHERE task_id=?').run(task.id);throw error;}
   let failure=null;
   try{(await resolveApproval(approved.approvalId,true));}catch(e){failure=String(e.message);}
   resumeBlocked(task.plan_id);
@@ -1860,6 +1873,8 @@ export function handleAgentMessage(actor, id, action, input) {
 }
 export function employeeDetails(id){
   const details=employeeInsights.details(id);const capability=scheduling.profile(id);
+  details.runs=details.runs.map(run=>({...run,runtimeInfo:runtimeController.details(run.id)}));
+  details.runtimeSettings=runtimeController.settings(id);details.runtimeOptions=runtimeController.options(id);
   const accounts=scheduling.accounts().map(a=>{
     const usage=row("SELECT COALESCE(SUM(CASE WHEN state='settled' THEN actual WHEN state IN ('reserved','unmeasured') THEN amount ELSE 0 END),0) AS committed, COUNT(CASE WHEN state='settled' AND actual IS NULL OR state IN ('reserved','unmeasured') AND amount IS NULL THEN 1 END) AS unknownCount FROM scheduling_reservations WHERE account_id=?",a.id);
     return {...a,source:'manual',committedMinor:usage.committed,unknownCount:usage.unknownCount,budgetRemainingMinor:a.limitMinor==null||usage.unknownCount?null:Math.max(0,a.limitMinor-usage.committed)};
@@ -1936,3 +1951,13 @@ export async function invokeAgentTool(actor,name,args){
     toolProgress.observe(sessionId,signature,result);toolGovernance.audit(projectId,subject,name,args,'completed');return result;
   }catch(error){const structured=error instanceof ToolError?error:new ToolError('TOOL_EXECUTION_FAILED',String(redact(error.message??'工具执行失败')),'inspect_result',{fault:classifyFault(error,{kind:'tool'})});const info=errorInfo(structured);toolProgress.observe(sessionId,signature,info,info.code,['TOOL_PATH_BLOCKED','TOOL_LOOP_STOPPED'].includes(info.code));toolGovernance.audit(projectId,subject,name,args,'rejected',info.code);throw structured;}
 }
+
+export const runRuntime=id=>runtimeController.details(id);
+export const runRuntimeEvents=(id,input)=>runtimeController.events(id,input);
+export const saveEmployeeRuntime=(id,input)=>runtimeController.saveSettings(id,input);
+
+export const sendRunMessage=(id,input)=>runtimeController.send(id,input);
+export const runInteractions=id=>{runtimeController.details(id);return runtimeController.interactions.list(id);};
+export const answerRunInteraction=(id,interactionId,input)=>runtimeController.interactions.answer(id,interactionId,input);
+
+export const closeAgentRuntimes=()=>runtimeController.shutdown();

@@ -204,6 +204,8 @@ Anthropic 默认使用标准 `x-api-key`；如果 Claude 中转要求 Bearer Tok
 
 <a id="configuration"></a>
 
+外部员工默认继续使用 CLI。员工详情现有逐员工的 App Server / Agent SDK 试验开关、公开过程、指导和问答；检查后可在具备资格时延续原生历史。新后端未作为生产默认，SDK 需要显式 API 供应商；真实模型和成品安装包验收仍待执行。见 [实施与限制](docs/设计/2026-10-30-外部Agent运行与协作工作台实施.md)。
+
 ## 配置指南
 
 ### 管理者模型与阿里百炼

@@ -1,7 +1,7 @@
 import {html} from './html.js';
 import {showEmployeeSettings,type EmployeeSettings} from './employee-settings.js';
 type Task = {id:string;prompt:string;status:string;project_name:string;created_at:string;updated_at:string};
-type Run = {id:string;task_id:string;status:string;started_at:string;ended_at:string|null;input_tokens:number|null;output_tokens:number|null;cached_tokens:number|null;usage_source:string|null};
+type Run = {id:string;task_id:string;status:string;started_at:string;ended_at:string|null;input_tokens:number|null;output_tokens:number|null;cached_tokens:number|null;usage_source:string|null;runtimeInfo?:{backend:string;phase:string}};
 type Report = {id:string;taskId:string;summary:string;blocked:boolean;createdAt:string};
 type Detail = EmployeeSettings & {employee:{id:string;name:string;role:string;runtime:string;department:string;enabled:number};tasks:Task[];runs:Run[];reports:Report[];usage:{inputTokens:number;outputTokens:number;cachedTokens:number;measuredRuns:number;totalRuns:number}};
 const parent=document.querySelector('#page-missions')!;
@@ -25,9 +25,11 @@ function render(data:Detail){
   find('#employee-task-count').textContent=String(data.tasks.length);
   find('#employee-tokens').textContent=data.usage.measuredRuns?`${(data.usage.inputTokens+data.usage.outputTokens).toLocaleString('zh-CN')} / ${data.usage.totalRuns} Run 中 ${data.usage.measuredRuns} 个有数据`:'暂无用量数据';
   const usage=(run:Run|undefined)=>run?.input_tokens==null&&run?.output_tokens==null?'Token 用量未知':`输入 ${run.input_tokens==null?'未知':run.input_tokens.toLocaleString('zh-CN')} · 输出 ${run.output_tokens==null?'未知':run.output_tokens.toLocaleString('zh-CN')} · 缓存 ${run.cached_tokens==null?'未知':run.cached_tokens.toLocaleString('zh-CN')}`;
-  const card=(task:Task)=>{const run=data.runs.find(item=>item.task_id===task.id);const report=data.reports.find(item=>item.taskId===task.id);return html`<article class="employee-task"><div><strong>${task.prompt}</strong><span class="coord-pill">${status[task.status]??task.status}</span></div><p>${task.project_name} · ${date(task.created_at)}${run?` · Run ${String((run.id.slice(0,8))??'')}`:''}</p><p>${report?`${report.blocked?'阻塞报告':'最近进度'}：${String((report.summary)??'')} · ${date(report.createdAt)}`:'暂无员工进度报告'}</p><small>${usage(run)}</small></article>`;};
+  const card=(task:Task)=>{const run=data.runs.find(item=>item.task_id===task.id);const report=data.reports.find(item=>item.taskId===task.id);return html`<article class="employee-task"><div><strong>${task.prompt}</strong><span class="coord-pill">${status[task.status]??task.status}</span></div><p>${task.project_name} · ${date(task.created_at)}${run?` · Run ${String((run.id.slice(0,8))??'')}`:''}</p><p>${report?`${report.blocked?'阻塞报告':'最近进度'}：${String((report.summary)??'')} · ${date(report.createdAt)}`:'暂无员工进度报告'}</p><small>${usage(run)}</small>`+(run?html`<button type="button" class="outline-button" data-employee-run="${run.id}" data-run-task="${task.id}">查看执行过程 · ${run.runtimeInfo?.backend??task.status}</button>`:'')+html`</article>`;};
   find('#employee-active').innerHTML=active.map(card).join('')||'<p class="coord-muted">当前没有运行中的任务。</p>';
   find('#employee-history').innerHTML=data.tasks.map(card).join('')||'<p class="coord-muted">暂无历史任务。</p>';
 }
 document.addEventListener('apix:open-employee',((event:CustomEvent<string>)=>{selected=event.detail;settingsEmployee='';settings.textContent='正在加载模型与账户…';find('#employee-active').textContent='正在加载…';void load();}) as EventListener);
 document.addEventListener('apix:snapshot',()=>{if(selected&&root.classList.contains('active-page'))void load();});
+
+root.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-employee-run]');if(button)document.dispatchEvent(new CustomEvent('apix:open-agent-run',{detail:{runId:button.dataset.employeeRun,taskId:button.dataset.runTask}}));});

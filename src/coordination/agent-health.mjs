@@ -16,7 +16,7 @@
  * 设计原则：存活性是活动的证据，不是成功工作的证明；状态不确定的工作绝不重放
  */
 // 存活性是活动的证据，不是成功工作的证明；状态不确定的工作绝不重放
-export function createAgentHealth({db,row,rows,now,probe,stop,record,owned,uncertain=()=>{},silenceMs=300000,probeMs=60000,maxRunMs=1800000}){
+export function createAgentHealth({db,row,rows,now,probe,stop,record,owned,waiting=()=>false,uncertain=()=>{},silenceMs=300000,probeMs=60000,maxRunMs=1800000}){
   // 参数校验：确保时限配置合理（maxRunMs >= silenceMs >= probeMs*2，probeMs >= 100ms）
   if(!Number.isSafeInteger(maxRunMs)||maxRunMs<silenceMs||!Number.isSafeInteger(silenceMs)||!Number.isSafeInteger(probeMs)||probeMs<100||silenceMs<probeMs*2)throw Error('Agent 失联检测时限无效');
   // 健康状态表：每个运行记录一条，跟踪最后活动时间和连续未回应次数
@@ -70,6 +70,7 @@ export function createAgentHealth({db,row,rows,now,probe,stop,record,owned,uncer
     for(const item of rows("SELECT h.*,r.started_at AS run_started_at FROM agent_health h JOIN runs r ON r.id=h.run_id JOIN tasks t ON t.id=h.task_id WHERE h.state IN ('healthy','suspected') AND r.status='running' AND t.status='running'")){
       // 计算距最后活动的时间和距运行开始的总时间
       const elapsed=Date.parse(now())-Date.parse(item.last_activity_at),deadline=Date.parse(now())-Date.parse(item.run_started_at)>=maxRunMs;
+      if(!deadline&&waiting(item.run_id))continue;
       // 未到探测时间且未超时 → 跳过
       if(!deadline&&elapsed<probeMs)continue;
       // 所有权校验：不属于当前实例的 Agent 标记为 unknown

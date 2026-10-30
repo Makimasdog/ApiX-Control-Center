@@ -47,6 +47,7 @@ interface Dependencies extends Store {
   reassignPending(taskId:string,employeeId:string):void; // 重新分配排队任务
   activatePending?(planId:string):void|Promise<void>; // 激活待处理计划
   delivered?(sessionId:string,planId:string):void; // 交付完成回调
+  waiting?(runId:string):boolean;
   stop(runId:string):void; // 停止运行
   sendMessage(input:Record<string,unknown>):{id:string;status:string}; // 发送邮箱消息
   record(taskId:string,kind:string,payload:unknown):void; // 记录事件
@@ -287,6 +288,7 @@ export function createAutonomy(deps:Dependencies) {
           else if(task.status==='running'){ // 运行中 → 检查超时和检查点
             taskCurrent(plan,task,policy);const run=row<{id:string;started_at:string}>('SELECT id,started_at FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id)!;
             if(Date.now()-Date.parse(run.started_at)>policy.maxRunMinutes*60000){if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.timeout',{runId:run.id});deps.stop(run.id);}continue;} // 单次运行超时
+            if(deps.waiting?.(run.id))continue;
             // 根据模块风险等级调整检查点间隔（高风险更频繁）
             const architecture=JSON.parse(plan.body) as Architecture;const risk=architecture.modules.find(m=>m.id===binding.module_id)?.risk??'high';const interval=policy.checkpointMinutes*60000*(risk==='high'?0.5:risk==='low'?2:1);
             if(Date.now()-Date.parse(binding.last_checkpoint??run.started_at)>=interval){

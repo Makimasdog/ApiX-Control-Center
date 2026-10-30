@@ -48,6 +48,7 @@ interface Dependencies extends Store {
   autonomy: Autonomy;       // 自主交付引擎（[→ 见 autonomy.ts]）
   consult(employeeId:string,prompt:string):Promise<string>; // 咨询员工
   reportManagerFailure(projectId:string,sourceId:string,error:string):void; // 报告失败报告
+  nativeDelivery?(messageId:string,runId:string):string|undefined;
   sendMessage(input: Record<string, unknown>): { id: string; status: string }; // 发送邮箱消息
   resolveApproval(id: string, approved: boolean): unknown; // 处理审批
   stopRun(id: string): void; // 停止运行
@@ -131,7 +132,7 @@ export function createCoordinator(deps: Dependencies) {
       planningMeetings:planningMeetings.details(id),consultationRuntimes:['pi','claude'],
       handoffs: s.plan_id ? rows<Record<string,unknown>>('SELECT h.* FROM code_handoffs h JOIN tasks t ON t.id=h.task_id WHERE t.plan_id=?',s.plan_id).map(h=>({...h,report:JSON.parse(String(h.report))})) : [],
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
-      instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
+      instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,nativeDelivery:deps.nativeDelivery?.(String(m.id),String(m.runId)),payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
       agent: { id: 'apix', name: 'ApiX', role: 'manager', foundation: 'ApiX', mode: check?.model_mode ?? 'rules', error: check?.model_error }, busy: busy.has(id) };
   }
   /**
@@ -528,9 +529,10 @@ export function createCoordinator(deps: Dependencies) {
   }
   /** 用户向员工发送指导消息 */
   function instructEmployee(sessionId: string, input: Record<string,unknown>) {
+    if(input.requestId!==undefined&&!/^[a-zA-Z0-9:_-]{8,100}$/.test(String(input.requestId)))throw new Error('指导请求 ID 无效');
     const taskId = text(input.taskId,100); const content = text(input.content,2000);
     const {s,task} = activeTask(sessionId,taskId,input.revision);
-    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${input.requestId===undefined?randomUUID():text(input.requestId,100)}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
     if (message.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
     transaction(() => {turn(s,'user','worker_guidance',`向员工补充：${content}`);memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:message.id,source:'user',content},'user');checkpoint(sessionId);});
     return details(sessionId);
@@ -592,8 +594,9 @@ export function createCoordinator(deps: Dependencies) {
    * @param staleAfterMs - 超时阈值（默认 60 秒）
    * 设计意图：对运行中但长时间无报告的员工主动发送进度请求。
    */
-  function superviseActiveRuns(staleAfterMs = 60000) {
+  function superviseActiveRuns(staleAfterMs = 60000,waiting:(runId:string)=>boolean=()=>false) {
     for (const active of rows<{run_id:string;task_id:string;started_at:string;session_id:string}>('SELECT r.id AS run_id,r.task_id,r.started_at,b.session_id FROM runs r JOIN tasks t ON t.id=r.task_id JOIN coordination_plan_briefs b ON b.plan_id=t.plan_id WHERE r.status=\'running\' AND t.status=\'running\'')) {
+      if(waiting(active.run_id))continue;
       if (Date.now() - Date.parse(active.started_at) < staleAfterMs) continue;
       const task = row<Task>('SELECT * FROM tasks WHERE id=?',active.task_id)!;
       const s = session(active.session_id);

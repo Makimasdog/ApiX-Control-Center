@@ -1,4 +1,5 @@
 import {html} from './dist/web/html.js';
+import './dist/web/agent-run-view.js';
 import {showTaskEvents} from './dist/web/task-events.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -348,7 +349,7 @@ document.addEventListener("click", async (event) => {
     const selected = data.tasks.find((item) => item.id === (d.openTask ?? d.viewTask));
     if (selected?.conversation_id) { selectedProjectId = selected.project_id; selectedConversationId = selected.conversation_id; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedTaskId = selected.id; await refresh(); go("workspace"); }
     else if (selected) {
-      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
+      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status,details.runs); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
     }
   }
   else if (d.resumeTask) openEditor("resume", d.resumeTask);
@@ -563,3 +564,5 @@ $('#page-memory').addEventListener('click',async event=>{const button=event.targ
 document.addEventListener('apix:snapshot',()=>{if(memoryStateProject!==selectedProjectId){$('#memory-controls').textContent='';$('#memory-feedback').textContent='';memoryState=null;memoryStateProject='';}});
 
 $('#memory-controls').addEventListener('change',event=>{if(event.target.id==='memory-layer-filter')for(const node of $$('#memory-controls [data-instruction-layer]'))node.hidden=!!event.target.value&&node.dataset.instructionLayer!==event.target.value;});
+
+document.addEventListener('apix:open-task',event=>{const button=document.querySelector('[data-open-task="'+CSS.escape(event.detail)+'"],[data-view-task="'+CSS.escape(event.detail)+'"]');button?.click();});
