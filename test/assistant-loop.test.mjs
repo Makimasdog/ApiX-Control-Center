@@ -5,7 +5,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
-import {inferModel} from '../dist/src/models/model-backend.js';
+import {inferModel,ModelCleanupUnknownError} from '../dist/src/models/model-backend.js';
 import {createServer} from 'node:http';
 import {assistantPromptContext} from './assistant-prompt-fixture.mjs';
 const tool=(name,args={})=>({action:'tool',tool:name,args:{...({read_file:{path:'README.md'},write_file:{path:'a.txt',content:'fixture'},verify:{executable:'node'},run_command:{executable:'node'},delegate:{requirements:{scope:'fixture',constraints:'fixture',deliverable:'fixture',acceptance:'fixture'}},configure_agents:{checks:[{id:'test',args:['test.mjs']} ]}}[name]??{}),...args},message:'执行 '+name});
@@ -102,6 +102,53 @@ for(const strategy of ['legacy','stable-prefix-v1'])test(`${strategy} steering d
  h.deps.describe=async()=>{if(first){first=false;entered();await barrier;}return {instructions:[],project:{name:'fixture'}};};
  h.answer(finish);await h.service.message(h.id,{content:'首次请求'});await ready;await h.service.message(h.id,{content:'后续纠正：保留原文件'});release();
  assert.equal((await wait(h.service,h.id)).status,'completed');assert.equal(h.prompts.length,1);assert(h.prompts[0].includes('后续纠正：保留原文件'));
+}));
+
+for(const mode of ['legacy','standard','saving'])test(`${mode} compaction failure stays blocked across resume/audit/service recovery, new input or manual action permits a retry`,()=>fixture(async h=>{
+ if(mode!=='legacy')await enableStable(h,mode);h.deps.contextTokens=()=>131072;
+ await h.service.startTask(h.id,{version:(await h.service.details(h.id)).version,description:'保留只读约束'});
+ for(let i=0;i<205;i++)h.db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(h.id,'user','message',JSON.stringify({content:'只读事实 '+i+'x'.repeat(100)}),new Date().toISOString());
+ h.answer(()=>{throw new Error('fixture compaction failed');});await h.service.message(h.id,{content:'保留原约束'});let s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.prompts.length,1);assert(h.prompts[0].startsWith('APIX_COMPACT_JSON'));assert.equal(s.compacted_through,0);
+ const saved=h.db.prepare('SELECT * FROM assistant_compaction_blocks WHERE session_id=?').get(h.id);assert.equal(saved.reason,'failed');
+ for(let i=0;i<12;i++)h.db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(h.id,'system',i%2?'context_budget':'model_retry','{}',new Date().toISOString());
+ const rebuilt=createAssistantLoop(h.deps);let changes=h.db.prepare('SELECT total_changes() n').get().n;assert.equal((await rebuilt.contextInfo(h.id)).compaction.blocked,true);assert.equal(h.db.prepare('SELECT total_changes() n').get().n,changes);
+ await rebuilt.resume(h.id,{version:(await rebuilt.details(h.id)).version,confirmed:true});s=await wait(rebuilt,h.id);assert.equal(s.status,'attention');assert.equal(h.prompts.length,1);assert.equal(h.db.prepare('SELECT input_signature FROM assistant_compaction_blocks').get().input_signature,saved.input_signature);
+ h.answer(()=>{throw new Error('second failure on new input');});await rebuilt.message(h.id,{content:'新增有效约束：不要修改文件'});s=await wait(rebuilt,h.id);assert.equal(h.prompts.length,2);assert.notEqual(h.db.prepare('SELECT input_signature FROM assistant_compaction_blocks').get().input_signature,saved.input_signature);
+ h.answer({summary:'保留只读用户约束、失败与引用，不授予任何额外权限'});s=await rebuilt.compact(h.id,{version:s.version,focus:'保留所有约束'});assert(s.compacted_through>0);assert.equal((await rebuilt.contextInfo(h.id)).compaction,null);assert.equal(h.prompts.length,3);
+}));
+
+test('stable excluded audit events advance scanning but cannot trigger compression below the actual budget',()=>fixture(async h=>{
+ await enableStable(h,'saving');await h.service.startTask(h.id,{version:(await h.service.details(h.id)).version,description:'只读'});
+ for(let i=0;i<405;i++)h.db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(h.id,'system',i%2?'context_budget':'activity','{}',new Date().toISOString());
+ h.answer(finish);await h.service.message(h.id,{content:'只读完成'});assert.equal((await wait(h.service,h.id)).status,'completed');assert.equal(h.prompts.length,1);assert(h.prompts[0].startsWith('APIX_AGENT_LOOP_JSON'));assert.equal((await h.service.contextInfo(h.id)).compaction,null);assert(h.db.prepare('SELECT scan_watermark FROM assistant_prompt_generations').get().scan_watermark>405);
+}));
+
+test('no-gain leaves the stable checkpoint intact and cannot be released by resume, window change or reconstruction',()=>fixture(async h=>{
+ await enableStable(h);h.deps.contextTokens=()=>131072;await h.service.startTask(h.id,{version:(await h.service.details(h.id)).version,description:'只读核查'});
+ for(let i=0;i<6;i++)h.db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(h.id,'user','message',JSON.stringify({content:'约束'+i+'x'.repeat(1000)}),new Date().toISOString());
+ h.answer(finish);await h.service.message(h.id,{content:'只读完成'});let s=await wait(h.service,h.id);const generation=s.generation;assert.equal(h.prompts.length,1);assert.equal(h.db.prepare('SELECT COUNT(*) n FROM assistant_compaction_blocks').get().n,0);
+ h.answer({summary:'中'.repeat(6000)});await assert.rejects(h.service.compact(h.id,{version:s.version}),/没有缩小稳定上下文/);assert.equal((await h.service.contextInfo(h.id)).compaction.reason,'no_gain');assert.equal((await h.service.details(h.id)).generation,generation);
+ h.deps.contextTokens=()=>4096;const rebuilt=createAssistantLoop(h.deps);s=await rebuilt.details(h.id);h.db.prepare("UPDATE assistant_sessions SET status='attention' WHERE id=?").run(h.id);await rebuilt.resume(h.id,{version:s.version,confirmed:true});s=await wait(rebuilt,h.id);assert.equal(h.prompts.length,2);assert.equal((await rebuilt.contextInfo(h.id)).compaction.reason,'no_gain');assert.equal(s.compacted_through,0);
+ h.deps.contextTokens=()=>131072;h.answer({summary:'保留只读约束'});s=await rebuilt.compact(h.id,{version:s.version});assert(s.compacted_through>0);assert.equal((await rebuilt.contextInfo(h.id)).compaction,null);
+}));
+
+test('block registration prevents model calls and clearing failure rolls back summary, generation and old watermark',()=>fixture(async h=>{
+ await enableStable(h);h.deps.contextTokens=()=>131072;h.deps.execute=async(_s,_t,args)=>({path:args.path,content:'verified\n'.repeat(1000),sha256:args.path});h.answer(...Array.from({length:5},(_,i)=>tool('read_file',{path:`page-${i}`})),finish);await h.service.message(h.id,{content:'只读核查'});let s=await wait(h.service,h.id);const generation=s.generation,calls=h.prompts.length;
+ h.db.exec("CREATE TRIGGER fail_compaction_begin BEFORE INSERT ON assistant_compaction_blocks BEGIN SELECT RAISE(ABORT,'block registration failed');END");await assert.rejects(h.service.compact(h.id,{version:s.version}),/block registration failed/);assert.equal(h.prompts.length,calls);h.db.exec('DROP TRIGGER fail_compaction_begin');
+ h.db.exec("CREATE TRIGGER fail_compaction_clear BEFORE DELETE ON assistant_compaction_blocks BEGIN SELECT RAISE(ABORT,'block clear failed');END");h.answer({summary:'保留只读约束'});await assert.rejects(h.service.compact(h.id,{version:s.version}),/block clear failed/);s=await h.service.details(h.id);assert.equal(s.compacted_through,0);assert.equal(s.summary,'');assert.equal(s.generation,generation);assert.equal((await h.service.contextInfo(h.id)).compaction.blocked,true);h.db.exec('DROP TRIGGER fail_compaction_clear');
+}));
+
+for(const change of ['stop','permissions'])test(`${change} during in-flight compaction cannot commit a candidate`,()=>fixture(async h=>{
+ await enableStable(h);h.deps.contextTokens=()=>131072;h.answer(finish);await h.service.message(h.id,{content:'只读约束'.repeat(150)});let s=await wait(h.service,h.id);const generation=s.generation;let release,entered;const ready=new Promise(r=>entered=r);
+ h.answer(()=>{entered();return new Promise(r=>release=r);});const pending=h.service.compact(h.id,{version:s.version});await ready;assert.equal((await h.service.contextInfo(h.id)).compaction.reason,'in_progress');if(change==='stop')await h.service.stop(h.id);else h.policy({mode:'read_only',version:1});release(JSON.stringify({summary:'保留只读约束'}));await assert.rejects(pending,change==='stop'?/停止|状态已变化/:/权限已变化/);
+ s=await h.service.details(h.id);assert.equal(s.compacted_through,0);assert.equal(s.generation,generation);assert.equal((await h.service.contextInfo(h.id)).compaction.reason,'failed');
+}));
+
+test('reason persistence failure preserves model cleanup uncertainty and the durable pending block',()=>fixture(async h=>{
+ await enableStable(h);h.deps.contextTokens=()=>131072;h.answer(finish);await h.service.message(h.id,{content:'保留用户约束'.repeat(100)});const s=await wait(h.service,h.id);
+ h.db.exec("CREATE TRIGGER fail_block_reason BEFORE UPDATE ON assistant_compaction_blocks BEGIN SELECT RAISE(ABORT,'reason update failed');END");h.answer(()=>{throw new ModelCleanupUnknownError('fixture model transport unknown');});
+ await assert.rejects(h.service.compact(h.id,{version:s.version}),error=>error instanceof ModelCleanupUnknownError&&error.message.includes('进行中记录保留'));
+ assert.equal((await h.service.contextInfo(h.id)).compaction.reason,'in_progress');assert((await h.service.details(h.id)).events.some(e=>e.kind==='process_unknown'));
 }));
 
 test('saving loop retains normal file pages and links repeated reads without re-reading a folded reference',()=>fixture(async h=>{

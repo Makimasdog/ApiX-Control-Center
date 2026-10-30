@@ -68,6 +68,24 @@ test('production stable frame save failure sends no model request or pending usa
  }finally{db?.close();await h.close();}
 });
 
+for(const reason of ['failed','no_gain'])test(`${reason} compaction suppression survives a real server restart, is read-only and manual retry settles its cost`,{timeout:90000},async()=>{
+ let response=reason==='failed'?{invalid:true}:{summary:'中'.repeat(6000)};
+ const h=await startDeliveryFixture({startupMs:30000,usage:{prompt_tokens:1000,completion_tokens:50},summarize:()=>response,decide:()=>({action:'finish',outcome:'completed',message:'只读完成'})});let db;
+ try{
+ let s=await h.request('/api/assistant/sessions',{projectId:h.projectId});const base='/api/assistant/sessions/'+s.id;
+ s=await h.request(base+'/optimization',{version:s.version,mode:'saving',promptStrategy:'stable-prefix-v1',promptSettingsVersion:0});await h.request(base+'/messages',{content:'只读核查'});s=await h.idle(s.id);assert.equal(s.status,'completed');
+ db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));
+ for(let i=0;i<6;i++)db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(s.id,'user','message',JSON.stringify({content:'约束'+i+'x'.repeat(1000)}),new Date().toISOString());
+ await h.request(base+'/compact',{version:s.version},400);let info=await h.request(base+'/context');assert.equal(info.compaction.reason,reason);assert.equal(info.compaction.blocked,true);const generation=info.optimization.generation;assert.equal(h.calls.filter(c=>c.phase==='compact').length,1);
+ await h.restart();s=await h.request(base);assert.equal(s.generation,generation);let settings=JSON.parse(db.prepare("SELECT settings FROM conversation_models WHERE kind='assistant' AND session_id=?").get(s.id).settings);settings.contextWindow=4096;db.prepare("UPDATE conversation_models SET settings=?,version=version+1 WHERE kind='assistant' AND session_id=?").run(JSON.stringify(settings),s.id);
+ s=await h.request(base+'/stop',{});await h.request(base+'/resume',{version:s.version,confirmed:true});s=await h.idle(s.id);assert.equal(s.status,'attention');assert.equal(h.calls.filter(c=>c.phase==='compact').length,1);
+ const before=db.prepare('SELECT * FROM assistant_compaction_blocks WHERE session_id=?').get(s.id),frameCount=db.prepare('SELECT COUNT(*) n FROM assistant_prompt_frames').get().n;
+ for(let i=0;i<2;i++){info=await h.request(base+'/context');assert.equal(info.compaction.blocked,true);assert.equal(info.compaction.reason,reason);}assert.deepEqual(db.prepare('SELECT * FROM assistant_compaction_blocks WHERE session_id=?').get(s.id),before);assert.equal(db.prepare('SELECT COUNT(*) n FROM assistant_prompt_frames').get().n,frameCount);
+ settings.contextWindow=131072;db.prepare("UPDATE conversation_models SET settings=?,version=version+1 WHERE kind='assistant' AND session_id=?").run(JSON.stringify(settings),s.id);response={summary:'保留用户只读约束与失败事实'};s=await h.request(base+'/compact',{version:s.version});info=await h.request(base+'/context');assert.equal(info.compaction,null);assert(s.compacted_through>0);assert.equal(h.calls.filter(c=>c.phase==='compact').length,2);
+ assert.equal(info.usage.recent.filter(r=>r.purpose==='compaction').length,2);assert.equal(info.usage.task.inputTokens,3000);assert(info.usage.recent.filter(r=>r.purpose==='compaction').every(r=>r.status==='completed'));
+ }finally{db?.close();await h.close();}
+});
+
 test('diagnostic insert failure creates no model request, settles failed once and retains the accounting recovery gate',{timeout:60000},async()=>{
  const h=await startDeliveryFixture({startupMs:30000});let db;
  try{
