@@ -10,11 +10,17 @@ function usageDetailsView(value:unknown){
   const d=value as UsageDetails,sources={standard:'标准字段',native:'原生字段',both:'标准与原生字段',missing:'未知'};
   return html`<p>缓存来源：${sources[d.cacheSource]}；一致性：${d.cacheConsistency==='conflict'?'冲突（缓存未知）':d.cacheConsistency==='observed'?'已观测':'未知'}；原生未命中 ${number(d.nativeMiss)} Token；总输入来源：${d.inputSource==='derived_from_provider_parts'?'供应商分项重建':d.inputSource==='observed'?'供应商总数':'未知'}。</p>`;
 }
+function stableCoreView(d:RequestDiagnostic){
+  const s=d.stableCore;if(!s)return '';
+  const labels={unknown:'核心未比较',preserved:'共同旧核心保持',unreported_change:'同代核心发生未声明变化',declared_generation:'已声明切代'};
+  const reasons:Record<string,string>={explicit_strategy_switch:'切换输入布局',layout_version:'布局版本变化',optimization_mode:'上下文模式变化',catalog_contract:'工具定义变化',model_route:'模型配置变化',compaction:'历史压缩',history_rewind:'历史水位回退',permission_scope_change:'权限范围变化',instructions:'固定指令变化'};
+  return html`<p>稳定核心 ${number(s.bytes)} 字节；${labels[s.change]}；共同核心前缀 ${number(s.commonPrefixBytes)} 字节；动态尾部${s.tailChanged===null?'未比较':s.tailChanged?'变化':'保持'}。本代建立原因：${reasons[s.generationReason??'']??'未知'}。代：${d.generation??'未知'}。</p>`;
+}
 function requestDiagnosticView(value:unknown){
   if(!value||typeof value!=='object'||(value as RequestDiagnostic).schema!==1)return '';
   const d=value as RequestDiagnostic,reasons:Record<string,string>={first_request:'首个请求',restart:'进程重启后无字节基线',memory_budget:'字节基线已淘汰',scope_change:'比较范围变化'};
   const mutations:Record<string,string>={none:'共同旧事件保持',rewrite:'事件表示改写',remove:'历史事件移除',reorder:'历史事件重排',unknown:'未比较'};
-  return html`<details><summary>最终请求诊断</summary><p>请求体 ${number(d.wireBodyBytes)} 字节 · 布局 ${d.layout} · ${d.comparisonState==='available'?'有可比较基线':reasons[d.baselineUnavailableReason??'']??'基线未知'}</p><p>公共前缀：请求 JSON ${number(d.wireBodyPrefixBytes)} 字节 / 提示词 ${number(d.logicalInputPrefixBytes)} 字节。</p><p>首个变化区域：${d.firstChangedRegion??'未定位'}；宿主字段候选：${d.firstChangedHostField??'未定位'}；事件候选：${d.firstChangedEventId??'未定位'}。${(d.historyChanges?.length?d.historyChanges.map(change=>mutations[change]).join('、'):mutations[d.historyMutation])??'未比较'}。</p><p>全部字段变化：${d.changedHostFields?.join('、')||'未观察到'}；参数变化：${d.changedParameters?.join('、')||'未观察到'}；响应头：${d.transportObservation?.responseHeaders?'已观察到':'未确认'}。</p><small>本次用量 ${d.usageId}，比较基线 ${d.baselineUsageId??'无'}。请求哈希 ${d.wireBodyHash}。本地字节前缀不等于缓存 Token，供应商缓存原因未知。</small></details>`;
+  return html`<details><summary>最终请求诊断</summary><p>请求体 ${number(d.wireBodyBytes)} 字节 · 布局 ${d.layout} · ${d.comparisonState==='available'?'有可比较基线':reasons[d.baselineUnavailableReason??'']??'基线未知'}</p><p>公共前缀：请求 JSON ${number(d.wireBodyPrefixBytes)} 字节 / 提示词 ${number(d.logicalInputPrefixBytes)} 字节。</p><p>首个变化区域：${d.firstChangedRegion??'未定位'}；宿主字段候选：${d.firstChangedHostField??'未定位'}；事件候选：${d.firstChangedEventId??'未定位'}。${(d.historyChanges?.length?d.historyChanges.map(change=>mutations[change]).join('、'):mutations[d.historyMutation])??'未比较'}。</p><p>全部字段变化：${d.changedHostFields?.join('、')||'未观察到'}；参数变化：${d.changedParameters?.join('、')||'未观察到'}；响应头：${d.transportObservation?.responseHeaders?'已观察到':'未确认'}。</p><small>本次用量 ${d.usageId}，比较基线 ${d.baselineUsageId??'无'}。请求哈希 ${d.wireBodyHash}。本地字节前缀不等于缓存 Token，供应商缓存原因未知。</small>`+stableCoreView(d)+html`</details>`;
 }
 /** 展示已知小计和逐字段覆盖率；缓存、推理是细分项，不能与输入、输出再次相加。 */
 export function tokenUsageView(value:TokenUsageReport){

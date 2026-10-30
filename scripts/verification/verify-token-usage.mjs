@@ -22,8 +22,8 @@ try{
  await page.locator('#assistant-usage summary').filter({hasText:'最终请求诊断'}).click();
  const diagnosticText=await page.locator('#assistant-usage').innerText();
  assert.match(diagnosticText,/首个请求/);assert.match(diagnosticText,/响应头：已观察到/);assert.match(diagnosticText,/请求哈希 [a-f0-9]{64}/);assert.match(diagnosticText,/缓存读取 400 Token/);assert.match(diagnosticText,/本地字节前缀不等于缓存 Token/);
- await page.locator('#assistant-optimization select').selectOption('saving');await page.locator('#assistant-optimization button').click();await page.waitForFunction(()=>document.querySelector('#assistant-optimization-status')?.textContent.startsWith('节省模式'));
- assert.equal((await fixture.request(base+'/context')).optimization.mode,'saving');await page.reload();await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='本轮完成');await page.locator('#assistant-details').click();await page.locator('#assistant-usage-refresh').click();await page.waitForFunction(()=>document.querySelector('#assistant-optimization select')?.value==='saving');
+ await page.locator('#assistant-optimization [name=mode]').selectOption('saving');await page.locator('#assistant-optimization button').click();await page.waitForFunction(()=>document.querySelector('#assistant-optimization-status')?.textContent.startsWith('节省模式'));
+ assert.equal((await fixture.request(base+'/context')).optimization.mode,'saving');await page.reload();await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='本轮完成');await page.locator('#assistant-details').click();await page.locator('#assistant-usage-refresh').click();await page.waitForFunction(()=>document.querySelector('#assistant-optimization [name=mode]')?.value==='saving');
  for(const width of [1440,390]){
   await page.locator('#assistant-usage summary').filter({hasText:'当前任务最近'}).evaluate(el=>el.parentElement.open=true);await page.locator('#assistant-usage summary').filter({hasText:'最终请求诊断'}).evaluate(el=>el.parentElement.open=true);
   await page.setViewportSize({width,height:1000});await page.locator('#assistant-usage summary').filter({hasText:'最终请求诊断'}).scrollIntoViewIfNeeded();await page.screenshot({path:join(output,'tokens-'+width+'.png'),animations:'disabled'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
@@ -34,5 +34,18 @@ try{
  await page.waitForFunction(()=>document.querySelector('#assistant-usage')?.textContent.includes('部分覆盖 0/1'));
  await page.locator('#assistant-usage summary').filter({hasText:'当前任务最近'}).evaluate(el=>el.parentElement.open=true);
  assert.match(await page.locator('#assistant-usage').innerText(),/冲突（缓存未知）/);assert.match(await page.locator('#assistant-usage').innerText(),/输入 1,200 \/ 输出 80 Token/);
- assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:['native-provider-usage','paired-cache-ratio','cache-conflict','unknown-fields','final-request-diagnostics','saving-mode','mode-persistence','task-switch','responsive','no-browser-errors'],paidModelCalls:0,localModelCalls:fixture.calls.length,output}));
+ providerUsage.prompt_tokens_details.cached_tokens=400;
+ for(const mode of ['standard','saving']){
+  await page.locator('#assistant-optimization [name=mode]').selectOption(mode);await page.locator('#assistant-optimization [name=promptStrategy]').selectOption('stable-prefix-v1');await page.locator('#assistant-optimization button').click();
+  await page.waitForFunction(()=>!document.querySelector('#assistant-optimization button')?.disabled);assert.equal((await fixture.request(base)).promptStrategy,'stable-prefix-v1');
+  for(let round=0;round<2;round++){await fixture.request(base+'/messages',{content:'稳定布局只读回归 '+mode+' '+round});await fixture.idle(session.id);}
+  await page.locator('#assistant-usage-refresh').click();await page.waitForFunction(()=>document.querySelector('#assistant-usage')?.textContent.includes('共同旧核心保持'));
+  await page.locator('#assistant-usage summary').filter({hasText:'当前任务最近'}).evaluate(el=>el.parentElement.open=true);
+  await page.locator('#assistant-usage summary').filter({hasText:'最终请求诊断'}).first().evaluate(el=>el.parentElement.open=true);
+  assert.match(await page.locator('#assistant-usage').innerText(),/stable-prefix-v1/);assert.match(await page.locator('#assistant-usage').innerText(),/共同旧核心保持/);
+ }
+ await page.reload();await page.locator('#assistant-details').click();await page.locator('#assistant-usage-refresh').click();await page.waitForFunction(()=>document.querySelector('#assistant-optimization [name=promptStrategy]')?.value==='stable-prefix-v1');
+ for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await page.screenshot({path:join(output,'stable-'+width+'.png'),animations:'disabled'});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}
+ await page.locator('#assistant-optimization [name=promptStrategy]').selectOption('legacy');await page.locator('#assistant-optimization button').click();await page.waitForFunction(()=>!document.querySelector('#assistant-optimization button')?.disabled);assert.equal((await fixture.request(base)).promptStrategy,'legacy');
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({passed:['native-provider-usage','paired-cache-ratio','cache-conflict','unknown-fields','final-request-diagnostics','saving-mode','mode-persistence','task-switch','stable-standard-saving','stable-core-diagnostic','strategy-persistence','legacy-fallback','responsive','no-browser-errors'],paidModelCalls:0,localModelCalls:fixture.calls.length,output}));
 }finally{await browser?.close();await fixture.close();}

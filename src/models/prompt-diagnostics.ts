@@ -2,14 +2,16 @@ import {createHash,randomUUID} from 'node:crypto';
 
 export const requestHash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
 export interface PromptDescriptor {
-  schema:1;layout:'legacy-v1';generation:null;promptSha256:string;
-  regions:{name:'instruction'|'tool_catalog'|'context';start:number;end:number}[];
+  schema:1;layout:'legacy-v1'|'stable-prefix-v1';generation:string|null;promptSha256:string;
+  generationReason?:string;coreEnd?:number;tailEnd?:number;
+  regions:{name:'instruction'|'tool_catalog'|'context'|'checkpoint'|'events'|'current_state'|'ending';start:number;end:number}[];
   fields:{name:string;hash:string}[];frames:{eventId:number;hash:string}[];
 }
 export interface DiagnosticScope {projectId:string;sessionId:string;purpose:string;routeScopeId:string;configurationRevision?:number;previousUsageId?:string;previousProcessId?:string}
 export interface TransportObservation {requestCreated:boolean;writeCompleted:boolean;responseHeaders:boolean;terminal:boolean}
 export interface RequestDiagnostic {
-  schema:1;processInstanceId:string;usageId:string;attempt:number;scope:DiagnosticScope;layout:string;generation:null;
+  schema:1;processInstanceId:string;usageId:string;attempt:number;scope:DiagnosticScope;layout:string;generation:string|null;
+  stableCore?:{bytes:number;hash:string;commonPrefixBytes:number|null;previousCorePreserved:boolean|null;tailChanged:boolean|null;generationChanged:boolean|null;generationReason:string|null;change:'unknown'|'preserved'|'unreported_change'|'declared_generation'};
   wireBodyHash:string;wireBodyBytes:number;promptSha256:string;logicalInputHash:string;systemHash:string;
   parameterHashes:Record<string,string>;carriedHistoryHash:string|null;
   baselineUsageId:string|null;comparisonState:'available'|'unavailable';baselineUnavailableReason:string|null;
@@ -34,10 +36,12 @@ export function createPromptDiagnostics(maxScopes=8,maxBytes=8*1024*1024){
   const baselines=new Map<string,Baseline>(),evicted=new Set<string>();let bytes=0,order=0;
   const key=(s:DiagnosticScope,layout:string)=>JSON.stringify([s.projectId,s.sessionId,s.routeScopeId,s.purpose,layout]);
   function prepare(scope:DiagnosticScope,usageId:string,attempt:number,shape:RequestShape,descriptor?:PromptDescriptor){
-    if(descriptor&&(descriptor.schema!==1||descriptor.layout!=='legacy-v1'||descriptor.generation!==null||descriptor.promptSha256!==requestHash(shape.prompt)||descriptor.frames.length>201||descriptor.fields.some(f=>!hostFields.has(f.name))||descriptor.regions.some(r=>!['instruction','tool_catalog','context'].includes(r.name)||!Number.isSafeInteger(r.start)||r.start<0||r.end<r.start||r.end>Buffer.byteLength(shape.prompt))))throw new Error('宿主请求描述与实际提示词不一致');
+    if(descriptor&&(descriptor.schema!==1||!['legacy-v1','stable-prefix-v1'].includes(descriptor.layout)||descriptor.promptSha256!==requestHash(shape.prompt)||descriptor.fields.some(f=>!hostFields.has(f.name))||descriptor.regions.some(r=>!['instruction','tool_catalog','context','checkpoint','events','current_state','ending'].includes(r.name)||!Number.isSafeInteger(r.start)||r.start<0||!Number.isSafeInteger(r.end)||r.end<r.start||r.end>Buffer.byteLength(shape.prompt))))throw new Error('宿主请求描述与实际提示词不一致');
+    if(descriptor?.layout==='legacy-v1'&&(descriptor.generation!==null||descriptor.frames.length>201))throw new Error('旧布局描述无效');
+    if(descriptor?.layout==='stable-prefix-v1'&&(typeof descriptor.generation!=='string'||!Number.isSafeInteger(descriptor.coreEnd)||!Number.isSafeInteger(descriptor.tailEnd)||descriptor.coreEnd!<0||descriptor.tailEnd!<descriptor.coreEnd!||descriptor.tailEnd!>Buffer.byteLength(shape.prompt)||!['explicit_strategy_switch','layout_version','optimization_mode','catalog_contract','model_route','compaction','history_rewind','permission_scope_change','instructions'].includes(descriptor.generationReason??'')))throw new Error('稳定核心边界或切代理由无效');
     // 复制描述信息，调用者后续修改对象不能改写已观察的历史。
     descriptor=descriptor?JSON.parse(JSON.stringify(descriptor)):undefined;
-    if(descriptor&&(descriptor.fields.length>diagnosticHostFields.length||descriptor.regions.length>3||new Set(descriptor.frames.map(f=>f.eventId)).size!==descriptor.frames.length||descriptor.frames.some(f=>!Number.isSafeInteger(f.eventId)||f.eventId<1||!/^[a-f0-9]{64}$/.test(f.hash))))throw new Error('宿主历史描述无效');
+    if(descriptor&&(descriptor.fields.length>diagnosticHostFields.length||descriptor.regions.length>5||new Set(descriptor.frames.map(f=>f.eventId)).size!==descriptor.frames.length||descriptor.frames.some(f=>!Number.isSafeInteger(f.eventId)||f.eventId<1||!/^[a-f0-9]{64}$/.test(f.hash))))throw new Error('宿主历史描述无效');
     const layout=descriptor?.layout??'opaque-v1',scopeKey=key(scope,layout),baseline=baselines.get(scopeKey);
     if(baseline){baselines.delete(scopeKey);baselines.set(scopeKey,baseline);}
     const wire=Buffer.from(shape.bodyText),prompt=Buffer.from(shape.prompt),logicalPrefix=baseline?prefix(baseline.prompt,prompt):null;
@@ -55,10 +59,17 @@ export function createPromptDiagnostics(maxScopes=8,maxBytes=8*1024*1024){
     const changedParameters=baseline?[...new Set([...Object.keys(baseline.metadata.parameterHashes),...Object.keys(shape.parameterHashes)])].filter(k=>baseline.metadata.parameterHashes[k]!==shape.parameterHashes[k]):[];
     const changedHostFields=baseline?.descriptor&&descriptor?descriptor.fields.filter(f=>baseline.descriptor!.fields.find(old=>old.name===f.name)?.hash!==f.hash).map(f=>f.name):[];
     const unavailable=baseline?null:evicted.has(scopeKey)||scope.previousUsageId&&scope.previousProcessId===processInstanceId?'memory_budget':scope.previousUsageId?'restart':[...baselines.values()].some(b=>b.metadata.scope.sessionId===scope.sessionId)?'scope_change':'first_request';
-    const metadata:RequestDiagnostic={schema:1,processInstanceId,usageId,attempt,scope:{projectId:scope.projectId,sessionId:scope.sessionId,purpose:scope.purpose,routeScopeId:scope.routeScopeId,configurationRevision:scope.configurationRevision},layout,generation:null,wireBodyHash:requestHash(wire),wireBodyBytes:wire.length,promptSha256:requestHash(prompt),logicalInputHash:requestHash(JSON.stringify([['adapter_system',shape.system],['prompt',shape.prompt]])),systemHash:requestHash(shape.system),parameterHashes:{...shape.parameterHashes},carriedHistoryHash:descriptor?requestHash(JSON.stringify(descriptor.frames)):null,baselineUsageId:baseline?.usageId??scope.previousUsageId??null,comparisonState:baseline?'available':'unavailable',baselineUnavailableReason:unavailable,wireBodyPrefixBytes:baseline?prefix(baseline.wire,wire):null,logicalInputPrefixBytes:logicalPrefix,firstChangedRegion:logicalPrefix!==null&&logicalPrefix<Math.max(prompt.length,baseline!.prompt.length)?descriptor?.regions.find(r=>logicalPrefix>=r.start&&logicalPrefix<r.end)?.name??'opaque':null,firstChangedHostField:baseline?.descriptor&&descriptor?descriptor.fields.find(f=>baseline.descriptor!.fields.find(old=>old.name===f.name)?.hash!==f.hash)?.name??null:null,firstChangedEventId:eventId,historyMutation:mutation,historyChanges,changedHostFields,changedParameters,providerCacheCause:'unknown'};
+    const metadata:RequestDiagnostic={schema:1,processInstanceId,usageId,attempt,scope:{projectId:scope.projectId,sessionId:scope.sessionId,purpose:scope.purpose,routeScopeId:scope.routeScopeId,configurationRevision:scope.configurationRevision},layout,generation:descriptor?.generation??null,wireBodyHash:requestHash(wire),wireBodyBytes:wire.length,promptSha256:requestHash(prompt),logicalInputHash:requestHash(JSON.stringify([['adapter_system',shape.system],['prompt',shape.prompt]])),systemHash:requestHash(shape.system),parameterHashes:{...shape.parameterHashes},carriedHistoryHash:descriptor?requestHash(JSON.stringify(descriptor.frames)):null,baselineUsageId:baseline?.usageId??scope.previousUsageId??null,comparisonState:baseline?'available':'unavailable',baselineUnavailableReason:unavailable,wireBodyPrefixBytes:baseline?prefix(baseline.wire,wire):null,logicalInputPrefixBytes:logicalPrefix,firstChangedRegion:logicalPrefix!==null&&logicalPrefix<Math.max(prompt.length,baseline!.prompt.length)?descriptor?.regions.find(r=>logicalPrefix>=r.start&&logicalPrefix<r.end)?.name??'opaque':null,firstChangedHostField:baseline?.descriptor&&descriptor?descriptor.fields.find(f=>baseline.descriptor!.fields.find(old=>old.name===f.name)?.hash!==f.hash)?.name??null:null,firstChangedEventId:eventId,historyMutation:mutation,historyChanges,changedHostFields,changedParameters,providerCacheCause:'unknown'};
+    if(descriptor?.layout==='stable-prefix-v1'){
+      const old=baseline?.descriptor?.layout==='stable-prefix-v1'?baseline:undefined;
+      const core=prompt.subarray(0,descriptor.coreEnd),previousCore=old?.prompt.subarray(0,old.descriptor!.coreEnd);
+      const changed=old?old.descriptor!.generation!==descriptor.generation:null;
+      const preserved=previousCore?core.length>=previousCore.length&&prefix(previousCore,core)===previousCore.length:null;
+      metadata.stableCore={bytes:core.length,hash:requestHash(core),commonPrefixBytes:previousCore?prefix(previousCore,core):null,previousCorePreserved:preserved,tailChanged:old?!old.prompt.subarray(old.descriptor!.coreEnd,old.descriptor!.tailEnd).equals(prompt.subarray(descriptor.coreEnd,descriptor.tailEnd)):null,generationChanged:changed,generationReason:descriptor.generationReason??null,change:!old?'unknown':changed?'declared_generation':preserved?'preserved':'unreported_change'};
+    }
     // 冻结副本仅供回调；内部基线不与回调共享可变对象。
     const callbackValue=JSON.parse(JSON.stringify(metadata)) as RequestDiagnostic;
-    Object.freeze(callbackValue.scope);Object.freeze(callbackValue.parameterHashes);Object.freeze(callbackValue.changedParameters);Object.freeze(callbackValue.changedHostFields);Object.freeze(callbackValue.historyChanges);Object.freeze(callbackValue);
+    Object.freeze(callbackValue.scope);Object.freeze(callbackValue.parameterHashes);Object.freeze(callbackValue.changedParameters);Object.freeze(callbackValue.changedHostFields);Object.freeze(callbackValue.historyChanges);if(callbackValue.stableCore)Object.freeze(callbackValue.stableCore);Object.freeze(callbackValue);
     const candidate:Baseline={usageId,wire,prompt,descriptor,metadata,order:0};
     return {metadata:callbackValue,candidate,scopeKey};
   }

@@ -40,7 +40,7 @@ export function createContextOutputs(store:Store){
   const {db,row,rows,now}=store;
   db.exec('CREATE TABLE IF NOT EXISTS assistant_outputs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),event_id INTEGER NOT NULL,body TEXT NOT NULL,sha256 TEXT NOT NULL,created_at TEXT NOT NULL)');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_output_event ON assistant_outputs(session_id,event_id)');
-  function history(sessionId:string,events:ContextEvent[],fold=false,saving=false){
+  function history(sessionId:string,events:ContextEvent[],fold=false,saving=false,persist=true){
     // 文件页不因事件变旧立即折叠；额外保留池按 UTF-8 限制单页 24 KiB、去重后 32 KiB，池外沿用原规则。
     const inlineFiles=new Set<string>();let fileBytes=0;
     if(saving)for(const e of [...events].reverse()){
@@ -50,7 +50,7 @@ export function createContextOutputs(store:Store){
     const projected=events.map((e,index)=>{
     const body=JSON.parse(e.body);if(inlineFiles.has(e.body)||!['tool_started','tool_result','delegation_result','supervision_event','file_edit_result','delivery_summary','delivery_record','verification_evidence','npm_validation_started','npm_validation_prepared','npm_validation_finished'].includes(e.kind)||e.body.length<=(fold&&index<events.length-8?800:saving&&index<events.length-2?1200:8000)||body.tool==='read_context'||body.tool==='read_output')return {...e,body};
     let saved=row<{id:string;sha256:string}>('SELECT id,sha256 FROM assistant_outputs WHERE session_id=? AND event_id=?',sessionId,e.id);
-    if(!saved){const id=randomUUID(),sha256=createHash('sha256').update(e.body).digest('hex');db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(id,sessionId,e.id,e.body,sha256,now());saved={id,sha256};}
+    if(!saved){const id=randomUUID(),sha256=createHash('sha256').update(e.body).digest('hex');if(persist)db.prepare('INSERT INTO assistant_outputs VALUES (?,?,?,?,?,?)').run(id,sessionId,e.id,e.body,sha256,now());saved={id,sha256};}
     // 退出码、失败与未知状态必须随引用保留，避免精简正文后把失败误读为成功。
     const result=body.result??body;const flags=hostResultSummary(result);
     const reference={...flags,outputRef:saved.id,sha256:flags.sha256??saved.sha256,savedResultSha256:saved.sha256,referenceKind:'tool_result_json',characters:e.body.length,preview:e.body.slice(0,fold?200:1200),fullResultAvailable:true};

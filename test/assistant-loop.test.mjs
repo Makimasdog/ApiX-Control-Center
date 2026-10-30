@@ -7,8 +7,12 @@ import {DatabaseSync} from 'node:sqlite';
 import {createAssistantLoop} from '../dist/src/assistant/assistant-loop.js';
 import {inferModel} from '../dist/src/models/model-backend.js';
 import {createServer} from 'node:http';
+import {assistantPromptContext} from './assistant-prompt-fixture.mjs';
 const tool=(name,args={})=>({action:'tool',tool:name,args:{...({read_file:{path:'README.md'},write_file:{path:'a.txt',content:'fixture'},verify:{executable:'node'},run_command:{executable:'node'},delegate:{requirements:{scope:'fixture',constraints:'fixture',deliverable:'fixture',acceptance:'fixture'}},configure_agents:{checks:[{id:'test',args:['test.mjs']} ]}}[name]??{}),...args},message:'执行 '+name});
 const finish={action:'finish',outcome:'completed',message:'已完成并核对证据'};
+async function enableStable(h,mode='standard'){
+ const s=await h.service.details(h.id);return h.service.setOptimization(h.id,{version:s.version,mode,promptStrategy:'stable-prefix-v1',promptSettingsVersion:s.promptSettingsVersion});
+}
 async function wait(service,id){for(let i=0;i<200;i++){const s=(await service.details(id));if(!s.busy&&s.status!=='running')return s;await new Promise(r=>setTimeout(r,5));}throw new Error('loop timeout');}
 async function fixture(work){
   const db=new DatabaseSync(':memory:');db.exec("PRAGMA foreign_keys=ON;CREATE TABLE projects(id TEXT PRIMARY KEY);INSERT INTO projects VALUES ('p'),('other');");
@@ -50,6 +54,54 @@ test('optimization mode, session version and audit event roll back together on p
  const s=await h.service.details(h.id);h.db.exec("CREATE TRIGGER fail_optimization BEFORE INSERT ON assistant_events WHEN NEW.kind='optimization_changed' BEGIN SELECT RAISE(ABORT,'optimization event failed'); END");
  await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'saving'}),/optimization event failed/);
  assert.equal((await h.service.details(h.id)).version,s.version);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'standard');assert.equal(h.db.prepare('SELECT COUNT(*) n FROM assistant_optimization').get().n,0);
+}));
+
+for(const mode of ['standard','saving'])test(`${mode} stable production loop freezes old file representations and survives service reconstruction`,()=>fixture(async h=>{
+ await enableStable(h,mode);h.deps.execute=async(_s,_tool,args)=>({path:args.path,sha256:args.path,content:'const checked=true;\n'.repeat(650),hasMore:false});
+ const cores=[];const check=prompt=>{assert(prompt.includes('APIX_PROMPT_LAYOUT stable-prefix-v1'));cores.push(prompt.slice(0,prompt.lastIndexOf('\nCURRENT_STATE ')+1));return assistantPromptContext(prompt);};
+ h.answer(tool('read_file',{path:'a.txt'}),prompt=>{const ctx=check(prompt);assert(ctx.history.some(e=>e.kind==='tool_result'&&e.body.result.content));return JSON.stringify(tool('read_file',{path:'b.txt'}));},prompt=>{const ctx=check(prompt);assert.equal(ctx.history.filter(e=>e.kind==='tool_result').length,2);return JSON.stringify(finish);});
+ await h.service.message(h.id,{content:'只读核查'});assert.equal((await wait(h.service,h.id)).status,'completed');assert(cores[1].startsWith(cores[0]));
+ const before=h.db.prepare('SELECT rendered_hash FROM assistant_prompt_frames ORDER BY sequence').all();const generation=(await h.service.contextInfo(h.id)).optimization.generation;
+ const changes=h.db.prepare('SELECT total_changes() n').get().n;await h.service.contextInfo(h.id);assert.equal(h.db.prepare('SELECT total_changes() n').get().n,changes);
+ const rebuilt=createAssistantLoop(h.deps);h.answer(prompt=>{check(prompt);return JSON.stringify(finish);});await rebuilt.message(h.id,{content:'继续只读核对'});assert.equal((await wait(rebuilt,h.id)).status,'completed');assert(cores.at(-1).startsWith(cores[1]));assert.equal((await rebuilt.contextInfo(h.id)).optimization.generation,generation);
+ const after=h.db.prepare('SELECT rendered_hash FROM assistant_prompt_frames ORDER BY sequence').all();assert.deepEqual(after.slice(0,before.length),before);
+}));
+
+test('stable settings have independent optimistic version, preserve old-client mode saves and roll back together',()=>fixture(async h=>{
+ const enabled=await enableStable(h);assert.equal(enabled.promptSettingsVersion,1);assert.equal(enabled.generation,null);
+ await assert.rejects(h.service.setOptimization(h.id,{version:enabled.version,mode:'standard',promptStrategy:'legacy',promptSettingsVersion:0}),/提示词设置版本/);
+ const saved=await h.service.setOptimization(h.id,{version:enabled.version,mode:'saving'});assert.equal(saved.promptStrategy,'stable-prefix-v1');assert.equal(saved.promptSettingsVersion,1);
+ h.db.exec("CREATE TRIGGER fail_settings BEFORE INSERT ON assistant_events WHEN NEW.kind='optimization_changed' BEGIN SELECT RAISE(ABORT,'settings failed');END");
+ await assert.rejects(h.service.setOptimization(h.id,{version:saved.version,mode:'standard',promptStrategy:'legacy',promptSettingsVersion:1}),/settings failed/);
+ const after=await h.service.details(h.id);assert.equal(after.promptStrategy,'stable-prefix-v1');assert.equal(after.promptSettingsVersion,1);assert.equal(after.optimizationMode,'saving');
+}));
+
+test('stable failed projection creates no inference and explicit legacy fallback keeps original history',()=>fixture(async h=>{
+ await enableStable(h);h.answer(finish);await h.service.message(h.id,{content:'只读任务'});await wait(h.service,h.id);const count=h.prompts.length;
+ h.db.exec("UPDATE assistant_prompt_frames SET rendered_text='tampered' WHERE event_id IS NOT NULL");await h.service.message(h.id,{content:'再核查'});const stopped=await wait(h.service,h.id);assert.equal(stopped.status,'attention');assert.equal(h.prompts.length,count);
+ const changed=await h.service.setOptimization(h.id,{version:stopped.version,mode:'standard',promptStrategy:'legacy',promptSettingsVersion:stopped.promptSettingsVersion});assert.equal(changed.promptStrategy,'legacy');h.answer(finish);await h.service.message(h.id,{content:'按原始历史继续'});assert.equal((await wait(h.service,h.id)).status,'completed');assert(h.prompts.at(-1).includes('当前上下文：'));
+}));
+
+test('stable checkpoint and legacy summary watermarks commit atomically and retain constraints on rollback',()=>fixture(async h=>{
+ await enableStable(h);h.deps.contextTokens=()=>131072;h.deps.execute=async(_s,_tool,args)=>({path:args.path,sha256:args.path,content:'checked\n'.repeat(1500)});
+ h.answer(...Array.from({length:5},(_,i)=>tool('read_file',{path:`file-${i}.txt`})),finish);await h.service.message(h.id,{content:'原约束：只读核查，不得修改'});let s=await wait(h.service,h.id);assert.equal(s.status,'completed');const originalGeneration=(await h.service.contextInfo(h.id)).optimization.generation;
+ h.db.exec("CREATE TRIGGER fail_checkpoint BEFORE INSERT ON assistant_prompt_generations BEGIN SELECT RAISE(ABORT,'checkpoint failed');END");h.answer({summary:'保留只读约束与全部失败事实'});
+ await assert.rejects(h.service.compact(h.id,{version:s.version}),/checkpoint failed/);s=await h.service.details(h.id);assert.equal(s.summary,'');assert.equal(s.compacted_through,0);assert.equal((await h.service.contextInfo(h.id)).optimization.generation,originalGeneration);
+ h.db.exec('DROP TRIGGER fail_checkpoint');h.answer({summary:'保留只读约束与全部失败事实'});s=await h.service.compact(h.id,{version:s.version});assert(s.compacted_through>0);assert(s.summary.includes('只读'));const g=h.db.prepare('SELECT * FROM assistant_prompt_generations WHERE id=?').get((await h.service.contextInfo(h.id)).optimization.generation);assert.equal(JSON.parse(g.boundary).through,s.compacted_through);assert.equal(g.reason,'compaction');assert(g.checkpoint.includes('Keep existing rules'));
+ h.answer(prompt=>{assert(prompt.includes('保留只读约束'));return JSON.stringify(finish);});await h.service.message(h.id,{content:'继续'});assert.equal((await wait(h.service,h.id)).status,'completed');
+}));
+
+test('stable mode preserves real permission denial and knowledge revocation before another inference',()=>fixture(async h=>{
+ await enableStable(h);h.policy({mode:'read_only',version:1});h.answer(tool('write_file'));await h.service.message(h.id,{content:'尝试写入'});assert.equal((await wait(h.service,h.id)).status,'attention');assert.equal(h.calls.length,0);
+ h.deps.knowledge.assertSession=()=>{throw new Error('KNOWLEDGE_SCOPE_CHANGED');};const count=h.prompts.length;await h.service.message(h.id,{content:'继续'});assert.equal((await wait(h.service,h.id)).status,'attention');assert.equal(h.prompts.length,count);
+}));
+
+for(const strategy of ['legacy','stable-prefix-v1'])test(`${strategy} steering during asynchronous description discards stale context before inference`,()=>fixture(async h=>{
+ if(strategy==='stable-prefix-v1')await enableStable(h);
+ let entered,release;const ready=new Promise(r=>entered=r),barrier=new Promise(r=>release=r);let first=true;
+ h.deps.describe=async()=>{if(first){first=false;entered();await barrier;}return {instructions:[],project:{name:'fixture'}};};
+ h.answer(finish);await h.service.message(h.id,{content:'首次请求'});await ready;await h.service.message(h.id,{content:'后续纠正：保留原文件'});release();
+ assert.equal((await wait(h.service,h.id)).status,'completed');assert.equal(h.prompts.length,1);assert(h.prompts[0].includes('后续纠正：保留原文件'));
 }));
 
 test('saving loop retains normal file pages and links repeated reads without re-reading a folded reference',()=>fixture(async h=>{

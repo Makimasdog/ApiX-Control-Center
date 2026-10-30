@@ -39,6 +39,35 @@ test('native cache conflict stays unknown through production inference and read-
  }finally{await h.close();}
 });
 
+for(const mode of ['standard','saving'])test(`${mode} stable HTTP projection persists core diagnostics, never writes on context GET and supports legacy fallback`,{timeout:90000},async()=>{
+ const h=await startDeliveryFixture({startupMs:30000,usage:{prompt_tokens:1000,completion_tokens:50,prompt_cache_hit_tokens:400,prompt_cache_miss_tokens:600},decide:(ctx,state)=>{
+  if(!state.discovered){state.discovered=true;return {action:'tool',tool:'search_tools',args:{query:'read_memory',limit:1},message:'发现工具'};}
+  assert(ctx.history.some(e=>e.kind==='tool_result'&&e.body.tool==='search_tools'&&e.body.result.tools[0].inputSchema));return {action:'finish',outcome:'completed',message:'只读完成'};
+ }});let db;
+ try{
+ let session=await h.request('/api/assistant/sessions',{projectId:h.projectId});const base='/api/assistant/sessions/'+session.id;
+ session=await h.request(base+'/optimization',{version:session.version,mode,promptStrategy:'stable-prefix-v1',promptSettingsVersion:0});assert.equal(session.promptSettingsVersion,1);assert.equal(session.generation,null);
+ await h.request(base+'/optimization',{version:session.version,mode,promptStrategy:'legacy',promptSettingsVersion:0},400);
+ db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));const before=db.prepare('SELECT COUNT(*) n FROM assistant_prompt_frames').get().n;const calls=h.calls.length;await h.request(base+'/context');assert.equal(h.calls.length,calls);assert.equal(db.prepare('SELECT COUNT(*) n FROM assistant_prompt_frames').get().n,before);
+ await h.request(base+'/messages',{content:'只读发现记忆工具'});session=await h.idle(session.id);assert.equal(session.status,'completed');const info=await h.request(base+'/context');assert(info.optimization.generation);assert.equal(info.usage.task.calls,2);
+ const diagnostic=info.usage.recent[0].requestDiagnostics;assert.equal(diagnostic.layout,'stable-prefix-v1');assert.equal(diagnostic.stableCore.change,'preserved');assert.equal(diagnostic.historyMutation,'none');assert.equal(diagnostic.transportObservation.responseHeaders,true);assert.equal(diagnostic.generation,info.optimization.generation);assert.equal(info.usage.task.cacheRead.ratio,0.4);
+ const frames=db.prepare('SELECT rendered_hash FROM assistant_prompt_frames ORDER BY sequence').all(),generation=info.optimization.generation;await h.request(base+'/context');assert.deepEqual(db.prepare('SELECT rendered_hash FROM assistant_prompt_frames ORDER BY sequence').all(),frames);
+ session=await h.request(base+'/optimization',{version:session.version,mode});assert.equal(session.promptStrategy,'stable-prefix-v1');assert.equal(session.generation,generation);
+ session=await h.request(base+'/optimization',{version:session.version,mode,promptStrategy:'legacy',promptSettingsVersion:session.promptSettingsVersion});assert.equal(session.promptStrategy,'legacy');assert.equal(session.generation,null);assert(db.prepare('SELECT COUNT(*) n FROM assistant_prompt_frames').get().n>0);
+ await h.request(base+'/messages',{content:'原布局继续'});assert.equal((await h.idle(session.id)).status,'completed');assert.equal((await h.request(base+'/context')).usage.recent[0].requestDiagnostics.layout,'legacy-v1');
+ }finally{db?.close();await h.close();}
+});
+
+test('production stable frame save failure sends no model request or pending usage record',{timeout:60000},async()=>{
+ const h=await startDeliveryFixture({startupMs:30000});let db;
+ try{
+ let session=await h.request('/api/assistant/sessions',{projectId:h.projectId});const base='/api/assistant/sessions/'+session.id;
+ session=await h.request(base+'/optimization',{version:session.version,mode:'standard',promptStrategy:'stable-prefix-v1',promptSettingsVersion:0});
+ db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));db.exec("CREATE TRIGGER fail_projection BEFORE INSERT ON assistant_prompt_frames BEGIN SELECT RAISE(ABORT,'projection failed');END");
+ await h.request(base+'/messages',{content:'只读故障注入'});assert.equal((await h.idle(session.id)).status,'attention');assert.equal(h.calls.length,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM model_token_usage').get().n,0);assert.equal(db.prepare('SELECT COUNT(*) n FROM assistant_prompt_generations').get().n,0);
+ }finally{db?.close();await h.close();}
+});
+
 test('diagnostic insert failure creates no model request, settles failed once and retains the accounting recovery gate',{timeout:60000},async()=>{
  const h=await startDeliveryFixture({startupMs:30000});let db;
  try{
