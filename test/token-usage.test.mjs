@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {inferModel} from '../dist/src/models/model-backend.js';
-import {modelUsage,unknownUsage} from '../dist/src/models/model-usage.js';
+import {modelUsage,modelUsageDetails,unknownUsage} from '../dist/src/models/model-usage.js';
 import {createTokenUsage} from '../dist/src/assistant/token-usage.js';
-import {createContextOutputs,estimateTokens} from '../dist/src/assistant/assistant-context.js';
+import {createContextOutputs,estimateTokens,trimHistory} from '../dist/src/assistant/assistant-context.js';
 import {optimizedCatalog} from '../dist/src/assistant/context-optimizer.js';
 import {builtinTools} from '../dist/src/assistant/tool-registry.js';
 import {tokenUsageView} from '../dist/web/token-usage-view.js';
@@ -38,6 +38,96 @@ test('missing and malformed fields remain unknown, including absent Anthropic ca
  const u=modelUsage('openai-completions',{prompt_tokens:-1,completion_tokens:'20',prompt_tokens_details:{cached_tokens:Infinity}});assert.deepEqual(u,unknownUsage());
  assert.equal(modelUsage('anthropic-messages',{input_tokens:10,output_tokens:2}).inputTokens,null);
  assert.equal(modelUsage('openai-responses',{input_tokens:0,output_tokens:0}).inputTokens,0);
+});
+
+test('completion cache candidates validate provider parts without double counting or losing known totals',()=>{
+ const cases=[
+  [{prompt_tokens:100,prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:60},100,40,'native','observed'],
+  [{prompt_tokens:100,prompt_tokens_details:{cached_tokens:40},prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:60},100,40,'both','observed'],
+  [{prompt_tokens:100,prompt_tokens_details:{cached_tokens:50},prompt_cache_hit_tokens:40},100,null,'both','conflict'],
+  [{prompt_tokens:100,prompt_cache_hit_tokens:101},100,null,'native','conflict'],
+  [{prompt_tokens:100,prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:50},100,null,'native','conflict'],
+  [{prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:60},100,40,'native','observed'],
+  [{prompt_cache_hit_tokens:40},null,40,'native','observed'],
+  [{prompt_cache_miss_tokens:60},null,null,'missing','missing'],
+  [{prompt_tokens:0,prompt_cache_hit_tokens:0,prompt_cache_miss_tokens:0},0,0,'native','observed'],
+  [{prompt_tokens:Number.MAX_SAFE_INTEGER,prompt_cache_hit_tokens:Number.MAX_SAFE_INTEGER,prompt_cache_miss_tokens:1},Number.MAX_SAFE_INTEGER,null,'native','conflict'],
+  [{prompt_cache_hit_tokens:Number.MAX_SAFE_INTEGER,prompt_cache_miss_tokens:1},null,null,'native','conflict'],
+  [{prompt_tokens:100,prompt_tokens_details:{cached_tokens:101}},100,null,'standard','conflict'],
+ ];
+ for(const [raw,input,hit,source,consistency] of cases){
+  const u=modelUsage('openai-completions',{completion_tokens:12,...raw});
+  assert.equal(u.inputTokens,input);assert.equal(u.cachedInputTokens,hit);assert.equal(u.cacheWriteTokens,null);assert.equal(u.outputTokens,12);
+  assert.equal(modelUsageDetails(u).cacheSource,source);assert.equal(modelUsageDetails(u).cacheConsistency,consistency);
+  if(!('prompt_tokens' in raw)&&input!==null)assert.equal(modelUsageDetails(u).inputSource,'derived_from_provider_parts');
+ }
+ for(const invalid of [-1,'40',null,Infinity,1.5,Number.MAX_SAFE_INTEGER+1]){
+  const u=modelUsage('openai-completions',{prompt_tokens:100,prompt_cache_hit_tokens:invalid,prompt_cache_miss_tokens:invalid});assert.equal(u.cachedInputTokens,null);assert.equal(u.inputTokens,100);
+  assert.equal(modelUsage('openai-completions',{prompt_tokens_details:{cached_tokens:40},prompt_cache_hit_tokens:invalid}).cachedInputTokens,40);
+ }
+});
+
+test('split cumulative completion snapshots retain candidates, preserve conflict and explicitly repair it',()=>{
+ let u=modelUsage('openai-completions',{prompt_cache_hit_tokens:40});
+ u=modelUsage('openai-completions',{prompt_cache_miss_tokens:60},u);assert.equal(u.inputTokens,100);
+ u=modelUsage('openai-completions',{prompt_tokens:110,prompt_tokens_details:{cached_tokens:50}},u);assert.equal(u.cachedInputTokens,null);
+ u=modelUsage('openai-completions',{},u);assert.equal(u.cachedInputTokens,null);assert.equal(modelUsageDetails(u).cacheConsistency,'conflict');
+ u=modelUsage('openai-completions',{prompt_cache_hit_tokens:50},u);assert.equal(u.cachedInputTokens,50);assert.equal(u.inputTokens,110);
+ u=modelUsage('openai-completions',{prompt_cache_hit_tokens:-1},u);assert.equal(u.cachedInputTokens,50);assert.equal(modelUsageDetails(u).cacheSource,'standard');
+ u=modelUsage('openai-completions',{prompt_tokens_details:{cached_tokens:null}},u);assert.equal(u.cachedInputTokens,null);
+});
+
+for(const conflict of [false,true])test(`native SSE fields reach inference, persistent ledger and view with conflict=${conflict}`,()=>fixture('openai-completions',res=>sse(res,[
+ {choices:[],usage:{prompt_tokens:100,completion_tokens:12,prompt_cache_hit_tokens:40}},
+ {choices:[],usage:{prompt_cache_miss_tokens:60,prompt_tokens_details:{cached_tokens:conflict?50:40}}},
+ {choices:[{delta:{content:'ok'},finish_reason:'stop'}],usage:{}},'[DONE]',
+]),async settings=>{
+ const s=store();s.db.exec('PRAGMA foreign_keys=ON');try{
+ let ledger=createTokenUsage(s),id;
+ await inferModel(settings,'test',undefined,{onAttemptStart:attempt=>{id=ledger.start({invocationId:'native',attempt,projectId:'p',sessionId:'s',taskId:'task',purpose:'assistant_loop',provider:'fixture',model:'local',apiType:'openai-completions',estimatedPromptTokens:1});},onAttempt:a=>ledger.finish(id,a)});
+ ledger=createTokenUsage(s);const r=ledger.report('p','s','task');assert.equal(r.task.inputTokens,100);assert.equal(r.task.outputTokens,12);assert.equal(r.task.cachedInputTokens,conflict?null:40);assert.equal(r.task.cacheWriteTokens,null);
+ assert.equal(r.recent[0].usageDetails.cacheConsistency,conflict?'conflict':'observed');assert.equal(r.task.cacheRead.ratio,conflict?null:0.4);
+ assert(tokenUsageView(r).includes(conflict?'冲突（缓存未知）':'40.00%'));
+ s.db.prepare('DELETE FROM model_token_usage WHERE id=?').run(id);assert.equal(s.db.prepare('SELECT COUNT(*) n FROM model_usage_details').get().n,0);
+ }finally{s.db.close();}
+}));
+
+test('cache ratio pairs observations per attempt and excludes pending, unknown and overflow',()=>{
+ const s=store();try{
+ const ledger=createTokenUsage(s);let n=0;
+ const add=(raw,status='completed')=>{const id=ledger.start({invocationId:String(++n),attempt:1,projectId:'p',sessionId:'s',purpose:'assistant_loop',provider:'fixture',model:'local',apiType:'openai-completions',estimatedPromptTokens:1});if(status!=='pending')ledger.finish(id,{attempt:1,status,durationMs:0,usage:modelUsage('openai-completions',raw),usageComplete:false});};
+ add({prompt_tokens:100,prompt_cache_hit_tokens:40});add({prompt_tokens:1000});add({prompt_tokens:50,prompt_cache_hit_tokens:10},'failed');add({},'pending');
+ let r=ledger.report('p','s',null).task.cacheRead;assert.equal(r.ratio,50/150);assert.equal(r.eligibleCalls,2);assert.equal(r.excludedCalls,2);assert.equal(r.coverageComplete,false);
+ add({prompt_tokens:Number.MAX_SAFE_INTEGER,prompt_cache_hit_tokens:0});r=ledger.report('p','s',null).task.cacheRead;assert.equal(r.overflow,true);assert.equal(r.ratio,null);assert.equal(r.pairedInputTokens,null);
+ }finally{s.db.close();}
+});
+
+test('usage detail failure rolls back settlement and old rows acquire no invented sources',()=>{
+ const s=store();try{
+ let ledger=createTokenUsage(s);
+ const start=invocationId=>ledger.start({invocationId,attempt:1,projectId:'p',sessionId:'s',purpose:'assistant_loop',provider:'fixture',model:'local',apiType:'openai-completions',estimatedPromptTokens:1});
+ const old=start('old');ledger.finish(old,{attempt:1,status:'completed',durationMs:1,usage:{...unknownUsage(),inputTokens:100,cachedInputTokens:40},usageComplete:false});
+ ledger=createTokenUsage(s);assert.equal(ledger.report('p','s',null).recent[0].usageDetails,undefined);
+ const id=start('new');s.db.exec("CREATE TRIGGER fail_usage_detail BEFORE INSERT ON model_usage_details BEGIN SELECT RAISE(ABORT,'detail persistence failed'); END");
+ const attempt={attempt:1,status:'completed',durationMs:1,usage:modelUsage('openai-completions',{prompt_tokens:100,prompt_cache_hit_tokens:40}),usageComplete:false};
+ assert.throws(()=>ledger.finish(id,attempt),/detail persistence failed/);assert.equal(s.db.prepare('SELECT status FROM model_token_usage WHERE id=?').get(id).status,'pending');assert.equal(s.db.prepare('SELECT COUNT(*) n FROM model_usage_details').get().n,0);
+ s.db.exec('DROP TRIGGER fail_usage_detail');ledger.finish(id,attempt);assert.equal(ledger.report('p','s',null).recent[0].usageDetails.cacheSource,'native');
+ }finally{s.db.close();}
+});
+
+test('interrupted native SSE retains observed partial usage and its source',()=>fixture('openai-completions',res=>sse(res,[{choices:[],usage:{prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:60,completion_tokens:3}}]),async settings=>{
+ const attempts=[];await assert.rejects(inferModel(settings,'test',undefined,{onAttempt:a=>attempts.push(a)}),/中断/);
+ assert.equal(attempts[0].status,'failed');assert.equal(attempts[0].usageComplete,false);assert.equal(attempts[0].usage.inputTokens,100);assert.equal(attempts[0].usage.cachedInputTokens,40);assert.equal(attempts[0].usageDetails.inputSource,'derived_from_provider_parts');
+}));
+
+test('model projection excludes display activity from its first turn and never ages out facts',()=>{
+ const factKinds=['tool_started','tool_result','process_unknown','request','request_answer','intent_confirmed','delivery_changes_requested','memory_recalled','compacted','error','protocol_repair','verification_evidence','future_fact'];
+ const facts=factKinds.map((kind,i)=>({id:i+1,role:'system',kind,body:JSON.stringify({unknown:true,error:'failed',correction:'keep'})}));
+ const display={id:100,role:'assistant',kind:'activity',body:JSON.stringify({content:'执行 read_file'})};
+ const initial=[...facts,display],snapshot=JSON.stringify(initial);
+ assert.deepEqual(trimHistory([display]),[]);assert.deepEqual(trimHistory(initial),facts);
+ const later=[...initial,...Array.from({length:12},(_,i)=>({id:101+i,role:'system',kind:i%2?'context_budget':'activity',body:'{}'}))];
+ assert.deepEqual(trimHistory(later),facts);assert.equal(JSON.stringify(initial),snapshot);
 });
 test('partial stream keeps observed usage but never marks it complete',()=>fixture('anthropic-messages',res=>sse(res,[{type:'message_start',message:{usage:anthropicUsage}},{type:'content_block_delta',delta:{type:'text_delta',text:'partial'}}]),async settings=>{
  const attempts=[];await assert.rejects(inferModel(settings,'test',undefined,{onAttempt:r=>attempts.push(r)}),/中断/);assert.equal(attempts.length,1);assert.equal(attempts[0].status,'failed');assert.equal(attempts[0].usageComplete,false);assert.equal(attempts[0].usage.inputTokens,100);

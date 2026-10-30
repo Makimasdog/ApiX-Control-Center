@@ -41,6 +41,41 @@ export const unknownUsage=():ModelUsage=>({inputTokens:null,outputTokens:null,ca
  */
 const count=(v:unknown):number|null=>Number.isSafeInteger(v)&&Number(v)>=0?Number(v):null;
 
+export interface UsageDetails {
+  standardHit:number|null;
+  nativeHit:number|null;
+  nativeMiss:number|null;
+  providerInput:number|null;
+  inputSource:'observed'|'derived_from_provider_parts'|'missing';
+  cacheSource:'standard'|'native'|'both'|'missing';
+  cacheConsistency:'observed'|'missing'|'conflict';
+}
+// 候选跨累计快照保留，但不混入五项计数，也不让未知用量对象改变形状。
+const usageDetails=new WeakMap<ModelUsage,UsageDetails>();
+export const modelUsageDetails=(usage:ModelUsage)=>usageDetails.get(usage);
+
+function completionUsage(raw:Record<string,any>,previous:ModelUsage,result:ModelUsage){
+  const prior=usageDetails.get(previous);
+  const details:UsageDetails={standardHit:prior?.standardHit??previous.cachedInputTokens,nativeHit:null,nativeMiss:null,providerInput:previous.inputTokens,inputSource:'missing',cacheSource:'missing',cacheConsistency:'missing',...prior};
+  for(const [key,value] of Object.entries({standardHit:raw.prompt_tokens_details?.cached_tokens,nativeHit:raw.prompt_cache_hit_tokens,nativeMiss:raw.prompt_cache_miss_tokens,providerInput:raw.prompt_tokens})){
+    if(value!==undefined)details[key as 'standardHit'|'nativeHit'|'nativeMiss'|'providerInput']=count(value);
+  }
+  const {standardHit:standard,nativeHit:hit,nativeMiss:miss,providerInput:input}=details;
+  const sum=hit!==null&&miss!==null?hit+miss:null;
+  const safeSum=sum!==null&&Number.isSafeInteger(sum)?sum:null;
+  result.inputTokens=input??safeSum;
+  details.inputSource=input!==null?'observed':safeSum!==null?'derived_from_provider_parts':'missing';
+  details.cacheSource=standard!==null?(hit!==null?'both':'standard'):hit!==null?'native':'missing';
+  result.cachedInputTokens=standard??hit;
+  const hitConflict=standard!==null&&hit!==null&&standard!==hit;
+  const partsConflict=sum!==null&&(safeSum===null||input!==null&&sum!==input);
+  const exceedsInput=result.cachedInputTokens!==null&&result.inputTokens!==null&&result.cachedInputTokens>result.inputTokens;
+  const conflict=hitConflict||partsConflict||exceedsInput;
+  details.cacheConsistency=conflict?'conflict':result.cachedInputTokens===null?'missing':'observed';
+  if(conflict)result.cachedInputTokens=null;
+  usageDetails.set(result,details);
+}
+
 /**
  * modelUsage - 解析不同 API 协议返回的用量数据，合并为统一的 ModelUsage
  * 注意：流事件携带的是累计快照，后续计数覆盖前值，逐块相加会重复计算 Token
@@ -54,7 +89,7 @@ export function modelUsage(api:string,raw:Record<string,any>,previous=unknownUsa
   const result={...previous};
   // 根据 API 协议提取对应的字段名映射
   const fields=api==='openai-completions'?{
-    inputTokens:raw.prompt_tokens,outputTokens:raw.completion_tokens,cachedInputTokens:raw.prompt_tokens_details?.cached_tokens,
+    outputTokens:raw.completion_tokens,
     cacheWriteTokens:raw.prompt_tokens_details?.cache_write_tokens,reasoningTokens:raw.completion_tokens_details?.reasoning_tokens,
   }:api==='openai-responses'?{
     inputTokens:raw.input_tokens,outputTokens:raw.output_tokens,cachedInputTokens:raw.input_tokens_details?.cached_tokens,
@@ -62,6 +97,7 @@ export function modelUsage(api:string,raw:Record<string,any>,previous=unknownUsa
   }:{outputTokens:raw.output_tokens,cachedInputTokens:raw.cache_read_input_tokens,cacheWriteTokens:raw.cache_creation_input_tokens};
   // 将提取到的有效值覆盖到结果中
   for(const [key,value] of Object.entries(fields))if(value!==undefined)result[key as keyof ModelUsage]=count(value);
+  if(api==='openai-completions')completionUsage(raw,previous,result);
   if(api==='anthropic-messages'){
     // Anthropic 的 input_tokens 不含缓存读写；三个分量都已知时才能得到总输入，缺失不补零
     const uncached=count(raw.input_tokens);
@@ -76,6 +112,7 @@ export function modelUsage(api:string,raw:Record<string,any>,previous=unknownUsa
  * completed 只表示模型传输完成，不代表任务已验收
  */
 export interface ModelAttempt {
+  usageDetails?:UsageDetails;
   transportObservation?:import('./prompt-diagnostics.js').TransportObservation;
   /** 第几次尝试（从 1 开始） */
   attempt:number;

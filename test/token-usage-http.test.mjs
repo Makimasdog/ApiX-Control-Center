@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {join} from 'node:path';
 
 test('production usage ledger, saving discovery and task boundaries through HTTP',{timeout:90000},async()=>{
- const h=await startDeliveryFixture({startupMs:30000,usage:{prompt_tokens:1000,completion_tokens:50,prompt_tokens_details:{cached_tokens:100}},decide:(ctx,state)=>{
+ const h=await startDeliveryFixture({startupMs:30000,usage:{prompt_tokens:1000,completion_tokens:50,prompt_cache_hit_tokens:100,prompt_cache_miss_tokens:900},decide:(ctx,state)=>{
   const tools=ctx.history.filter(e=>e.kind==='tool_result');
   if(!state.discovered){state.discovered=true;return {action:'tool',tool:'search_tools',args:{query:'read_memory',limit:1},message:'按需发现记忆工具'};}
   assert(tools.some(e=>e.body.tool==='search_tools'&&e.body.result.tools.some(t=>t.name==='read_memory'&&t.inputSchema)));
@@ -19,6 +19,7 @@ test('production usage ledger, saving discovery and task boundaries through HTTP
   await h.request(base+'/messages',{content:'检查项目现有记忆，无需修改'});session=await h.idle(session.id);assert.equal(session.status,'completed');
   let info=await h.request(base+'/context');assert.equal(info.error,undefined);assert.equal(info.optimization.mode,'saving');assert(info.optimization.estimatedReductionTokens>0);assert.equal(info.usage.task.calls,2);assert.equal(info.usage.task.inputTokens,2000);assert.equal(info.usage.task.outputTokens,100);assert.equal(info.usage.task.coverage.cacheWriteTokens,0);assert.equal(info.usage.task.coverage.cachedInputTokens,2);assert(info.usage.recent.every(r=>r.purpose==='assistant_loop'));
   assert(info.usage.recent.every(r=>r.requestDiagnostics?.wireBodyHash&&r.requestDiagnostics.transportObservation.responseHeaders));
+  assert(info.usage.recent.every(r=>r.usageDetails?.cacheSource==='native'&&r.usageDetails.nativeMiss===900));assert.equal(info.usage.task.cacheRead.ratio,0.1);
   assert.equal(info.usage.recent[0].requestDiagnostics.comparisonState,'available');assert.equal(info.usage.recent[0].requestDiagnostics.firstChangedHostField,'history');
   const diagnosticCount=info.usage.recent.length;await h.request(base+'/context');assert.equal((await h.request(base+'/context')).usage.recent.length,diagnosticCount);
   const firstTask=info.usage.taskId;session=await h.request(base+'/compact',{version:session.version,focus:'保留用户约束与工具引用'});info=await h.request(base+'/context');assert.equal(info.usage.task.calls,3);assert.equal(info.usage.recent[0].purpose,'compaction');assert.equal(info.usage.task.inputTokens,3000);assert.equal(info.usage.recent[0].requestDiagnostics.layout,'opaque-v1');
@@ -26,6 +27,15 @@ test('production usage ledger, saving discovery and task boundaries through HTTP
   const other=await h.request('/api/assistant/sessions',{projectId:h.projectId});const isolated=await h.request('/api/assistant/sessions/'+other.id+'/context');assert.equal(isolated.usage.session.calls,0);assert.equal(isolated.usage.project.calls,3);assert.equal(isolated.optimization.mode,'standard');
   await h.request('/api/chat-history/assistant/'+other.id,{action:'delete',version:other.version});await h.request('/api/assistant/sessions/'+other.id+'/context',undefined,400);
   await h.request('/api/assistant/sessions/missing/optimization',{version:1,mode:'saving'},400);
+ }finally{await h.close();}
+});
+
+test('native cache conflict stays unknown through production inference and read-only context GET',{timeout:60000},async()=>{
+ const h=await startDeliveryFixture({startupMs:30000,usage:{prompt_tokens:100,completion_tokens:10,prompt_tokens_details:{cached_tokens:50},prompt_cache_hit_tokens:40,prompt_cache_miss_tokens:60},decide:()=>({action:'finish',outcome:'completed',message:'只读完成'})});
+ try{
+ const session=await h.request('/api/assistant/sessions',{projectId:h.projectId}),base='/api/assistant/sessions/'+session.id;await h.request(base+'/messages',{content:'只读核查'});await h.idle(session.id);
+ const before=h.calls.length;for(let i=0;i<2;i++){const {usage}=await h.request(base+'/context');assert.equal(usage.task.inputTokens,100);assert.equal(usage.task.outputTokens,10);assert.equal(usage.task.cachedInputTokens,null);assert.equal(usage.task.cacheRead.ratio,null);assert.equal(usage.task.cacheRead.eligibleCalls,0);assert.equal(usage.recent[0].usageDetails.cacheConsistency,'conflict');}
+ assert.equal(h.calls.length,before);
  }finally{await h.close();}
 });
 

@@ -13,7 +13,7 @@
  */
 import {randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
-import {unknownUsage,type ModelAttempt,type ModelUsage} from '../models/model-usage.js';
+import {unknownUsage,modelUsageDetails,type ModelAttempt,type ModelUsage,type UsageDetails} from '../models/model-usage.js';
 import type {DiagnosticScope,RequestDiagnostic} from '../models/prompt-diagnostics.js';
 import type {ModelSettings} from '../models/model-request.js';
 /** 用量聚合结果类型：扩展 ModelUsage 增加调用次数、失败数等统计 */
@@ -34,6 +34,8 @@ export function createTokenUsage({db,row,rows,now}:Store){
     estimated_prompt_tokens INTEGER NOT NULL,duration_ms INTEGER,created_at TEXT NOT NULL,
     UNIQUE(invocation_id,attempt));
     CREATE INDEX IF NOT EXISTS model_token_usage_scope ON model_token_usage(project_id,session_id,task_id,created_at);`);
+  db.exec(`CREATE TABLE IF NOT EXISTS model_usage_details(
+    usage_id TEXT PRIMARY KEY REFERENCES model_token_usage(id) ON DELETE CASCADE,body TEXT NOT NULL);`);
   db.exec(`CREATE TABLE IF NOT EXISTS model_prompt_diagnostics(
     usage_id TEXT PRIMARY KEY REFERENCES model_token_usage(id) ON DELETE CASCADE,
     project_id TEXT NOT NULL,session_id TEXT NOT NULL,route_id TEXT NOT NULL,purpose TEXT NOT NULL,layout TEXT NOT NULL,
@@ -65,6 +67,8 @@ export function createTokenUsage({db,row,rows,now}:Store){
     const u=value.usage;const result=db.prepare('UPDATE model_token_usage SET status=?,usage_complete=?,input_tokens=?,output_tokens=?,cached_input_tokens=?,cache_write_tokens=?,reasoning_tokens=?,duration_ms=? WHERE id=? AND status=\'pending\'')
       .run(value.status,Number(value.usageComplete),u.inputTokens,u.outputTokens,u.cachedInputTokens,u.cacheWriteTokens,u.reasoningTokens,value.durationMs,id);
     if(result.changes!==1)throw new Error('Token 用量账本最终记录未确认');
+    const details=value.usageDetails??modelUsageDetails(u);
+    if(details)db.prepare('INSERT INTO model_usage_details(usage_id,body) VALUES (?,?)').run(id,JSON.stringify(details));
     const saved=row<{body:string}>('SELECT body FROM model_prompt_diagnostics WHERE usage_id=?',id);
     if(saved)db.prepare('UPDATE model_prompt_diagnostics SET response_headers=?,body=? WHERE usage_id=?').run(Number(value.transportObservation?.responseHeaders??false),JSON.stringify({...JSON.parse(saved.body),transportObservation:value.transportObservation}),id);
     db.exec('RELEASE token_usage_finish');
@@ -88,12 +92,17 @@ export function createTokenUsage({db,row,rows,now}:Store){
         const column=({inputTokens:'input_tokens',outputTokens:'output_tokens',cachedInputTokens:'cached_input_tokens',cacheWriteTokens:'cache_write_tokens',reasoningTokens:'reasoning_tokens'} as Record<string,string>)[key]!;
         return [key,row<{known:number}>(`SELECT COUNT(${column}) known FROM model_token_usage WHERE project_id=? ${scope}`,projectId,...params)!.known];
       }));
-      return {...r,coverage,cost:null};
+      const paired=row<{eligibleCalls:number;pairedInputTokens:number|null;pairedCachedInputTokens:number|null}>(`SELECT COUNT(*) eligibleCalls,SUM(CAST(input_tokens AS REAL)) pairedInputTokens,SUM(CAST(cached_input_tokens AS REAL)) pairedCachedInputTokens FROM model_token_usage WHERE project_id=? ${scope} AND status!='pending' AND input_tokens IS NOT NULL AND cached_input_tokens IS NOT NULL AND cached_input_tokens<=input_tokens`,projectId,...params)!;
+      const overflow=[paired.pairedInputTokens,paired.pairedCachedInputTokens].some(n=>n!==null&&!Number.isSafeInteger(n));
+      const cacheRead={...paired,totalCalls:r.calls,excludedCalls:r.calls-paired.eligibleCalls,coverageComplete:paired.eligibleCalls===r.calls,overflow,ratio:!overflow&&paired.pairedInputTokens?paired.pairedCachedInputTokens!/paired.pairedInputTokens:null};
+      if(overflow){cacheRead.pairedInputTokens=null;cacheRead.pairedCachedInputTokens=null;}
+      return {...r,coverage,cacheRead,cost:null};
     };
     // 没有任务 ID 时只统计该会话的无任务记录，不能退化为整个项目或其他任务的数据。
     const scope=taskId?'AND session_id=? AND task_id=?':'AND session_id=? AND task_id IS NULL',params=taskId?[sessionId,taskId]:[sessionId];
     const recent=rows<Record<string,unknown>>(`SELECT id,attempt,purpose,provider,model,api_type apiType,status,usage_complete usageComplete,input_tokens inputTokens,output_tokens outputTokens,cached_input_tokens cachedInputTokens,cache_write_tokens cacheWriteTokens,reasoning_tokens reasoningTokens,estimated_prompt_tokens estimatedPromptTokens,duration_ms durationMs,created_at createdAt FROM model_token_usage WHERE project_id=? ${scope} ORDER BY created_at DESC,rowid DESC LIMIT 30`,projectId,...params);
     for(const value of recent){const saved=row<{body:string}>('SELECT body FROM model_prompt_diagnostics WHERE usage_id=? AND project_id=? AND session_id=?',String(value.id),projectId,sessionId);if(saved)value.requestDiagnostics=JSON.parse(saved.body);}
+    for(const value of recent){const saved=row<{body:string}>('SELECT body FROM model_usage_details WHERE usage_id=?',String(value.id));if(saved)value.usageDetails=JSON.parse(saved.body) as UsageDetails;}
     return {schema:1,source:'provider_usage',taskId,task:aggregate(scope,params),session:aggregate('AND session_id=?',[sessionId]),project:aggregate('',[]),recent,historyLimit:30,cost:null,externalCliUsage:'unknown'};
   }
   return {start,finish,report,diagnosticScope,attachDiagnostic};

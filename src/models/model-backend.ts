@@ -20,7 +20,7 @@ import {classifyFault,FaultError,retryDelay,retryAfter} from '../recovery/fault-
 import {request as httpRequest, type ClientRequest, type IncomingMessage} from 'node:http';
 import {request as httpsRequest} from 'node:https';
 import type {Socket} from 'node:net';
-import {modelUsage,unknownUsage,type ModelUsage,type ModelAttempt} from './model-usage.js';
+import {modelUsage,modelUsageDetails,unknownUsage,type ModelUsage,type ModelAttempt} from './model-usage.js';
 
 import {prepareModelRequest,type PreparedModelRequest,type ModelSettings} from './model-request.js';
 import {createPromptDiagnostics,emptyTransport,type DiagnosticScope,type PromptDescriptor,type RequestDiagnostic} from './prompt-diagnostics.js';
@@ -118,7 +118,7 @@ export async function inferModel(saved:ModelSettings,prompt:string,onDelta?:(del
       }
       catch(error){primary=error;throw error;}
       // 清理未知是更高优先级的安全事实；记账再次失败时补充说明，不覆盖原来的清理错误。
-      finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageComplete,transportObservation});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
+      finally{try{options.onAttempt?.({attempt,status,durationMs:Date.now()-started,usage,usageDetails:modelUsageDetails(usage),usageComplete,transportObservation});}catch(error){if(primary instanceof ModelCleanupUnknownError)primary.message+='；Token 用量记录未确认';else throw error;}}
     }catch(error){
     if(!networkReady||!(error instanceof FaultError)||!error.fault.retryable||attempt>=attempts||options.signal?.aborted)throw error;
     const delayMs=Math.ceil(retryDelay(attempt,error.retryAfterMs));if(!Number.isFinite(delayMs)||Date.now()+delayMs>=deadline)throw error;

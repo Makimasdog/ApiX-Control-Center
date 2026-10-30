@@ -87,8 +87,8 @@ export function contextBreakdown(instruction:string,catalog:unknown,value:Record
   tokens.other=Math.max(0,total-Object.values(tokens).reduce((a,b)=>a+b,0));
   return {schema:1,estimated:true,estimator:'utf8_bytes_divided_by_3',categories:tokens,usedTokens:Object.values(tokens).reduce((a,b)=>a+b,0),windowTokens:value.contextBudget.windowTokens,targetTokens:value.contextBudget.inputTargetTokens};
 }
-/** trimHistory - 过滤历史事件，移除系统内部事件（context_budget/optimization_changed），保留最近 8 条活动记录 */
-export function trimHistory(events:ContextEvent[]){return events.filter((e,i)=>!['context_budget','optimization_changed'].includes(e.kind)&&(i>=events.length-8||!['activity','memory_recalled','context_budget','compacted'].includes(e.kind)));}
+/** 展示活动从首次模型投影就排除；其余事实不按事件年龄删除，UI 与原始事件不变。 */
+export function trimHistory(events:ContextEvent[]){return events.filter(e=>!['activity','context_budget','optimization_changed'].includes(e.kind));}
 // 摘要边界不能拆开一次工具执行；启动、期间命令事件与最终结果必须作为完整执行组保留。
 /**
  * compactPrefix - 计算安全截断位置，确保不拆开一次完整的工具执行

@@ -43,13 +43,14 @@ test('parameter deletion is visible and diagnostic UI escapes persisted data',()
  }finally{s.db.close();}
 });
 function store(){const db=new DatabaseSync(':memory:');db.exec("PRAGMA foreign_keys=ON;CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES ('s'),('other')");return {db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};}
-test('legacy moving file pool and age filter diagnose actual event representation changes',()=>{
+test('legacy moving file pool still rewrites results but display activity never ages out of model history',()=>{
  const s=store();try{
  const out=createContextOutputs(s),t=createPromptDiagnostics();const raw=[1,2,3].map(id=>({id,role:'tool',kind:'tool_result',body:JSON.stringify({tool:'read_file',ok:true,result:{path:'file-'+id,content:'x'.repeat(14000)}})}));
  const a=compare(t,'a',{history:out.history('s',raw,true,true)});t.headers(a);t.commit(a);
  const b=compare(t,'b',{history:out.history('s',[...raw,{...raw[0],id:4,body:raw[0].body.replace('file-1','file-4')}],true,true)});assert.equal(b.metadata.historyMutation,'rewrite');assert.equal(b.metadata.firstChangedEventId,2);
  const activity={id:10,role:'assistant',kind:'activity',body:'{}'},padding=Array.from({length:10},(_,i)=>({id:11+i,role:'system',kind:'message',body:'{}'}));
- const a2=compare(t,'a2',{history:out.history('s',trimHistory([activity]),true)});t.headers(a2);t.commit(a2);assert.equal(compare(t,'b2',{history:out.history('s',trimHistory([activity,...padding]),true)}).metadata.historyMutation,'remove');
+ assert.deepEqual(trimHistory([activity]),[]);
+ const a2=compare(t,'a2',{history:out.history('s',trimHistory([activity]),true)});t.headers(a2);t.commit(a2);assert.equal(compare(t,'b2',{history:out.history('s',trimHistory([activity,...padding]),true)}).metadata.historyMutation,'none');
  }finally{s.db.close();}
 });
 test('diagnostic persistence is pending-only, scope-bound, atomic with usage and read-only on report',()=>{

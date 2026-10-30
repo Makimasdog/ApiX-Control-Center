@@ -25,6 +25,27 @@ test('saving mode keeps permission guards and rejects changes while a user decis
  h.answer({action:'ask',question:'需要信息',options:['a','b'],multiple:false});await h.service.message(h.id,{content:'先询问信息'});s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'standard'}),/仍在执行|安全状态/);
 }));
 
+for(const mode of ['standard','saving'])test(`${mode} production loop keeps facts across more than eight raw events and excludes display activity immediately`,()=>fixture(async h=>{
+ if(mode==='saving'){const s=await h.service.details(h.id);await h.service.setOptimization(h.id,{version:s.version,mode});}
+ await h.service.startTask(h.id,{version:(await h.service.details(h.id)).version,description:'只读投影回归'});
+ const bodies={
+  tool_result:{tool:'read_file',ok:false,error:'missing file',result:{unknown:true,exitCode:1}},
+  process_unknown:{resource:'fixture',error:'previous failure remains visible'},
+  request_answer:{approved:false,tool:'write_file'},
+  intent_confirmed:{selected:['只读'],correction:'不得修改'},
+  delivery_changes_requested:{taskId:'previous',comment:'交付需要修正'},
+  memory_recalled:{memories:[{title:'规则',version:1,kind:'constraint',stale:false}]},
+  compacted:{summary:'保留约束',through:0,count:0},
+  resumed:{confirmed:true},
+ };
+ const facts=Object.entries(bodies).map(([kind,body])=>Number(h.db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(h.id,'system',kind,JSON.stringify(body),new Date().toISOString()).lastInsertRowid));
+ let step=0;const check=prompt=>{const ctx=JSON.parse(prompt.split('当前上下文：')[1]);assert(!ctx.history.some(e=>['activity','context_budget','optimization_changed'].includes(e.kind)));for(const id of facts)assert(ctx.history.some(e=>e.id===id));return JSON.stringify(tool('read_file',{path:`file-${++step}.txt`}));};
+ h.answer(check,check,check,prompt=>{check(prompt);return JSON.stringify(finish);});
+ await h.service.message(h.id,{content:'按现有约束只读核查'});const result=await wait(h.service,h.id);assert.equal(result.status,'completed');assert.equal(h.prompts.length,4);
+ const raw=h.db.prepare('SELECT kind FROM assistant_events WHERE session_id=?').all(h.id);assert(raw.length>8);assert(raw.some(e=>e.kind==='activity'));assert(raw.some(e=>e.kind==='context_budget'));
+ for(const [kind,body] of Object.entries(bodies)){const saved=h.db.prepare('SELECT body FROM assistant_events WHERE session_id=? AND kind=? ORDER BY id LIMIT 1').get(h.id,kind);assert.deepEqual(JSON.parse(saved.body),body);}
+}));
+
 test('optimization mode, session version and audit event roll back together on persistence failure',()=>fixture(async h=>{
  const s=await h.service.details(h.id);h.db.exec("CREATE TRIGGER fail_optimization BEFORE INSERT ON assistant_events WHEN NEW.kind='optimization_changed' BEGIN SELECT RAISE(ABORT,'optimization event failed'); END");
  await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'saving'}),/optimization event failed/);
