@@ -31,7 +31,7 @@
     "test:ui:task-flow": "node scripts/verification/verify-task-flow.mjs",
     "test:ui:browser": "node scripts/verification/verify-ui.mjs",
     "pretest:ui:all": "npm run build",
-    "test:ui:all": "node scripts/verification/verify-ui.mjs && node scripts/verification/verify-tool-knowledge.mjs && node scripts/verification/verify-html-views.mjs && node scripts/verification/verify-provider-center.mjs && node scripts/verification/verify-memory-context.mjs && node scripts/verification/verify-token-usage.mjs && node scripts/verification/verify-context-compaction.mjs && node scripts/verification/verify-task-flow.mjs && node scripts/verification/verify-coordination-navigation.mjs && node scripts/verification/verify-workflow-graph.mjs && node scripts/verification/verify-recovery.mjs && node scripts/verification/verify-delivery-browser.mjs && node scripts/verification/verify-npm-browser.mjs && node scripts/verification/verify-agent-workbench.mjs",
+    "test:ui:all": "node scripts/verification/verify-ui.mjs && node scripts/verification/verify-tool-knowledge.mjs && node scripts/verification/verify-html-views.mjs && node scripts/verification/verify-provider-center.mjs && node scripts/verification/verify-memory-context.mjs && node scripts/verification/verify-token-usage.mjs && node scripts/verification/verify-context-compaction.mjs && node scripts/verification/verify-task-flow.mjs && node scripts/verification/verify-coordination-navigation.mjs && node scripts/verification/verify-workflow-graph.mjs && node scripts/verification/verify-recovery.mjs && node scripts/verification/verify-delivery-browser.mjs && node scripts/verification/verify-npm-browser.mjs && node scripts/verification/verify-agent-workbench.mjs && node scripts/verification/verify-assistant-workbench.mjs",
     "build": "tsc",
     "lint": "eslint .",
     "lint:enforce": "eslint . --quiet",
@@ -61,7 +61,7 @@
     "pretest:runtime:compatibility": "npm run build",
     "test:runtime:compatibility": "node scripts/verification/verify-native-compatibility.mjs",
     "pretest:ui:agents": "npm run build",
-    "test:ui:agents": "node scripts/verification/verify-agent-workbench.mjs",
+    "test:ui:agents": "node scripts/verification/verify-agent-workbench.mjs && node scripts/verification/verify-assistant-workbench.mjs",
     "pretest:runtime:rollback": "npm run build",
     "test:runtime:rollback": "node scripts/verification/verify-runtime-rollback.mjs"
   },

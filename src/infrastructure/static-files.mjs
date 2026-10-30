@@ -27,7 +27,7 @@ const assets = new Map([
   ['index.html', 'web/index.html'],
   ['agent-os.js', 'web/agent-os.js'],
   ['owner-login.js','web/owner-login.js'],
-  ...['styles', 'phase4', 'director', 'coordinator', 'overview', 'desktop', 'assistant', 'design-system', 'workflow-graph', 'knowledge']
+  ...['styles', 'phase4', 'director', 'coordinator', 'overview', 'desktop', 'assistant', 'design-system', 'agent-workbench', 'workflow-graph', 'knowledge']
     .map(name => [`${name}.css`, `web/styles/${name}.css`]),
 ]);
 
