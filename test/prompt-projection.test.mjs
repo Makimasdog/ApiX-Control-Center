@@ -119,3 +119,9 @@ test('stable retry freezes core and body; partial-stream cancellation retains tr
  cancel=true;const controller=new AbortController(),attempts=[];await assert.rejects(inferModel(settings,rendered.prompt,()=>controller.abort(),{signal:controller.signal,promptDescriptor:rendered.descriptor,diagnostics:{scope,usageId:()=> 'cancel',tracker:createPromptDiagnostics()},onAttempt:a=>attempts.push(a)}));assert.equal(requests.length,3);assert.equal(attempts.length,1);assert.equal(attempts[0].status,'failed');assert.equal(attempts[0].transportObservation.responseHeaders,true);assert.equal(attempts[0].transportObservation.terminal,false);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
+
+test('supervision waiting is display-only while terminal delegation failure stays in stable facts',()=>fixture(h=>{
+ h.projection.configure('s','stable-prefix-v1',0);
+ h.add('supervision_waiting',{content:'waiting display'});h.add('delegation_blocked',{content:'terminal failure',child:{tasks:[{id:'t',failure:'test failed'}]}});
+ const result=h.render();assert(!result.coreText.includes('waiting display'));assert(result.coreText.includes('terminal failure'));assert(result.coreText.includes('test failed'));
+}));

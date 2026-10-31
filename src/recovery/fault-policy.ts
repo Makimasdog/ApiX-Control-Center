@@ -39,7 +39,7 @@ export function classifyFault(error:unknown,context:FaultContext={}):Fault {
   else if([500,502,503,504].includes(context.status??0)||/ECONNREFUSED|EAI_AGAIN|ENETUNREACH|ECONNRESET/.test(code))category='transient';
   else if(/abort|cancel|已停止|已取消/i.test(code+' '+message))category='cancelled';
   else if(context.status===408||/TIMEOUT|超时|timeout/i.test(code+' '+message))category='timeout';
-  else if(context.status===404||context.status===302||context.serviceCode==='model_not_found'||/配置.{0,30}(?:无效|错误|未设置|不可用)|请先配置|协议不兼容|不存在的模型/.test(message))category='configuration';
+  else if(context.status===404||context.status===302||context.serviceCode==='model_not_found'||/配置.{0,30}(?:无效|错误|未设置|不可用)|请先配置|协议不兼容|不存在的模型|计划任务要求 Git 项目以创建独立 worktree/.test(message))category='configuration';
   else if(context.status===409||/版本|冲突|SHA256|已变化|CONFLICT/.test(code+' '+message))category='conflict';
   else if(error instanceof SyntaxError||/JSON|格式无效|流中断|未完整|未完成/.test(message))category='protocol';
   else if(context.status===400||context.status===422||/参数|校验|无效/.test(message))category='validation';

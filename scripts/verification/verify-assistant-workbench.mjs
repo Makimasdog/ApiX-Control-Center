@@ -79,7 +79,13 @@ try{
   await page.waitForFunction(()=>document.querySelector('#assistant-workers')?.textContent.includes('加载失败'));
   await page.unroute('**'+base);await rows.first().waitFor();assert.equal(await rows.count(),2);
   assert.equal(await page.locator('#assistant-input').inputValue(),'保留主会话草稿，不发送');
+  // Exercise the failure display contract without failing or retrying an actual user run.
+  await page.route('**'+base,async route=>{const response=await route.fetch(),state=await response.json();state.tasks[0]={...state.tasks[0],status:'failed',result:'本地诊断失败 <script>unsafe</script>',recovery:{state:'waiting',automatic:true,attempts:0,maxAttempts:2,reason:'等待可用员工修复'}};await route.fulfill({response,json:state});});
+  await page.waitForFunction(()=>document.querySelector('#assistant-workers')?.textContent.includes('等待自动修复'));
+  assert((await rows.first().innerText()).includes('本地诊断失败 <script>unsafe</script>'));
+  assert.equal(await page.locator('#assistant-workers script').count(),0);
+  await page.screenshot({path:join(output,'failure-diagnostics.png'),animations:'disabled'});await page.unroute('**'+base);
   await page.locator('#assistant-employees').click();assert(await page.locator('#page-missions').evaluate(e=>e.classList.contains('active-page')));
   assert.deepEqual(errors,[]);assert.equal(h.calls.filter(c=>c.phase==='planning').length,1);assert.equal(h.calls.length,1);
-  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','question','artifacts','focus-return','thread-reset','worker-list-retry','employee-navigation']}));
+  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','question','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
 }finally{await browser?.close();await h.close();}

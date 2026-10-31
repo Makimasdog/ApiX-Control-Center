@@ -83,3 +83,29 @@ test('authentication, quota and uncertain failures never consume automatic repai
  for(const message of ['HTTP 401','HTTP 402','insufficient_quota'])await fixture(async({db,service,count,store})=>{db.prepare("UPDATE tasks SET result=? WHERE id='a'").run(message);await service.tick();await service.tick();assert.equal(count(),0);assert.equal(store.row('SELECT attempts FROM workflow_recoveries').attempts,0);assert.equal(store.row('SELECT state FROM workflow_recoveries').state,'attention');});
  await fixture(async({deps,restart,count})=>{deps.fault=()=>({category:'unknown_effect',strategy:'review'});const service=restart();await service.tick();assert.equal(count(),0);});
 });
+
+test('recovery diagnostics expose bounded progress and forward the actual failure to the replacement',()=>fixture(async({db,store,service,scheduler})=>{
+  db.prepare("UPDATE tasks SET result=? WHERE id='a'").run('expected 2 but received 3');
+  scheduler.resumeBlocked('plan');scheduler.pump();
+  const task=()=>store.row("SELECT * FROM tasks WHERE id='a'");
+  assert.deepEqual(service.describe(task()),{state:'waiting',automatic:true,attempts:0,maxAttempts:2,reason:'等待自动诊断并安排修复'});
+  await service.tick();assert.match(task().prompt,/expected 2 but received 3/);
+  assert.equal(service.describe(task()).state,'dispatched');assert.equal(service.describe(task()).attempts,1);
+  db.exec("UPDATE tasks SET status='failed' WHERE id='a';UPDATE runs SET status='failed',ended_at='ended';UPDATE workflow_recoveries SET state='attention',reason='limit' WHERE task_id='a'");
+  assert.equal(service.describe(task()).automatic,false);assert.equal(service.describe(task()).reason,'limit');
+}));
+
+test('missing Git workspace is an actionable configuration failure, not a repeated employee repair',()=>fixture(async({db,store,service,count})=>{
+  db.prepare("UPDATE tasks SET result=? WHERE id='a'").run('计划任务要求 Git 项目以创建独立 worktree');
+  await service.tick();await service.tick();assert.equal(count(),0);
+  const recovery=service.describe(store.row("SELECT * FROM tasks WHERE id='a'"));
+  assert.equal(recovery.automatic,false);assert.equal(recovery.attempts,0);assert.match(recovery.reason,/Git 工作区/);
+}));
+
+
+test('recovery status never promises automatic recovery for an unknown run or conflicting handoff',async()=>{
+ for(const sql of ["UPDATE runs SET status='unknown'", "INSERT INTO code_handoffs VALUES ('a','conflict')"])await fixture(async({db,store,service,count})=>{
+  db.exec(sql);assert.equal(service.describe(store.row("SELECT * FROM tasks WHERE id='a'")).automatic,false);
+  await service.tick();assert.equal(count(),0);
+ });
+});

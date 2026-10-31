@@ -482,3 +482,17 @@ test('revoked or replaced knowledge prevents model context reuse and stale appro
  kb.saveSpace('p',{id:space.id,version:1,name:space.name,grants:[]});await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:true});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,calls);assert(s.events.some(e=>e.kind==='knowledge_scope_changed'));
  const prompts=h.prompts.length;(await h.service.message(h.id,{content:'继续读取以前保存的结果'}));s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.prompts.length,prompts);assert(s.events.some(e=>e.kind==='error'&&e.body.error.includes('请新建对话')));
 }));
+
+test('a blocked model conclusion keeps supervising a recovering child and finishes after acceptance across restart',()=>fixture(async h=>{
+  await enableStable(h);
+  let revision=0,accepted=false;
+  h.deps.supervisionDebounceMs=0;
+  h.deps.child=()=>({status:accepted?'completed':'queued',complete:accepted,details:{revision,tasks:[{id:'t',status:accepted?'accepted':'failed',failure:'unit check failed',recovery:{automatic:true,attempts:1,maxAttempts:2}}]}});
+  h.answer(tool('delegate',{goal:'修复失败员工'}),{...finish,outcome:'blocked',message:'员工暂时失败，等待修复'},finish);
+  await h.service.message(h.id,{content:'实现并自动修复失败'});await wait(h.service,h.id);
+  revision++;await h.service.tick();let s=await wait(h.service,h.id);
+  assert.equal(s.status,'waiting_agents');assert(s.events.some(e=>e.kind==='supervision_waiting'));
+  assert.equal(s.child_session_id,'child');assert.equal(h.calls.filter(c=>c.name==='delegate').length,1);
+  const restored=createAssistantLoop(h.deps);accepted=true;revision++;await restored.tick();s=await wait(restored,h.id);
+  assert.equal(s.status,'completed');assert.equal(s.child_session_id,null);
+}));

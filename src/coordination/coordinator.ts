@@ -46,6 +46,7 @@ interface Dependencies extends Store {
   capabilities(): AgentCapabilities[]; // 获取 Agent 能力列表
   scheduling: Scheduling;   // 调度引擎（[→ 见 scheduling.ts]）
   autonomy: Autonomy;       // 自主交付引擎（[→ 见 autonomy.ts]）
+  taskRecovery?(task:Task):{state:string;automatic:boolean;attempts:number;maxAttempts:number;reason:string|null}|null;
   consult(employeeId:string,prompt:string):Promise<string>; // 咨询员工
   reportManagerFailure(projectId:string,sourceId:string,error:string):void; // 报告失败报告
   nativeDelivery?(messageId:string,runId:string):string|undefined;
@@ -108,7 +109,15 @@ export function createCoordinator(deps: Dependencies) {
    * derivedStatus - 计算派生状态（不写库，每次现算）
    * 状态优先级：attention > queued > running > coordinationStatus
    */
-  const derivedStatus=(s:Session,tasks:Task[])=>{const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;if(state==='attention')return 'attention';if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';return coordinationStatus(s.status,tasks);};
+  const derivedStatus=(s:Session,tasks:Task[])=>{
+    const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;
+    if(state==='attention')return 'attention';
+    if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';
+    if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';
+    const failed=tasks.filter(t=>['failed','blocked','cancelled','unknown','rejected','needs_revision','awaiting_approval'].includes(t.status));
+    if(s.status==='running'&&!state&&failed.length&&failed.every(t=>t.status==='failed'&&deps.taskRecovery?.(t)?.automatic))return 'queued';
+    return coordinationStatus(s.status,tasks);
+  };
   /**
    * details - 聚合会话的所有状态信息（CQRS 读模型）
    * @param id - 会话 ID
@@ -121,7 +130,7 @@ export function createCoordinator(deps: Dependencies) {
     const plan = s.plan_id ? row<{updated_at: string}>('SELECT updated_at FROM plans WHERE id=?', s.plan_id) : null;
     const dependencies = s.plan_id ? rows<{task_id:string;depends_on_id:string}>('SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.plan_id=?', s.plan_id) : [];
     return { ...s, requirements, requirements_json: undefined, assessment: assess(requirements, JSON.parse(check?.conflicts ?? '[]') as string[]), nextQuestion: nextQuestion(requirements),
-      derivedStatus: derivedStatus(s, tasks), tasks, planVersion: plan ? s.plan_id : null,
+      derivedStatus: derivedStatus(s, tasks), tasks:tasks.map(task=>({...task,recovery:deps.taskRecovery?.(task)??null})), planVersion: plan ? s.plan_id : null,
       dependencies, progress: progressSummary(tasks, dependencies),
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       managerTools:rows<{payload:string}>('SELECT payload FROM apix_ledger WHERE aggregate_id=? AND project_id=? AND kind=\'manager.tool\' ORDER BY sequence DESC LIMIT 20',id,s.project_id).reverse().map(e=>JSON.parse(e.payload) as ManagerToolEvent),

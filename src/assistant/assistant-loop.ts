@@ -486,7 +486,10 @@ export function createAssistantLoop(deps:Dependencies){
         // --- finish: 任务完成或阻塞，生成最终输出并创建交付记录 ---
         if(decision.action==='finish'){
           let content=text(decision.message,10000);knowledge?.citations(id,s.project_id,content);if(knowledge)content=knowledge.answerEvidence(id,content);if(!['completed','blocked'].includes(String(decision.outcome)))throw new Error('交付结果无效');
-          if(decision.outcome==='completed'&&s.child_session_id){update(id,'waiting_agents');break;}
+          if(s.child_session_id&&(decision.outcome==='completed'||['running','queued'].includes(deps.child(s.child_session_id).status))){
+            if(decision.outcome==='blocked')event(id,'system','supervision_waiting',{content:'员工仍在执行、排队或自动恢复，ApiX 将继续监督；当前没有把流程标记为失败。'});
+            update(id,'waiting_agents');break;
+          }
           if(decision.outcome==='completed'&&!s.needs_verification){const observed=await deliveries.observe(s);if(controllers.get(id)!.signal.aborted)break;if(get(id).version!==s.version)continue;if(observed.changes.length){db.prepare('UPDATE assistant_sessions SET needs_verification=1,verification=NULL WHERE id=?').run(id);s=get(id);}}
           if(decision.outcome==='completed'&&s.needs_verification){const state=(await verificationState(s));if(controllers.get(id)!.signal.aborted)break;if(get(id).version!==s.version)continue;if(state.verificationStatus!=='verified'){event(id,'tool','completion_rejected',{error:'缺少当前代码和契约的全部可信检查证据',...state});if(state.verificationStatus==='needs_review'||state.verificationStatus==='unknown'){event(id,'assistant','answer',{content:'交付尚未通过可信验证，需要审查。请核对验收契约、代码与真实执行证据；模型的完成声明不构成验收。'});update(id,'attention');break;}continue;}event(id,'system','delivery_verified',state);}
           let delivery;try{delivery=decision.outcome==='completed'?await deliveries.freeze(s,content):null;}catch(error){if(controllers.get(id)!.signal.aborted)break;if((error as {code?:string}).code==='SESSION_CHANGED'&&get(id).version!==s.version)continue;throw error;}
@@ -543,7 +546,7 @@ export function createAssistantLoop(deps:Dependencies){
       if((digest!==previous.digest||blocked&&previous.wakes===0)&&previous.wakes<6&&s.steps<24&&(blocked||Date.now()-previous.last_wake_at>=(deps.supervisionDebounceMs??30000))){
         db.prepare('UPDATE assistant_supervision SET digest=?,last_wake_at=?,wakes=wakes+1 WHERE session_id=?').run(digest,Date.now(),s.id);
         event(s.id,'system','supervision_event',{content:'员工状态或验收证据发生变化，ApiX 正在核对并决定下一步。',child:child.details});db.prepare("UPDATE assistant_sessions SET status='running',started_at=?,version=version+1 WHERE id=?").run(now(),s.id);kick(s.id);
-      }else if(blocked&&(previous.wakes>=6||s.steps>=24||digest===previous.digest)){event(s.id,'system','delegation_blocked',child.details);update(s.id,'attention');}
+      }else if(blocked&&(previous.wakes>=6||s.steps>=24||digest===previous.digest)){event(s.id,'system','delegation_blocked',{content:'员工流程需要处理，自动监督已暂停。请打开协作进度核对失败原因、自动修复记录及验收状态；处理后使用“检查后继续”。',child:child.details});update(s.id,'attention');}
     }catch(error){event(s.id,'system','error',{error:safeError(error)});update(s.id,'attention');}
   }}
   async function editMemory(id:string,input:Record<string,unknown>){const s=get(id);const old=notes(s.project_id).find(n=>n.title===input.title);if(input.delete===true){if(!old)throw new Error('记忆不存在');memory.remove(s.project_id,old.id,Number(input.version));}else memory.save(s.project_id,{...input,id:old?.id});event(id,'user','memory_edited',{title:input.title,deleted:input.delete===true});return (await details(id));}

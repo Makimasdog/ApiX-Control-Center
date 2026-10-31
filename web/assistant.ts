@@ -158,9 +158,10 @@ async function showWorkers(s:Session,childId:string|null){
     box.dataset.signature=signature;
     box.innerHTML=child.tasks.length?child.tasks.map((t:any)=>{
       const run=workerRuns.find(r=>r.task_id===t.id),name=workerEmployees.find(e=>e.id===t.employee_id)?.name??t.employee_name??t.runtime;
-      const status=run?.runtime_phase==='waiting_input'?'等待回答':run?.runtime_phase==='waiting_approval'?'等待批准':t.status;
+      const recovery=t.recovery?.automatic?'等待自动修复':t.recovery?.state==='dispatched'&&t.status==='running'?`自动修复中（${t.recovery.attempts}/${t.recovery.maxAttempts}）`:null;
+      const status=run?.runtime_phase==='waiting_input'?'等待回答':run?.runtime_phase==='waiting_approval'?'等待批准':recovery??t.status;
       const elapsed=run?Math.max(0,Math.floor(((run.ended_at?Date.parse(run.ended_at):Date.now())-Date.parse(run.started_at))/1000))+' 秒':'尚未启动';
-      return html`<button type="button" class="agent-worker-row" aria-pressed="${run?.id===workerSelection}" ${run?'':'disabled'} data-worker-task="${t.id}" data-worker-run="${run?.id??''}"><strong>${t.prompt}</strong><span>${name} · ${t.runtime} · ${status} · ${run?.pending_interactions?run.pending_interactions+' 项待处理 · ':''}${elapsed}</span></button>`;
+      return html`<button type="button" class="agent-worker-row" aria-pressed="${run?.id===workerSelection}" ${run?'':'disabled'} data-worker-task="${t.id}" data-worker-run="${run?.id??''}"><strong>${t.prompt}</strong><span>${name} · ${t.runtime} · ${status} · ${run?.pending_interactions?run.pending_interactions+' 项待处理 · ':''}${elapsed}</span>`+(['failed','blocked','unknown','needs_revision'].includes(t.status)&&t.result?html`<small class="agent-worker-failure">失败原因：${String(t.result).slice(-500)}</small>`:'')+(t.recovery?.reason?html`<small>${t.recovery.reason}</small>`:'')+'</button>';
     }).join(''):'<p class="assistant-team-empty">协作计划尚未生成员工任务，可从协作进度继续。</p>';
   }catch(error){if(current?.id===s.id&&workerContext===context){box.dataset.signature='';box.textContent='员工过程加载失败，可从协作进度重试。';}}
 }
