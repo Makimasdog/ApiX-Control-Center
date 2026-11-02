@@ -1,0 +1,250 @@
+{
+  "repositoryHead": "58ff1710e8aa2713078b13ad8080561e9b4e38bd",
+  "node": "v22.23.3",
+  "mode": "deterministic",
+  "sourceHashes": {
+    "src/assistant/assistant-loop.ts": "f3da925a0554cf26e7d1bcaa5835ca55f9798985ded171240df1f6f85453ed94",
+    "src/assistant/assistant-delivery.ts": "4d83b27c423a7108ed83eb1d4f2b0008742edc3a10c8f78ce56c6c52b7a80ceb",
+    "src/assistant/assistant-commands.ts": "8db28ba7feb8ee26538f2543b12a35713f3b82866ea805d9c35c632d14d8cea7",
+    "scripts/evaluation/evaluate-coding-real.mjs": "2128fcc372bed5cfc53d2fcfb8f40b276d141b0d815b9c383a36028db1b573a5",
+    "scripts/evaluation/coding-evaluation-tasks.mjs": "a8f3f71e3cd8c54fbcfd8d088f3ce19d224292275a34a3a10e5fa61befe2e784"
+  },
+  "counts": {
+    "selected": 5,
+    "executed": 5,
+    "passed": 5,
+    "failed": 0,
+    "aborted": 0,
+    "notRun": 0
+  },
+  "requests": 0,
+  "elapsedMs": 56011,
+  "results": [
+    {
+      "taskId": "logic",
+      "runType": "deterministic",
+      "runtimeVerified": true,
+      "independentTaskSuccess": true,
+      "humanAcceptance": "not_accepted",
+      "status": "verified",
+      "finalAttempt": {
+        "independent": {
+          "passed": true,
+          "status": "finished",
+          "judgeSha256": "5f69ac7ba8944a705cfdd5dd6ac97d9789b0f6c23b236f7f6e7f889ea180cf30",
+          "snapshotManifest": "d5f25b6f3951f2b9ac669d19c9035bb1604a47b0a3368af3b6d07d154e1e09e6",
+          "evidence": {
+            "operationId": "42efe8c3-436b-46cb-978b-978536cabbfa",
+            "outputRef": "a98705fd-57dd-4444-a845-708ce36a2aee",
+            "exitCode": 0,
+            "log": {
+              "version": 1,
+              "operationId": "42efe8c3-436b-46cb-978b-978536cabbfa",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-42efe8c3-436b-46cb-978b-978536cabbfa-stdout",
+              "stderrRef": "log-42efe8c3-436b-46cb-978b-978536cabbfa-stderr"
+            },
+            "processesEnded": true,
+            "executionComplete": true
+          },
+          "stdoutTail": "APIX_JUDGE_PASS:94e6e08c-b31c-4b90-9bed-86238aabc7d4",
+          "stderrTail": "",
+          "root": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-8NcbKR\\logic\\judge-final"
+        },
+        "tracePassed": true
+      },
+      "conflicts": 0,
+      "toolRejections": 0,
+      "invalidParameters": 0,
+      "requests": 0
+    },
+    {
+      "taskId": "multi",
+      "runType": "deterministic",
+      "runtimeVerified": true,
+      "independentTaskSuccess": true,
+      "humanAcceptance": "not_accepted",
+      "status": "verified",
+      "finalAttempt": {
+        "independent": {
+          "passed": true,
+          "status": "finished",
+          "judgeSha256": "ef7a07edc60d819247715cd9ec762e2187eec2d594dacecb06f61243e80576d2",
+          "snapshotManifest": "b3c342236a3fc451c2e7598f82b6cf6b30527bb1ddcc758e9238b4c4ced64906",
+          "evidence": {
+            "operationId": "d7e83c02-829c-4a01-adf9-d1fd1529b87b",
+            "outputRef": "b5c78296-1f59-47c4-adda-8df8e1640bc9",
+            "exitCode": 0,
+            "log": {
+              "version": 1,
+              "operationId": "d7e83c02-829c-4a01-adf9-d1fd1529b87b",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-d7e83c02-829c-4a01-adf9-d1fd1529b87b-stdout",
+              "stderrRef": "log-d7e83c02-829c-4a01-adf9-d1fd1529b87b-stderr"
+            },
+            "processesEnded": true,
+            "executionComplete": true
+          },
+          "stdoutTail": "APIX_JUDGE_PASS:863584aa-fbe1-4421-901d-12f1cf78a1df",
+          "stderrTail": "",
+          "root": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-8NcbKR\\multi\\judge-final"
+        },
+        "tracePassed": true
+      },
+      "conflicts": 0,
+      "toolRejections": 0,
+      "invalidParameters": 0,
+      "requests": 0
+    },
+    {
+      "taskId": "large",
+      "runType": "deterministic",
+      "runtimeVerified": true,
+      "independentTaskSuccess": true,
+      "humanAcceptance": "not_accepted",
+      "status": "verified",
+      "finalAttempt": {
+        "independent": {
+          "passed": true,
+          "status": "finished",
+          "judgeSha256": "29f0f3c2f173b5a37310995b4f5cecbf0c8c04b3d45b350c885bd78015ff2882",
+          "snapshotManifest": "359c4a7510ead86f6516520c9f0664ef02c8c9c5e92ed1681a5525d776d1d7fc",
+          "evidence": {
+            "operationId": "6d98e639-390d-4129-a1e6-b2662edac349",
+            "outputRef": "4426ff2d-f96c-420b-973b-746a0ee79d8a",
+            "exitCode": 0,
+            "log": {
+              "version": 1,
+              "operationId": "6d98e639-390d-4129-a1e6-b2662edac349",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-6d98e639-390d-4129-a1e6-b2662edac349-stdout",
+              "stderrRef": "log-6d98e639-390d-4129-a1e6-b2662edac349-stderr"
+            },
+            "processesEnded": true,
+            "executionComplete": true
+          },
+          "stdoutTail": "APIX_JUDGE_PASS:e545b885-574f-4a3b-9dc9-2d8fa8d73d86",
+          "stderrTail": "",
+          "root": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-8NcbKR\\large\\judge-final"
+        },
+        "tracePassed": true
+      },
+      "conflicts": 0,
+      "toolRejections": 0,
+      "invalidParameters": 0,
+      "requests": 0
+    },
+    {
+      "taskId": "logs",
+      "runType": "deterministic",
+      "runtimeVerified": true,
+      "independentTaskSuccess": true,
+      "humanAcceptance": "not_accepted",
+      "status": "verified",
+      "finalAttempt": {
+        "independent": {
+          "passed": true,
+          "status": "finished",
+          "judgeSha256": "5f69ac7ba8944a705cfdd5dd6ac97d9789b0f6c23b236f7f6e7f889ea180cf30",
+          "snapshotManifest": "89cd7426864aaf72e59c9e9f0e44b592d4a9f8c6a28eba5330d9c24b39861a0f",
+          "evidence": {
+            "operationId": "366c164a-dc32-4cd9-ad66-6b3948b32ca0",
+            "outputRef": "608d9889-3437-4861-a9ca-ea46bac02611",
+            "exitCode": 0,
+            "log": {
+              "version": 1,
+              "operationId": "366c164a-dc32-4cd9-ad66-6b3948b32ca0",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-366c164a-dc32-4cd9-ad66-6b3948b32ca0-stdout",
+              "stderrRef": "log-366c164a-dc32-4cd9-ad66-6b3948b32ca0-stderr"
+            },
+            "processesEnded": true,
+            "executionComplete": true
+          },
+          "stdoutTail": "APIX_JUDGE_PASS:07cf848a-3a29-4db6-b2c5-7a96534f6261",
+          "stderrTail": "",
+          "root": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-8NcbKR\\logs\\judge-final"
+        },
+        "tracePassed": true
+      },
+      "conflicts": 0,
+      "toolRejections": 0,
+      "invalidParameters": 0,
+      "requests": 0
+    },
+    {
+      "taskId": "conflict",
+      "runType": "deterministic",
+      "runtimeVerified": true,
+      "independentTaskSuccess": true,
+      "humanAcceptance": "not_accepted",
+      "status": "verified",
+      "finalAttempt": {
+        "independent": {
+          "passed": true,
+          "status": "finished",
+          "judgeSha256": "8eee717add90ade3ef45a82b38eef185881635b6c802d409c5e8f74186209f75",
+          "snapshotManifest": "9afa01ada8c61c1a8e148c5e3377002e797e54e0b6b2b5d7c4c42bd846710aa9",
+          "evidence": {
+            "operationId": "7da789b4-6e19-44f5-8913-e740ca808260",
+            "outputRef": "81bbe10c-9201-4b40-9ede-7bc60611958c",
+            "exitCode": 0,
+            "log": {
+              "version": 1,
+              "operationId": "7da789b4-6e19-44f5-8913-e740ca808260",
+              "complete": true,
+              "status": "complete",
+              "reason": null,
+              "capturedBytes": 52,
+              "observedBytes": 52,
+              "limitBytes": 262144,
+              "tailBytes": 8192,
+              "retentionDays": 7,
+              "stdoutRef": "log-7da789b4-6e19-44f5-8913-e740ca808260-stdout",
+              "stderrRef": "log-7da789b4-6e19-44f5-8913-e740ca808260-stderr"
+            },
+            "processesEnded": true,
+            "executionComplete": true
+          },
+          "stdoutTail": "APIX_JUDGE_PASS:319e2c86-efea-4ac6-99a7-95850a199bd9",
+          "stderrTail": "",
+          "root": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-8NcbKR\\conflict\\judge-final"
+        },
+        "tracePassed": true
+      },
+      "conflicts": 1,
+      "toolRejections": 1,
+      "invalidParameters": 0,
+      "requests": 0
+    }
+  ],
+  "evidenceScope": "Condensed runtime report: events, workspace and database remain in local temporary directory"
+}

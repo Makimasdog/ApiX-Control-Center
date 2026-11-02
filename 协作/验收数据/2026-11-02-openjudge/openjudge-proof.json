@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "purpose": "OpenJudge read-only integration feasibility, not model capability evaluation",
+  "upstreamCommit": "070f7b8f2a3144f50788a9161c509c24130fb502",
+  "apixHead": "58ff1710e8aa2713078b13ad8080561e9b4e38bd",
+  "node": "v22.23.3",
+  "mode": "deterministic",
+  "sourceReportSha256": "ad203f159e5dc3ead6ec66c9a39ff6131d864c9dc606a5422d2e94c7f6c36d83",
+  "counts": {
+    "selected": 5,
+    "executed": 5,
+    "passed": 5,
+    "failed": 0,
+    "aborted": 0,
+    "notRun": 0
+  },
+  "modelRequests": 0,
+  "graderResults": {
+    "task_outcome": [
+      {
+        "name": "task_outcome",
+        "reason": "runtimeVerified=True; independentTaskSuccess=True",
+        "metadata": {
+          "taskId": "logic",
+          "runType": "deterministic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "task_outcome",
+        "reason": "runtimeVerified=True; independentTaskSuccess=True",
+        "metadata": {
+          "taskId": "multi",
+          "runType": "deterministic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "task_outcome",
+        "reason": "runtimeVerified=True; independentTaskSuccess=True",
+        "metadata": {
+          "taskId": "large",
+          "runType": "deterministic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "task_outcome",
+        "reason": "runtimeVerified=True; independentTaskSuccess=True",
+        "metadata": {
+          "taskId": "logs",
+          "runType": "deterministic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "task_outcome",
+        "reason": "runtimeVerified=True; independentTaskSuccess=True",
+        "metadata": {
+          "taskId": "conflict",
+          "runType": "deterministic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      }
+    ],
+    "frozen_evidence": [
+      {
+        "name": "frozen_evidence",
+        "reason": "frozen judge passed=True; required trace passed=True",
+        "metadata": {
+          "taskId": "logic"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "frozen_evidence",
+        "reason": "frozen judge passed=True; required trace passed=True",
+        "metadata": {
+          "taskId": "multi"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "frozen_evidence",
+        "reason": "frozen judge passed=True; required trace passed=True",
+        "metadata": {
+          "taskId": "large"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "frozen_evidence",
+        "reason": "frozen judge passed=True; required trace passed=True",
+        "metadata": {
+          "taskId": "logs"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      },
+      {
+        "name": "frozen_evidence",
+        "reason": "frozen judge passed=True; required trace passed=True",
+        "metadata": {
+          "taskId": "conflict"
+        },
+        "score": 1.0,
+        "eval_feedback": null
+      }
+    ]
+  },
+  "syntheticNegativeControl": {
+    "name": "task_outcome",
+    "reason": "runtimeVerified=True; independentTaskSuccess=False",
+    "metadata": {
+      "taskId": "logic",
+      "runType": "deterministic"
+    },
+    "score": 0.0,
+    "eval_feedback": null
+  },
+  "limitations": [
+    "FunctionGrader consumes existing runtime judgments; does not independently rerun code",
+    "No LLM judge, real-provider tasks, full OpenJudge installation or DistributionAnalyzer verified"
+  ]
+}
