@@ -1,0 +1,374 @@
+{
+  "authorization": {
+    "currency": "CNY",
+    "maxCny": 50,
+    "model": "deepseek-v4.1-flash-1017",
+    "scope": "isolated evaluation projects only"
+  },
+  "requests": 20,
+  "reservedCny": 1.972464,
+  "estimatedKnownUsageCny": 0.120898,
+  "unknownUsageRequests": 1,
+  "actualBilledCny": null,
+  "batches": [
+    {
+      "directory": ".tmp/evaluation/batch-Na4Mi3",
+      "currency": "CNY",
+      "maxCny": 50,
+      "maxRequests": 24,
+      "reservedCny": 0.313004,
+      "requests": 3,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 13650,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.120136,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1406,
+            "outputTokens": 927
+          },
+          "estimatedCny": 0.010228,
+          "httpStatus": 200
+        },
+        {
+          "request": 2,
+          "inputByteUpperBound": 13948,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.121328,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1473,
+            "outputTokens": 761
+          },
+          "estimatedCny": 0.009034,
+          "httpStatus": 200
+        },
+        {
+          "request": 3,
+          "inputByteUpperBound": 9693,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.07154,
+          "status": "provider_error",
+          "usage": null,
+          "estimatedCny": null,
+          "httpStatus": 400,
+          "errorCode": "invalid_parameter_error"
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      }
+    },
+    {
+      "directory": ".tmp/evaluation/batch-1H9MRJ",
+      "currency": "CNY",
+      "maxCny": 49,
+      "maxRequests": 24,
+      "reservedCny": 0.741044,
+      "requests": 8,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 13752,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.120544,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1404,
+            "outputTokens": 835
+          },
+          "estimatedCny": 0.009488,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 2,
+          "inputByteUpperBound": 8788,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.06792,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 99,
+            "outputTokens": 28
+          },
+          "estimatedCny": 0.000422,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 3,
+          "inputByteUpperBound": 8942,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.068536,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 146,
+            "outputTokens": 182
+          },
+          "estimatedCny": 0.001748,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 4,
+          "inputByteUpperBound": 8874,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.068264,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 123,
+            "outputTokens": 226
+          },
+          "estimatedCny": 0.002054,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 5,
+          "inputByteUpperBound": 10155,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.073388,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 518,
+            "outputTokens": 535
+          },
+          "estimatedCny": 0.005316,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 6,
+          "inputByteUpperBound": 35053,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.17298,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 5912,
+            "outputTokens": 250
+          },
+          "estimatedCny": 0.013824,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        },
+        {
+          "request": 7,
+          "inputByteUpperBound": 14061,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.089012,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1965,
+            "outputTokens": 198
+          },
+          "estimatedCny": 0.005514,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        },
+        {
+          "request": 8,
+          "inputByteUpperBound": 11908,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.0804,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1206,
+            "outputTokens": 351
+          },
+          "estimatedCny": 0.00522,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      }
+    },
+    {
+      "directory": ".tmp/evaluation/semantic-recheck",
+      "currency": "CNY",
+      "maxCny": 1,
+      "maxRequests": 3,
+      "reservedCny": 0.174696,
+      "requests": 1,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 35482,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.174696,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 6025,
+            "outputTokens": 286
+          },
+          "estimatedCny": 0.014338,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      }
+    },
+    {
+      "directory": ".tmp/evaluation/batch-4lhoqA",
+      "currency": "CNY",
+      "maxCny": 48,
+      "maxRequests": 24,
+      "reservedCny": 0.7437199999999999,
+      "requests": 8,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 13752,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.120544,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1408,
+            "outputTokens": 865
+          },
+          "estimatedCny": 0.009736,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 2,
+          "inputByteUpperBound": 8788,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.06792,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 99,
+            "outputTokens": 28
+          },
+          "estimatedCny": 0.000422,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 3,
+          "inputByteUpperBound": 8942,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.068536,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 146,
+            "outputTokens": 184
+          },
+          "estimatedCny": 0.001764,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 4,
+          "inputByteUpperBound": 8874,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.068264,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 123,
+            "outputTokens": 193
+          },
+          "estimatedCny": 0.00179,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 5,
+          "inputByteUpperBound": 10061,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.073012,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 487,
+            "outputTokens": 600
+          },
+          "estimatedCny": 0.005774,
+          "structuredOutput": null,
+          "httpStatus": 200
+        },
+        {
+          "request": 6,
+          "inputByteUpperBound": 35482,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.174696,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 6025,
+            "outputTokens": 178
+          },
+          "estimatedCny": 0.013474,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        },
+        {
+          "request": 7,
+          "inputByteUpperBound": 14311,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.090012,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 2182,
+            "outputTokens": 194
+          },
+          "estimatedCny": 0.005916,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        },
+        {
+          "request": 8,
+          "inputByteUpperBound": 11992,
+          "maxOutputTokens": 2048,
+          "reservationCny": 0.080736,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1190,
+            "outputTokens": 307
+          },
+          "estimatedCny": 0.004836,
+          "structuredOutput": "json_schema",
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      }
+    }
+  ]
+}

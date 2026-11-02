@@ -1,0 +1,628 @@
+[
+  {
+    "caseId": "coding-logic",
+    "attemptId": "c630925103cf1868",
+    "scenarioVersion": "coding-small-v1",
+    "runType": "deterministic",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "runtime-verified",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "frozen-task-correct",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "required-trace",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "processes-ended",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      }
+    ],
+    "artifacts": {
+      "workspace": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\logic\\workspace",
+      "database": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\runtime.sqlite"
+    },
+    "sourceReportSha256": "fdae6686ba4fb838226088bba074a029abfd9e4bbd58beeb1e142d662858f0ba"
+  },
+  {
+    "caseId": "coding-multi",
+    "attemptId": "8432be128611edd5",
+    "scenarioVersion": "coding-small-v1",
+    "runType": "deterministic",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "runtime-verified",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "frozen-task-correct",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "required-trace",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "processes-ended",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      }
+    ],
+    "artifacts": {
+      "workspace": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\multi\\workspace",
+      "database": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\runtime.sqlite"
+    },
+    "sourceReportSha256": "fdae6686ba4fb838226088bba074a029abfd9e4bbd58beeb1e142d662858f0ba"
+  },
+  {
+    "caseId": "coding-large",
+    "attemptId": "6a00bc1af4c3abba",
+    "scenarioVersion": "coding-small-v1",
+    "runType": "deterministic",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "runtime-verified",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "frozen-task-correct",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "required-trace",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "processes-ended",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      }
+    ],
+    "artifacts": {
+      "workspace": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\large\\workspace",
+      "database": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\runtime.sqlite"
+    },
+    "sourceReportSha256": "fdae6686ba4fb838226088bba074a029abfd9e4bbd58beeb1e142d662858f0ba"
+  },
+  {
+    "caseId": "coding-logs",
+    "attemptId": "afccfcaa2e1d7fb4",
+    "scenarioVersion": "coding-small-v1",
+    "runType": "deterministic",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "runtime-verified",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "frozen-task-correct",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "required-trace",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "processes-ended",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      }
+    ],
+    "artifacts": {
+      "workspace": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\logs\\workspace",
+      "database": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\runtime.sqlite"
+    },
+    "sourceReportSha256": "fdae6686ba4fb838226088bba074a029abfd9e4bbd58beeb1e142d662858f0ba"
+  },
+  {
+    "caseId": "coding-conflict",
+    "attemptId": "fb995f2d952190be",
+    "scenarioVersion": "coding-small-v1",
+    "runType": "deterministic",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "runtime-verified",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "frozen-task-correct",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "required-trace",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      },
+      {
+        "id": "processes-ended",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": []
+      }
+    ],
+    "artifacts": {
+      "workspace": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\conflict\\workspace",
+      "database": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-coding-evaluation-dnZ6qy\\runtime.sqlite"
+    },
+    "sourceReportSha256": "fdae6686ba4fb838226088bba074a029abfd9e4bbd58beeb1e142d662858f0ba"
+  },
+  {
+    "caseId": "collaboration-diamond",
+    "attemptId": "54711c7bcae8788c",
+    "scenarioVersion": "collaboration-v1",
+    "runType": "real-provider",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "real-manager-produced-plan",
+        "actual": "api",
+        "expected": "api",
+        "status": "pass",
+        "refs": [
+          "279273c1-1c05-4c65-95f8-2e3180efc766"
+        ]
+      },
+      {
+        "id": "dispatch-no-failure",
+        "actual": 0,
+        "expected": 0,
+        "status": "pass",
+        "refs": [
+          "279273c1-1c05-4c65-95f8-2e3180efc766"
+        ]
+      },
+      {
+        "id": "dependencies-wait-for-acceptance",
+        "actual": [
+          "queued",
+          "queued",
+          "queued"
+        ],
+        "expected": [
+          "queued",
+          "queued",
+          "queued"
+        ],
+        "status": "pass",
+        "refs": [
+          "1cc399c2-70a3-45c8-9af6-1f5e441a19cc",
+          "4c4f708e-56a8-4a7e-89e5-455a858bd310",
+          "2153de6d-bc70-430f-96c8-f52bd9ce860d",
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "two-distinct-workers-running",
+        "actual": 2,
+        "expected": 2,
+        "status": "pass",
+        "refs": [
+          "4c4f708e-56a8-4a7e-89e5-455a858bd310",
+          "2153de6d-bc70-430f-96c8-f52bd9ce860d"
+        ]
+      },
+      {
+        "id": "integration-waits",
+        "actual": "queued",
+        "expected": "queued",
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "guidance-completed",
+        "actual": [
+          "completed",
+          "completed"
+        ],
+        "expected": [
+          "completed",
+          "completed"
+        ],
+        "status": "pass",
+        "refs": [
+          "4fba48c5-0816-4524-9f9e-22d140fa14a6",
+          "71ea26d6-950e-42b5-a41c-9dc8183b827e"
+        ]
+      },
+      {
+        "id": "one-branch-insufficient",
+        "actual": "queued",
+        "expected": "queued",
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "host-verifies-integrated-code",
+        "actual": "APIX_EVAL_VERIFIED",
+        "expected": "APIX_EVAL_VERIFIED",
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "host-hidden-inputs",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "both-branches-transferred",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "user-content-preserved",
+        "actual": "user-owned fixture bytes\n",
+        "expected": "user-owned fixture bytes\n",
+        "status": "pass",
+        "refs": [
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "all-deliveries-accepted",
+        "actual": [
+          "accepted",
+          "accepted",
+          "accepted",
+          "accepted"
+        ],
+        "expected": [
+          "accepted",
+          "accepted",
+          "accepted",
+          "accepted"
+        ],
+        "status": "pass",
+        "refs": [
+          "1cc399c2-70a3-45c8-9af6-1f5e441a19cc",
+          "4c4f708e-56a8-4a7e-89e5-455a858bd310",
+          "2153de6d-bc70-430f-96c8-f52bd9ce860d",
+          "f75f597c-b271-46f0-b179-8a4a2c6b26c6"
+        ]
+      },
+      {
+        "id": "session-completed",
+        "actual": "completed",
+        "expected": "completed",
+        "status": "pass",
+        "refs": [
+          "279273c1-1c05-4c65-95f8-2e3180efc766"
+        ]
+      },
+      {
+        "id": "accepted-state-survives-restart",
+        "actual": "completed",
+        "expected": "completed",
+        "status": "pass",
+        "refs": [
+          "279273c1-1c05-4c65-95f8-2e3180efc766"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "1cc399c2-70a3-45c8-9af6-1f5e441a19cc",
+        "employeeId": "48540b0f-c990-4e4a-a377-2ccc80adaddb",
+        "status": "accepted",
+        "dependencies": []
+      },
+      {
+        "id": "4c4f708e-56a8-4a7e-89e5-455a858bd310",
+        "employeeId": "56e586ab-99c3-4382-bdd9-2a06d85c8059",
+        "status": "accepted",
+        "dependencies": [
+          "1cc399c2-70a3-45c8-9af6-1f5e441a19cc"
+        ]
+      },
+      {
+        "id": "2153de6d-bc70-430f-96c8-f52bd9ce860d",
+        "employeeId": "1d3120d1-3643-436e-b7dd-c38d9274ee3a",
+        "status": "accepted",
+        "dependencies": [
+          "1cc399c2-70a3-45c8-9af6-1f5e441a19cc"
+        ]
+      },
+      {
+        "id": "f75f597c-b271-46f0-b179-8a4a2c6b26c6",
+        "employeeId": "eaa9617d-0bde-44a3-81a5-ede4557134b4",
+        "status": "accepted",
+        "dependencies": [
+          "2153de6d-bc70-430f-96c8-f52bd9ce860d",
+          "4c4f708e-56a8-4a7e-89e5-455a858bd310"
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "id": "06968176-3260-4180-9a47-b1d92b34ff40",
+        "taskId": "f75f597c-b271-46f0-b179-8a4a2c6b26c6",
+        "status": "completed",
+        "exitCode": 0
+      },
+      {
+        "id": "776b849b-1406-4c8e-9a98-2091f6f93343",
+        "taskId": "2153de6d-bc70-430f-96c8-f52bd9ce860d",
+        "status": "completed",
+        "exitCode": 0
+      },
+      {
+        "id": "8b9b732e-4c61-4e48-ac0d-01a04c7b1212",
+        "taskId": "4c4f708e-56a8-4a7e-89e5-455a858bd310",
+        "status": "completed",
+        "exitCode": 0
+      },
+      {
+        "id": "f645a148-e616-46a2-afb5-2d6f46fe51af",
+        "taskId": "1cc399c2-70a3-45c8-9af6-1f5e441a19cc",
+        "status": "completed",
+        "exitCode": 0
+      }
+    ],
+    "artifacts": {
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-a9sM0a",
+      "sessionId": "279273c1-1c05-4c65-95f8-2e3180efc766"
+    },
+    "sourceReportSha256": "990139cd620f75c7bb85680484d9e14db4cbfe894e2e039d69290e5797ec5620"
+  },
+  {
+    "caseId": "collaboration-recovery",
+    "attemptId": "a4b3eb113eb626a8",
+    "scenarioVersion": "collaboration-v1",
+    "runType": "local-protocol",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "dispatch-no-failure",
+        "actual": 0,
+        "expected": 0,
+        "status": "pass",
+        "refs": [
+          "f12c9c3b-4095-464b-a2a7-d1d5c0e0f594"
+        ]
+      },
+      {
+        "id": "reassigned-to-alternate",
+        "actual": "a6c84836-e2cc-43b8-9a22-dab27438ef68",
+        "expected": "a6c84836-e2cc-43b8-9a22-dab27438ef68",
+        "status": "pass",
+        "refs": [
+          "87e102cb-1465-4870-bec6-7469a34a9b79"
+        ]
+      },
+      {
+        "id": "partial-work-preserved",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": [
+          "87e102cb-1465-4870-bec6-7469a34a9b79"
+        ]
+      },
+      {
+        "id": "recovery-does-not-bypass-acceptance",
+        "actual": "queued",
+        "expected": "queued",
+        "status": "pass",
+        "refs": [
+          "2df7e9de-47fa-4499-affe-d5369cee117b"
+        ]
+      },
+      {
+        "id": "one-failed-one-recovered-run",
+        "actual": [
+          "completed",
+          "failed"
+        ],
+        "expected": [
+          "completed",
+          "failed"
+        ],
+        "status": "pass",
+        "refs": [
+          "4c7f40b0-feed-4da6-a31b-8dae12421002",
+          "c18f0c14-ee5e-4599-b6bd-bc8eb3eea0f7"
+        ]
+      },
+      {
+        "id": "recovered-session-completed",
+        "actual": "completed",
+        "expected": "completed",
+        "status": "pass",
+        "refs": [
+          "f12c9c3b-4095-464b-a2a7-d1d5c0e0f594"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "87e102cb-1465-4870-bec6-7469a34a9b79",
+        "employeeId": "a6c84836-e2cc-43b8-9a22-dab27438ef68",
+        "status": "accepted",
+        "dependencies": []
+      },
+      {
+        "id": "2df7e9de-47fa-4499-affe-d5369cee117b",
+        "employeeId": "a6c84836-e2cc-43b8-9a22-dab27438ef68",
+        "status": "accepted",
+        "dependencies": [
+          "87e102cb-1465-4870-bec6-7469a34a9b79"
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "id": "bcbe25db-b83b-4131-ab51-24b7d5cab098",
+        "taskId": "2df7e9de-47fa-4499-affe-d5369cee117b",
+        "status": "completed",
+        "exitCode": 0
+      },
+      {
+        "id": "4c7f40b0-feed-4da6-a31b-8dae12421002",
+        "taskId": "87e102cb-1465-4870-bec6-7469a34a9b79",
+        "status": "completed",
+        "exitCode": 0
+      },
+      {
+        "id": "c18f0c14-ee5e-4599-b6bd-bc8eb3eea0f7",
+        "taskId": "87e102cb-1465-4870-bec6-7469a34a9b79",
+        "status": "failed",
+        "exitCode": 1
+      }
+    ],
+    "artifacts": {
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-MCaTqU",
+      "sessionId": "f12c9c3b-4095-464b-a2a7-d1d5c0e0f594"
+    },
+    "sourceReportSha256": "ce0e12dd42c3a2db88435783806779167d3f393f5cfd48e4cae9a6e7a232fbfc"
+  },
+  {
+    "caseId": "collaboration-stop",
+    "attemptId": "ab645b4b87f0390f",
+    "scenarioVersion": "collaboration-v1",
+    "runType": "local-protocol",
+    "status": "pass",
+    "assertions": [
+      {
+        "id": "dispatch-no-failure",
+        "actual": 0,
+        "expected": 0,
+        "status": "pass",
+        "refs": [
+          "8915a662-b841-47de-a4d0-a3ca9ccfdc6d"
+        ]
+      },
+      {
+        "id": "dependent-never-launched",
+        "actual": 0,
+        "expected": 0,
+        "status": "pass",
+        "refs": [
+          "05b778e8-4329-4f57-8244-fa229105beb1"
+        ]
+      },
+      {
+        "id": "stopped-run-not-completed",
+        "actual": false,
+        "expected": false,
+        "status": "pass",
+        "refs": [
+          "167b721a-5d1b-448a-8be1-51f105fead86"
+        ]
+      },
+      {
+        "id": "stop-evidence-known",
+        "actual": true,
+        "expected": true,
+        "status": "pass",
+        "refs": [
+          "167b721a-5d1b-448a-8be1-51f105fead86"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "1f4a3df3-7358-4e1a-b409-bd320206d8bb",
+        "employeeId": "ab116b56-48c7-4ad7-ade3-6f664681a536",
+        "status": "cancelled",
+        "dependencies": []
+      },
+      {
+        "id": "05b778e8-4329-4f57-8244-fa229105beb1",
+        "employeeId": "ab116b56-48c7-4ad7-ade3-6f664681a536",
+        "status": "blocked",
+        "dependencies": [
+          "1f4a3df3-7358-4e1a-b409-bd320206d8bb"
+        ]
+      }
+    ],
+    "runs": [
+      {
+        "id": "167b721a-5d1b-448a-8be1-51f105fead86",
+        "taskId": "1f4a3df3-7358-4e1a-b409-bd320206d8bb",
+        "status": "cancelled",
+        "exitCode": null
+      }
+    ],
+    "artifacts": {
+      "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-Xc6LTs",
+      "sessionId": "8915a662-b841-47de-a4d0-a3ca9ccfdc6d"
+    },
+    "sourceReportSha256": "076edd705f73a0457f594f8e7f173ddc7c8b751fd8a3ed86834bd582f67ba82f"
+  }
+]

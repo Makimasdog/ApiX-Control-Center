@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "engine": "py-openjudge",
+  "version": "0.2.0",
+  "python": "3.11.9",
+  "results": [
+    {
+      "caseId": "coding-logic",
+      "attemptId": "c630925103cf1868",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-multi",
+      "attemptId": "8432be128611edd5",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-large",
+      "attemptId": "6a00bc1af4c3abba",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-logs",
+      "attemptId": "afccfcaa2e1d7fb4",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-conflict",
+      "attemptId": "fb995f2d952190be",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-diamond",
+      "attemptId": "54711c7bcae8788c",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "real-manager-produced-plan:pass; dispatch-no-failure:pass; dependencies-wait-for-acceptance:pass; two-distinct-workers-running:pass; integration-waits:pass; guidance-completed:pass; one-branch-insufficient:pass; host-verifies-integrated-code:pass; host-hidden-inputs:pass; both-branches-transferred:pass; user-content-preserved:pass; all-deliveries-accepted:pass; session-completed:pass; accepted-state-survives-restart:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-recovery",
+      "attemptId": "a4b3eb113eb626a8",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "dispatch-no-failure:pass; reassigned-to-alternate:pass; partial-work-preserved:pass; recovery-does-not-bypass-acceptance:pass; one-failed-one-recovered-run:pass; recovered-session-completed:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-stop",
+      "attemptId": "ab645b4b87f0390f",
+      "hardStatus": "pass",
+      "score": 1,
+      "reason": "dispatch-no-failure:pass; dependent-never-launched:pass; stopped-run-not-completed:pass; stop-evidence-known:pass",
+      "semanticStatus": "not_run"
+    }
+  ],
+  "distribution": {
+    "name": "Distribution Analysis",
+    "metadata": {
+      "explanation": "Analyzed 8 scores with mean=1.000, median=1.000, stdev=0.000",
+      "total_samples": 8,
+      "valid_results": 8,
+      "error_results": 0,
+      "skipped_results": 0,
+      "coverage_rate": 1
+    },
+    "mean": 1,
+    "median": 1,
+    "stdev": 0,
+    "min_score": 1,
+    "max_score": 1
+  },
+  "semanticStatus": "scored",
+  "semanticResults": [
+    {
+      "caseId": "coding-logs",
+      "dimension": "tool_selection",
+      "status": "scored",
+      "score": 5,
+      "reason": "The agent's tool selection is highly relevant and well-sequenced for the query. It correctly used configure_verification to establish the approved check contract (matching the host execution contract with check.cjs), then search_files to locate the LATE_ASSERTION-related code, run_check to execute the check, read_output to inspect the saved log tail, read_file to examine the source, edit_file to fix while preserving comments, get_diff to confirm changes, and run_check again to re-verify. This covers all necessary steps: execution, log inspection, diagnosis, fix, and re-validation. No clearly unnecessary tools were selected, and the flow is efficient and directly addresses the core intent. Minor note: search_files query 'a-b' is somewhat narrow, but overall the selection demonstrates strong understanding of tool capabilities and the task workflow.",
+      "calibration": "uncalibrated_diagnostic_only"
+    },
+    {
+      "caseId": "collaboration-diamond",
+      "dimension": "collaboration_evidence",
+      "status": "scored",
+      "score": 1,
+      "reason": "All 14 assertions have status 'pass' with matching actual/expected values, and the referenced tasks and runs corroborate them. Task IDs 1cc399c2, 4c4f708e, 2153de6d, and f75f597c all show status 'accepted' (supporting all-deliveries-accepted and session-completed), and each has a corresponding completed run with exitCode 0 (06968176, 776b849b, 8b9b732e, f645a148). Dependency structure matches the queued/waiting assertions, two distinct worker tasks (4c4f708e, 2153de6d) are present, and integration task f75f597c shows verification markers (APIX_EVAL_VERIFIED, hidden inputs true, both branches transferred, user content preserved). No contradictions found.",
+      "calibration": "uncalibrated_diagnostic_only"
+    },
+    {
+      "caseId": "collaboration-recovery",
+      "dimension": "collaboration_evidence",
+      "status": "scored",
+      "score": 1,
+      "reason": "All six assertions pass and are corroborated by listed tasks/runs. 'dispatch-no-failure' (actual 0) and 'recovered-session-completed' (completed) reference run f12c9c3b-4095-464b-a2a7-d1d5c0e0f594. 'reassigned-to-alternate' and 'partial-work-preserved' reference task 87e102cb-1465-4870-bec6-7469a34a9b79, whose employeeId a6c84836-e2cc-43b8-9a22-dab27438ef68 matches the expected alternate and whose status is accepted. 'recovery-does-not-bypass-acceptance' (queued) references task 2df7e9de-47fa-4499-affe-d5369cee117b, which is accepted with dependency on 87e102cb. 'one-failed-one-recovered-run' matches runs 4c7f40b0-feed-4da6-a31b-8dae12421002 (completed, exit 0) and c18f0c14-ee5e-4599-b6bd-bc8eb3eea0f7 (failed, exit 1), both on task 87e102cb. No contradictions found; outcomes are supported by the listed evidence.",
+      "calibration": "uncalibrated_diagnostic_only"
+    }
+  ]
+}

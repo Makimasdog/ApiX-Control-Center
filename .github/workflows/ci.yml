@@ -6,6 +6,31 @@ on:
   pull_request:
 
 jobs:
+  agent-evaluation:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - name: Install isolated pinned OpenJudge
+        shell: pwsh
+        run: |
+          python -m venv .tmp/evaluation/openjudge/venv
+          .tmp/evaluation/openjudge/venv/Scripts/python.exe -m pip install --index-url https://pypi.org/simple -r scripts/evaluation/openjudge/requirements.lock
+      - run: npm run test:evaluation
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agent-evaluation-evidence
+          path: .tmp/evaluation/batch-*/
+          if-no-files-found: ignore
+
   check:
     runs-on: windows-latest
     timeout-minutes: 45

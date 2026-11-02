@@ -1,0 +1,20 @@
+{
+  "finding": "OJ-007",
+  "sourceHashes": {
+    "src/evaluation/evidence.mjs": {
+      "executedVersion": "9cc9e38fab8eeee39e45a86323db0a8790e3b24037ff427572418cc50e1e9533",
+      "reviewedVersion": "6c04bedc0df807bc324b9d23e3a0d15f54494808c8c8610380efe77cc26c1a72"
+    },
+    "test/agent-evaluation.test.mjs": {
+      "executedVersion": null,
+      "reviewedVersion": "2c5b702a6c590e8b3f74c6de5e3de22c8dfbbe06c56cc3a13347f68313ca0e15"
+    }
+  },
+  "validation": {
+    "targetedTests": 2,
+    "passed": 2,
+    "existingEightRecordsUnchanged": true,
+    "existingFindingsUnchanged": true
+  },
+  "limitation": "No new task execution; change only excludes not_run cases from findings"
+}
