@@ -7,6 +7,7 @@
 
 | 功能 | 状态 | 契约文档 | 验收方式（脚本/测试） | 最新验收记录 | 已知限制 |
 | --- | --- | --- | --- | --- | --- |
+| 真实 Codex/Claude 工具协作验收入口 | 预检通过，真实任务待运行 | [原生验收说明](专题/真实Codex-Claude协作验收.md) | test:native:inspect；test:runtime:compatibility；native-evaluation/native-runtime/runtime-controller/native-runtime-http；完整入口 test:real（计费事实未确认前拒绝推理） | [预检与入口自审](../协作/审查/2026-11/2026-11-03-真实原生协作预检与验收入口自审.md) | 本轮无新增模型请求；真实工具、续聊与长命令停止未执行；Claude 首次免费握手停止 unknown 保留，复跑 quiescent 不替代真实场景 |
 | OpenJudge Agent 测试与归因 | beta | [评测契约与运行方式](专题/OpenJudge-Agent评测.md)；[系统方案](设计/2026-11-02-OpenJudge-Agent测试与归因系统方案.md) | `eval:agents`、`test:evaluation`；coding-evaluation/evaluation-budget、native-runtime-http/workflow-recovery-http 与协调回归；build/check；独立离线 CI job | [实施与原因追踪自审](../协作/审查/2026-11/2026-11-02-OpenJudge协作评测实施与原因追踪自审.md) | 5 个编码+3 个协作场景；真实 DeepSeek 管理者及四个有界模型员工，非 Codex/Claude 真实工具全覆盖；恢复/停止仍为协议夹具；语义评分未人工校准；账单未知，远程 CI 未执行 |
 | 后端源码中文注释与历史报告 | active | 各后端模块中文注释；[2026-10-24-zcode全面测试报告](归档/测试报告/2026-10-24-zcode全面测试报告.md)（历史记录） | TS/C# 语法等价及 PowerShell Token 核验、`npm run build`、`npm run check`、assistant-loop/token-usage 回归 | [2026-10-27-后端中文注释同步自审](../协作/归档/2026-10/2026-10-27-后端中文注释同步自审.md) | 提示词含两处已确认的引号替换；未重跑全量/浏览器/真实模型；历史报告不代表当前版本验收 |
 | 前端 HTML 渲染安全（P9） | active | [开发约定](开发约定.md)（前端 HTML 转义） | `npm test`（html、coding-view、execution-ui、readiness、delivery-review 等）+ `npm run test:ui:html`、既有 UI 验收脚本 | [2026-10-25-P9辅助渲染模块迁移与自审](../协作/归档/2026-10/2026-10-25-P9辅助渲染模块迁移与自审.md) | 20 个模块已迁移，手写实体转义集中到 html.ts，旧 escapeAssistant 导出兼容；模板不替代 URL/CSS 校验，lint 非完整污点分析 |

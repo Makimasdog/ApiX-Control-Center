@@ -9,6 +9,8 @@
 
 Agent 系统评测入口：`npm run eval:agents -- --suite all`、`npm run test:evaluation`，先安装独立 OpenJudge 环境；真实模型须显式指定模型与单批费用上限。环境、协作场景、证据/归因和费用语义见 [OpenJudge 评测契约](../docs/专题/OpenJudge-Agent评测.md)。
 
+真实 Codex/Claude 工具验收准备入口为 `npm run test:native:inspect`（不推理）；`test:real` 已转交原生协作入口，沿用累计预算并要求有依据的员工计费确认。当前真实任务未执行，见[原生验收说明](../docs/专题/真实Codex-Claude协作验收.md)。
+
 在仓库根目录运行，优先使用 package.json 提供的入口：`npm run eval:coding:real`、`npm run test:delivery:browser`、`npm run test:npm:browser`、`npm run test:real`。目录迁移不改变这些命令名、批准参数或费用语义。
 
 真实模型和真实员工验证可能收费，仍须显式批准；移动脚本不代表已运行。浏览器脚本启动服务后必须完成界面流程并写入结果，不能把启动当作验证成功。具体操作和授权边界见 [开发约定](../docs/开发约定.md)。

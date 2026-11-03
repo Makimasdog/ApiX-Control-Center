@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {mkdtemp,mkdir,readFile,writeFile} from 'node:fs/promises';
-import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,delimiter} from 'node:path';
+import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {createRuntimeAdapters} from '../../dist/src/agents/runtime-adapters.js';
 import {stopRuntimeTree} from '../../dist/src/agents/native-runtime.js';
+import {executableOnPath} from '../../src/infrastructure/executable.mjs';
 const output=await mkdtemp(join(tmpdir(),'apix-native-compatibility-')),database=new DatabaseSync(':memory:');
-const adapters=createRuntimeAdapters({db:database,row:(q,...p)=>database.prepare(q).get(...p),rows:(q,...p)=>database.prepare(q).all(...p),now:()=>new Date().toISOString()},name=>(process.env.PATH??'').split(delimiter).flatMap(dir=>['.exe','.cmd',''].map(ext=>join(dir,name+ext))).find(existsSync)??null);
+const adapters=createRuntimeAdapters({db:database,row:(q,...p)=>database.prepare(q).get(...p),rows:(q,...p)=>database.prepare(q).all(...p),now:()=>new Date().toISOString()},executableOnPath);
 const environment=Object.fromEntries(Object.entries(process.env).filter(([key])=>!/KEY|TOKEN|SECRET|PASSWORD|BASE_URL/i.test(key)));
 const report={observedAt:new Date().toISOString(),platform:process.platform,node:process.versions.node,paidTurns:0,output,codex:{},claude:{}};
 for(const runtime of ['codex','claude']){
