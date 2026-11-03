@@ -12,7 +12,7 @@ export function openCodexAppServer(input:RuntimeInput):RunHandle{
   const requests=new Map<number,{resolve:(v:any)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   const pendingInputs:{messageId:string;content:string;mode:'steer'|'queue'}[]=[];
   function write(value:unknown){if(!child.stdin.writable)throw new Error('App Server 连接关闭');child.stdin.write(JSON.stringify(value)+'\n');}
-  function request(method:string,params:unknown){return new Promise<any>((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>{requests.delete(id);reject(new Error('App Server 请求超时'));},15000);requests.set(id,{resolve,reject,timer});try{write({id,method,params});}catch(error){clearTimeout(timer);requests.delete(id);reject(error);}});}
+  function request(method:string,params:unknown){return new Promise<any>((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>{requests.delete(id);reject(new Error('App Server 请求超时：'+method));},method==='thread/resume'?60000:15000);requests.set(id,{resolve,reject,timer});try{write({id,method,params});}catch(error){clearTimeout(timer);requests.delete(id);reject(error);}});}
   function rejectRequests(){for(const entry of requests.values()){clearTimeout(entry.timer);entry.reject(new Error('App Server 已关闭'));}requests.clear();}
   function close(){return closing??=(async()=>{stopping=true;questions.cancel();rejectRequests();const evidence=await stopRuntimeTree(child);done=true;return {evidence};})();}
   async function finish(success:boolean){if(stopping)return;stopping=true;questions.cancel();const result=await close();channel.emit({kind:'closed',code:child.exitCode,signal:child.signalCode,evidence:result.evidence,outcome:success?'completed':'failed'});}

@@ -1,0 +1,59 @@
+[
+  {
+    "name": "native-p9y890",
+    "runs": [
+      {
+        "runId": "9db42f38-145b-4321-8254-3a1fcfd2fdd1",
+        "stopEvidence": "quiescent",
+        "errorEvents": []
+      }
+    ]
+  },
+  {
+    "name": "native-Czmxee",
+    "runs": [
+      {
+        "runId": "20f12e5a-7e44-4f29-be67-9f123852bf4d",
+        "stopEvidence": "quiescent",
+        "errorEvents": []
+      },
+      {
+        "runId": "78654895-a807-452b-a0f6-2d5dc7dba898",
+        "stopEvidence": "quiescent",
+        "errorEvents": [
+          {
+            "schemaVersion": 1,
+            "runId": "78654895-a807-452b-a0f6-2d5dc7dba898",
+            "id": 162,
+            "kind": "runtime.error",
+            "occurredAt": "2026-11-03T05:30:51.779Z",
+            "payload": {
+              "code": "NATIVE_RUNTIME_ERROR",
+              "message": "App Server 请求超时"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "native-T2JUPu",
+    "runs": [
+      {
+        "runId": "74c60176-0039-4a9b-8ccb-080751eb364a",
+        "stopEvidence": "quiescent",
+        "errorEvents": []
+      },
+      {
+        "runId": "63938c00-4803-4b08-8d2d-cb4d44cdc8f7",
+        "stopEvidence": "quiescent",
+        "errorEvents": []
+      },
+      {
+        "runId": "79ec9a11-6976-4553-a1af-36f2628a6a21",
+        "stopEvidence": "quiescent",
+        "errorEvents": []
+      }
+    ]
+  }
+]

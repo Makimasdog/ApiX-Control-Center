@@ -15,7 +15,7 @@ for await(const line of createInterface({input:process.stdin})){
   const m=JSON.parse(line);
   if(codex){
     if(m.method==='initialize')send({id:m.id,result:{userAgent:'fixture-codex/0.145.0'}});
-    else if(m.method==='thread/start'||m.method==='thread/resume'){resumed=m.method==='thread/resume';send({id:m.id,result:{thread:{id:'session-fixture'}}});}
+    else if(m.method==='thread/start'||m.method==='thread/resume'){resumed=m.method==='thread/resume';if(resumed&&process.env.APIX_FAKE_RESUME_DELAY_MS)await new Promise(r=>setTimeout(r,Number(process.env.APIX_FAKE_RESUME_DELAY_MS)));send({id:m.id,result:{thread:{id:'session-fixture'}}});}
     else if(m.method==='turn/start')codexTurn(m.id,m.params.input[0].text);
     else if(m.method==='turn/steer'){if(m.params.input[0].text.includes('unknown-steer'))process.exit(1);send({id:m.id,result:{turnId:'t'+turn}});if(m.params.input[0].text.includes('finish'))setTimeout(()=>globalThis.finish(),20);}
     else if(m.method==='turn/interrupt'){send({id:m.id,result:{}});}

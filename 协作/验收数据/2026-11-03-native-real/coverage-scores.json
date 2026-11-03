@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "engine": "py-openjudge",
+  "version": "0.2.0",
+  "python": "3.11.9",
+  "results": [
+    {
+      "caseId": "native-workflow-before-stop",
+      "attemptId": "3b1d7384063aaec1",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "deepseek-manager-real:pass; dispatch:pass; codex-real-command-tool:pass; codex-real-file-tool:pass; codex-steer-processed:pass; claude-waits-for-codex-acceptance:pass; native-resume-new-run-codex:pass; codex-steer-effect:pass; claude-guidance-queued:pass; question-answered-f6a392c5-549a-4e95-a9a7-476033bfcb8c:pass; claude-real-read-edit-write-command:pass; claude-real-search:pass; claude-queue-processed:pass; native-resume-new-run-claude:pass; claude-guidance-effect:pass; host-hidden-inputs:pass; user-baseline-preserved:pass; integration-report-present:pass; all-accepted:pass; restart-preserves-completion:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "native-codex-claude-stop",
+      "attemptId": "856b04af40c2afbe",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "stop-evidence-codex:pass; no-late-write-codex:pass; stop-evidence-claude:pass; no-late-write-claude:pass; no-fake-model-calls:pass",
+      "semanticStatus": "not_run"
+    }
+  ],
+  "distribution": {
+    "name": "Distribution Analysis",
+    "metadata": {
+      "explanation": "Analyzed 2 scores with mean=1.000, median=1.000, stdev=0.000",
+      "total_samples": 2,
+      "valid_results": 2,
+      "error_results": 0,
+      "skipped_results": 0,
+      "coverage_rate": 1.0
+    },
+    "mean": 1.0,
+    "median": 1.0,
+    "stdev": 0.0,
+    "min_score": 1.0,
+    "max_score": 1.0
+  },
+  "semanticStatus": "not_run"
+}

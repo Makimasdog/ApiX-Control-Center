@@ -7,6 +7,10 @@ import {openCliRuntime} from '../dist/src/agents/cli-runtime.js';
 import {stopRuntimeTree} from '../dist/src/agents/native-runtime.js';
 import {spawn} from 'node:child_process';
 const input=(prompt)=>({command:{executable:process.execPath,prefix:[resolve('test/fake-native-runtime.mjs')]},args:[],cwd:process.cwd(),env:{...process.env,ANTHROPIC_API_KEY:'fixture-not-a-real-key'},runtime:'codex',format:'jsonl',prompt,runId:'run-fixture',fullAccess:false});
+test('Codex resumes retained history taking longer than the ordinary 15 second RPC deadline',{timeout:35000},async()=>{
+ const value=input('resume history');value.env.APIX_FAKE_RESUME_DELAY_MS='16000';const handle=openCodexAppServer({...value,resumeSessionId:'session-fixture'});const events=[];
+ try{for await(const event of handle.events)events.push(event);assert.equal(events.at(-1).outcome,'completed',JSON.stringify(events));assert(events.some(e=>e.kind==='output'&&e.text.includes('原生延续')));}finally{await handle.close();}
+});
 for(const [name,open] of [['codex',openCodexAppServer],['claude-sdk',openClaudeAgentSdk]])test(`${name} real adapter processes local protocol output and closes its live process`,{timeout:30000},async()=>{
  const handle=open(input('只读任务'));const events=[];try{for await(const e of handle.events)events.push(e);assert(events.some(e=>e.kind==='runtime'&&e.name==='turn.started'));assert(events.some(e=>e.kind==='runtime'&&e.name==='usage.updated'));assert(events.some(e=>e.kind==='output'&&e.text.includes('中文')));const end=events.at(-1);assert.equal(end.kind,'closed');assert.equal(end.outcome,'completed',JSON.stringify(events));assert.equal(end.evidence,'quiescent');assert.equal(handle.isActive(),false);}finally{await handle.close();}
 });

@@ -1,0 +1,724 @@
+{
+  "runs": [
+    {
+      "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+      "runtime": {
+        "executorVersion": "0.166.0",
+        "sdkVersion": null,
+        "backend": "codex-app-server",
+        "phase": "cancelled",
+        "capabilities": {
+          "steer": true,
+          "queue": true,
+          "questions": true,
+          "approvals": true,
+          "resume": true,
+          "usage": true,
+          "compatibility": "unverified"
+        },
+        "stopEvidence": "quiescent",
+        "legacyRecord": false,
+        "active": false,
+        "pendingInteractions": 0,
+        "recoveryAvailable": true,
+        "turns": [
+          {
+            "id": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "status": "running",
+            "started_at": "2026-11-03T05:45:20.393Z",
+            "ended_at": null
+          }
+        ],
+        "deliveries": []
+      },
+      "events": [
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 1,
+          "kind": "runtime.bound",
+          "occurredAt": "2026-11-03T05:45:07.198Z",
+          "payload": {
+            "backend": "codex-app-server",
+            "capabilities": {
+              "steer": true,
+              "queue": true,
+              "questions": true,
+              "approvals": true,
+              "resume": true,
+              "usage": true,
+              "compatibility": "unverified"
+            },
+            "nativeHistory": false
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 2,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:07.277Z",
+          "payload": {
+            "summary": "旧 CLI 事件：run_started"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 3,
+          "kind": "runtime.version",
+          "occurredAt": "2026-11-03T05:45:07.721Z",
+          "payload": {
+            "executorVersion": "0.166.0"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 4,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:08.147Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 5,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:08.154Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 6,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:08.244Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 7,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:20.257Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 8,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:20.263Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 9,
+          "kind": "runtime.bound",
+          "occurredAt": "2026-11-03T05:45:20.389Z",
+          "payload": {
+            "nativeHistory": true
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 10,
+          "kind": "turn.started",
+          "occurredAt": "2026-11-03T05:45:20.397Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 11,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.178Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "我",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 12,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.186Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "会",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 13,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.194Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "在",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 14,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.201Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "当前",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 15,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.209Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "隔",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 16,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.404Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "离",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 17,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.410Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "项目",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 18,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.416Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "中",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 19,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.424Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "执行",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 20,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.430Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "这一",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 21,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.436Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "条",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 22,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.445Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": " Power",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 23,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.453Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "Shell",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 24,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.526Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": " 命",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 25,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.533Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "令",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 26,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.540Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "，",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 27,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.546Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "按",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 28,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.552Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "指定",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 29,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.558Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "顺",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 30,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.563Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "序",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 31,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.654Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "创建",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 32,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.782Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "文件",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 33,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:38.923Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "并",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 34,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.041Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "等待",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 35,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.048Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "，不",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 36,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.056Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "启动",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 37,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.068Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "后台",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 38,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.075Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "进",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 39,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.080Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "程",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 40,
+          "kind": "output.delta",
+          "occurredAt": "2026-11-03T05:45:39.096Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "text": "。",
+            "nodeId": "msg_0c6dfec2c997d228016ae975020ca88190995b92082f618c92"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 41,
+          "kind": "tool.started",
+          "occurredAt": "2026-11-03T05:45:40.985Z",
+          "payload": {
+            "turnId": "88b7969e-f825-4c4c-ae40-ac39bafc9d96",
+            "toolCallId": "exec-4d405689-6c7a-494c-a7e9-c0338ae0a00d",
+            "name": "commandExecution",
+            "summary": "\"C:\\\\Users\\\\1\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command '$OutputEncoding = [Console]::InputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\nSet-Content -LiteralPath '\"'stop-started.txt' -Value '' -Encoding UTF8\nStart-Sleep -Seconds 90\nSet-Content -LiteralPath 'should-not-exist.txt' -Value '' -Encoding UTF8\"",
+            "status": "inProgress"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 42,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:41.876Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stop_requested"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 43,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:41.994Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stderr"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 44,
+          "kind": "runtime.closed",
+          "occurredAt": "2026-11-03T05:45:42.341Z",
+          "payload": {
+            "phase": "cancelled",
+            "evidence": "quiescent"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "1519261f-db2d-4b81-b416-049ba9f441eb",
+          "id": 45,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:42.353Z",
+          "payload": {
+            "summary": "旧 CLI 事件：run_exited"
+          }
+        }
+      ]
+    },
+    {
+      "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+      "runtime": {
+        "executorVersion": "2.1.114",
+        "sdkVersion": "0.3.314",
+        "backend": "claude-agent-sdk",
+        "phase": "cancelled",
+        "capabilities": {
+          "steer": false,
+          "queue": true,
+          "questions": true,
+          "approvals": true,
+          "resume": true,
+          "usage": true,
+          "compatibility": "unverified"
+        },
+        "stopEvidence": "quiescent",
+        "legacyRecord": false,
+        "active": false,
+        "pendingInteractions": 0,
+        "recoveryAvailable": true,
+        "turns": [
+          {
+            "id": "7120687a-c01b-4a36-95f0-89077d8a6a8b",
+            "status": "running",
+            "started_at": "2026-11-03T05:45:44.803Z",
+            "ended_at": null
+          }
+        ],
+        "deliveries": []
+      },
+      "events": [
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 46,
+          "kind": "runtime.bound",
+          "occurredAt": "2026-11-03T05:45:44.187Z",
+          "payload": {
+            "backend": "claude-agent-sdk",
+            "capabilities": {
+              "steer": false,
+              "queue": true,
+              "questions": true,
+              "approvals": true,
+              "resume": true,
+              "usage": true,
+              "compatibility": "unverified"
+            },
+            "nativeHistory": false
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 47,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:44.217Z",
+          "payload": {
+            "summary": "旧 CLI 事件：run_started"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 48,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:45:44.220Z",
+          "payload": {
+            "summary": "旧 CLI 事件：provider.selected"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 49,
+          "kind": "runtime.process",
+          "occurredAt": "2026-11-03T05:45:44.800Z",
+          "payload": {
+            "pid": 21700
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 50,
+          "kind": "turn.started",
+          "occurredAt": "2026-11-03T05:45:44.808Z",
+          "payload": {
+            "turnId": "7120687a-c01b-4a36-95f0-89077d8a6a8b"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 51,
+          "kind": "runtime.version",
+          "occurredAt": "2026-11-03T05:45:46.657Z",
+          "payload": {
+            "executorVersion": "2.1.114",
+            "sdkVersion": "0.3.314"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 52,
+          "kind": "runtime.bound",
+          "occurredAt": "2026-11-03T05:45:46.662Z",
+          "payload": {
+            "nativeHistory": true
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 53,
+          "kind": "tool.started",
+          "occurredAt": "2026-11-03T05:46:24.842Z",
+          "payload": {
+            "turnId": "7120687a-c01b-4a36-95f0-89077d8a6a8b",
+            "toolCallId": "call_00_yjErldo30azEKMGJB6O47916",
+            "name": "Bash",
+            "summary": "Bash"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 54,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:46:29.671Z",
+          "payload": {
+            "summary": "旧 CLI 事件：stop_requested"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 55,
+          "kind": "runtime.closed",
+          "occurredAt": "2026-11-03T05:46:30.299Z",
+          "payload": {
+            "phase": "cancelled",
+            "evidence": "quiescent"
+          }
+        },
+        {
+          "schemaVersion": 1,
+          "runId": "22bcfa84-b23c-4147-b015-ca4dac969627",
+          "id": 56,
+          "kind": "legacy.event",
+          "occurredAt": "2026-11-03T05:46:30.314Z",
+          "payload": {
+            "summary": "旧 CLI 事件：run_exited"
+          }
+        }
+      ]
+    }
+  ],
+  "deliveries": [],
+  "sessions": []
+}

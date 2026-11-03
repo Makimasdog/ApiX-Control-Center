@@ -1,0 +1,29 @@
+{
+  "build": "pass",
+  "check": "pass",
+  "relatedRegression": {
+    "passed": 34,
+    "failed": 0,
+    "skipped": 0
+  },
+  "afterFinal20CnyGate": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "coverageGrading": {
+    "engine": "py-openjudge",
+    "version": "0.2.0",
+    "cases": 2,
+    "assertions": 25,
+    "status": "pass",
+    "scope": "split coverage, not a passing full attempt"
+  },
+  "finalBudgetGate": {
+    "command": "node scripts/evaluation/evaluate-native-collaboration.mjs --approve-cost --workers-max-cny 20",
+    "exitCode": 1,
+    "message": "Cumulative 20 CNY reservation exhausted",
+    "inferenceStarted": false
+  },
+  "actualInvoiceVerified": false
+}
