@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {spawnSync} from 'node:child_process';
+import {spawnSync,execFile} from 'node:child_process';
+import {createServer} from 'node:http';
+import {promisify} from 'node:util';
 import {mkdtempSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -35,12 +37,15 @@ test('installed OpenJudge evaluates pass/fail/unknown/not-run and rejects incons
  rows[0].assertions[0].status='fail';writeFileSync(input,JSON.stringify(rows[0]));result=run();assert.notEqual(result.status,0);assert.match(result.stderr,/inconsistent/);
 });
 
-test('judge connection failure is grader_error and preserves the hard verdict',()=>{
+test('judge connection failure is grader_error and preserves the hard verdict',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'apix-judge-failure-')),input=join(dir,'cases.jsonl'),output=join(dir,'scores.json'),config=join(dir,'judge.json');
  writeFileSync(input,JSON.stringify({schemaVersion:1,caseId:'fixture',attemptId:'unit',status:'pass',assertions:[assertion('truth',true,true)]}));
- writeFileSync(config,JSON.stringify({model:'unreachable-test-model',baseUrl:'http://127.0.0.1:9/v1',caseIds:['fixture']}));
- const result=spawnSync(python,['scripts/evaluation/openjudge/evaluate.py','--input',input,'--output',output,'--judge-config',config],{encoding:'utf8',windowsHide:true,timeout:30000});
- assert.equal(result.status,1,result.stderr);const report=JSON.parse(readFileSync(output,'utf8'));assert.equal(report.results[0].hardStatus,'pass');assert.equal(report.semanticStatus,'grader_error');assert.equal(report.semanticResults[0].score,null);
+ const server=createServer(request=>request.socket.destroy());await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ try{
+  writeFileSync(config,JSON.stringify({model:'unreachable-test-model',baseUrl:'http://127.0.0.1:'+server.address().port+'/v1',caseIds:['fixture']}));
+  await assert.rejects(promisify(execFile)(python,['scripts/evaluation/openjudge/evaluate.py','--input',input,'--output',output,'--judge-config',config],{encoding:'utf8',windowsHide:true,timeout:30000}),error=>{assert.equal(error.code,1,error.stderr);return true;});
+  const report=JSON.parse(readFileSync(output,'utf8'));assert.equal(report.results[0].hardStatus,'pass');assert.equal(report.semanticStatus,'grader_error');assert.equal(report.semanticResults[0].score,null);
+ }finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
 
 test('budget gateway rejects wrong model, unbounded input and invalid budget without upstream requests',async()=>{

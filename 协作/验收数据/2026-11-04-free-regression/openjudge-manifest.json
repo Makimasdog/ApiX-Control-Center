@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-04T12:43:07.530Z",
+  "repositoryHead": "efb17509c02065f58dd602102749086a77135950",
+  "sourceHashes": {
+    "src/evaluation/evidence.mjs": "6c04bedc0df807bc324b9d23e3a0d15f54494808c8c8610380efe77cc26c1a72",
+    "src/evaluation/model-gateway.mjs": "d1ea5593196e3fbaf98898325dad601b36136c87debb7e9ca340248286b8bdf0",
+    "scripts/evaluation/evaluate-agents.mjs": "c39e3aae929778a53a434491d0e5040b00deb0c9c6f9166f4ac03a2fde46daed",
+    "scripts/evaluation/collaboration-scenarios.mjs": "6fecb68fb71655492b3a947fefba84d9e7aa24cccecf3b913368fbca83388109",
+    "scripts/evaluation/openjudge/evaluate.py": "ec307fb4d699ce32028bbb03f89a5bf4e25f4be1b9206b2aab1fb1e5c695a0d0",
+    "scripts/evaluation/openjudge/requirements.lock": "60ea0d892e92c17fc9b1aba9f068e5b62635d87cde6be329398ac97c0dc94486",
+    "test/evaluation-worker.mjs": "e1b73ddf67759cb5b015315c133def16d9ac13da9b6df44958b45e1a7deb0ba6",
+    "test/evaluation-model.mjs": "bd3a318542a8b59e338378fa7c39ce20aa5e120f9b46323a77f1146c16e9aaff"
+  },
+  "upstreamCommit": "070f7b8f2a3144f50788a9161c509c24130fb502",
+  "mode": "offline",
+  "model": null
+}

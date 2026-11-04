@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-04",
+  "timezone": "Asia/Hong_Kong",
+  "platform": "win32",
+  "node": "v22.23.3",
+  "developer": "Codex single agent; self-review",
+  "paidProviderInferenceRequests": 0,
+  "paidSemanticJudge": "not_run",
+  "claudeRoute": "CC Switch -> DeepSeek; user-confirmed expected configuration; not changed",
+  "fullRegression": {
+    "status": "pass_after_coordinator_file_rerun",
+    "originalAggregate": {
+      "tests": 635,
+      "pass": 634,
+      "fail": 0,
+      "cancelled": 1,
+      "skipped": 0,
+      "duration_ms": 2553531.8106
+    },
+    "originalExitCode": 1,
+    "coordinatorRerun": {
+      "tests": 80,
+      "pass": 80,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 1112159.0078
+    },
+    "coordinatorPreviouslyCompleted": 75,
+    "uniqueFunctionalCasesPassed": 639,
+    "scope": "All standard files covered; original whole batch cancellation is preserved and is not relabeled pass"
+  },
+  "desktopTests": {
+    "tests": 7,
+    "pass": 7,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "duration_ms": 37845.0171
+  },
+  "evaluationTests": {
+    "tests": 10,
+    "pass": 10,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "duration_ms": 188337.7087
+  },
+  "ui": {
+    "scriptCount": 14,
+    "allPassed": true
+  },
+  "openjudge": {
+    "cases": 8,
+    "hardStatus": "pass",
+    "paidRequests": 0
+  },
+  "commands": [
+    {
+      "command": "npm run check",
+      "log": ".tmp/verification/2026-11-04-free-regression/check-final.log",
+      "exitCode": 0,
+      "sha256": "a0d2c6873a985acfc76e4cdc73d6b56c4714dfb0783c4bbee3e9ff11140da3d7"
+    },
+    {
+      "command": "npm run test:evaluation",
+      "log": ".tmp/verification/2026-11-04-free-regression/evaluation-final.log",
+      "exitCode": 0,
+      "sha256": "98c9a63fe55d4bc2616aa93d8d97679f230cdad6f57032c25fb40fcd5404aea7"
+    },
+    {
+      "command": "npm run test:ui:all",
+      "log": ".tmp/verification/2026-11-04-free-regression/ui-all-final.log",
+      "exitCode": 0,
+      "sha256": "ead8bcf52f14446d28dc4673166dd6c3390524f4a13e2e99c6669a3d842100f9"
+    },
+    {
+      "command": "npm run test:desktop",
+      "log": ".tmp/verification/2026-11-04-free-regression/desktop-tests.log",
+      "exitCode": 0,
+      "sha256": "e4f3109a43612044a8b8ed8649af433ce97093240ac14561d0d26afee0e3467a"
+    },
+    {
+      "command": "npm run desktop:pack (task-owned npm cache)",
+      "log": ".tmp/verification/2026-11-04-free-regression/desktop-pack-final.log",
+      "exitCode": 0,
+      "sha256": "d07aeda0e1d043b6522604f1e45f09f0bc3741393130c3ad2fc2040ae9ee16ec"
+    },
+    {
+      "command": "npm run test:desktop:app",
+      "log": ".tmp/verification/2026-11-04-free-regression/desktop-app.log",
+      "exitCode": 0,
+      "sha256": "8bcf09f9f1521bdc8f7df1278e05d9de76e98299acf95ae82b3246537e5ae654"
+    },
+    {
+      "command": "npm run test:runtime:compatibility",
+      "log": ".tmp/verification/2026-11-04-free-regression/compatibility.log",
+      "exitCode": 0,
+      "sha256": "a40c43e787fdb8d3cd1dc9ff0f24e18a392d981b634aa5e0e06f43966e152d9a"
+    },
+    {
+      "command": "npm run test:runtime:rollback",
+      "log": ".tmp/verification/2026-11-04-free-regression/rollback.log",
+      "exitCode": 0,
+      "sha256": "fc3f869e89a499abbf36ae6482ee29309003b302781abb1df13e26add860afb6"
+    },
+    {
+      "command": "npm run eval:agents -- --suite all",
+      "log": ".tmp/verification/2026-11-04-free-regression/openjudge-all.log",
+      "exitCode": 0,
+      "sha256": "1d4db98992cd5fb92364841efa1bdc5f4e834168697ed085d2e030f69de962df"
+    },
+    {
+      "command": "original npm test with 20-minute file deadline",
+      "log": ".tmp/verification/2026-11-04-free-regression/npm-test-final.log",
+      "exitCode": 1,
+      "sha256": "1b0b3a6854674d6d5478fb34be0d06b4f4bd55bcbf56c8513c26c1b3c1feb74a"
+    },
+    {
+      "command": "node --test --test-concurrency=1 --test-timeout=1800000 test/coordinator.test.mjs",
+      "log": ".tmp/verification/2026-11-04-free-regression/coordinator-final.log",
+      "exitCode": 0,
+      "sha256": "9bf77168af087371216242a7e8e7d0c70702d9d2cff8120785a31c694ab7d2eb"
+    }
+  ],
+  "limits": [
+    "specific original Windows taskkill error was not captured and cannot be reconstructed",
+    "no paid-model retest",
+    "no remote CI or Linux/other Node execution",
+    "no installer install/upgrade/uninstall",
+    "coverage metrics not measured"
+  ],
+  "reviewedCheck": {
+    "command": "npm run check",
+    "exitCode": 0,
+    "log": ".tmp/verification/2026-11-04-free-regression/check-reviewed.log",
+    "sha256": "a0d2c6873a985acfc76e4cdc73d6b56c4714dfb0783c4bbee3e9ff11140da3d7"
+  },
+  "coordinatorTail": {
+    "tests": 6,
+    "pass": 6,
+    "durationMs": 89790.7631
+  }
+}

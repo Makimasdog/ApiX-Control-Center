@@ -1,0 +1,13 @@
+{
+  "base": "8b754efeffd363535da60beca36b5eb2685f133c",
+  "passed": [
+    "new-native-run",
+    "explicit-cli-fallback",
+    "consistent-sqlite-copy",
+    "previous-binary-read",
+    "previous-binary-cli-run",
+    "new-tables-retained"
+  ],
+  "paidModelCalls": 0,
+  "output": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-runtime-rollback-W2IIwo"
+}

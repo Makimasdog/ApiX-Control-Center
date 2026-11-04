@@ -10,13 +10,14 @@ export function runtimeChannel(){
 }
 
 /** 在根进程仍存活时终止进程树；根已先退出则不能再证明其后代停止。 */
-export async function stopRuntimeTree(child:ChildProcess|undefined):Promise<'quiescent'|'unknown'>{
-  if(!child?.pid||child.exitCode!==null||child.signalCode!==null)return 'unknown';
+export async function stopRuntimeTree(child:ChildProcess|undefined,diagnostic?:(details:{reason:string;treeStopConfirmed:boolean;rootClosed:boolean;errorCode:string|number|null})=>void):Promise<'quiescent'|'unknown'>{
+  if(!child?.pid||child.exitCode!==null||child.signalCode!==null){diagnostic?.({reason:child?.pid?'root_already_exited':'root_unavailable',treeStopConfirmed:false,rootClosed:false,errorCode:null});return 'unknown';}
   let closed=false;const exit=new Promise<void>(resolve=>child.once('close',()=>{closed=true;resolve();}));
-  let confirmed=false;
-  if(process.platform==='win32')confirmed=await new Promise<boolean>(resolve=>execFile('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,timeout:5000},error=>resolve(!error))).catch(()=>false);
-  else{try{process.kill(-child.pid,'SIGKILL');confirmed=true;}catch{try{child.kill('SIGKILL');}catch{return 'unknown';}}}
+  let confirmed=false,errorCode:string|number|null=null;
+  if(process.platform==='win32')confirmed=await new Promise<boolean>(resolve=>execFile('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,timeout:5000},error=>{errorCode=error?.code??null;resolve(!error);})).catch(()=>false);
+  else{try{process.kill(-child.pid,'SIGKILL');confirmed=true;}catch(error){errorCode=(error as NodeJS.ErrnoException).code??null;try{child.kill('SIGKILL');}catch{diagnostic?.({reason:'tree_stop_failed',treeStopConfirmed:false,rootClosed:closed,errorCode});return 'unknown';}}}
   let timer:ReturnType<typeof setTimeout>|undefined;await Promise.race([exit,new Promise<void>(resolve=>{timer=setTimeout(resolve,6000);})]);clearTimeout(timer);
+  diagnostic?.({reason:!confirmed?'tree_stop_failed':!closed?'root_close_timeout':'tree_stopped',treeStopConfirmed:confirmed,rootClosed:closed,errorCode});
   return confirmed&&closed?'quiescent':'unknown';
 }
 

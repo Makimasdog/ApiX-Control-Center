@@ -12,7 +12,7 @@ test('Codex resumes retained history taking longer than the ordinary 15 second R
  try{for await(const event of handle.events)events.push(event);assert.equal(events.at(-1).outcome,'completed',JSON.stringify(events));assert(events.some(e=>e.kind==='output'&&e.text.includes('原生延续')));}finally{await handle.close();}
 });
 for(const [name,open] of [['codex',openCodexAppServer],['claude-sdk',openClaudeAgentSdk]])test(`${name} real adapter processes local protocol output and closes its live process`,{timeout:30000},async()=>{
- const handle=open(input('只读任务'));const events=[];try{for await(const e of handle.events)events.push(e);assert(events.some(e=>e.kind==='runtime'&&e.name==='turn.started'));assert(events.some(e=>e.kind==='runtime'&&e.name==='usage.updated'));assert(events.some(e=>e.kind==='output'&&e.text.includes('中文')));const end=events.at(-1);assert.equal(end.kind,'closed');assert.equal(end.outcome,'completed',JSON.stringify(events));assert.equal(end.evidence,'quiescent');assert.equal(handle.isActive(),false);}finally{await handle.close();}
+  const handle=open(input('只读任务'));const events=[];try{for await(const e of handle.events)events.push(e);assert(events.some(e=>e.kind==='runtime'&&e.name==='turn.started'));assert(events.some(e=>e.kind==='runtime'&&e.name==='usage.updated'));assert(events.some(e=>e.kind==='output'&&e.text.includes('中文')));assert(events.some(e=>e.kind==='runtime'&&e.name==='runtime.stop'&&e.payload.reason==='tree_stopped'&&e.payload.treeStopConfirmed&&e.payload.rootClosed));const end=events.at(-1);assert.equal(end.kind,'closed');assert.equal(end.outcome,'completed',JSON.stringify(events));assert.equal(end.evidence,'quiescent');assert.equal(handle.isActive(),false);}finally{await handle.close();}
 });
 test('Codex questions route only an explicit answer and completed turn is independent of process exit',{timeout:30000},async()=>{
  const handle=openCodexAppServer(input('ask'));let asked=false;try{for await(const e of handle.events){if(e.kind==='runtime'&&e.name==='interaction.opened'){asked=true;assert.equal(e.payload.kind,'question');await handle.answer(e.payload.interactionId,{answers:{choice:{answers:['只读']}}});}if(e.kind==='closed')assert.equal(e.outcome,'completed');}assert(asked);}finally{await handle.close();}
@@ -30,6 +30,11 @@ for(const kind of ['SDK_ASK','SDK_APPROVAL'])test(`real SDK bridges ${kind}, que
 test('Windows/Linux tree shutdown ends a real child and its descendant instead of trusting a native interrupt ACK',{timeout:30000},async()=>{
  const child=spawn(process.execPath,['-e',"const c=require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});console.log(c.pid);setInterval(()=>{},1000)"],{windowsHide:true,detached:process.platform!=='win32',stdio:['pipe','pipe','pipe']});let pid;
  try{pid=await new Promise((resolve,reject)=>{child.stdout.once('data',c=>resolve(Number(c.toString().trim())));child.once('error',reject);});assert(Number.isInteger(pid));assert.equal(await stopRuntimeTree(child),'quiescent');assert.throws(()=>process.kill(pid,0));}finally{if(child.exitCode===null&&child.signalCode===null)await stopRuntimeTree(child);if(pid){try{process.kill(pid,'SIGKILL');}catch{}}}
+});
+test('an already exited root remains unknown and records why tree shutdown cannot be confirmed',{timeout:15000},async()=>{
+ const child=spawn(process.execPath,['-e','process.exit(0)'],{windowsHide:true,stdio:'ignore'});
+ await new Promise((resolve,reject)=>{child.once('close',resolve);child.once('error',reject);});
+ let diagnostic;assert.equal(await stopRuntimeTree(child,value=>diagnostic=value),'unknown');assert.equal(diagnostic.reason,'root_already_exited');assert.equal(diagnostic.treeStopConfirmed,false);
 });
 for(const runtime of ['pi','codex','claude','gemini','opencode','kimi','custom'])test(`${runtime} CLI transport keeps UTF-8, unparsed lines and trailing JSON with one close`,{timeout:15000},async()=>{
  const source="process.stdin.once('data',()=>{process.stdout.write('not json\\n'+JSON.stringify({type:'result',text:'中文报告'}));process.stderr.write('中文错误');process.stdin.destroy();});";

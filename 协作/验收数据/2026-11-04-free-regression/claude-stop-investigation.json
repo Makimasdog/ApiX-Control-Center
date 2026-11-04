@@ -1,0 +1,260 @@
+{
+  "original": {
+    "version": "2.1.114 (Claude Code)",
+    "initialize": true,
+    "commandCount": 16,
+    "sdkVersion": "0.3.314",
+    "rootExitedBeforeClose": false,
+    "initializeMs": 2122,
+    "stopEvidence": "unknown",
+    "stopMs": 470,
+    "exitCode": 1,
+    "signal": null,
+    "probeElapsedMs": 2986
+  },
+  "originalBranchInference": {
+    "classification": "Windows process-tree termination unconfirmed",
+    "basis": "rootExitedBeforeClose=false; elapsed stop 470ms versus 6000ms close wait; original helper returns unknown after a fast close only when taskkill was not confirmed",
+    "specificOsCause": null,
+    "missingOriginalEvidence": "taskkill exit code/stderr were not captured"
+  },
+  "paidTurns": 0,
+  "diagnostic": {
+    "paidTurns": 0,
+    "upstream": "loopback port 9; no user message yielded",
+    "runs": [
+      {
+        "attempt": 1,
+        "mode": "production-stop",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 2163,
+            "rootAlive": true
+          },
+          {
+            "name": "exit",
+            "ms": 2753,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2755,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "stop-return",
+            "ms": 2756,
+            "evidence": "quiescent"
+          }
+        ]
+      },
+      {
+        "attempt": 2,
+        "mode": "production-stop",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1793,
+            "rootAlive": true
+          },
+          {
+            "name": "exit",
+            "ms": 2407,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2407,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "stop-return",
+            "ms": 2408,
+            "evidence": "quiescent"
+          }
+        ]
+      },
+      {
+        "attempt": 3,
+        "mode": "production-stop",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1894,
+            "rootAlive": true
+          },
+          {
+            "name": "exit",
+            "ms": 2567,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2567,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "stop-return",
+            "ms": 2568,
+            "evidence": "quiescent"
+          }
+        ]
+      },
+      {
+        "attempt": 4,
+        "mode": "production-stop",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1901,
+            "rootAlive": true
+          },
+          {
+            "name": "exit",
+            "ms": 2517,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2517,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "stop-return",
+            "ms": 2517,
+            "evidence": "quiescent"
+          }
+        ]
+      },
+      {
+        "attempt": 5,
+        "mode": "taskkill-diagnostic",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1852,
+            "rootAlive": true
+          },
+          {
+            "name": "taskkill-return",
+            "ms": 2463,
+            "code": 0,
+            "stderr": "",
+            "stdoutLines": 6
+          },
+          {
+            "name": "exit",
+            "ms": 2517,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2518,
+            "code": 1,
+            "signal": null
+          }
+        ]
+      },
+      {
+        "attempt": 6,
+        "mode": "taskkill-diagnostic",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1921,
+            "rootAlive": true
+          },
+          {
+            "name": "taskkill-return",
+            "ms": 2556,
+            "code": 0,
+            "stderr": "",
+            "stdoutLines": 6
+          },
+          {
+            "name": "exit",
+            "ms": 2612,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2612,
+            "code": 1,
+            "signal": null
+          }
+        ]
+      },
+      {
+        "attempt": 7,
+        "mode": "taskkill-diagnostic",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 1952,
+            "rootAlive": true
+          },
+          {
+            "name": "taskkill-return",
+            "ms": 2639,
+            "code": 0,
+            "stderr": "",
+            "stdoutLines": 6
+          },
+          {
+            "name": "exit",
+            "ms": 2701,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2702,
+            "code": 1,
+            "signal": null
+          }
+        ]
+      },
+      {
+        "attempt": 8,
+        "mode": "taskkill-diagnostic",
+        "trace": [
+          {
+            "name": "before-stop",
+            "ms": 2079,
+            "rootAlive": true
+          },
+          {
+            "name": "taskkill-return",
+            "ms": 2746,
+            "code": 0,
+            "stderr": "",
+            "stdoutLines": 6
+          },
+          {
+            "name": "exit",
+            "ms": 2793,
+            "code": 1,
+            "signal": null
+          },
+          {
+            "name": "close",
+            "ms": 2794,
+            "code": 1,
+            "signal": null
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -6,6 +6,8 @@
 
 2026-11-04 只读核对：匹配并去重本轮 CC Switch 账本后，Codex 本地估算 USD 0.358444、Claude 通道 USD 0.088305752，另有三个 Run 缺匹配记录；这些均非平台扣费凭据，仍无法确认实际是否超过 20 元。Claude 通道响应 model 记录为 deepseek-v4-pro / deepseek-flash，故通过的是 Claude CLI/SDK 工具链，未证明 Anthropic Claude 模型本身。未发起新模型调用，见[扣费核对及问题汇总](../../协作/审查/2026-11/2026-11-04-本轮扣费只读核对与测试问题汇总.md)。
 
+用户随后确认 Claude Code 经 CC Switch 路由 DeepSeek 为预期配置，不作为配置缺陷；本轮继续验证 CLI/SDK 的协作与停止能力，付费模型场景暂停，账单暂不继续核对。
+
 ## 入口与费用前提
 
 ```powershell
@@ -46,5 +48,7 @@ ApiX 管理者固定 `deepseek-v4.1-flash-1017`，使用既有网关的输入/�
 免费预检发现旧兼容性脚本采用目录优先的可执行文件查找，选中 npm Codex 0.145，而产品采用后缀优先、实际选中原生 Codex 0.166。现已复用 `executableOnPath`，避免探针与真实产品验证不同版本。
 
 第一次 Claude 无推理握手探测的停止证据为 unknown；第二次为 quiescent。原报告均保留，首次原因仍未确认；本次真实长命令两端停止为 quiescent，未放宽生产停止判定，也不据单次停止宣称长期稳定性。
+
+免费回归补充：停止 helper 与原生适配器现在保存 `runtime.stop` 事件，字段为 reason、treeStopConfirmed、rootClosed、errorCode。unknown 可区分根进程不可用/已退出、进程树终止未确认、等待 close 超时；不保存终止命令文本或凭据。兼容性探针同样输出 stopDiagnostic。首次记录根存活且停止仅 470ms，结合当时源码 6000ms close 等待，可将其归到进程树终止未获确认分支；原 taskkill 错误码未留存，无法追溯具体系统错误，保留该不确定性。
 
 官方协议依据：[Codex App Server](https://learn.chatgpt.com/docs/app-server)、[Claude CLI](https://code.claude.com/docs/en/cli-reference)；具体兼容性同时以本机生成的协议 schema 和真实握手为准。
