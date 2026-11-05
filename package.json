@@ -16,6 +16,7 @@
     "test:desktop": "node --test --test-concurrency=1 test/desktop.test.mjs test/desktop-dev.test.mjs",
     "test:desktop:dev": "node scripts/verification/verify-desktop-dev.mjs",
     "test:desktop:app": "node scripts/verify-desktop.mjs",
+    "test:desktop:installer": "node scripts/verification/verify-desktop-installer.mjs",
     "pretest:ui:html": "npm run build",
     "test:ui:html": "node scripts/verification/verify-html-views.mjs",
     "test:ui:knowledge": "node scripts/verification/verify-tool-knowledge.mjs",

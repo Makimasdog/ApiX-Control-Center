@@ -13,6 +13,8 @@ Agent 系统评测入口：`npm run eval:agents -- --suite all`、`npm run test:
 
 免费完整界面回归使用 `npm run test:ui:all`，其中交付及 npm 自动驱动为 `test:ui:projects` / `verification/verify-project-browser.mjs`。原 `test:delivery:browser` 和 `test:npm:browser` 仍为等待人工浏览器操作的夹具，不可直接当无人值守回归结果。
 
+Windows x64 安装器生命周期验收使用 `npm run test:desktop:installer`。命令构建并执行独立应用标识的 NSIS 测试包，只使用本地隔离数据。运行方式见 [Windows 桌面版](../docs/专题/Windows桌面版.md#验证)。
+
 在仓库根目录运行，优先使用 package.json 提供的入口：`npm run eval:coding:real`、`npm run test:delivery:browser`、`npm run test:npm:browser`、`npm run test:real`。目录迁移不改变这些命令名、批准参数或费用语义。
 
 真实模型和真实员工验证可能收费，仍须显式批准；移动脚本不代表已运行。浏览器脚本启动服务后必须完成界面流程并写入结果，不能把启动当作验证成功。具体操作和授权边界见 [开发约定](../docs/开发约定.md)。

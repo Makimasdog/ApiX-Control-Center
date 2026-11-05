@@ -13,5 +13,5 @@ module.exports = {
   asar: true,
   npmRebuild: false,
   win: { target: [{ target: 'nsis', arch: ['x64'] }], signAndEditExecutable: false, artifactName: 'ApiX-Setup-${version}-${arch}.${ext}' },
-  nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true, createDesktopShortcut: true, runAfterFinish: false, deleteAppDataOnUninstall: false },
+  nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true, createDesktopShortcut: true, runAfterFinish: false, deleteAppDataOnUninstall: false, include: 'desktop/installer.nsh' },
 };
