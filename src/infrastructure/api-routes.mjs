@@ -153,7 +153,7 @@ export const apiRoutes=[
   // 项目诊断信息
   get(/^\/api\/assistant\/sessions\/([^/]+)\/project-diagnosis$/,({m})=>assistantProjectDiagnosis(m[1])),
   // 助手会话列表与会话详情
-  get(/^\/api\/assistant\/sessions$/,({query})=>assistantSessions(query.get('projectId')??'')),
+  get(/^\/api\/assistant\/sessions$/,({query})=>assistantSessions(query.get('projectId')??'',query.get('view')==='attention')),
   get(/^\/api\/assistant\/sessions\/([^/]+)$/,({m})=>assistantSession(m[1])),
   // 就绪检查（员工/项目是否准备好执行任务）
   get(/^\/api\/readiness$/,async({query})=>readiness(query.get('projectId')??'')),

@@ -26,7 +26,9 @@ async function fixture(work){
 test('saving mode keeps permission guards and rejects changes while a user decision is pending',()=>fixture(async h=>{
  let s=await h.service.details(h.id);await h.service.setOptimization(h.id,{version:s.version,mode:'saving'});
  h.policy({mode:'read_only',version:1});h.answer(tool('write_file'));await h.service.message(h.id,{content:'尝试修改'});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'saving');
+ assert.deepEqual(h.service.list('p',true),[{id:h.id,title:s.title,action:'inspect'}]);
  h.answer({action:'ask',question:'需要信息',options:['a','b'],multiple:false});await h.service.message(h.id,{content:'先询问信息'});s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'standard'}),/仍在执行|安全状态/);
+ assert.deepEqual(h.service.list('p',true),[{id:h.id,title:s.title,action:'answer'}]);
 }));
 
 for(const mode of ['standard','saving'])test(`${mode} production loop keeps facts across more than eight raw events and excludes display activity immediately`,()=>fixture(async h=>{
@@ -492,6 +494,7 @@ test('a blocked model conclusion keeps supervising a recovering child and finish
   await h.service.message(h.id,{content:'实现并自动修复失败'});await wait(h.service,h.id);
   revision++;await h.service.tick();let s=await wait(h.service,h.id);
   assert.equal(s.status,'waiting_agents');assert(s.events.some(e=>e.kind==='supervision_waiting'));
+  assert.deepEqual(h.service.list('p',true),[]);
   assert.equal(s.child_session_id,'child');assert.equal(h.calls.filter(c=>c.name==='delegate').length,1);
   const restored=createAssistantLoop(h.deps);accepted=true;revision++;await restored.tick();s=await wait(restored,h.id);
   assert.equal(s.status,'completed');assert.equal(s.child_session_id,null);

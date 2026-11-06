@@ -180,7 +180,19 @@ export function createAssistantLoop(deps:Dependencies){
     }
     throw new Error('会话状态仍在变化，请刷新后重试');
   }
-  function list(projectId:string){return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',projectId);}
+  function list(projectId:string,attention=false){
+    if(!attention)return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',projectId);
+    const sessions=rows<{id:string;title:string;status:string;pendingKind:string|null}>(`
+      SELECT id,title,status,json_extract(pending,'$.kind') AS pendingKind
+      FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL
+      ORDER BY updated_at DESC,rowid DESC`,projectId);
+    return sessions.flatMap(s=>{
+      const action=unsavedSafety.has(s.id)||s.status==='attention'?'inspect'
+        :s.status==='waiting_user'&&s.pendingKind?(s.pendingKind==='approval'?'approve':'answer')
+        :s.status==='completed'&&!busy.has(s.id)&&deliveries.hasUnreviewedCodeDelivery(s.id)?'review':null;
+      return action?[{id:s.id,title:s.title,action}]:[];
+    });
+  }
   function notes(projectId:string){return memory.list(projectId);}
   function remember(projectId:string,title:unknown,content:unknown,source='agent',kind='project',evidence:number|null=null){return memory.save(projectId,{title,content,kind,evidence},source);}
   async function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return (await details(id));}

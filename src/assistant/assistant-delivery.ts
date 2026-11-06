@@ -85,6 +85,18 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
  const event=(s:Session,role:string,kind:string,body:unknown)=>db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(s.id,role,kind,JSON.stringify(body),now());
  const entries=(s:Session,kind:string)=>rows<{id:number;body:string}>('SELECT id,body FROM assistant_events WHERE session_id=? AND kind=? ORDER BY id',s.id,kind).map(e=>({...JSON.parse(e.body),eventId:e.id}));
  function current(id:string):Task|null{const e=row<{id:number;body:string}>("SELECT id,body FROM assistant_events WHERE session_id=? AND kind='task_started' ORDER BY id DESC LIMIT 1",id);return e?{...JSON.parse(e.body),startedEventId:e.id}:null;}
+ function hasUnreviewedCodeDelivery(sessionId:string){
+  const task=current(sessionId);
+  if(!task)return false;
+  const delivery=row<{deliveryId:string;requiresVerification:number}>(`
+   SELECT json_extract(body,'$.id') AS deliveryId,json_extract(body,'$.requiresVerification') AS requiresVerification
+   FROM assistant_events WHERE session_id=? AND kind='delivery_record' AND id>?
+     AND json_extract(body,'$.taskId')=? ORDER BY id DESC LIMIT 1`,sessionId,task.startedEventId,task.id);
+  return !!delivery?.requiresVerification&&!row(`
+   SELECT id FROM assistant_events WHERE session_id=? AND id>?
+     AND kind IN ('delivery_accepted','delivery_changes_requested')
+     AND json_extract(body,'$.deliveryId')=? LIMIT 1`,sessionId,task.startedEventId,delivery.deliveryId);
+ }
  function transaction<T>(fn:()=>T):T{db.exec('SAVEPOINT assistant_delivery');try{const value=fn();db.exec('RELEASE assistant_delivery');return value;}catch(e){db.exec('ROLLBACK TO assistant_delivery');db.exec('RELEASE assistant_delivery');throw e;}}
  function snapshot(ref:string|null){if(!ref)throw new Error('此交付没有代码基线');const saved=row<{body:string;sha256:string;created_at:string}>('SELECT body,sha256,created_at FROM assistant_outputs WHERE id=?',ref);if(!saved||Date.parse(saved.created_at)<Date.parse(now())-reviewLimits.days*86400000)throw new Error('审阅资料已过期或不可用');if(sha(saved.body)!==saved.sha256)throw new Error('审阅资料完整性错误');return JSON.parse(saved.body).snapshot as Snapshot;}
  function save(s:Session,task:Task,value:Snapshot){
@@ -152,5 +164,5 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
   transaction(()=>{if(action==='accept'&&entries(s,'delivery_accepted').some(e=>e.deliveryId===d.id))return;event(s,'user',kind,{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,requestId,comment,at:now()});const changed=db.prepare("UPDATE assistant_sessions SET version=version+1,status=?,steps=0 WHERE id=? AND version=?").run(action==='request_changes'?'idle':s.status,s.id,s.version);if(changed.changes!==1)throw new Error('会话状态写入未确认，未保存验收');});
   return await view(s,d);
  }
- return {current,start,ensureBaseline,observe,freeze,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
+ return {current,hasUnreviewedCodeDelivery,start,ensureBaseline,observe,freeze,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
 }

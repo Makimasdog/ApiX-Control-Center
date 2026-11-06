@@ -119,10 +119,12 @@ try{
   await page.route('**/api/chat-history?*',route=>route.fulfill({json:renderers.threads}));
   await page.route('**/api/employees/p9/details',route=>route.fulfill({json:renderers.employeeDetails}));
   await page.route('**/api/coordination/sessions?*',route=>route.fulfill({json:renderers.goals}));
+  await page.route('**/api/assistant/sessions?*view=attention',route=>route.fulfill({json:[{id:payload,title:payload,action:'answer'}]}));
   await page.evaluate(async data=>{
     document.body.insertAdjacentHTML('beforeend','<div id="assistant-thread-list"></div><main id="page-missions"></main><main id="page-overview"></main>');
     await import('/dist/web/chat-history.js');await import('/dist/web/employee.js');await import('/dist/web/overview.js');
     document.dispatchEvent(new CustomEvent('apix:snapshot',{detail:{projectId:'p9',data:data.snapshot}}));
+    document.dispatchEvent(new CustomEvent('apix:page',{detail:'overview'}));
     document.dispatchEvent(new CustomEvent('apix:open-employee',{detail:'p9'}));
   },renderers);
   await page.locator('#assistant-thread-list .history-row').waitFor();
@@ -138,7 +140,8 @@ try{
   assert.equal(await page.locator('#employee-active .employee-task strong').innerText(),payload);
   assert((await page.locator('#employee-history').innerText()).includes('阻塞报告：'+payload));
   await page.locator('#overview-board .overview-task').waitFor();
-  assert.equal(await page.locator('#overview-action-list strong').innerText(),payload);
+  assert.deepEqual(await page.locator('#overview-action-list strong').allInnerTexts(),[payload,payload]);
+  assert.equal(await page.locator('[data-overview-assistant]').getAttribute('data-overview-assistant'),payload);
   assert.equal(await page.locator('#overview-team-list strong').innerText(),payload);
   assert.equal(await page.locator('#overview-board .overview-task strong').innerText(),payload);
   assert((await page.locator('#overview-departments').innerText()).includes(payload));

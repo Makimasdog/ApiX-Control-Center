@@ -14,6 +14,7 @@ let olderEvents:Session['events']=[],olderCursor:number|null|undefined,notesSign
 let modeProject='',modeDirty=false,contextGeneration=0;
 $('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;});
 let reviewSignature='' ;
+let deliveryDestination='';
 const drafts=new Map<string,string>();const draftKey=()=>projectId+':'+threadId;
 const messageRequests=new Map<string,{content:string;requestId:string}>();
 function setPosting(value:boolean){
@@ -55,6 +56,11 @@ function render(s:Session){
   $('#assistant-pending').innerHTML=s.pending?'<button id="assistant-open-request" type="button" class="outline-button">需要你的决定 · 查看并回答</button>':'';
   $('#assistant-resume').hidden=!['attention','stopped'].includes(s.status);$('#assistant-stop').hidden=['idle','completed','stopped'].includes(s.status);
   if(s.pending&&s.pending.id!==lastRequest&&active){lastRequest=s.pending.id;openRequest();}else if(!s.pending)$<HTMLDialogElement>('#assistant-dialog').close();
+  if(deliveryDestination===s.id){
+    deliveryDestination='';
+    if(!root.classList.contains('show-inspector'))$('#assistant-details').click();
+    $('#assistant-delivery').scrollIntoView({block:'start'});
+  }
 }
 function openRequest(){const p=current?.pending;if(!p)return;$('#assistant-request-error').textContent='';$('#assistant-question').textContent=(p.kind==='intent'?'确认你的意图 · ':'')+p.question;
   $('#assistant-options').innerHTML=p.kind==='approval'?html`<strong>${p.toolDescription??p.tool}</strong><small>${p.tool} ${p.toolVersion??''}</small><pre>${JSON.stringify(p.args,null,2)}</pre>`:(p.options??[]).map((option,i)=>html`<label><input type="${p.multiple?'checkbox':'radio'}" name="choice" value="${i}"><span>${option}</span></label>`).join('');
@@ -112,7 +118,15 @@ root.addEventListener('click',event=>{const target=event.target;if(!(target inst
   const note=target.closest<HTMLElement>('[data-delete-note]');if(note&&current)void api<Session>('/api/assistant/sessions/'+current.id+'/memory',{title:note.dataset.deleteNote,version:Number(note.dataset.version),delete:true}).then(applyCurrent).catch(error);
 });
 function clearSession(){workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="text-action" data-choose-conversation-model>选择本对话模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
-document.addEventListener('apix:open-assistant',((event:CustomEvent<string>)=>{drafts.set(draftKey(),$<HTMLTextAreaElement>('#assistant-input').value);clearSession();threadId=event.detail;$<HTMLTextAreaElement>('#assistant-input').value=drafts.get(draftKey())??'';document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:threadId,kind:'assistant'}}));void refresh();}) as EventListener);
+document.addEventListener('apix:open-assistant',((event:CustomEvent<string|{id:string;delivery:boolean}>)=>{
+  drafts.set(draftKey(),$<HTMLTextAreaElement>('#assistant-input').value);
+  clearSession();
+  const destination=event.detail;
+  threadId=typeof destination==='string'?destination:destination.id;
+  deliveryDestination=typeof destination==='object'&&destination.delivery?threadId:'';
+  $<HTMLTextAreaElement>('#assistant-input').value=drafts.get(draftKey())??'';
+  document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:threadId,kind:'assistant'}}));void refresh();
+}) as EventListener);
 document.addEventListener('apix:history-changed',((event:CustomEvent<{id:string;kind:string;action:string}>)=>{if(event.detail.kind==='assistant'&&event.detail.id===threadId&&event.detail.action!=='restore'){clearSession();localStorage.removeItem('apix.assistant.'+projectId);}void refresh();}) as EventListener);
 $('#assistant-request-dismiss').addEventListener('click',()=>$<HTMLDialogElement>('#assistant-dialog').close());
 async function answer(approved:boolean){const s=current,p=s?.pending;if(!s||!p||posting)return;setPosting(true);

@@ -3,6 +3,9 @@ type Task = {id:string;project_id:string;plan_id:string|null;employee_id:string|
 type Employee = {id:string;name:string;role:string;runtime:string;department:string;enabled:number};
 type Project = {id:string;name:string};
 type Goal = {id:string;title:string;plan_id:string|null;derivedStatus:string;status:string};
+type AssistantAction = {id:string;title:string;action:'approve'|'answer'|'inspect'|'review'};
+const assistantActionLabels={approve:'操作等待审批',answer:'对话等待回答',inspect:'对话需要检查',review:'代码交付等待审阅'};
+const goalActionLabels:Record<string,string>={clarifying:'继续澄清需求',ready:'需求已齐备，等待确认',plan_review:'执行计划等待审查',awaiting_acceptance:'员工交付等待验收',attention:'任务需要处理'};
 type Snapshot = {projects:Project[];tasks:Task[];employees:Employee[];departments:{id:string;name:string}[];runs:{id:string;task_id:string;status:string}[]};
 const root=document.querySelector<HTMLElement>('#page-overview')!;
 const $=<T extends HTMLElement=HTMLElement>(selector:string)=>root.querySelector<T>(selector)!;
@@ -16,6 +19,8 @@ const lanes=[
   {key:'done',name:'已完成',statuses:['accepted']},
 ];
 let snapshot:Snapshot={projects:[],tasks:[],employees:[],departments:[],runs:[]};let projectId='';let goals:Goal[]=[];let goalsProjectId='';let loadVersion=0;
+let assistantActions:AssistantAction[]=[];
+let actionsLoaded=false,actionErrors:string[]=[];
 root.innerHTML=html`<div class="overview-header"><div><div class="eyebrow">APIX · COMMAND CENTER</div><h1>管理总览</h1><p>查看目标、员工与任务的真实进展，再决定下一步。</p></div><div class="overview-header-actions"><label>当前项目<select id="overview-project" aria-label="总览项目"></select></label><button class="primary-button" data-overview-nav="assistant">提出新任务</button></div></div>
 <div id="overview-empty" class="surface-card overview-empty" hidden><h2>先添加项目</h2><p>ApiX 将在这里汇总该项目的目标、任务和员工状态。</p><button class="outline-button" data-overview-nav="projects">添加项目</button></div>
 <div id="overview-content"><section class="overview-metrics" aria-label="项目概况"><article class="surface-card"><span>目标</span><strong id="overview-goal-count">0</strong><small>当前项目</small></article><article class="surface-card"><span>正在执行</span><strong id="overview-active-count">0</strong><small>真实运行任务</small></article><article class="surface-card"><span>等待你处理</span><strong id="overview-action-count">0</strong><small>澄清、确认、审批与验收</small></article><article class="surface-card"><span>参与员工</span><strong id="overview-employee-count">0</strong><small>当前项目计划</small></article></section>
@@ -35,15 +40,18 @@ function render(){
   const tasks=snapshot.tasks.filter(task=>task.project_id===projectId && task.plan_id && goalFor(task));
   const active=tasks.filter(task=>['running','stopping'].includes(task.status));
   const employeeIds=new Set(tasks.map(task=>task.employee_id));
-  const actions=goals.flatMap(goal=>{const state=goal.derivedStatus;
-    const message=state==='clarifying'?'继续澄清需求':state==='ready'?'需求已齐备，等待确认':state==='plan_review'?'执行计划等待审查':state==='awaiting_acceptance'?'员工交付等待验收':state==='attention'?'任务需要处理':null;
-    return message?[{goal,message}]:[];});
+  const goalActions=actionErrors.includes('协作待办')?[]:goals.filter(goal=>goalActionLabels[goal.derivedStatus]);
+  const actionCount=goalActions.length+assistantActions.length;
   $('#overview-goal-count').textContent=String(goals.length);
   $('#overview-active-count').textContent=String(active.length);
-  $('#overview-action-count').textContent=String(actions.length);
+  $('#overview-action-count').textContent=actionsLoaded&&!actionErrors.length?String(actionCount):'—';
   $('#overview-employee-count').textContent=String(employeeIds.size);
-  $('#overview-attention-count').textContent=`${actions.length} 项`;
-  setMarkup('#overview-action-list',actions.length?actions.map(({goal,message})=>html`<button class="overview-action" data-overview-goal="${goal.id}"><span class="overview-action-dot"></span><span><strong>${goal.title}</strong><small>${message}</small></span><span aria-hidden="true">→</span></button>`).join(''):'<p class="overview-placeholder">当前没有等待你处理的事项。</p>');
+  $('#overview-attention-count').textContent=actionsLoaded?`${actionCount} 项`:'—';
+  const actionRows=assistantActions.map(({id,title,action})=>html`<button type="button" class="overview-action" data-overview-assistant="${id}" data-overview-action="${action}"><span class="overview-action-dot"></span><span><strong>${title}</strong><small>${assistantActionLabels[action]}</small></span><span aria-hidden="true">→</span></button>`).join('')
+    +goalActions.map(goal=>html`<button type="button" class="overview-action" data-overview-goal="${goal.id}"><span class="overview-action-dot"></span><span><strong>${goal.title}</strong><small>${goalActionLabels[goal.derivedStatus]}</small></span><span aria-hidden="true">→</span></button>`).join('');
+  setMarkup('#overview-action-list',actionRows+(actionErrors.length
+    ?html`<p class="overview-placeholder" role="status">${actionErrors.join('、')}读取失败，正在重试。</p>`
+    :actionRows?'':`<p class="overview-placeholder">${actionsLoaded?'当前没有等待你处理的事项。':'正在读取待办事项…'}</p>`));
   const team=snapshot.employees.filter(employee=>employee.enabled && (employeeIds.has(employee.id)||active.some(task=>task.employee_id===employee.id)));
   setMarkup('#overview-team-list',team.length?team.map(employee=>{const assigned=tasks.filter(task=>task.employee_id===employee.id);const running=assigned.filter(task=>['running','stopping'].includes(task.status));return html`<button class="overview-person" data-open-employee="${employee.id}"><span class="overview-person-mark">${employee.name.slice(0,1)}</span><span><strong>${employee.name}</strong><small>${employee.role} · ${employee.runtime}${running.length?` · ${running.length} 项执行中`:''}</small></span><span class="overview-person-state ${running.length?'working':''}">${running.length?'工作中':'待命'}</span></button>`;}).join(''):'<p class="overview-placeholder">项目尚未安排员工。创建目标并确认计划后会显示团队动态。</p>');
   const departments=[...new Set(team.map(employee=>employee.department || '未分组'))];
@@ -61,17 +69,46 @@ function renderBoard(tasks:Task[]){
   $('#overview-board-count').textContent=`${visible.length} 个任务`;
   setMarkup('#overview-board',lanes.map(lane=>{const items=visible.filter(task=>lane.statuses.includes(task.status));return html`<section class="overview-lane lane-${lane.key}"><div class="overview-lane-head"><h3>${lane.name}</h3><span>${items.length}</span></div><div class="overview-lane-cards">` + (items.length?items.map(task=>{const goal=goalFor(task);const employee=employeeFor(task);return html`<button class="overview-task" data-overview-goal="${goal?.id ?? ''}"><span class="overview-task-status">${status[task.status]??task.status}</span><strong>${task.prompt}</strong><small>${employee?.name ?? '历史员工'} · ${goal?.title ?? '任务'}</small></button>`;}).join(''):'<p class="overview-lane-empty">暂无任务</p>') + html`</div></section>`;}).join(''));
 }
-async function update(){const selected=projectId;const version=++loadVersion;if(!selected){goals=[];goalsProjectId='';render();return;}
-  if(selected!==goalsProjectId){goals=[];goalsProjectId=selected;}
-  render();
-  try{const response=await fetch(`/api/coordination/sessions?projectId=${encodeURIComponent(selected)}&summary=1`);const result=await response.json() as Goal[] & {error?:string};if(!response.ok)throw new Error(result.error ?? `HTTP ${response.status}`);if(version!==loadVersion||selected!==projectId)return;goals=result;render();}
-  catch(error){if(version===loadVersion)$('#overview-updated').textContent=`总览读取失败：${String(error instanceof Error?error.message:error)}`;}
+async function readList<T>(url:string):Promise<T[]>{
+  const response=await fetch(url);
+  if(!response.ok)throw new Error(`HTTP ${response.status}`);
+  return response.json();
 }
-document.addEventListener('apix:snapshot',((event:CustomEvent<{data:Snapshot;projectId:string}>)=>{snapshot=event.detail.data;projectId=event.detail.projectId;void update();}) as EventListener);
+async function update(){const selected=projectId;const version=++loadVersion;
+  if(selected!==goalsProjectId){goals=[];assistantActions=[];actionsLoaded=false;actionErrors=[];goalsProjectId=selected;}
+  render();
+  if(!selected)return;
+  const query=`projectId=${encodeURIComponent(selected)}`;
+  const [coordination,assistant]=await Promise.allSettled([
+    readList<Goal>(`/api/coordination/sessions?${query}&summary=1`),
+    readList<AssistantAction>(`/api/assistant/sessions?${query}&view=attention`),
+  ]);
+  if(version!==loadVersion||selected!==projectId)return;
+  actionErrors=[];
+  if(coordination.status==='fulfilled')goals=coordination.value;
+  else actionErrors.push('协作待办');
+  if(assistant.status==='fulfilled')assistantActions=assistant.value;
+  else{assistantActions=[];actionErrors.push('对话待办');}
+  actionsLoaded=true;
+  render();
+}
+let active=false;
+document.addEventListener('apix:snapshot',((event:CustomEvent<{data:Snapshot;projectId:string}>)=>{
+  snapshot=event.detail.data;projectId=event.detail.projectId;
+  if(active)void update();
+}) as EventListener);
+document.addEventListener('apix:page',((event:CustomEvent<string>)=>{
+  active=event.detail==='overview';
+  if(active)void update();
+}) as EventListener);
 $('#overview-project').addEventListener('change',event=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:(event.target as HTMLSelectElement).value})));
 $('#overview-search').addEventListener('input',()=>renderBoard(snapshot.tasks.filter(task=>task.project_id===projectId&&task.plan_id&&goalFor(task))));
 $('#overview-employee-filter').addEventListener('change',()=>renderBoard(snapshot.tasks.filter(task=>task.project_id===projectId&&task.plan_id&&goalFor(task))));
-root.addEventListener('click',event=>{const target=(event.target as Element).closest<HTMLElement>('[data-overview-goal],[data-overview-nav]');if(!target)return;
+root.addEventListener('click',event=>{const target=(event.target as Element).closest<HTMLElement>('[data-overview-goal],[data-overview-assistant],[data-overview-nav]');if(!target)return;
   if(target.dataset.overviewGoal)document.dispatchEvent(new CustomEvent('apix:open-goal',{detail:target.dataset.overviewGoal}));
+  if(target.dataset.overviewAssistant){
+    document.querySelector<HTMLElement>('[data-page-target="assistant"]')?.click();
+    document.dispatchEvent(new CustomEvent('apix:open-assistant',{detail:{id:target.dataset.overviewAssistant,delivery:target.dataset.overviewAction==='review'}}));
+  }
   if(target.dataset.overviewNav)document.querySelector<HTMLElement>(`[data-page-target="${target.dataset.overviewNav}"]`)?.click();
 });
