@@ -27,6 +27,7 @@ import {classifyFault,PreflightError,retryDelay} from '../recovery/fault-policy.
 import {createEffectJournal} from './assistant-effects.js';
 import {randomUUID,createHash} from 'node:crypto';
 import {type Store,object,text,parseJsonObject,type Policy} from '../coordination/contracts.js';
+import type {createRuntimeInteractions} from '../agents/runtime-interactions.js';
 import {createToolRegistry,builtinTools,type ToolDefinition} from './tool-registry.js';
 import {createContextOutputs,compactPrefix,estimateTokens,contextWindow,contextBreakdown,trimHistory} from './assistant-context.js';
 import {createProjectMemory,sensitiveMemory,type ProjectMemory} from './project-memory.js';
@@ -64,7 +65,7 @@ interface Dependencies extends Store {
   npmCheck?(session:AssistantSession,contract:VerificationContract,checkId:string,signal:AbortSignal):Promise<unknown>;
   child(id:string):{status:string;complete:boolean;details:unknown};
   stopChild(id:string):void;
-  workerInteractions?(projectId:string,childId:string):unknown[];
+  workerInteractions?:ReturnType<typeof createRuntimeInteractions>['forCoordination'];
   toolDefinitions?(projectId:string):ToolDefinition[];
   discoverTools?(projectId:string,signal:AbortSignal):Promise<{tools:ToolDefinition[];errors:string[]}>;
   callExternal?(session:AssistantSession,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal):Promise<unknown>;
@@ -177,22 +178,30 @@ export function createAssistantLoop(deps:Dependencies){
     const wasBusy=busy.has(id);let s=get(id),verification=await verificationState(s),review=await deliveries.state(s,verification);const fresh=get(id),changed=fresh.version!==s.version||wasBusy!==busy.has(id);
     if(changed&&!attempt)continue;
     if(changed){s=fresh;verification={verificationStatus:s.needs_verification?'not_run':'not_required',contract:contract(s),checks:[]};review={...review,task:deliveries.current(id),latestDelivery:null,baselineReady:false};}
-    const workerInteractions=s.child_session_id&&s.status!=='stopped'?deps.workerInteractions?.(s.project_id,s.child_session_id)??[]:[];
-    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,workerInteractions,busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
+    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,workerInteractions:workerInteractions(s),busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
     }
     throw new Error('会话状态仍在变化，请刷新后重试');
   }
+  function workerInteractions(s:Pick<AssistantSession,'project_id'|'child_session_id'|'status'>){
+    return s.child_session_id&&s.status!=='stopped'?deps.workerInteractions?.(s.project_id,s.child_session_id)??[]:[];
+  }
   function list(projectId:string,attention=false){
     if(!attention)return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',projectId);
-    const sessions=rows<{id:string;title:string;status:string;pendingKind:string|null}>(`
-      SELECT id,title,status,json_extract(pending,'$.kind') AS pendingKind
+    const sessions=rows<Pick<AssistantSession,'id'|'title'|'status'|'project_id'|'child_session_id'> & {pendingKind:string|null}>(`
+      SELECT id,title,status,project_id,child_session_id,json_extract(pending,'$.kind') AS pendingKind
       FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL
       ORDER BY updated_at DESC,rowid DESC`,projectId);
     return sessions.flatMap(s=>{
       const action=unsavedSafety.has(s.id)||s.status==='attention'?'inspect'
         :s.status==='waiting_user'&&s.pendingKind?(s.pendingKind==='approval'?'approve':'answer')
         :s.status==='completed'&&!busy.has(s.id)&&deliveries.hasUnreviewedCodeDelivery(s.id)?'review':null;
-      return action?[{id:s.id,title:s.title,action}]:[];
+      return [
+        ...(action?[{id:s.id,title:s.title,action}]:[]),
+        ...workerInteractions(s).map(item=>({
+          id:s.id,title:s.title,action:item.kind==='approval'?'worker_approve':'worker_answer',
+          interactionId:item.id,employee:item.employee,
+        })),
+      ];
     });
   }
   function notes(projectId:string){return memory.list(projectId);}

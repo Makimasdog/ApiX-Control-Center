@@ -48,6 +48,7 @@
 #assistant-worker-interactions{max-height:min(32dvh,280px);overflow:auto;overscroll-behavior:contain;margin-bottom:8px;overflow-wrap:anywhere}
 #assistant-worker-interactions[hidden]{display:none}
 #assistant-worker-interactions form{margin-bottom:6px;padding:10px 12px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:6px;font-size:13px}
+#assistant-worker-interactions form:focus{outline:2px solid var(--accent);outline-offset:-2px}
 #assistant-worker-interactions h3{margin:0 0 4px;font-size:14px}
 #assistant-worker-interactions small{display:block;color:var(--text-muted)}
 #assistant-worker-interactions label{display:block;margin:8px 0}

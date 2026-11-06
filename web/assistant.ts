@@ -15,7 +15,8 @@ let olderEvents:Session['events']=[],olderCursor:number|null|undefined,notesSign
 let modeProject='',modeDirty=false,contextGeneration=0;
 $('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;});
 let reviewSignature='' ;
-let deliveryDestination='';
+type AssistantDestination={id:string;delivery?:boolean;interactionId?:string};
+let destination:AssistantDestination|undefined;
 const drafts=new Map<string,string>();const draftKey=()=>projectId+':'+threadId;
 const messageRequests=new Map<string,{content:string;requestId:string}>();
 function setPosting(value:boolean){
@@ -70,11 +71,25 @@ function render(s:Session){
   showWorkerInteractions(s);
   $('#assistant-pending').innerHTML=s.pending?'<button id="assistant-open-request" type="button" class="outline-button">需要你的决定 · 查看并回答</button>':'';
   $('#assistant-resume').hidden=!['attention','stopped'].includes(s.status);$('#assistant-stop').hidden=['idle','completed','stopped'].includes(s.status);
-  if(s.pending&&s.pending.id!==lastRequest&&active){lastRequest=s.pending.id;openRequest();}else if(!s.pending)$<HTMLDialogElement>('#assistant-dialog').close();
-  if(deliveryDestination===s.id){
-    deliveryDestination='';
-    if(!root.classList.contains('show-inspector'))$('#assistant-details').click();
-    $('#assistant-delivery').scrollIntoView({block:'start'});
+  const target=active&&destination?.id===s.id?destination:undefined;
+  if(s.pending&&s.pending.id!==lastRequest&&active){lastRequest=s.pending.id;if(!target?.interactionId)openRequest();}
+  else if(!s.pending)$<HTMLDialogElement>('#assistant-dialog').close();
+  if(target){
+    destination=undefined;
+    if(target.delivery){
+      if(!root.classList.contains('show-inspector'))$('#assistant-details').click();
+      $('#assistant-delivery').scrollIntoView({block:'start'});
+    }
+    if(target.interactionId){
+      $<HTMLDialogElement>('#assistant-dialog').close();
+      const card=[...$('#assistant-worker-interactions').querySelectorAll<HTMLFormElement>('[data-interaction]')]
+        .find(form=>form.dataset.interaction===target.interactionId);
+      if(card){
+        card.tabIndex=-1;
+        card.scrollIntoView({block:'nearest'});
+        card.focus({preventScroll:true});
+      }else error('该员工请求已处理或失效。');
+    }
   }
 }
 function openRequest(){const p=current?.pending;if(!p)return;$('#assistant-request-error').textContent='';$('#assistant-question').textContent=(p.kind==='intent'?'确认你的意图 · ':'')+p.question;
@@ -132,14 +147,16 @@ root.addEventListener('click',event=>{const target=event.target;if(!(target inst
   if(target.closest('#assistant-load-older')&&current){const id=current.id,version=generation,cursor=olderCursor===undefined?current.previousEventId:olderCursor;const box=$('#assistant-transcript'),height=box.scrollHeight,top=box.scrollTop;void api<{events:Session['events'];previousEventId:number|null}>('/api/assistant/sessions/'+id+'/events?before='+cursor).then(page=>{if(generation!==version||current?.id!==id)return;olderEvents=[...page.events,...olderEvents,...current.events];olderCursor=page.previousEventId;lastRender='';render(current);box.scrollTop=top+box.scrollHeight-height;}).catch(error);}
   const note=target.closest<HTMLElement>('[data-delete-note]');if(note&&current)void api<Session>('/api/assistant/sessions/'+current.id+'/memory',{title:note.dataset.deleteNote,version:Number(note.dataset.version),delete:true}).then(applyCurrent).catch(error);
 });
-function clearSession(){$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="text-action" data-choose-conversation-model>选择本对话模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
-document.addEventListener('apix:open-assistant',((event:CustomEvent<string|{id:string;delivery:boolean}>)=>{
-  drafts.set(draftKey(),$<HTMLTextAreaElement>('#assistant-input').value);
-  clearSession();
-  const destination=event.detail;
-  threadId=typeof destination==='string'?destination:destination.id;
-  deliveryDestination=typeof destination==='object'&&destination.delivery?threadId:'';
-  $<HTMLTextAreaElement>('#assistant-input').value=drafts.get(draftKey())??'';
+function clearSession(){destination=undefined;$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="text-action" data-choose-conversation-model>选择本对话模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
+document.addEventListener('apix:open-assistant',((event:CustomEvent<string|AssistantDestination>)=>{
+  const target=typeof event.detail==='string'?{id:event.detail}:event.detail;
+  if(!target.interactionId||current?.id!==target.id){
+    drafts.set(draftKey(),$<HTMLTextAreaElement>('#assistant-input').value);
+    clearSession();
+    threadId=target.id;
+    $<HTMLTextAreaElement>('#assistant-input').value=drafts.get(draftKey())??'';
+  }
+  destination=target;
   document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:threadId,kind:'assistant'}}));void refresh();
 }) as EventListener);
 document.addEventListener('apix:history-changed',((event:CustomEvent<{id:string;kind:string;action:string}>)=>{if(event.detail.kind==='assistant'&&event.detail.id===threadId&&event.detail.action!=='restore'){clearSession();localStorage.removeItem('apix.assistant.'+projectId);}void refresh();}) as EventListener);
