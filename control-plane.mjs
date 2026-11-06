@@ -1642,6 +1642,7 @@ export const toolProgress=createToolProgress(store);
 // assistant 是 Assistant 循环实例，负责与用户交互、调用工具、管理对话
 // [→ 见 dist/src/assistant/assistant-loop.js]
 const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance:toolGovernance,progress:toolProgress,memory:projectMemory,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
+  workerInteractions:runtimeController.interactions.forCoordination,
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:id=>{const config=conversationModels.get('assistant',id).settings;return Number(config.contextWindow??getProviderConfig(config.provider)?.models.find(m=>m.id===config.model)?.contextWindow??process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768);},
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),

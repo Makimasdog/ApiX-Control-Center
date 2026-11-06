@@ -9,7 +9,7 @@ import {startDeliveryFixture} from '../../test/delivery-fixture.mjs';
 const moduleName=process.env.APIX_PLAYWRIGHT_MODULE??'playwright';
 const {chromium}=await import(isAbsolute(moduleName)?pathToFileURL(moduleName).href:moduleName);
 const employees=[];
-const h=await startDeliveryFixture({startupMs:30000,requestMs:30000,runtimeEntries:{APIX_CODEX_ENTRY:resolve('test/fake-native-runtime.mjs')},plan:()=>({steps:employees.map((employeeId,i)=>({employeeId,prompt:'ask 员工'+(i+1)+'只读核查',dependsOn:[]}))}),setup:async project=>{
+const h=await startDeliveryFixture({startupMs:30000,requestMs:30000,runtimeEntries:{APIX_CODEX_ENTRY:resolve('test/fake-native-runtime.mjs')},plan:()=>({steps:employees.map((employeeId,i)=>({employeeId,prompt:(i===0?'ask':'approval')+' 员工'+(i+1)+'只读核查',dependsOn:[]}))}),setup:async project=>{
   await writeFile(join(project,'README.md'),'只读核查');
   for(const args of [['init'],['config','user.name','Fixture'],['config','user.email','test@example.invalid'],['add','README.md'],['commit','-m','fixture']])execFileSync('git',args,{cwd:project,stdio:'ignore'});
 }});
@@ -27,6 +27,7 @@ try{
   child=await h.request(base+'/confirm',{revision:child.revision});if(child.status==='plan_review')child=await h.request(base+'/dispatch',{planVersion:child.planVersion});
   assert.equal(child.failures.length,0);assert.equal(child.tasks.length,2);
   const parent=await h.request('/api/assistant/sessions',{projectId:h.projectId});
+  assert.deepEqual(parent.workerInteractions,[]);
   // Seed only the parent linkage; worker dispatch, events and interactions use the real services.
   const db=new DatabaseSync(join(h.dir,'data','apix.sqlite'));
   db.prepare('UPDATE assistant_sessions SET child_session_id=? WHERE id=?').run(child.id,parent.id);
@@ -37,6 +38,14 @@ try{
   await page.addInitScript(({project,id})=>{localStorage.setItem('apix.selectedProject',project);localStorage.setItem('apix.assistant.'+project,id);},{project:h.projectId,id:parent.id});
   await page.goto(h.origin);await page.locator('[data-page-target="assistant"]').first().click();
   const rows=page.locator('#assistant-workers [data-worker-run]');await rows.first().waitFor();assert.equal(await rows.count(),2);
+  const requests=page.locator('#assistant-worker-interactions');
+  const question=requests.locator('form').filter({hasText:'范围核查员 · 员工提问'});
+  const approval=requests.locator('form').filter({hasText:'文档核查员 · 操作审批'});
+  await question.waitFor();await approval.waitFor();
+  assert.match(await approval.innerText(),/运行命令 · node check\.mjs/);
+  await question.locator('textarea').fill('只读');
+  await page.waitForResponse(response=>response.url().endsWith('/api/assistant/sessions/'+parent.id));
+  assert.equal(await question.locator('textarea').inputValue(),'只读');
   assert((await rows.first().innerText()).includes('核查员'));
   await page.locator('#assistant-input').fill('保留主会话草稿，不发送');
   await page.locator('#assistant-transcript').evaluate(e=>e.scrollTop=0);
@@ -64,7 +73,14 @@ try{
   await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:join(output,'workbench-dark.png'),animations:'disabled'});
   await panel.locator('[data-guidance] button').click();await page.waitForFunction(()=>document.querySelector('[data-delivery]')?.textContent.includes('运行时已接收'));
   assert.equal(await panel.locator('[data-guidance] textarea').inputValue(),'');
-  await panel.locator('[data-interaction] textarea').fill('只读');await panel.locator('[data-interaction] button').click();
+  await Promise.all([
+    page.waitForResponse(response=>response.url().includes('/api/runs/'+firstRun+'/interactions/')&&response.ok()),
+    question.getByRole('button',{name:'提交回答'}).click(),
+  ]);
+  await question.waitFor({state:'detached'});
+  assert(await approval.isVisible());
+  const answered=await h.request('/api/runs/'+firstRun+'/interactions');
+  assert.equal(answered[0].state,'answered');assert.equal(answered[0].answerDelivery,'accepted');
   await page.waitForFunction(()=>document.querySelector('[data-phase]')?.textContent.includes('执行结束'));
   await panel.locator('[data-show-results]').click();await panel.locator('[data-artifacts]').click();await panel.locator('[data-artifact-view] p').waitFor();
   assert((await panel.locator('[data-verification]').innerText()).includes('未验证'));
@@ -74,6 +90,7 @@ try{
   await rows.nth(1).click();await panel.locator('[data-interaction]').waitFor();assert.equal(await panel.locator('[data-guidance] textarea').inputValue(),'第二位员工的独立草稿');
   await page.locator('#assistant-new').click();await page.waitForFunction(()=>!document.querySelector('#page-assistant').classList.contains('show-agent-workbench'));
   assert.equal(await page.locator('#assistant-workers [data-worker-run]').count(),0);
+  assert.equal(await requests.locator('form').count(),0);
   await page.route('**'+base,route=>route.fulfill({status:503,json:{error:'本地夹具模拟暂时读取失败'}}));
   await page.evaluate(id=>document.dispatchEvent(new CustomEvent('apix:open-assistant',{detail:id})),parent.id);
   await page.waitForFunction(()=>document.querySelector('#assistant-workers')?.textContent.includes('加载失败'));
@@ -85,7 +102,19 @@ try{
   assert((await rows.first().innerText()).includes('本地诊断失败 <script>unsafe</script>'));
   assert.equal(await page.locator('#assistant-workers script').count(),0);
   await page.screenshot({path:join(output,'failure-diagnostics.png'),animations:'disabled'});await page.unroute('**'+base);
+  await page.setViewportSize({width:390,height:1000});
+  await approval.waitFor();
+  await page.screenshot({path:join(output,'main-approval-390.png'),animations:'disabled'});
+  const secondRun=await rows.nth(1).getAttribute('data-worker-run');
+  await Promise.all([
+    page.waitForResponse(response=>response.url().includes('/api/runs/'+secondRun+'/interactions/')&&response.ok()),
+    approval.getByRole('button',{name:'拒绝'}).click(),
+  ]);
+  await approval.waitFor({state:'detached'});
+  const denied=await h.request('/api/runs/'+secondRun+'/interactions');
+  assert.equal(denied[0].state,'denied');assert.equal(denied[0].answerDelivery,'accepted');
+  await page.setViewportSize({width:1440,height:1000});
   await page.locator('#assistant-employees').click();assert(await page.locator('#page-missions').evaluate(e=>e.classList.contains('active-page')));
   assert.deepEqual(errors,[]);assert.equal(h.calls.filter(c=>c.phase==='planning').length,1);assert.equal(h.calls.length,1);
-  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','question','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
+  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
 }finally{await browser?.close();await h.close();}

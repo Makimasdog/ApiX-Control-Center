@@ -45,4 +45,11 @@
 .assistant-team{flex-shrink:0}.agent-run-panel [hidden]{display:none!important}
 .agent-run-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;flex-shrink:0}.agent-run-panel [data-results]{scroll-margin-top:14px}
 @media(max-width:600px){.agent-run-actions{max-width:100px;gap:4px}}
+#assistant-worker-interactions{max-height:min(32dvh,280px);overflow:auto;overscroll-behavior:contain;margin-bottom:8px;overflow-wrap:anywhere}
+#assistant-worker-interactions[hidden]{display:none}
+#assistant-worker-interactions form{margin-bottom:6px;padding:10px 12px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:6px;font-size:13px}
+#assistant-worker-interactions h3{margin:0 0 4px;font-size:14px}
+#assistant-worker-interactions small{display:block;color:var(--text-muted)}
+#assistant-worker-interactions label{display:block;margin:8px 0}
+#assistant-worker-interactions textarea{display:block;width:100%;min-height:48px;resize:vertical}
 #assistant-workers .agent-worker-failure{display:block;color:var(--danger,#b42318);line-height:1.5;margin-top:6px;overflow-wrap:anywhere;max-height:5em;overflow:auto}

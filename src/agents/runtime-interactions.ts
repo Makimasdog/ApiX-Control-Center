@@ -2,6 +2,8 @@ import {digest,redact} from '../assistant/tool-governance.js';
 import type {Store} from '../coordination/contracts.js';
 import {runtimeError,type RunHandle} from './runtime-contract.js';
 
+type InteractionRow={id:string;run_id:string;kind:string;payload_json:string;permission_version:string;state:string;answer_delivery:string;expires_at:string};
+
 export function createRuntimeInteractions({db,row,rows,now}:Store,guard:(runId:string)=>string,handle:(id:string)=>RunHandle|undefined,stop:(id:string)=>void=id=>handle(id)?.interrupt()){
   db.exec(`CREATE TABLE IF NOT EXISTS agent_runtime_interactions(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,kind TEXT NOT NULL,payload_json TEXT NOT NULL,permission_version TEXT NOT NULL,state TEXT NOT NULL,answer_request_id TEXT,answer_hash TEXT,answer_delivery TEXT NOT NULL DEFAULT 'not_sent',expires_at TEXT NOT NULL,answered_at TEXT);`);
   db.prepare("UPDATE agent_runtime_interactions SET state='invalidated',answer_delivery=CASE WHEN answer_request_id IS NULL THEN answer_delivery ELSE 'unknown' END WHERE state='pending'").run();
@@ -11,7 +13,22 @@ export function createRuntimeInteractions({db,row,rows,now}:Store,guard:(runId:s
     db.prepare("INSERT OR IGNORE INTO agent_runtime_interactions(id,run_id,kind,payload_json,permission_version,state,expires_at) VALUES (?,?,?,?,?,'pending',?)").run(payload.interactionId,runId,payload.kind,JSON.stringify(redact(payload.request,false)),version,expires);
   }
   function invalidate(id:string){db.prepare("UPDATE agent_runtime_interactions SET state='invalidated' WHERE run_id=? AND state='pending'").run(id);}
-  function list(runId:string){return rows<any>('SELECT id,kind,payload_json,permission_version,state,answer_delivery,expires_at FROM agent_runtime_interactions WHERE run_id=? ORDER BY rowid',runId).map(r=>({id:r.id,runId,kind:r.kind,request:JSON.parse(r.payload_json),permissionVersion:r.permission_version,state:r.state,answerDelivery:r.answer_delivery,expiresAt:r.expires_at}));}
+  const view=(r:InteractionRow)=>({id:r.id,runId:r.run_id,kind:r.kind,request:JSON.parse(r.payload_json),permissionVersion:r.permission_version,state:r.state,answerDelivery:r.answer_delivery,expiresAt:r.expires_at});
+  function list(runId:string){return rows<InteractionRow>('SELECT id,run_id,kind,payload_json,permission_version,state,answer_delivery,expires_at FROM agent_runtime_interactions WHERE run_id=? ORDER BY rowid',runId).map(view);}
+  function forCoordination(projectId:string,sessionId:string){
+    return rows<InteractionRow & {employee:string}>(`
+      SELECT i.id,i.run_id,i.kind,i.payload_json,i.permission_version,i.state,i.answer_delivery,i.expires_at,
+             COALESCE(e.name,r.runtime) AS employee
+      FROM coordination_sessions s
+      JOIN tasks t ON t.plan_id=s.plan_id AND t.project_id=s.project_id
+      JOIN runs r ON r.task_id=t.id
+      JOIN agent_runtime_interactions i ON i.run_id=r.id
+      LEFT JOIN employees e ON e.id=t.employee_id
+      WHERE s.id=? AND s.project_id=? AND s.archived_at IS NULL AND s.deleted_at IS NULL
+        AND r.status IN ('starting','running') AND r.stop_requested_at IS NULL
+        AND i.state='pending' AND i.expires_at>?
+      ORDER BY i.rowid`,sessionId,projectId,now()).map(r=>({...view(r),employee:r.employee}));
+  }
   async function answer(runId:string,id:string,input:Record<string,any>){
     const saved=row<any>('SELECT * FROM agent_runtime_interactions WHERE id=? AND run_id=?',id,runId);if(!saved)throw runtimeError('INTERACTION_EXPIRED','此交互不属于当前 Run');
     if(!/^[a-zA-Z0-9:_-]{8,100}$/.test(input.requestId??''))throw runtimeError('INVALID_ARGUMENTS','回答请求 ID 无效',400);
@@ -33,5 +50,5 @@ export function createRuntimeInteractions({db,row,rows,now}:Store,guard:(runId:s
     return {state:value.decision==='deny'?'denied':'answered',delivery:'accepted'};
   }
   function tick(){for(const entry of rows<{run_id:string}>("SELECT DISTINCT run_id FROM agent_runtime_interactions WHERE state='pending' AND expires_at<=?",now())){db.prepare("UPDATE agent_runtime_interactions SET state='expired' WHERE run_id=? AND state='pending'").run(entry.run_id);stop(entry.run_id);}}
-  return {open,invalidate,list,answer,tick,pending:(id:string)=>!!row("SELECT id FROM agent_runtime_interactions WHERE run_id=? AND state='pending' AND expires_at>?",id,now())};
+  return {open,invalidate,list,forCoordination,answer,tick,pending:(id:string)=>!!row("SELECT id FROM agent_runtime_interactions WHERE run_id=? AND state='pending' AND expires_at>?",id,now())};
 }

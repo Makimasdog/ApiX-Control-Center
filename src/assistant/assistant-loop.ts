@@ -64,6 +64,7 @@ interface Dependencies extends Store {
   npmCheck?(session:AssistantSession,contract:VerificationContract,checkId:string,signal:AbortSignal):Promise<unknown>;
   child(id:string):{status:string;complete:boolean;details:unknown};
   stopChild(id:string):void;
+  workerInteractions?(projectId:string,childId:string):unknown[];
   toolDefinitions?(projectId:string):ToolDefinition[];
   discoverTools?(projectId:string,signal:AbortSignal):Promise<{tools:ToolDefinition[];errors:string[]}>;
   callExternal?(session:AssistantSession,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal):Promise<unknown>;
@@ -176,7 +177,8 @@ export function createAssistantLoop(deps:Dependencies){
     const wasBusy=busy.has(id);let s=get(id),verification=await verificationState(s),review=await deliveries.state(s,verification);const fresh=get(id),changed=fresh.version!==s.version||wasBusy!==busy.has(id);
     if(changed&&!attempt)continue;
     if(changed){s=fresh;verification={verificationStatus:s.needs_verification?'not_run':'not_required',contract:contract(s),checks:[]};review={...review,task:deliveries.current(id),latestDelivery:null,baselineReady:false};}
-    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
+    const workerInteractions=s.child_session_id&&s.status!=='stopped'?deps.workerInteractions?.(s.project_id,s.child_session_id)??[]:[];
+    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,workerInteractions,busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
     }
     throw new Error('会话状态仍在变化，请刷新后重试');
   }

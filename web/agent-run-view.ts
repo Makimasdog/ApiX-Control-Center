@@ -1,3 +1,4 @@
+import {interactionForm,type RuntimeInteraction} from './runtime-interaction-form.js';
 import {instructionState} from './execution-view.js';
 import {html} from './html.js';
 import {foldAgentRun,type RunEvent} from './agent-run-model.js';
@@ -45,13 +46,16 @@ async function load(generation:number){
     if(follow)field('[data-process]').scrollTop=field('[data-process]').scrollHeight;
     const signature=JSON.stringify(interactions);if(field('[data-interactions]').dataset.signature!==signature&&!field('[data-interactions]').contains(document.activeElement)){
       field('[data-interactions]').dataset.signature=signature;
-      field('[data-interactions]').innerHTML=interactions.map((i:any)=>i.state==='pending'?html`<form data-interaction="${i.id}"><h3>${i.kind==='question'?'员工提问':'操作审批'}</h3><small>Run ${runId.slice(0,8)} · ${new Date(i.expiresAt).toLocaleString('zh-CN')} 前有效</small>`+(i.kind==='approval'?html`<p>${i.request.operation} · ${i.request.summary}</p><button class="outline-button" name="decision" value="approve">仅批准本次</button><button class="outline-button" name="decision" value="deny">拒绝</button>`:(i.request.questions??[]).map((q:any)=>html`<label>${q.question}<small>${(q.options??[]).map((option:any)=>option.label+(option.description?'：'+option.description:'')).join('；')}</small><textarea name="${q.id??q.question}" required maxlength="4000"></textarea></label>`).join('')+html`<button class="outline-button">提交回答</button>`)+html`</form>`:html`<p>${i.kind==='question'?'问题':'审批'} · ${({answered:'已回答',denied:'已拒绝',invalidated:'已失效',expired:'已过期'} as Record<string,string>)[i.state]??i.state} · ${instructionState('',i.answerDelivery)}</p>`).join('');
-      for(const form of panel.querySelectorAll<HTMLFormElement>('[data-interaction]'))form.addEventListener('submit',async event=>{
-        event.preventDefault();const item=interactions.find((i:any)=>i.id===form.dataset.interaction),version=selection,values=new FormData(form),button=(event as SubmitEvent).submitter as HTMLButtonElement;
-        const answers=Object.fromEntries([...values].map(([key,value])=>[key,info.backend==='codex-app-server'?{answers:[String(value)]}:String(value)]));
-        const answer=item.kind==='approval'?{decision:button.value}:{answers};const serialized=JSON.stringify(answer);if(form.dataset.answer!==serialized){form.dataset.request=crypto.randomUUID();form.dataset.answer=serialized;}button.disabled=true;
-        try{await api(base+'/interactions/'+item.id+'/answer',{requestId:form.dataset.request,answer,expectedPermissionVersion:item.permissionVersion});if(version===selection)await load(version);}catch(error){if(version===selection)field('[data-error]').textContent=String(error instanceof Error?error.message:error);}finally{button.disabled=false;}
-      });
+      const items:RuntimeInteraction[]=interactions;
+      field('[data-interactions]').replaceChildren(...items.map(item=>{
+        if(item.state==='pending')return interactionForm(item,api,()=>void load(generation),error=>{
+          if(generation===selection)field('[data-error]').textContent=String(error instanceof Error?error.message:error);
+        });
+        const status=document.createElement('p');
+        const labels:Record<string,string>={answered:'已回答',denied:'已拒绝',invalidated:'已失效',expired:'已过期'};
+        status.textContent=(item.kind==='question'?'问题':'审批')+' · '+(labels[item.state]??item.state)+' · '+instructionState('',item.answerDelivery);
+        return status;
+      }));
     }
     for(const form of panel.querySelectorAll<HTMLFormElement>('[data-interaction]')){const item=interactions.find((i:any)=>i.id===form.dataset.interaction);if(!item||item.state!=='pending')for(const button of form.querySelectorAll('button'))button.disabled=true;}
     field('[data-deliveries]').innerHTML=(info.deliveries??[]).map((delivery:any)=>html`<p>指导 ${delivery.message_id.slice(0,8)} · ${delivery.mode==='queue'?'排队补充':'运行中指导'} · ${instructionState('',delivery.state)}${delivery.state==='unknown'?'；请先核对，不要重复发送':''}</p>`).join('');
