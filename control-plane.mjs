@@ -1708,6 +1708,7 @@ setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant
 export const createAssistantSession=assistant.create;
 export const assistantSession=assistant.details;
 export const assistantSessions=assistant.list;
+export const desktopWorkerRequests=assistant.desktopWorkerRequests;
 export const assistantMessage=assistant.message;
 export const assistantReply=assistant.reply;
 export const assistantStop=assistant.stop;

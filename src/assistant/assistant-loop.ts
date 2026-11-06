@@ -185,6 +185,14 @@ export function createAssistantLoop(deps:Dependencies){
   function workerInteractions(s:Pick<AssistantSession,'project_id'|'child_session_id'|'status'>){
     return s.child_session_id&&s.status!=='stopped'?deps.workerInteractions?.(s.project_id,s.child_session_id)??[]:[];
   }
+  function desktopWorkerRequests(){
+    const sessions=rows<Pick<AssistantSession,'id'|'project_id'|'child_session_id'|'status'>>(`
+      SELECT id,project_id,child_session_id,status FROM assistant_sessions
+      WHERE archived_at IS NULL AND deleted_at IS NULL AND child_session_id IS NOT NULL AND status<>'stopped'`);
+    return sessions.flatMap(s=>workerInteractions(s).map(item=>({
+      projectId:s.project_id,sessionId:s.id,interactionId:item.id,kind:item.kind,employee:item.employee,
+    })));
+  }
   function list(projectId:string,attention=false){
     if(!attention)return rows<AssistantSession>('SELECT id,title,status,version,updated_at FROM assistant_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 100',projectId);
     const sessions=rows<Pick<AssistantSession,'id'|'title'|'status'|'project_id'|'child_session_id'> & {pendingKind:string|null}>(`
@@ -594,5 +602,5 @@ export function createAssistantLoop(deps:Dependencies){
     }catch(e){db.exec('ROLLBACK TO optimization_settings;RELEASE optimization_settings');throw e;}
     return await details(id);
   }
-  return {setOptimization,isBusy:(id:string)=>{get(id);return busy.has(id);},contextInfo,compact,projectDiagnosis,approveNpm,npmProposal,create,details,list,message,reply,stop,resume,tick,notify,notes,remember,editMemory,eventPage,startTask,reviewDelivery:async (id:string,input:Record<string,unknown>)=>{(await deliveries.decide(get(id),input));return (await details(id));},delivery:(id:string,deliveryId:string)=>deliveries.get(get(id),deliveryId),deliveryFile:(id:string,deliveryId:string,args:Record<string,unknown>)=>deliveries.readFile(get(id),deliveryId,args),readOutput:(id:string,args:Record<string,unknown>)=>{get(id);return outputs.read(id,args);}};
+  return {setOptimization,isBusy:(id:string)=>{get(id);return busy.has(id);},contextInfo,compact,projectDiagnosis,approveNpm,npmProposal,create,details,list,desktopWorkerRequests,message,reply,stop,resume,tick,notify,notes,remember,editMemory,eventPage,startTask,reviewDelivery:async (id:string,input:Record<string,unknown>)=>{(await deliveries.decide(get(id),input));return (await details(id));},delivery:(id:string,deliveryId:string)=>deliveries.get(get(id),deliveryId),deliveryFile:(id:string,deliveryId:string,args:Record<string,unknown>)=>deliveries.readFile(get(id),deliveryId,args),readOutput:(id:string,args:Record<string,unknown>)=>{get(id);return outputs.read(id,args);}};
 }

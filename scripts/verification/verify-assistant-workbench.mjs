@@ -16,6 +16,11 @@ const h=await startDeliveryFixture({startupMs:30000,requestMs:30000,runtimeEntri
 let browser;
 const output=resolve(tmpdir(),'apix-assistant-workbench-review');
 try{
+  const otherPath=join(h.dir,'other-project');await mkdir(otherPath);
+  const otherProject=await h.request('/api/projects',{name:'通知跨项目夹具',path:otherPath});
+  const notificationsPath='/api/assistant/worker-notifications';
+  assert.equal((await fetch(h.origin+notificationsPath)).status,401);
+  assert.deepEqual(await h.request(notificationsPath),[]);
   for(const name of ['范围核查员','文档核查员']){
     const {id}=await h.request('/api/employees',{name,runtime:'codex',role:'只读核查'});employees.push(id);
     await h.request('/api/employees/'+id+'/runtime-settings',{expectedVersion:0,backend:'codex-app-server',acknowledgeExperimental:true});
@@ -35,7 +40,11 @@ try{
   assert.equal(child.failures.length,0);assert.equal(child.tasks.length,2);
   browser=await chromium.launch({headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
   page.on('pageerror',error=>errors.push(error.message));await h.authorize(page);
-  await page.addInitScript(({project,id})=>{localStorage.setItem('apix.selectedProject',project);localStorage.setItem('apix.assistant.'+project,id);},{project:h.projectId,id:parent.id});
+  await page.addInitScript(({project,id})=>{
+    localStorage.setItem('apix.selectedProject',project);
+    localStorage.setItem('apix.assistant.'+project,id);
+    window.apixDesktop={onWorkerRequest:callback=>{window.simulateWorkerNotification=callback;}};
+  },{project:h.projectId,id:parent.id});
   await page.goto(h.origin);await page.locator('[data-page-target="assistant"]').first().click();
   const rows=page.locator('#assistant-workers [data-worker-run]');await rows.first().waitFor();assert.equal(await rows.count(),2);
   const requests=page.locator('#assistant-worker-interactions');
@@ -61,6 +70,18 @@ try{
   await questionTodo.click();
   await question.and(page.locator(':focus')).waitFor();
   assert.equal(await question.locator('textarea').inputValue(),'只读');
+  const workerNotifications=await h.request(notificationsPath);
+  const questionNotice={projectId:h.projectId,sessionId:parent.id,interactionId:await question.getAttribute('data-interaction'),kind:'question',employee:'范围核查员'};
+  const approvalNotice={projectId:h.projectId,sessionId:parent.id,interactionId:await approval.getAttribute('data-interaction'),kind:'approval',employee:'文档核查员'};
+  assert.deepEqual(workerNotifications.find(item=>item.kind==='question'),questionNotice);
+  assert.deepEqual(workerNotifications.find(item=>item.kind==='approval'),approvalNotice);
+  await openOverview();
+  await page.locator('#overview-project').selectOption(otherProject.id);
+  await questionTodo.waitFor({state:'detached'});
+  await page.evaluate(target=>window.simulateWorkerNotification(target),questionNotice);
+  await question.and(page.locator(':focus')).waitFor();
+  assert.equal(await page.evaluate(()=>localStorage.getItem('apix.selectedProject')),h.projectId);
+  await question.locator('textarea').fill('只读');
   assert((await rows.first().innerText()).includes('核查员'));
   await page.locator('#assistant-input').fill('保留主会话草稿，不发送');
   await page.locator('#assistant-transcript').evaluate(e=>e.scrollTop=0);
@@ -96,6 +117,7 @@ try{
   assert(await approval.isVisible());
   const answered=await h.request('/api/runs/'+firstRun+'/interactions');
   assert.equal(answered[0].state,'answered');assert.equal(answered[0].answerDelivery,'accepted');
+  assert.deepEqual(await h.request(notificationsPath),[approvalNotice]);
   await page.waitForFunction(()=>document.querySelector('[data-phase]')?.textContent.includes('执行结束'));
   await panel.locator('[data-show-results]').click();await panel.locator('[data-artifacts]').click();await panel.locator('[data-artifact-view] p').waitFor();
   assert((await panel.locator('[data-verification]').innerText()).includes('未验证'));
@@ -132,6 +154,7 @@ try{
   await approval.waitFor({state:'detached'});
   const denied=await h.request('/api/runs/'+secondRun+'/interactions');
   assert.equal(denied[0].state,'denied');assert.equal(denied[0].answerDelivery,'accepted');
+  assert.deepEqual(await h.request(notificationsPath),[]);
   await Promise.all([
     page.waitForResponse(response=>response.url().includes('view=attention')&&response.ok()),
     openOverview(),
@@ -141,5 +164,5 @@ try{
   await page.locator('[data-page-target="assistant"]').first().click();
   await page.locator('#assistant-employees').click();assert(await page.locator('#page-missions').evaluate(e=>e.classList.contains('active-page')));
   assert.deepEqual(errors,[]);assert.equal(h.calls.filter(c=>c.phase==='planning').length,1);assert.equal(h.calls.length,1);
-  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
+  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','notification-owner-boundary','notification-cross-project','notification-pending-removal','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
 }finally{await browser?.close();await h.close();}

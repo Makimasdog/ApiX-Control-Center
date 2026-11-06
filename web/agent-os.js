@@ -152,6 +152,7 @@ function refresh() {
     }
     render();
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
+    return true;
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
   finally{refreshing=false;}
   })();return refreshPending;
@@ -552,7 +553,18 @@ go("assistant");
 refresh();
 setInterval(refresh, 1500);
 
-document.addEventListener("apix:select-project", async (event) => { selectedProjectId = event.detail; localStorage.setItem("apix.selectedProject", selectedProjectId); await refresh(); });
+async function selectProject(id) {
+  selectedProjectId = id;
+  localStorage.setItem("apix.selectedProject", id);
+  return refresh();
+}
+document.addEventListener("apix:select-project", (event) => void selectProject(event.detail));
+window.apixDesktop?.onWorkerRequest(async ({projectId, sessionId, interactionId}) => {
+  if (!await selectProject(projectId)) return;
+  if (selectedProjectId !== projectId) { toast("该请求的项目已不可用。"); return; }
+  go("assistant");
+  document.dispatchEvent(new CustomEvent("apix:open-assistant", {detail:{id:sessionId,interactionId}}));
+});
 
 $('#memory-updated-filter').addEventListener('change',renderMemory);
 for(const key of ['status','source','scope'])$('#memory-'+key+'-filter').addEventListener('change',renderMemory);

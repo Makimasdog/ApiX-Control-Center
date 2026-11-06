@@ -67,7 +67,7 @@ import { workflowSettings, saveWorkflow, stopCoordinationSession, readiness, ins
 // 自治设置
 import { autonomySettings, saveAutonomySettings, resumeAutonomySession } from '../../control-plane.mjs';
 // 助手会话管理
-import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
+import { createAssistantSession, assistantSession, assistantSessions, desktopWorkerRequests, assistantMessage, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
 
 /**
  * requiredProject - 从查询参数中提取必需的 projectId
@@ -154,6 +154,7 @@ export const apiRoutes=[
   get(/^\/api\/assistant\/sessions\/([^/]+)\/project-diagnosis$/,({m})=>assistantProjectDiagnosis(m[1])),
   // 助手会话列表与会话详情
   get(/^\/api\/assistant\/sessions$/,({query})=>assistantSessions(query.get('projectId')??'',query.get('view')==='attention')),
+  get(/^\/api\/assistant\/worker-notifications$/,()=>desktopWorkerRequests()),
   get(/^\/api\/assistant\/sessions\/([^/]+)$/,({m})=>assistantSession(m[1])),
   // 就绪检查（员工/项目是否准备好执行任务）
   get(/^\/api\/readiness$/,async({query})=>readiness(query.get('projectId')??'')),

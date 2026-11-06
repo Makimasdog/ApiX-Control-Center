@@ -54,6 +54,16 @@ Windows PowerShell 必须可用。Git、Codex、Claude 等员工工具仍需单�
 
 入口只接受 JSON 对象及对象形式的 `env`。空输入、畸形 JSON、顶层数组或无效 `env` 会在启动 Job/worker 前返回固定 `error|<Base64 错误>|no_worker`，退出码 1；不会回显配置原文或环境变量。已打包的旧程序需要重新构建才能包含修复；本轮不追溯清理旧版本留下的错误日志。
 
+## 员工请求通知
+
+Windows 桌面端运行时，员工原生提问和单次审批会触发系统通知。窗口最小化时也会检查所有项目。通知只展示员工名称和请求类型，点击会唤回窗口、切换到对应项目，并聚焦原对话的请求卡片。通知内容不包含命令、问题、回答、项目名或对话标题。
+
+桌面主进程每 1.5 秒读取一次本机所有者接口 `GET /api/assistant/worker-notifications`。该接口返回有效员工请求的项目、会话、请求标识、类型和员工显示名，与[总览待办](总览待办.md)使用相同的有效性查询。同一个请求 ID 在一次桌面运行中最多展示一次。请求处理或失效后，下一次成功同步会撤回通知。横幅超时后仍保留通知句柄，用于移除 Windows 通知中心的对应条目。退出应用时清理本轮通知；后端重新启动时旧的待处理原生请求失效。 [Electron 通知 API](https://www.electronjs.org/docs/latest/api/notification)
+
+Grok Bot 的公开更新记录提供了通知随等待状态关闭、委派问题送回发起对话的参考。Windows 是否显示横幅取决于系统通知设置和应用标识注册。安装版使用开始菜单快捷方式的应用标识；开发版需按 Electron 文档注册快捷方式。 [Grok Bot 官方更新](https://x.ai/changelog/bot) · [Electron Windows 通知说明](https://www.electronjs.org/docs/latest/tutorial/notifications#platform-considerations)
+
+验证入口为 `npm run test:desktop`、`node scripts/verification/verify-assistant-workbench.mjs` 和打包后的 `npm run test:desktop:app`。已安装 Windows 版可手动验证最小化时的横幅、点击后的定位，以及未点击的通知在请求处理后从通知中心移除。
+
 ## 验证
 
 ```powershell

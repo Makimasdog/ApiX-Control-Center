@@ -39,6 +39,7 @@ assert.equal(report.apiStatus, 200);
 assert.equal(report.snapshot, 'object');
 assert(report.bodyLength > 100);
 assert.equal(report.nodeExposed, false);
+assert.equal(report.desktopWorkerBridge, true);
 assert(report.assets.length > 0);
 assert(report.assets.every(asset => asset.status === 200), JSON.stringify(report.assets));
 const checks=report.projectChecks;assert(checks,'请重新构建包含项目 Worker 探针的桌面包');
