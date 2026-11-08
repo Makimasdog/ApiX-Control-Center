@@ -1,0 +1,118 @@
+{
+  "date": "2026-11-08",
+  "review": "Codex self-review",
+  "build": {
+    "installer": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-desktop\\release-20261108-notifications\\ApiX-Setup-0.3.2-x64.exe",
+    "sha256": "b097c3d45dcfe8582be32b0c88e0bc156eeffc8eae8e226828fe5d01812ce987",
+    "bytes": 354330117,
+    "packagedSmoke": {
+      "path": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-desktop\\smoke-PnP1eJ\\smoke-result.json",
+      "sha256": "47e6eb7aa41b58502812c7bd1fb0472a05e10f18c120dac83658a1142ba3bb92",
+      "apiStatus": 200,
+      "desktopWorkerBridge": true,
+      "nodeExposed": false,
+      "rendererErrors": [],
+      "evidenceFile": "packaged-smoke.json"
+    }
+  },
+  "dependency": {
+    "package": "@anthropic-ai/claude-agent-sdk-win32-x64",
+    "version": "0.3.314",
+    "officialURL": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk-win32-x64/-/claude-agent-sdk-win32-x64-0.3.314.tgz",
+    "integrity": "sha512-h0tOC5gCFeuzViqvrkChM4BoMB8WMDi75hQD1XAVwYVopqYzA9+THjwlJ+5oqcKtkmao7zKdPd/qpGJeXldf5Q==",
+    "verified": true,
+    "downloadedBytes": 138201863,
+    "method": "official registry direct connection, command-scoped no-proxy, lockfile integrity verified"
+  },
+  "notificationDeduplication": {
+    "status": "verified",
+    "beforeCount": 3,
+    "afterCount": 3,
+    "sameNativeTags": true
+  },
+  "notificationLifecycle": {
+    "status": "verified",
+    "beforeCount": 3,
+    "afterInvalidatedCount": 2,
+    "afterHandledCount": 0,
+    "handledClearanceAttribution": "The handled samples were clicked by the user. Native click dismissal and application withdrawal after submission were not independently separated."
+  },
+  "notificationClick": {
+    "status": "user_confirmed",
+    "confirmation": "是，跳到对应卡片后完成了两项提交",
+    "scope": "Windows notification clicks for question and approval, followed by submitting the corresponding cards",
+    "agentObservation": "Restored packaged ApiX window showing the original project and completed employee tasks after submission"
+  },
+  "interactions": [
+    {
+      "name": "点击核查员",
+      "id": "153b567f-8107-44be-ae38-b53072d8d3e5",
+      "kind": "question",
+      "state": "answered",
+      "answerDelivery": "accepted",
+      "answeredAt": "2026-11-08T05:14:40.023Z",
+      "expiresAt": "2026-11-08T05:26:37.052Z"
+    },
+    {
+      "name": "审批核查员",
+      "id": "41776525-bd50-4c1b-97bc-eeca1668f6a8",
+      "kind": "approval",
+      "state": "answered",
+      "answerDelivery": "accepted",
+      "answeredAt": "2026-11-08T05:14:44.789Z",
+      "expiresAt": "2026-11-08T05:26:39.624Z"
+    },
+    {
+      "name": "失效核查员",
+      "id": "acd564c3-b777-41f3-a331-ec4f63e6b65b",
+      "kind": "question",
+      "state": "invalidated",
+      "answerDelivery": "not_sent",
+      "answeredAt": null,
+      "expiresAt": "2026-11-08T05:26:42.622Z"
+    }
+  ],
+  "paidModelCalls": 0,
+  "localPlannerCalls": 2,
+  "evidence": [
+    {
+      "file": "dedup-initial.json",
+      "sha256": "1d8a252c3aa55167491bb0ca19a727a09abde2129b492f77d853d741f7975bc2",
+      "observedAt": "2026-11-08T04:30:16.981Z"
+    },
+    {
+      "file": "dedup-repeat.json",
+      "sha256": "1d8a252c3aa55167491bb0ca19a727a09abde2129b492f77d853d741f7975bc2",
+      "observedAt": "2026-11-08T04:32:22.280Z"
+    },
+    {
+      "file": "lifecycle-initial.json",
+      "sha256": "aceae33b2b9508092ac058eeb781b15aad5f082169a378353738d90500c8153e",
+      "observedAt": "2026-11-08T05:12:07.646Z"
+    },
+    {
+      "file": "lifecycle-invalidated.json",
+      "sha256": "c59ef744537958b3303166ffb7efe039a84523164ada2b9b453c98aee919dc19",
+      "observedAt": "2026-11-08T05:14:41.195Z"
+    },
+    {
+      "file": "lifecycle-handled.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "observedAt": "2026-11-08T05:15:38.263Z"
+    }
+  ],
+  "limitations": [
+    "Native notification center is not exposed as a targetable window. The user clicked notifications.",
+    "Installation lifecycle and other Windows machines are outside this verification.",
+    "The isolated verification instance exit and process cleanup were not confirmed.",
+    "Clearance after handling an unclicked notification was not independently verified."
+  ],
+  "localPlannerCallsByRun": {
+    "deduplication": 1,
+    "lifecycle": 1
+  },
+  "exitCleanup": {
+    "status": "unverified",
+    "reason": "Desktop input was interrupted by the physical Escape stop signal during the quit sequence. The user requested no further desktop interaction in the documentation and commit turn."
+  }
+}

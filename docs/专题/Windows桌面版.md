@@ -36,6 +36,8 @@ $env:NPM_CONFIG_CACHE = Join-Path $PWD '.tmp-desktop/npm-cache'
 npm run desktop:pack
 ```
 
+2026-11-08 的通知验收构建遇到 Claude Windows 原生依赖经代理下载缓慢。直连官方 npm 地址取得锁定版本后，按锁文件校验 SHA-512，并填充该轮独立 npm 缓存，随后依赖安装和桌面打包完成。需要复现同一网络绕行时，在本次构建终端设置 `NPM_CONFIG_NOPROXY=registry.npmjs.org` 和 `NPM_CONFIG_PREFER_OFFLINE=true`，使用独立缓存预取锁文件中的原生依赖地址。具体版本、完整性值和产物哈希见[本轮证据](../../协作/验收数据/2026-11-08-native-notifications/verification.json)。
+
 ## 数据与模型配置
 
 默认目录：`%APPDATA%\ApiX-Control-Center`。数据库 `apix.sqlite`、日志 `desktop.log` 和 `.env` 均位于此处。菜单“应用”提供打开目录和编辑配置入口。
@@ -63,6 +65,23 @@ Windows 桌面端运行时，员工原生提问和单次审批会触发系统通
 Grok Bot 的公开更新记录提供了通知随等待状态关闭、委派问题送回发起对话的参考。Windows 是否显示横幅取决于系统通知设置和应用标识注册。安装版使用开始菜单快捷方式的应用标识；开发版需按 Electron 文档注册快捷方式。 [Grok Bot 官方更新](https://x.ai/changelog/bot) · [Electron Windows 通知说明](https://www.electronjs.org/docs/latest/tutorial/notifications#platform-considerations)
 
 验证入口为 `npm run test:desktop`、`node scripts/verification/verify-assistant-workbench.mjs` 和打包后的 `npm run test:desktop:app`。已安装 Windows 版可手动验证最小化时的横幅、点击后的定位，以及未点击的通知在请求处理后从通知中心移除。
+
+### 原生通知验收夹具
+
+运行 `node scripts/verification/serve-desktop-notification-fixture.mjs "<打包后的 exe 完整路径>"`。脚本启动可见的打包应用，在系统临时目录建立独立数据和 Git 项目，使用本地规划 HTTP 对端和原生运行时协议夹具。控制台输出的 `output` 是本轮夹具目录，`state.json` 的 `phase=ready` 表示准备完成。主子会话关联在派发前预置，后续派发、请求、回答及失效处理使用真实服务。
+
+将夹具目录赋给 `$fixtureOutput`，通过 `control.json` 发出以下指令。每个指令 ID 只执行一次，读取下一份快照时使用新 ID。
+
+```powershell
+@{ id='dispatch-1'; action='dispatch' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $fixtureOutput 'control.json')
+@{ id='history-initial'; action='history' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $fixtureOutput 'control.json')
+```
+
+派发会产生“点击核查员”的提问、“审批核查员”的审批和“失效核查员”的提问。等待通知出现后，用 `history` 指令两次读取 Windows 原生通知历史，对照数量及 Tag 验证去重。用 `@{ id='invalidate-1'; action='invalidate' }` 写入控制文件，会向第三条请求提交错误权限版本，使宿主返回 409 并将该请求标为失效。后续原生历史应移除该条通知。
+
+由操作者实际点击提问和审批通知，核对原对话与对应请求卡片，再提交回答和批准。保持通知条目由应用自动清除，随后用新的 `history` 指令记录结果。历史快照按指令 ID 保存为 JSON，内容来自 Windows `ToastNotificationManager.History`。脚本提供验收环境和状态快照，点击操作及验收结论需另行记录。
+
+2026-11-08 实测中，两次原生历史读取均为三条且 Tag 一致。请求失效后为两条，两项提交后为零条。用户完成并确认两类通知的实际点击与卡片提交，Codex 核对恢复后的原项目、对话、员工状态和接收记录。失效通知的自动清除有独立历史快照，处理后归零的样本包含系统点击，未单独区分点击时的系统移除与提交后的应用撤回。原生窗口退出清理因桌面输入中断而未核实。 [本轮自审](../../协作/审查/2026-11/2026-11-08-桌面通知实测与验收脚本自审.md)
 
 ## 验证
 
