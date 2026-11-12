@@ -41,9 +41,11 @@ import {createTokenUsage} from './token-usage.js';
 import {optimizedCatalog} from './context-optimizer.js';
 import {legacyAssistantPrompt} from './prompt-descriptor.js';
 import type {PromptDescriptor} from '../models/prompt-diagnostics.js';
+import {messageFingerprint, verifyMessageParts, webAdapter, type ExternalChannel, type MessageEnvelope} from '../assistant-core/channels/message-format.js';
+import {createMessageMedia} from '../assistant-core/channels/message-media.js';
 
 /** 助手会话数据结构 — 对应 assistant_sessions 表的一行 */
-export interface AssistantSession {id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;compacted_through:number;pending:string|null;child_session_id:string|null;needs_verification:number;verification:string|null;started_at:string;updated_at:string;task_id?:string|null}
+export interface AssistantSession {id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;compacted_through:number;pending:string|null;child_session_id:string|null;needs_verification:number;verification:string|null;started_at:string;updated_at:string;task_id?:string|null;message_channel?:ExternalChannel|null}
 /** 事件记录 — 对应 assistant_events 表的一行，记录会话中的所有交互 */
 interface Event {id:number;role:string;kind:string;body:string}
 /** 依赖注入接口 — 定义主循环所需的外部能力，便于测试替换和模块解耦 */
@@ -111,7 +113,7 @@ export function createAssistantLoop(deps:Dependencies){
     CREATE TABLE IF NOT EXISTS assistant_events(id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),role TEXT NOT NULL,kind TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS assistant_event_session ON assistant_events(session_id,id);
     CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));`);
-  const memory=deps.memory??createProjectMemory(deps);
+  const memory=deps.memory??createProjectMemory(deps), media=createMessageMedia(deps);
   db.exec('CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)');
   db.exec('CREATE TABLE IF NOT EXISTS assistant_message_requests(session_id TEXT NOT NULL REFERENCES assistant_sessions(id),request_id TEXT NOT NULL,content_hash TEXT NOT NULL,event_id INTEGER NOT NULL REFERENCES assistant_events(id),created_at TEXT NOT NULL,PRIMARY KEY(session_id,request_id))');
   const governance=deps.governance??createToolGovernance(deps),progress=deps.progress??createToolProgress(deps),knowledge=deps.knowledge;
@@ -127,6 +129,8 @@ export function createAssistantLoop(deps:Dependencies){
   const outputs=createContextOutputs(deps);let cachedRegistry=createToolRegistry(),registryKey='';
   function registry(s:AssistantSession){const found=new Map(rows<{name:string;version:string}>('SELECT name,version FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>[t.name,t.version]));const extra=(deps.toolDefinitions?.(s.project_id)??[]).filter(t=>found.get(t.name)===t.version),available=commandCapabilities().managedCommands.available;const key=JSON.stringify([extra,available]);if(key!==registryKey){cachedRegistry=createToolRegistry(extra,available);registryKey=key;}return cachedRegistry;}
   historyColumns(deps,'assistant');
+  if(!rows<{name:string}>('PRAGMA table_info(assistant_sessions)').some(column=>column.name==='message_channel'))db.exec('ALTER TABLE assistant_sessions ADD COLUMN message_channel TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS assistant_channel_request_id ON assistant_message_requests(request_id)');
   // === 恢复中断会话：服务重启后将所有 running 状态的会话标记为 attention ===
   const interrupted=rows<{id:string}>("SELECT id FROM assistant_sessions WHERE status='running'");
   db.prepare("UPDATE assistant_sessions SET status='attention',pending=NULL,version=version+1,updated_at=? WHERE status='running'").run(now());
@@ -178,6 +182,13 @@ export function createAssistantLoop(deps:Dependencies){
   function notes(projectId:string){return memory.list(projectId);}
   function remember(projectId:string,title:unknown,content:unknown,source='agent',kind='project',evidence:number|null=null){return memory.save(projectId,{title,content,kind,evidence},source);}
   async function create(input:Record<string,unknown>){const projectId=text(input.projectId??deps.defaultProject?.(),100);if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');const id=randomUUID();db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at) VALUES (?,?,?,?,?,?)').run(id,projectId,'新对话','idle',now(),now());deps.onCreated?.(id);return (await details(id));}
+  function createChannelSession(projectId:string,channel:ExternalChannel){
+    const id=randomUUID();
+    db.prepare('INSERT INTO assistant_sessions(id,project_id,title,status,started_at,updated_at,message_channel) VALUES (?,?,?,?,?,?,?)')
+      .run(id,projectId,'新对话','idle',now(),now(),channel);
+    deps.onCreated?.(id);
+    return id;
+  }
   function recordSafety(id:string,error:unknown,resource:string){
     try{event(id,'system','process_unknown',{resource,error:safeError(error),fault:classifyFault(error,{sideEffects:true})});update(id,'attention');}
     catch(recordError){unsavedSafety.set(id,safeError(error));try{update(id,'attention');}catch(stateError){console.error('安全状态未可靠保存：'+safeError(stateError));}console.error('安全事件未可靠保存：'+safeError(recordError));}
@@ -195,26 +206,40 @@ export function createAssistantLoop(deps:Dependencies){
    * @param input - 包含 content 和可选 requestId 的输入对象
    * 设计意图：幂等性通过 requestId + contentHash 保证，防止网络重试导致重复消息
    */
-  async function message(id:string,input:Record<string,unknown>){const s=get(id),content=text(input.content),requestId=input.requestId;
-    if(requestId!==undefined&&(typeof requestId!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$/.test(requestId)))throw new ToolError('INVALID_ARGUMENTS','消息请求 ID 应为 8–100 位字母、数字或 . _ : -','correct_input');
-    const contentHash=createHash('sha256').update(content).digest('hex');
+  async function message(id:string,input:Record<string,unknown>){
+    const envelope=await webAdapter.normalize({sessionId:id,body:input});
+    if(!envelope)throw new Error('消息格式无效');
+    await acceptMessage(id,envelope);
+    return await details(id);
+  }
+
+  async function acceptMessage(id:string,envelope:MessageEnvelope){
+    const s=get(id), requestId=envelope.id;
+    if((s.message_channel??'web')!==envelope.channel)throw new ToolError('CHANNEL_SCOPE','请通过原渠道发送消息','correct_input',{},403);
+    const {content:messageText,attachments}=verifyMessageParts(envelope.parts);
+    const content=messageText || '〔已添加附件〕';
+    const contentHash=messageFingerprint(messageText,envelope.parts);
+    const textFormat=envelope.parts.some(part=>part.kind==='text'&&part.format==='markdown')?'markdown':null;
     if(typeof requestId==='string'){
       const previous=row<{content_hash:string}>("SELECT content_hash FROM assistant_message_requests WHERE session_id=? AND request_id=?",id,requestId);
-      if(previous){if(previous.content_hash!==contentHash)throw new ToolError('MESSAGE_REQUEST_CONFLICT','同一消息请求 ID 不能用于不同内容','correct_input',{},409);return (await details(id));}
+      if(previous){if(previous.content_hash!==contentHash)throw new ToolError('MESSAGE_REQUEST_CONFLICT','同一消息请求 ID 不能用于不同内容','correct_input',{},409);return;}
     }
-    if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');if(effects.pending(id))throw new Error('本会话有副作用结果尚未核对，请先检查后继续');deps.commandState?.(s,'message');if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
+    if(unsavedSafety.has(id))throw new Error('命令安全状态未可靠保存，请检查后恢复');if(effects.pending(id))throw new Error('本会话有副作用结果尚未核对，请先检查后继续');if(!s.message_channel)deps.commandState?.(s,'message');if(s.status==='waiting_user')throw new Error('请先回答当前选择或拒绝当前操作');
     const recovery=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind IN ('restart_interrupted','process_unknown','stopped')",id)?.id??0;
     const confirmed=row<{id:number}>("SELECT MAX(id) AS id FROM assistant_events WHERE session_id=? AND kind='resumed'",id)?.id??0;
     if(recovery>confirmed)throw new Error('请先检查原进程并点击“检查后继续”，或新建对话；普通消息不会重放中断操作');
     if(s.child_session_id&&['completed','stopped'].includes(s.status))throw new Error('原委派尚未处理，请先检查');
     db.exec('SAVEPOINT assistant_message');try{
-      if(!deliveries.current(id)&&!row("SELECT id FROM assistant_events WHERE session_id=? AND kind NOT IN ('verification_contract','optimization_changed') LIMIT 1",id))deliveries.start(s,content.slice(0,4000));
-      const saved=event(id,'user','message',{content,...(typeof requestId==='string'?{requestId}:{})});
+      if(!s.message_channel&&!deliveries.current(id)&&!row("SELECT id FROM assistant_events WHERE session_id=? AND kind NOT IN ('verification_contract','optimization_changed') LIMIT 1",id))deliveries.start(s,content.slice(0,4000));
+      const saved=event(id,'user','message',{content,...(requestId?{requestId}:{}),...(textFormat?{textFormat}:{}),
+        ...(attachments.length?{attachments:media.save(id,attachments),mediaAvailability:'附件仅保存于本机，当前模型仅收到元数据'}:{}),
+        ...(envelope.channel==='web'?{}:{channel:envelope.channel})});
       if(typeof requestId==='string')db.prepare('INSERT INTO assistant_message_requests VALUES (?,?,?,?,?)').run(id,requestId,contentHash,Number(saved.lastInsertRowid),now());
       db.prepare("UPDATE assistant_sessions SET title=CASE WHEN title='新对话' THEN ? ELSE title END,steps=0,status='running',version=version+1,started_at=?,updated_at=? WHERE id=?").run(content.slice(0,80),now(),now(),id);db.exec('RELEASE assistant_message');
     }catch(error){db.exec('ROLLBACK TO assistant_message;RELEASE assistant_message');throw error;}
-    const baselineTask=deliveries.current(id);try{await deliveries.ensureBaseline(get(id));}catch(e){event(id,'system','task_baseline_limited',{taskId:baselineTask?.id,reason:safeError(e)});}
-    kick(id);return (await details(id));}
+    if(!s.message_channel){const baselineTask=deliveries.current(id);try{await deliveries.ensureBaseline(get(id));}catch(e){event(id,'system','task_baseline_limited',{taskId:baselineTask?.id,reason:safeError(e)});}}
+    kick(id);
+  }
   function request(id:string,pending:Record<string,unknown>){db.exec('SAVEPOINT assistant_request');try{db.prepare("UPDATE assistant_sessions SET pending=?,status='waiting_user',version=version+1,updated_at=? WHERE id=?").run(JSON.stringify({...pending,id:randomUUID()}),now(),id);event(id,'assistant','request',redactPending(pending));db.exec('RELEASE assistant_request');}catch(error){db.exec('ROLLBACK TO assistant_request;RELEASE assistant_request');throw error;}}
   function timeBudget(id:string){const s=get(id),remaining=Math.max(1,Date.parse(s.started_at)+progress.settings(s.project_id).maxMs-Date.now());return setTimeout(()=>{
     if(!['running','waiting_user'].includes(get(id).status))return;
@@ -408,16 +433,46 @@ export function createAssistantLoop(deps:Dependencies){
     }
     throw new Error('本轮上下文整理达到上限，原始记录已保存；请检查后继续或缩小输入');
   }
-  async function compact(id:string,input:Record<string,unknown>){const s=get(id);if(input.version!==s.version)throw new Error('会话版本已变化');admitReview(s);const focus=String(input.focus??'').trim();if(sensitiveMemory(focus))throw new Error('保留重点不能包含敏感内容');if(focus.length>2000)throw new Error('保留重点过长');busy.add(id);controllers.set(id,new AbortController());try{await context(s,true,focus);}catch(e){if(['MODEL_CLEANUP_UNKNOWN','INFERENCE_ACCOUNTING_UNKNOWN'].includes(String((e as any)?.code)))recordSafety(id,e,'manual_compaction');throw e;}finally{controllers.delete(id);busy.delete(id);if(get(id).status==='running')kick(id);}return (await details(id));}
+  async function compact(id:string,input:Record<string,unknown>){const s=get(id);if(s.message_channel)throw new Error('外部渠道对话使用独立的消息窗口');if(input.version!==s.version)throw new Error('会话版本已变化');admitReview(s);const focus=String(input.focus??'').trim();if(sensitiveMemory(focus))throw new Error('保留重点不能包含敏感内容');if(focus.length>2000)throw new Error('保留重点过长');busy.add(id);controllers.set(id,new AbortController());try{await context(s,true,focus);}catch(e){if(['MODEL_CLEANUP_UNKNOWN','INFERENCE_ACCOUNTING_UNKNOWN'].includes(String((e as any)?.code)))recordSafety(id,e,'manual_compaction');throw e;}finally{controllers.delete(id);busy.delete(id);if(get(id).status==='running')kick(id);}return (await details(id));}
   /**
    * run - 主循环核心：不断「组装上下文 → 调用 LLM → 解析动作 → 执行工具」
    * @param id - 会话 ID
    * 设计意图：这是助手的心脏。每次迭代称为一个 "step"，受 maxCalls 和 maxMs 双重预算限制。
    * 循环在以下情况退出：模型返回 finish/ask/clarify、执行被中断、预算耗尽、发生不可恢复错误。
    */
+  async function runChannel(s:AssistantSession,signal:AbortSignal){
+    const history=rows<{role:string;body:string}>(`
+      SELECT role,body FROM assistant_events WHERE session_id=? AND
+        ((role='user' AND kind='message') OR (role='assistant' AND kind='answer'))
+      ORDER BY id DESC LIMIT 12
+    `,s.id);
+    const turns:{role:string;content:string}[]=[];
+    let remaining=12000;
+    for(const item of history){
+      const message=JSON.parse(item.body);
+      const content=String(message.content)+(message.attachments?'（收到本地附件，正文未传入模型。）':'');
+      if(content.length>remaining)break;
+      turns.push({role:item.role,content});remaining-=content.length;
+    }
+    db.prepare('UPDATE assistant_sessions SET steps=1 WHERE id=?').run(s.id);
+    const prompt='你是 ApiX 个人助手。根据同一渠道会话的消息直接用纯文本回复。此会话只有文字对话能力，附件只保存在本机。'+
+      '不能读取工作区、其他会话或使用工具。不要声称已读取附件或执行操作。\n'+JSON.stringify(turns.reverse());
+    const answer=text((await deps.infer(s.project_id,prompt,signal,s.id,'channel_reply')).slice(0,10000));
+    const fresh=get(s.id);
+    if(signal.aborted||fresh.status!=='running'||fresh.version!==s.version)return;
+    db.exec('SAVEPOINT channel_answer');
+    try{
+      event(s.id,'assistant','answer',{content:answer,channel:s.message_channel});
+      update(s.id,'completed');
+      db.exec('RELEASE channel_answer');
+    }catch(error){db.exec('ROLLBACK TO channel_answer;RELEASE channel_answer');throw error;}
+  }
+
   async function run(id:string){
     if(unsavedSafety.has(id)||busy.has(id)||get(id).status!=='running')return;busy.add(id);controllers.set(id,new AbortController());const deadline=timeBudget(id);
     try{
+      const session=get(id);
+      if(session.message_channel){await runChannel(session,controllers.get(id)!.signal);return;}
       // 主循环：每轮迭代 = 一次 LLM 推理 + 一次工具执行
       while(get(id).status==='running'){
         let s=get(id);if(s.steps>=progress.settings(s.project_id).maxCalls||Date.now()-Date.parse(s.started_at)>progress.settings(s.project_id).maxMs)throw new Error('达到本轮模型步骤或时间预算；请检查后继续');
@@ -520,10 +575,10 @@ export function createAssistantLoop(deps:Dependencies){
   async function projectDiagnosis(id:string){const s=get(id);if(!deps.projectRoot)throw new Error('项目路径不可用');return (await projectJob(s.project_id,'diagnoseNodeProject',[deps.projectRoot(s.project_id)]));}
   async function approveNpm(id:string,input:Record<string,unknown>){const s=get(id);if(input.version!==s.version||input.approved!==true)throw new Error('请刷新并明确批准 npm 准备与检查');admitReview(s);if(deps.policy(s.project_id).mode==='read_only')throw new Error('项目只读');if(!deps.projectRoot)throw new Error('项目路径不可用');const c=(await projectJob(s.project_id,'verificationContract',[deps.projectRoot(s.project_id),{npm:{network:input.network},writablePaths:input.writablePaths}]));assertSession(s);admitReview(get(id));if(deps.policy(s.project_id).mode==='read_only')throw new Error('项目只读');if(input.contractVersion!==c.version)throw new Error('诊断或配置已变化，请重新查看批准内容');db.exec('SAVEPOINT npm_approval');try{event(id,'user','verification_contract',c);db.prepare('UPDATE assistant_sessions SET verification=NULL,version=version+1 WHERE project_id=?').run(s.project_id);db.exec('RELEASE npm_approval');}catch(e){db.exec('ROLLBACK TO npm_approval');db.exec('RELEASE npm_approval');throw e;}return (await details(id));}
   async function npmProposal(id:string,input:Record<string,unknown>){const s=get(id);if(!deps.projectRoot)throw new Error('项目路径不可用');return (await projectJob(s.project_id,'verificationContract',[deps.projectRoot(s.project_id),{npm:{network:input.network},writablePaths:input.writablePaths}]));}
-  async function startTask(id:string,input:Record<string,unknown>){const s=get(id);if(input.version!==s.version)throw new Error('会话版本已变化');admitReview(s);db.exec('SAVEPOINT assistant_task_start');try{deliveries.start(s,text(input.description,4000));const saved=db.prepare("UPDATE assistant_sessions SET status='idle',needs_verification=0,verification=NULL,steps=0,version=version+1 WHERE id=? AND version=?").run(id,s.version);if(saved.changes!==1)throw new Error('任务状态写入未确认');db.exec('RELEASE assistant_task_start');}catch(e){db.exec('ROLLBACK TO assistant_task_start');db.exec('RELEASE assistant_task_start');throw e;}const baselineTask=deliveries.current(id);try{await deliveries.ensureBaseline(get(id));}catch(e){event(id,'system','task_baseline_limited',{taskId:baselineTask?.id,reason:safeError(e)});}return (await details(id));}
+  async function startTask(id:string,input:Record<string,unknown>){const s=get(id);if(s.message_channel)throw new Error('请在 Web 对话中启动项目任务');if(input.version!==s.version)throw new Error('会话版本已变化');admitReview(s);db.exec('SAVEPOINT assistant_task_start');try{deliveries.start(s,text(input.description,4000));const saved=db.prepare("UPDATE assistant_sessions SET status='idle',needs_verification=0,verification=NULL,steps=0,version=version+1 WHERE id=? AND version=?").run(id,s.version);if(saved.changes!==1)throw new Error('任务状态写入未确认');db.exec('RELEASE assistant_task_start');}catch(e){db.exec('ROLLBACK TO assistant_task_start');db.exec('RELEASE assistant_task_start');throw e;}const baselineTask=deliveries.current(id);try{await deliveries.ensureBaseline(get(id));}catch(e){event(id,'system','task_baseline_limited',{taskId:baselineTask?.id,reason:safeError(e)});}return (await details(id));}
   const notifications=new Set<string>();
   function notify(childId:string){if(notifications.has(childId))return;notifications.add(childId);setTimeout(()=>{notifications.delete(childId);void tick(childId).catch(()=>{});},30).unref();}
   // 复用执行/安全门禁，并将模式、会话版本和审计事件原子保存，任一步失败都回滚。
   async function setOptimization(id:string,input:Record<string,unknown>){const s=get(id);admitReview(s);if(input.version!==s.version)throw new Error('会话版本已变化');if(!['standard','saving'].includes(String(input.mode)))throw new Error('优化模式无效');db.exec('SAVEPOINT optimization_settings');try{db.prepare('INSERT INTO assistant_optimization VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET mode=excluded.mode').run(id,String(input.mode));db.prepare('UPDATE assistant_sessions SET version=version+1,updated_at=? WHERE id=?').run(now(),id);event(id,'system','optimization_changed',{mode:input.mode});db.exec('RELEASE optimization_settings');}catch(e){db.exec('ROLLBACK TO optimization_settings;RELEASE optimization_settings');throw e;}return await details(id);}
-  return {setOptimization,isBusy:(id:string)=>{get(id);return busy.has(id);},contextInfo,compact,projectDiagnosis,approveNpm,npmProposal,create,details,list,message,reply,stop,resume,tick,notify,notes,remember,editMemory,eventPage,startTask,reviewDelivery:async (id:string,input:Record<string,unknown>)=>{(await deliveries.decide(get(id),input));return (await details(id));},delivery:(id:string,deliveryId:string)=>deliveries.get(get(id),deliveryId),deliveryFile:(id:string,deliveryId:string,args:Record<string,unknown>)=>deliveries.readFile(get(id),deliveryId,args),readOutput:(id:string,args:Record<string,unknown>)=>{get(id);return outputs.read(id,args);}};
+  return {setOptimization,isBusy:(id:string)=>{get(id);return busy.has(id);},contextInfo,compact,projectDiagnosis,approveNpm,npmProposal,create,createChannelSession,acceptChannelMessage:acceptMessage,details,list,message,readMedia:media.read,reply,stop,resume,tick,notify,notes,remember,editMemory,eventPage,startTask,reviewDelivery:async (id:string,input:Record<string,unknown>)=>{(await deliveries.decide(get(id),input));return (await details(id));},delivery:(id:string,deliveryId:string)=>deliveries.get(get(id),deliveryId),deliveryFile:(id:string,deliveryId:string,args:Record<string,unknown>)=>deliveries.readFile(get(id),deliveryId,args),readOutput:(id:string,args:Record<string,unknown>)=>{get(id);return outputs.read(id,args);}};
 }

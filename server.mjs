@@ -25,7 +25,7 @@ import {createOwnerAccess,ownerLoginHtml} from './src/infrastructure/owner-acces
 import { createServer } from "node:http";
 import {staticFilePath} from './src/infrastructure/static-files.mjs';
 import {apiRoutes,requiredProject} from './src/infrastructure/api-routes.mjs';
-import { authenticateAgent, agentTeam, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, closeMcpConnections, assistantGateway} from './control-plane.mjs';
+import { authenticateAgent, agentTeam, superviseWorkerMessage, receiveAgentMessages, sendAgentMessage, handleAgentMessage, closeMcpConnections, assistantChannels, assistantGateway} from './control-plane.mjs';
 import { readFile, stat } from "node:fs/promises";
 import { dirname, extname, join, normalize, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -202,7 +202,9 @@ const server=createServer(async (request,response)=>{
 // ===== 启动服务器 =====
 // 【只绑本机】监听 127.0.0.1:这台控制台持有模型密钥、能驱动进程执行任务,不适合暴露到局域网或公网。
 }).listen(port, "127.0.0.1", () => {
-  assistantGateway.start(process.argv.includes('--gateway')?'standalone':'embedded');
+  const standalone=process.argv.includes('--gateway');
+  assistantGateway.start(standalone?'standalone':'embedded');
+  if(standalone)assistantChannels.start(process.env.APIX_MESSAGE_CHANNELS??'');
   process.stdout.write(`ApiX Web: http://127.0.0.1:${port}\n`);
 });
 // ===== 优雅退出 =====
@@ -211,4 +213,4 @@ const server=createServer(async (request,response)=>{
 // 2. 4 秒兜底定时器防止 MCP 关闭卡死（unref 不阻塞进程退出）
 // shuttingDown 标志防止信号重复触发导致多次退出
 let shuttingDown=false;
-for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;assistantGateway.stop();server.close();setTimeout(()=>process.exit(0),4000).unref();void closeMcpConnections().finally(()=>process.exit(0));});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;assistantGateway.stop();server.close();setTimeout(()=>process.exit(0),4000).unref();void Promise.allSettled([assistantChannels.stop(),closeMcpConnections()]).then(()=>process.exit(0));});

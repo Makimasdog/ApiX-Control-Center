@@ -51,7 +51,8 @@ export function loadEnvironment(path=fileURLToPath(new URL('../../.env',import.m
 export function workerEnvironment(source, runtime, managerKey) {
   // 构建管理者密钥变量名集合（大写），用于后续过滤
   const keyNames=new Set(['APIX_OWNER_TOKEN','APIX_ALI_API_KEY','ALI_API_KEY',...(Array.isArray(managerKey)?managerKey:[managerKey]).map(key=>String(key??'').toUpperCase())]);
-  // 收集管理者密钥的实际值，用于检测"变量名不同但值相同"的泄漏
+  for(const name of Object.keys(source))if(/^APIX_CHANNEL_[A-Z0-9_]+_TOKEN$/i.test(name))keyNames.add(name.toUpperCase());
+  // 收集管理者和渠道密钥的实际值，用于检测"变量名不同但值相同"的泄漏
   const managerValues=new Set(Object.entries(source).filter(([name,value])=>keyNames.has(name.toUpperCase()) && value).map(([,value])=>value));
   // 各员工运行时允许使用的 API Key 变量名映射
   const credentials={codex:['OPENAI_API_KEY','CODEX_API_KEY'],claude:['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','CLAUDE_CODE_OAUTH_TOKEN'],gemini:['GEMINI_API_KEY','GOOGLE_API_KEY'],kimi:['KIMI_API_KEY','MOONSHOT_API_KEY']};
@@ -66,7 +67,7 @@ export function workerEnvironment(source, runtime, managerKey) {
     // 敏感变量如果同时是员工需要的密钥 → 凭据冲突，必须报错
     if(secret && value && workerKeys.has(upper))throw Object.assign(new Error(`员工 ${runtime} 的 ${upper} 与管理者凭据共用；请配置不同的管理者密钥（使用 APIX_MANAGER_* 变量）与员工密钥，或移除员工共用变量并使用其独立登录后重试`),{code:'WORKER_CREDENTIAL_CONFLICT'});
     // 剔除敏感变量和 APIX_ 系统控制变量，其余透传
-    if(secret || /^APIX_(?:.*_ENTRY|DATA_DIR|MANAGER_.*|AGENT_TOKEN|PROJECT_ID|AGENT_ID|TASK_ID|RUN_ID|MAILBOX_URL)$/.test(upper))continue;
+    if(secret || /^APIX_(?:.*_ENTRY|DATA_DIR|MANAGER_.*|MESSAGE_CHANNELS|AGENT_TOKEN|PROJECT_ID|AGENT_ID|TASK_ID|RUN_ID|MAILBOX_URL)$/.test(upper))continue;
     environment[name]=value;
   }
   return environment;

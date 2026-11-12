@@ -82,6 +82,7 @@ import {createAutonomy} from './dist/src/coordination/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant/assistant-loop.js';
 import {createPersonalMemory} from './dist/src/assistant-core/personal-memory.js';
 import {createAssistantGateway} from './dist/src/assistant-core/gateway.js';
+import {createChannelRelay} from './dist/src/assistant-core/channels/channel-relay.js';
 import {createAssistantCommands} from './dist/src/assistant/assistant-commands.js';
 import {createAssistantCoding} from './dist/src/assistant/assistant-coding.js';
 import {createAssistantInference,managerInferenceError,InferenceAccountingError} from './dist/src/assistant/assistant-inference.js';
@@ -1693,6 +1694,7 @@ const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance
 });
 export const personalMemory=createPersonalMemory(store,join(dataDir,'personal-memory'));
 export const assistantGateway=createAssistantGateway(store,id=>assistantProject(id).path);
+export const assistantChannels=createChannelRelay(store,assistant);
 notifyAssistant=id=>assistant.notify(id);
 setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
 // ===== 导出函数与 Agent 工具通道 =====
@@ -1701,6 +1703,7 @@ export const createAssistantSession=assistant.create;
 export const assistantSession=assistant.details;
 export const assistantSessions=assistant.list;
 export const assistantMessage=assistant.message;
+export const assistantMedia=assistant.readMedia;
 export const assistantReply=assistant.reply;
 export const assistantStop=assistant.stop;
 export const assistantResume=assistant.resume;

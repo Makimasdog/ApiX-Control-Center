@@ -1,4 +1,5 @@
 import {html} from './html.js';
+import {attachmentCards} from './assistant-media.js';
 export {escapeHtml as escapeAssistant} from './html.js';
 import {hostResultSucceeded} from '../src/assistant/assistant-result.js';
 function outputLink(value:unknown){if(!value||typeof value!=='object'||!('outputRef' in value))return '';return html`<button type="button" class="text-action" data-output-reference="${value.outputRef}">分段查看已保存结果</button>`;}
@@ -16,13 +17,26 @@ function messageContent(value:unknown){
   return output+html`${text.slice(position)}`;
 }
 
+function formattedContent(value:unknown, format:unknown){
+  if(format!=='markdown')return messageContent(value);
+  const text=String(value??'');let output='',offset=0;
+  for(const match of text.matchAll(/\*\*([^\n*]+)\*\*|`([^\n`]+)`/g)){
+    output+=messageContent(text.slice(offset,match.index));
+    output+=match[1]===undefined?html`<code>${match[2]}</code>`:html`<strong>${match[1]}</strong>`;
+    offset=match.index+match[0].length;
+  }
+  return output+messageContent(text.slice(offset));
+}
+
 type TimelineEvent={id:number;role:string;kind:string;body:Record<string,unknown>};
-function timelineEvent(e:TimelineEvent){
+function timelineEvent(e:TimelineEvent,sessionId:string){
   if(e.kind==='model_retry')return html`<article class="assistant-message"><small>系统</small><div>模型临时故障，将在 ${e.body.delayMs} ms 后进行第 ${e.body.attempt} 次请求；尚未执行工具。</div></article>`;
   const content=e.body.content??e.body.error??e.body.question;
   // 系统与模型侧的空内容/纯标点占位(如孤立的".")不渲染成消息气泡;用户原话始终保留。
   if(typeof content==='string'&&e.role!=='user'&&!content.replace(/[\p{P}\p{S}\s]/gu,''))return '';
-  if(content)return html`<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?'你':e.role==='system'?'系统':'ApiX'}</small><div>` + (messageContent(content)) + html`</div></article>`;
+  const channel=({wechat:'微信',telegram:'Telegram',discord:'Discord'} as Record<string,string>)[String(e.body.channel??'')];
+  if(content)return html`<article class="assistant-message ${e.role==='user'?'from-user':''}" data-event-id="${e.id}"><small>${e.role==='user'?channel??'你':e.role==='system'?'系统':'ApiX'}</small><div>`
+    + formattedContent(content,e.body.textFormat) + '</div>' + attachmentCards(sessionId,e.body.attachments) + '</article>';
   if(e.kind==='tool_started')return html`<details class="assistant-tool-detail"><summary>↗ ${e.body.tool}</summary><pre>${JSON.stringify(e.body.args,null,2)}</pre>` + (outputLink(e.body.args)) + html`</details>`;
   if(e.kind.startsWith('npm_validation_'))return html`<details class="assistant-tool-detail"><summary>Node/npm · ${e.body.status??e.kind}</summary><pre>${JSON.stringify(e.body,null,2)}</pre></details>`;
   if(e.kind==='command_intent')return html`<details class="assistant-tool-detail"><summary>命令已登记 · 等待托管启动</summary><code>${e.body.operationId}</code>` + (logLinks(e.body.operationId)) + html`</details>`;
@@ -46,9 +60,9 @@ function timelineEvent(e:TimelineEvent){
   if(e.kind==='request_answer')return html`<p class="assistant-system-note">已收到你的${'approved'in e.body?(e.body.approved?'批准':'拒绝'):'选择'}，ApiX 将继续处理。</p>`;
   return html`<p class="assistant-system-note">${({context_budget:'已记录本次上下文占用与指令版本',compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind}</p>`;
 }
-export function assistantTimeline(events:TimelineEvent[]){
+export function assistantTimeline(events:TimelineEvent[],sessionId=''){
  let result='',records:TimelineEvent[]=[];
- const flush=()=>{if(!records.length)return;result+=html`<details class="assistant-run-records" data-execution-record="${records[0]!.id}"><summary>执行记录 · ${records.length} 项</summary>` + (records.map(timelineEvent).join('')) + html`</details>`;records=[];};
- for(const event of events){if(event.kind==='model_retry'||event.body.content||event.body.error||event.body.question){flush();result+=timelineEvent(event);}else records.push(event);}
+ const flush=()=>{if(!records.length)return;result+=html`<details class="assistant-run-records" data-execution-record="${records[0]!.id}"><summary>执行记录 · ${records.length} 项</summary>` + (records.map(event=>timelineEvent(event,sessionId)).join('')) + html`</details>`;records=[];};
+ for(const event of events){if(event.kind==='model_retry'||event.body.content||event.body.error||event.body.question){flush();result+=timelineEvent(event,sessionId);}else records.push(event);}
  flush();return result;
 }
