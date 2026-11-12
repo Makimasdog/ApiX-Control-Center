@@ -135,6 +135,8 @@ npm start
 
 `npm start` 自动编译 TypeScript。升级代码或修改 `.env` 后须重启原服务。默认数据位于用户目录 `.apix-agent-os/`，数据库为 `apix.sqlite`；可通过 `APIX_DATA_DIR` 与 `PORT` 调整数据目录和端口。
 
+需要关闭界面后继续运行定时任务和主动提醒时，执行 `npm run gateway` 并通过浏览器连接。规则和提醒位于「管理总览 → 主动提醒」。[Gateway 配置与接口](docs/个人助手Gateway与主动提醒.md)
+
 <details>
 <summary>没有 FTS5 也能启动吗？</summary>
 
