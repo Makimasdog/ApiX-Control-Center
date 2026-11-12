@@ -65,6 +65,8 @@ interface Dependencies extends Store {
   child(id:string):{status:string;complete:boolean;details:unknown};
   stopChild(id:string):void;
   toolDefinitions?(projectId:string):ToolDefinition[];
+  skillTools?(projectId:string):ToolDefinition[];
+  callSkill?(session:AssistantSession,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal):Promise<unknown>;
   discoverTools?(projectId:string,signal:AbortSignal):Promise<{tools:ToolDefinition[];errors:string[]}>;
   callExternal?(session:AssistantSession,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal):Promise<unknown>;
   contextTokens?(sessionId:string):number;
@@ -127,7 +129,7 @@ export function createAssistantLoop(deps:Dependencies){
   // 模型看到的目录可以精简，但实际执行仍使用完整 registry 做参数和权限检查。
   function catalog(s:AssistantSession){return optimizedCatalog(registry(s).catalog(),saving(s.id),rows<{name:string}>('SELECT name FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>t.name));}
   const outputs=createContextOutputs(deps);let cachedRegistry=createToolRegistry(),registryKey='';
-  function registry(s:AssistantSession){const found=new Map(rows<{name:string;version:string}>('SELECT name,version FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>[t.name,t.version]));const extra=(deps.toolDefinitions?.(s.project_id)??[]).filter(t=>found.get(t.name)===t.version),available=commandCapabilities().managedCommands.available;const key=JSON.stringify([extra,available]);if(key!==registryKey){cachedRegistry=createToolRegistry(extra,available);registryKey=key;}return cachedRegistry;}
+  function registry(s:AssistantSession){const found=new Map(rows<{name:string;version:string}>('SELECT name,version FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>[t.name,t.version]));const extra=[...(deps.skillTools?.(s.project_id)??[]),...(deps.toolDefinitions?.(s.project_id)??[]).filter(t=>found.get(t.name)===t.version)],available=commandCapabilities().managedCommands.available;const key=JSON.stringify([extra,available]);if(key!==registryKey){cachedRegistry=createToolRegistry(extra,available);registryKey=key;}return cachedRegistry;}
   historyColumns(deps,'assistant');
   if(!rows<{name:string}>('PRAGMA table_info(assistant_sessions)').some(column=>column.name==='message_channel'))db.exec('ALTER TABLE assistant_sessions ADD COLUMN message_channel TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS assistant_channel_request_id ON assistant_message_requests(request_id)');
@@ -361,6 +363,9 @@ export function createAssistantLoop(deps:Dependencies){
         // 标准模式的空查询保留外部发现语义；明确查询或节省模式才合并内置工具。
         const discovered=await deps.discoverTools?.(s.project_id,controller.signal)??{tools:[],errors:[]};const terms=String(args.query??'').toLowerCase().trim().split(/\s+/).filter(Boolean);const candidates=[...(saving(id)||terms.length?registry(s).catalog().filter(t=>!t.name.startsWith('mcp_')):[]),...discovered.tools];const selected=candidates.map(t=>({tool:t,score:terms.reduce((n,word)=>n+(t.name.toLowerCase().includes(word)?4:0)+(t.description.toLowerCase().includes(word)?1:0),0)})).filter(t=>!terms.length||t.score>0).sort((a,b)=>b.score-a.score).slice(0,Number(args.limit??5)).map(t=>t.tool);
         for(const t of selected)db.prepare('INSERT INTO assistant_tool_discoveries VALUES (?,?,?) ON CONFLICT(session_id,name) DO UPDATE SET version=excluded.version').run(id,t.name,t.version??'');result={tools:selected,errors:discovered.errors};
+      }else if(tool.startsWith('skill_')){
+        if(!deps.callSkill)throw new PreflightError('技能执行入口不可用');
+        result=await deps.callSkill(s,tool,args,definition.version!,controller.signal);
       }else if(definition.name.startsWith('mcp_')){
         if(!deps.callExternal)throw new Error('MCP 执行入口不可用');result=await deps.callExternal(s,tool,args,definition.version!,controller.signal);
        }else {

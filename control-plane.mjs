@@ -81,6 +81,7 @@ import {createDeliveryInspection} from './src/projects/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/coordination/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant/assistant-loop.js';
 import {createPersonalMemory} from './dist/src/assistant-core/personal-memory.js';
+import {createAgentSkills} from './dist/src/assistant-core/skills/registry.js';
 import {createAssistantGateway} from './dist/src/assistant-core/gateway.js';
 import {createChannelRelay} from './dist/src/assistant-core/channels/channel-relay.js';
 import {createAssistantCommands} from './dist/src/assistant/assistant-commands.js';
@@ -1629,12 +1630,15 @@ const conversationModels=createConversationModels(store,()=>coordinator.getSetti
 const assistantCommands=createAssistantCommands({...store,root:projectId=>assistantProject(projectId).path,env:()=>workerEnvironment(process.env,'assistant-tool',managerApiKeys()),protectedValues:()=>managerApiKeys().map(key=>process.env[key]).filter(Boolean),policy:projectId=>permissions.get(projectId)});
 const npmValidation=createNpmValidation({...store,directory:join(dataDir,'npm-validation'),root:projectId=>assistantProject(projectId).path,command:(s,args,signal,context)=>assistantCommands.execute(s,'npm_validation',args,signal,context)});
 const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(projectId).path);
+export const agentSkills=createAgentSkills(store,dataDir,id=>assistantProject(id).path,id=>permissions.get(id).mode);
 export const knowledgeBase=createKnowledgeBase(store);
 export const toolGovernance=createToolGovernance(store);
 export const toolProgress=createToolProgress(store);
 // assistant 是 Assistant 循环实例，负责与用户交互、调用工具、管理对话
 // [→ 见 dist/src/assistant/assistant-loop.js]
 const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance:toolGovernance,progress:toolProgress,memory:projectMemory,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
+  skillTools:projectId=>agentSkills.tools(projectId),
+  callSkill:(s,name,args,version,signal)=>agentSkills.call(s.project_id,name,version,args,signal,(tool,values,abort)=>assistantCoding.execute(s,tool,values,abort)),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:id=>{const config=conversationModels.get('assistant',id).settings;return Number(config.contextWindow??getProviderConfig(config.provider)?.models.find(m=>m.id===config.model)?.contextWindow??process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768);},
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),

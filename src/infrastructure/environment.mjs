@@ -50,7 +50,7 @@ export function loadEnvironment(path=fileURLToPath(new URL('../../.env',import.m
  */
 export function workerEnvironment(source, runtime, managerKey) {
   // 构建管理者密钥变量名集合（大写），用于后续过滤
-  const keyNames=new Set(['APIX_OWNER_TOKEN','APIX_ALI_API_KEY','ALI_API_KEY',...(Array.isArray(managerKey)?managerKey:[managerKey]).map(key=>String(key??'').toUpperCase())]);
+  const keyNames=new Set(['APIX_OWNER_TOKEN','APIX_ALI_API_KEY','ALI_API_KEY','APIX_SKILL_BRAVE_KEY',...(Array.isArray(managerKey)?managerKey:[managerKey]).map(key=>String(key??'').toUpperCase())]);
   for(const name of Object.keys(source))if(/^APIX_CHANNEL_[A-Z0-9_]+_TOKEN$/i.test(name))keyNames.add(name.toUpperCase());
   // 收集管理者和渠道密钥的实际值，用于检测"变量名不同但值相同"的泄漏
   const managerValues=new Set(Object.entries(source).filter(([name,value])=>keyNames.has(name.toUpperCase()) && value).map(([,value])=>value));

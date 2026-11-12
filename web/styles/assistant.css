@@ -67,3 +67,12 @@ body .sidebar{overflow-y:auto}body #assistant-thread-list{display:block!importan
 .assistant-attachment audio{max-width:100%}
 .assistant-external-session #assistant-form,.assistant-external-session #assistant-task-form{display:none}
 #assistant-channel-hint{font-size:13px;color:var(--text-secondary)}
+.skill-management-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.agent-skill-dialog{overflow:auto}
+.agent-skill-dialog>form[method=dialog]{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.agent-skill-dialog>form[method=dialog] h2{margin:0}
+.agent-skill-dialog .stacked-form,.agent-skill-dialog section{margin-top:16px}
+.agent-skill-dialog label{display:grid;gap:6px;padding:0;border:0}
+.agent-skill-dialog select,.agent-skill-dialog textarea{width:100%;min-width:0;margin:0}
+.agent-skill-dialog [data-skill-details]{overflow-wrap:anywhere}
+.agent-skill-dialog [data-skill-status]{color:var(--text-secondary);overflow-wrap:anywhere}
