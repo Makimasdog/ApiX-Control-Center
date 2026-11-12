@@ -81,6 +81,7 @@ import {createTaskDelivery} from './src/projects/task-delivery.mjs';
 import {createDeliveryInspection} from './src/projects/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/coordination/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant/assistant-loop.js';
+import {createPersonalMemory} from './dist/src/assistant-core/personal-memory.js';
 import {createAssistantCommands} from './dist/src/assistant/assistant-commands.js';
 import {createAssistantCoding} from './dist/src/assistant/assistant-coding.js';
 import {createAssistantInference,managerInferenceError,InferenceAccountingError} from './dist/src/assistant/assistant-inference.js';
@@ -1701,6 +1702,7 @@ const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance
   child:id=>{const child=coordinator.sessionDetails(id);const state=child.autonomy?.state;const status=['running','ready'].includes(state)?'running':state==='attention'?'attention':state==='completed'?'completed':child.derivedStatus;return {status,complete:status==='completed'&&child.tasks.length>0&&child.tasks.every(t=>t.status==='accepted'),details:{id:child.id,status,tasks:child.tasks.map(t=>({id:t.id,status:t.status,employee_id:t.employee_id,delivery_commit:t.delivery_commit,failure:['failed','blocked','unknown','needs_revision'].includes(t.status)?String(redact(t.result??'',false)).slice(-2000):null,recovery:t.recovery})),reports:rows("SELECT m.id,m.from_agent,m.task_id,substr(m.payload,1,3000) AS payload FROM agent_messages m JOIN tasks t ON t.id=m.task_id WHERE t.plan_id=? AND m.to_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 10",child.plan_id),autonomy:child.autonomy?{state:child.autonomy.state,reason:child.autonomy.reason,contractDigest:child.autonomy.architecture?.digest,checks:child.autonomy.checks.map(c=>({id:c.id,status:c.status,fingerprint:c.fingerprint})),repairs:child.autonomy.repairs.map(r=>({id:r.id,status:r.status,attempt:r.attempt}))}:null}};},
   stopChild:id=>{const child=coordinator.sessionDetails(id);if(child.busy&&!child.tasks.length||child.derivedStatus==='completed')return;coordinator.stopSession(id,{revision:child.revision});}
 });
+export const personalMemory=createPersonalMemory(store,join(dataDir,'personal-memory'));
 notifyAssistant=id=>assistant.notify(id);
 setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
 // ===== 导出函数与 Agent 工具通道 =====

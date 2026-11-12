@@ -27,6 +27,7 @@
  *   8. 旧接口 — legacy:true 标记，引导迁移到新的协调会话 API
  */
 import {ToolError} from '../../dist/src/assistant/tool-governance.js';
+import {personalMemory} from '../../control-plane.mjs';
 import {changeBus} from './change-bus.mjs';
 import {browseFolders} from '../projects/project-folders.mjs';
 // ── 控制面业务函数导入（来自 control-plane.mjs）──
@@ -115,6 +116,13 @@ const post=(pattern,handler,limit=defaultLimit,extra={})=>({method:'POST',patter
  * server.mjs 负责执行管线：匹配路由 → 解析参数 → 检查限额 → 调用处理器 → 序列化响应
  */
 export const apiRoutes=[
+  get(/^\/api\/personal-memory$/,()=>personalMemory.list()),
+  get(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)$/,({m})=>personalMemory.get(m[1],m[2])),
+  get(/^\/api\/personal-memory\/sessions\/([^/]+)\/recall$/,({m})=>personalMemory.recallForSession(m[1])),
+  post(/^\/api\/personal-memory\/recall$/,({body})=>personalMemory.recall(body),messageLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)$/,({m,body})=>personalMemory.save(m[1],body),configLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)$/,({m,body})=>personalMemory.save(m[1],body,m[2]),configLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)\/delete$/,({m,body})=>personalMemory.remove(m[1],m[2],body),configLimit),
   // ===== 总览与事件流 =====
   // raw:true 表示处理器自行写响应头和数据流（SSE/ETag），server.mjs 不再自动序列化
   //
