@@ -27,7 +27,8 @@
  *   8. 旧接口 — legacy:true 标记，引导迁移到新的协调会话 API
  */
 import {ToolError} from '../../dist/src/assistant/tool-governance.js';
-import {assistantChannels,assistantGateway,personalMemory} from '../../control-plane.mjs';
+import {builtinMarket} from '../../dist/src/assistant-core/skills/market.js';
+import {agentSkills,assistantChannels,assistantGateway,personalMemory} from '../../control-plane.mjs';
 import {changeBus} from './change-bus.mjs';
 import {browseFolders} from '../projects/project-folders.mjs';
 // ── 控制面业务函数导入（来自 control-plane.mjs）──
@@ -124,6 +125,13 @@ export const apiRoutes=[
   post(/^\/api\/projects\/([^/]+)\/gateway\/rules\/([^/]+)$/,({m,body})=>assistantGateway.save(m[1],body,m[2]),configLimit),
   post(/^\/api\/projects\/([^/]+)\/gateway\/rules\/([^/]+)\/delete$/,({m,body})=>assistantGateway.remove(m[1],m[2],body),configLimit),
   post(/^\/api\/projects\/([^/]+)\/gateway\/runs\/([^/]+)\/read$/,({m})=>assistantGateway.markRead(m[1],m[2]),configLimit),
+  get(/^\/api\/agent-skills\/market$/,({query})=>builtinMarket.search(query.get('q')??'')),
+  get(/^\/api\/agent-skills\/market\/([^/]+)\/([^/]+)$/,({m})=>builtinMarket.get(m[1],m[2])),
+  get(/^\/api\/projects\/([^/]+)\/agent-skills$/,({m})=>agentSkills.list(m[1])),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/install$/,({m,body})=>agentSkills.install(m[1],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/enabled$/,({m,body})=>agentSkills.setEnabled(m[1],m[2],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/remove$/,({m})=>agentSkills.remove(m[1],m[2]),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/run$/,({m,body})=>agentSkills.run(m[1],m[2],body),configLimit),
   get(/^\/api\/personal-memory$/,()=>personalMemory.list()),
   get(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)$/,({m})=>personalMemory.get(m[1],m[2])),
   get(/^\/api\/personal-memory\/sessions\/([^/]+)\/recall$/,({m})=>personalMemory.recallForSession(m[1])),
