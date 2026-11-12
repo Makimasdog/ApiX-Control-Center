@@ -24,6 +24,7 @@ test('worker environment removes manager aliases and stale run identity while pr
   const source={PATH:'fixture-path',HOME:'fixture-home',APIX_ALI_API_KEY:'manager-secret',ali_api_key:'manager-secret',
     aPiX_mAnAgEr_KeY:'other-manager-secret',KEY_ALIAS:'other-manager-secret',ApiX_DATA_DIR:'private-data',APIX_CUSTOM_ENTRY:'private-entry',
     APIX_AGENT_TOKEN:'old-token',APIX_PROJECT_ID:'old-project',APIX_RUN_ID:'old-run',APIX_MAILBOX_URL:'old-url',
+    apiX_channel_WecHaT_token:'channel-secret',CHANNEL_ALIAS:'channel-secret',APIX_MESSAGE_CHANNELS:'local-routing-config',
     OPENAI_API_KEY:'worker-secret',CUSTOM_SETTING:'keep',APIX_FIXTURE_HOLD:'1'};
   const env=workerEnvironment(source,'codex','APIX_MANAGER_KEY');
   assert.deepEqual(env,{PATH:'fixture-path',HOME:'fixture-home',OPENAI_API_KEY:'worker-secret',CUSTOM_SETTING:'keep',APIX_FIXTURE_HOLD:'1'});
