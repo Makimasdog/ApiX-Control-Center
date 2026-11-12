@@ -27,7 +27,7 @@
  *   8. 旧接口 — legacy:true 标记，引导迁移到新的协调会话 API
  */
 import {ToolError} from '../../dist/src/assistant/tool-governance.js';
-import {assistantGateway,personalMemory} from '../../control-plane.mjs';
+import {assistantChannels,assistantGateway,personalMemory} from '../../control-plane.mjs';
 import {changeBus} from './change-bus.mjs';
 import {browseFolders} from '../projects/project-folders.mjs';
 // ── 控制面业务函数导入（来自 control-plane.mjs）──
@@ -68,7 +68,7 @@ import { workflowSettings, saveWorkflow, stopCoordinationSession, readiness, ins
 // 自治设置
 import { autonomySettings, saveAutonomySettings, resumeAutonomySession } from '../../control-plane.mjs';
 // 助手会话管理
-import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
+import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantMedia, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
 
 /**
  * requiredProject - 从查询参数中提取必需的 projectId
@@ -117,6 +117,7 @@ const post=(pattern,handler,limit=defaultLimit,extra={})=>({method:'POST',patter
  */
 export const apiRoutes=[
   get(/^\/api\/gateway\/status$/,()=>assistantGateway.status()),
+  get(/^\/api\/assistant\/channels$/,()=>assistantChannels.status()),
   post(/^\/api\/projects\/([^/]+)\/gateway\/events$/,({m,body})=>assistantGateway.ingest(m[1],body),configLimit),
   get(/^\/api\/projects\/([^/]+)\/gateway$/,({m})=>assistantGateway.projectState(m[1])),
   post(/^\/api\/projects\/([^/]+)\/gateway\/rules$/,({m,body})=>assistantGateway.save(m[1],body),configLimit),
@@ -214,6 +215,15 @@ export const apiRoutes=[
   // 助手会话：创建/发消息/启动任务/交付审查/回复/停止/恢复
   post(/^\/api\/assistant\/sessions$/,({body})=>createAssistantSession(body)),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/messages$/,({m,body})=>assistantMessage(m[1],body),messageLimit),
+  post(/^\/api\/assistant\/sessions\/([^/]+)\/channel-messages$/,({m,body})=>assistantMessage(m[1],body),[6*1024*1024,true]),
+  get(/^\/api\/assistant\/sessions\/([^/]+)\/media\/([^/]+)$/,({m,res})=>{
+    const file=assistantMedia(m[1],m[2]);
+    const name=encodeURIComponent(Buffer.from(file.name).toString('utf8')).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16));
+    res.writeHead(200,{'Content-Type':file.mime,'Content-Length':file.bytes.byteLength,
+      'Content-Disposition':(file.inline?'inline':'attachment')+"; filename*=UTF-8''"+name,
+      'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin','Content-Security-Policy':"default-src 'none'"});
+    res.end(file.bytes);
+  },{raw:true}),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/tasks$/,({m,body})=>assistantStartTask(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/delivery-review$/,({m,body})=>assistantReviewDelivery(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/reply$/,async({m,body})=>assistantReply(m[1],body),messageLimit),

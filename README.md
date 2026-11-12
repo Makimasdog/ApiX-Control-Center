@@ -137,6 +137,8 @@ npm start
 
 需要关闭界面后继续运行定时任务和主动提醒时，执行 `npm run gateway` 并通过浏览器连接。规则和提醒位于「管理总览 → 主动提醒」。[Gateway 配置与接口](docs/个人助手Gateway与主动提醒.md)
 
+Web 对话可发送 Markdown 和本地附件。独立 Gateway 可按项目配置微信、Telegram 和 Discord。[消息格式与渠道配置](docs/个人助手多平台消息适配.md)
+
 <details>
 <summary>没有 FTS5 也能启动吗？</summary>
 
