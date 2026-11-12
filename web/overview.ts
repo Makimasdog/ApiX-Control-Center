@@ -1,4 +1,5 @@
 import {html} from './html.js';
+import {mountGateway} from './gateway.js';
 type Task = {id:string;project_id:string;plan_id:string|null;employee_id:string|null;prompt:string;status:string;updated_at:string};
 type Employee = {id:string;name:string;role:string;runtime:string;department:string;enabled:number};
 type Project = {id:string;name:string};
@@ -16,12 +17,13 @@ const lanes=[
   {key:'done',name:'已完成',statuses:['accepted']},
 ];
 let snapshot:Snapshot={projects:[],tasks:[],employees:[],departments:[],runs:[]};let projectId='';let goals:Goal[]=[];let goalsProjectId='';let loadVersion=0;
-root.innerHTML=html`<div class="overview-header"><div><div class="eyebrow">APIX · COMMAND CENTER</div><h1>管理总览</h1><p>查看目标、员工与任务的真实进展，再决定下一步。</p></div><div class="overview-header-actions"><label>当前项目<select id="overview-project" aria-label="总览项目"></select></label><button class="primary-button" data-overview-nav="assistant">提出新任务</button></div></div>
+root.innerHTML=html`<div class="overview-header"><div><div class="eyebrow">APIX · COMMAND CENTER</div><h1>管理总览</h1><p>查看目标、员工与任务的真实进展，再决定下一步。</p></div><div class="overview-header-actions"><label>当前项目<select id="overview-project" aria-label="总览项目"></select></label><button id="overview-gateway" class="outline-button" aria-haspopup="dialog" disabled>主动提醒</button><button class="primary-button" data-overview-nav="assistant">提出新任务</button></div></div>
 <div id="overview-empty" class="surface-card overview-empty" hidden><h2>先添加项目</h2><p>ApiX 将在这里汇总该项目的目标、任务和员工状态。</p><button class="outline-button" data-overview-nav="projects">添加项目</button></div>
 <div id="overview-content"><section class="overview-metrics" aria-label="项目概况"><article class="surface-card"><span>目标</span><strong id="overview-goal-count">0</strong><small>当前项目</small></article><article class="surface-card"><span>正在执行</span><strong id="overview-active-count">0</strong><small>真实运行任务</small></article><article class="surface-card"><span>等待你处理</span><strong id="overview-action-count">0</strong><small>澄清、确认、审批与验收</small></article><article class="surface-card"><span>参与员工</span><strong id="overview-employee-count">0</strong><small>当前项目计划</small></article></section>
 <div class="overview-grid"><section class="surface-card overview-attention"><div class="overview-section-head"><div><h2>ApiX 等待你的决定</h2><p>显示需要继续澄清、确认、审批、验收或处理阻塞的事项。</p></div><span id="overview-attention-count" class="coord-pill">0 项</span></div><div id="overview-action-list"></div></section><section class="surface-card overview-team"><div class="overview-section-head"><div><h2>员工动态</h2><p>基于任务和 Run 状态；点击员工查看履历。</p></div><button class="text-action" data-overview-nav="missions">管理员工</button></div><div id="overview-team-list"></div><div id="overview-departments"></div></section></div>
 <section class="surface-card overview-board-section"><div class="overview-section-head"><div><h2>任务流转</h2><p>任务由 ApiX 的已确认计划创建；状态变化由真实执行和用户验收决定。</p></div><span id="overview-board-count" class="coord-pill">0 个任务</span></div><div class="overview-filters"><label>查找任务<input id="overview-search" type="search" placeholder="按任务内容筛选"></label><label>员工<select id="overview-employee-filter"><option value="">全部员工</option></select></label></div><div id="overview-board" class="overview-board"></div></section>
 <p id="overview-updated" class="overview-updated" aria-live="polite"></p></div>`;
+mountGateway(root,()=>projectId);
 function goalFor(task:Task){return goals.find(goal=>goal.plan_id===task.plan_id);}
 function employeeFor(task:Task){return snapshot.employees.find(employee=>employee.id===task.employee_id);}
 function render(){
