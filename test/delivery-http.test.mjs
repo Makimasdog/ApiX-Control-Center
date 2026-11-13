@@ -1,4 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {startDeliveryFixture} from './delivery-fixture.mjs';
+import {appendFile} from 'node:fs/promises';
+import {join} from 'node:path';
 test('project attention follows the current request and frozen delivery',{timeout:120000,skip:process.platform!=='win32'},async()=>{
  const h=await startDeliveryFixture({startupMs:30000});
  try{
@@ -41,6 +43,39 @@ test('project attention follows the current request and frozen delivery',{timeou
   assert.deepEqual(await h.request(attention),item('review'));
   await review('accept','attention-accept');
   assert.deepEqual(await h.request(attention),[]);
+ }finally{await h.close();}
+});
+test('automatic execution reuses the approved project check across sessions and restart',{timeout:120000,skip:process.platform!=='win32'},async()=>{
+ const h=await startDeliveryFixture({startupMs:30000,decide:(_ctx,state)=>{
+  if(!state.proposed){
+   state.proposed=true;
+   return {action:'tool',tool:'configure_verification',args:{checks:[{id:'unit',args:['check.cjs'],timeoutMs:5000}],writablePaths:['src']},message:'核对现有检查命令。'};
+  }
+  return {action:'finish',outcome:'completed',message:'已核对项目验收契约。'};
+ }});
+ try{
+  const start=async()=>{
+   const {id}=await h.request('/api/assistant/sessions',{projectId:h.projectId});
+   await h.request('/api/assistant/sessions/'+id+'/messages',{content:'核对项目验收契约'});
+   return h.idle(id);
+  };
+  let first=await start();
+  assert.equal(first.pending?.tool,'configure_verification');
+  await h.request('/api/assistant/sessions/'+first.id+'/reply',{version:first.version,requestId:first.pending.id,approved:true});
+  first=await h.idle(first.id);
+  assert.equal(first.status,'completed');
+  await h.restart();
+  const next=await start();
+  assert.equal(next.status,'completed');
+  assert.equal(next.pending,null);
+  const reuse=next.events.find(e=>e.kind==='tool_result'&&e.body.tool==='configure_verification');
+  assert.equal(reuse?.body.reused,true);
+  assert.equal(reuse.body.result.version,first.events.find(e=>e.kind==='verification_contract')?.body.version);
+  assert(!next.events.some(e=>e.kind==='verification_contract'));
+
+  await appendFile(join(h.project,'check.cjs'),'\n// changed after approval\n');
+  const changed=await start();
+  assert.equal(changed.pending?.tool,'configure_verification');
  }finally{await h.close();}
 });
 test('production HTTP review, revision, acceptance, duplicate requests and second task use frozen task versions',{timeout:60000,skip:process.platform!=='win32'},async()=>{

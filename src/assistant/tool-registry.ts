@@ -40,7 +40,7 @@ export const builtinTools:ToolDefinition[]=[
   {name:'list_files',description:'列出项目目录',readOnly:true,inputSchema:schema({path:string})},
   {name:'write_file',description:'写入项目文件；之后必须实际验证',readOnly:false,changesWorkspace:true,inputSchema:schema({path:{...string,maxLength:1000},content:{type:'string',maxLength:20000}},['path','content'])},
   ...['run_command','verify'].map(name=>({name,description:name==='verify'?'执行诊断命令，退出成功不代表可信验收通过':'直接启动进程，不隐式使用 shell',readOnly:false,changesWorkspace:true,inputSchema:command})),
-  {name:'configure_verification',description:'申请用户批准单 Agent 验收契约；固定 Node 检查及可修改范围，其他项目文件被冻结；不需要员工配置，始终请求批准',readOnly:false,inputSchema:{...schema({npm:schema({network:{type:'boolean'}},['network']),checks,writablePaths:{type:'array',minItems:1,maxItems:40,items:{type:'string',minLength:1,maxLength:1000}}},['writablePaths']),oneOf:[{required:['checks']},{required:['npm']}] }},
+  {name:'configure_verification',description:'申请用户批准新的单 Agent 验收契约；固定 Node 检查及可修改范围，其他项目文件被冻结。已有契约优先用 run_check；自动执行模式会复用完全一致的批准',readOnly:false,inputSchema:{...schema({npm:schema({network:{type:'boolean'}},['network']),checks,writablePaths:{type:'array',minItems:1,maxItems:40,items:{type:'string',minLength:1,maxLength:1000}}},['writablePaths']),oneOf:[{required:['checks']},{required:['npm']}] }},
   {name:'run_check',description:'运行已获用户批准的检查 ID，宿主保存真实证据；失败须修复重验，未知状态必须人工处理',readOnly:false,inputSchema:schema({checkId:{type:'string',minLength:1,maxLength:60}},['checkId'])},
   {name:'load_skill',description:'加载技能，仅作为参考，不授予权限',readOnly:true,inputSchema:schema({id:string},['id'])},
   {name:'read_memory',description:'读取本项目一条记忆及来源状态',readOnly:true,inputSchema:{...schema({title:string,id:string}),anyOf:[{required:['title']},{required:['id']}]} },
