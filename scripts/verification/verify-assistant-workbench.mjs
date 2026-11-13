@@ -125,7 +125,15 @@ try{
   await panel.locator('[data-show-process]').click();await panel.locator('[data-close]').click();assert.equal(await page.locator('#assistant-transcript').evaluate(e=>e.scrollTop),0);assert.equal(await dock.isVisible(),false);
   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-worker-run')),firstRun);
   await rows.nth(1).click();await panel.locator('[data-interaction]').waitFor();assert.equal(await panel.locator('[data-guidance] textarea').inputValue(),'第二位员工的独立草稿');
+  await page.route('**/api/assistant/sessions',route=>route.fulfill({status:503,json:{error:'本地夹具模拟创建失败'}}));
+  await page.locator('#assistant-new').click();
+  await page.locator('#assistant-error').getByText('本地夹具模拟创建失败').waitFor();
+  assert.equal(await page.locator('#assistant-input').inputValue(),'保留主会话草稿，不发送');
+  assert.equal(await rows.count(),2);
+  await page.unroute('**/api/assistant/sessions');
+  const created=page.waitForResponse(response=>response.url().endsWith('/api/assistant/sessions')&&response.request().method()==='POST'&&response.ok());
   await page.locator('#assistant-new').click();await page.waitForFunction(()=>!document.querySelector('#page-assistant').classList.contains('show-agent-workbench'));
+  const fresh=await (await created).json();
   assert.equal(await page.locator('#assistant-workers [data-worker-run]').count(),0);
   assert.equal(await requests.locator('form').count(),0);
   await page.route('**'+base,route=>route.fulfill({status:503,json:{error:'本地夹具模拟暂时读取失败'}}));
@@ -162,7 +170,24 @@ try{
   await approvalTodo.waitFor({state:'detached'});
   await page.setViewportSize({width:1440,height:1000});
   await page.locator('[data-page-target="assistant"]').first().click();
+  const history=page.locator('#assistant-thread-list');
+  const openThread=id=>history.locator(`[data-history-open="${id}"]`);
+  const input=page.locator('#assistant-input');
+  await openThread(fresh.id).click();
+  await openThread(fresh.id).and(page.locator('.selected')).waitFor();
+  await input.fill('即将归档对话的独立草稿');
+  await history.locator(`[data-history-action="archive"][data-history-id="${fresh.id}"]`).click();
+  await openThread(parent.id).and(page.locator('.selected')).waitFor();
+  assert.equal(await input.inputValue(),'保留主会话草稿，不发送');
+  await history.locator('select').selectOption('archived');
+  await Promise.all([
+    page.waitForResponse(response=>response.url().endsWith('/api/chat-history/assistant/'+fresh.id)&&response.ok()),
+    history.locator(`[data-history-action="restore"][data-history-id="${fresh.id}"]`).click(),
+  ]);
+  await history.locator('select').selectOption('active');
+  await openThread(fresh.id).click();
+  assert.equal(await input.inputValue(),'即将归档对话的独立草稿');
   await page.locator('#assistant-employees').click();assert(await page.locator('#page-missions').evaluate(e=>e.classList.contains('active-page')));
   assert.deepEqual(errors,[]);assert.equal(h.calls.filter(c=>c.phase==='planning').length,1);assert.equal(h.calls.length,1);
-  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','notification-owner-boundary','notification-cross-project','notification-pending-removal','artifacts','focus-return','thread-reset','worker-list-retry','failure-diagnostics','employee-navigation']}));
+  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','notification-owner-boundary','notification-cross-project','notification-pending-removal','artifacts','focus-return','thread-reset','new-thread-failure','archive-restore-draft','worker-list-retry','failure-diagnostics','employee-navigation']}));
 }finally{await browser?.close();await h.close();}
