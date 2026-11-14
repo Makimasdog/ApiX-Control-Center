@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>样张 01 · 纸墨 — ApiX</title>
+<style>
+  :root{
+    --paper:#f3efe4; --panel:#fbf8f0; --panel-2:#f7f2e7;
+    --ink:#1a1813; --ink-2:#4c473b; --muted:#6e6757;
+    --rule:#ded7c5; --rule-2:#c8c0ab;
+    --seal:#a33a2a; --seal-soft:#f2e5df;
+    --ok:#3d6b49; --warn:#8a5a17;
+    --sans:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    --serif:"Source Han Serif SC","Noto Serif SC","Songti SC","SimSun",serif;
+    --mono:"Cascadia Code",Consolas,"SFMono-Regular",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.7 var(--sans);
+    background-image:radial-gradient(circle at 82% -10%,#fffdf6 0,transparent 46%);}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  a{color:inherit;text-decoration:none}
+  .icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .app{display:grid;grid-template-columns:238px minmax(0,1fr);height:100dvh}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{display:flex;flex-direction:column;min-height:0;padding:22px 16px 14px;
+    border-right:1px solid var(--rule);background:linear-gradient(180deg,#f6f1e5,#f0ebdd)}
+  .brand{display:flex;align-items:center;gap:11px;margin:0 4px 26px;text-align:left}
+  .seal{width:34px;height:34px;border-radius:2px;background:var(--seal);color:#fff;
+    display:grid;place-items:center;font:600 15px/1 var(--serif);letter-spacing:.04em;
+    box-shadow:inset 0 0 0 1px #ffffff30, 0 1px 0 #7d2216}
+  .brand b{display:block;font:600 21px/1.1 var(--serif);letter-spacing:.04em}
+  .brand small{display:block;font-size:11px;color:var(--muted);letter-spacing:.14em;margin-top:3px}
+  .side-scroll{flex:1;min-height:0;overflow:auto;scrollbar-width:thin}
+  .group{margin-bottom:20px}
+  .group-label{display:flex;align-items:center;gap:8px;padding:0 10px;margin-bottom:6px;
+    font-size:10.5px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase}
+  .group-label .cn{font:600 11px/1 var(--serif);color:var(--seal);letter-spacing:.1em}
+  .nav a{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 11px;border-left:2px solid transparent;
+    color:var(--ink-2);font-size:13px;transition:background .15s,color .15s}
+  .nav a:hover{background:#ece5d4;color:var(--ink)}
+  .nav a.active{border-left-color:var(--seal);background:linear-gradient(90deg,#eee5d2,#eee5d200);color:var(--ink);font-weight:600}
+  .nav a.active .icon{color:var(--seal)}
+  .nav .count{margin-left:auto;font:11px var(--mono);color:var(--muted)}
+  .side-projects .p{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:2px;font-size:12.5px;color:var(--ink-2)}
+  .side-projects .p:hover{background:#ece5d4}
+  .side-projects .p.sel{background:var(--panel);border:1px solid var(--rule);color:var(--ink)}
+  .side-projects .p .sq{width:16px;height:16px;border:1px solid var(--rule-2);display:grid;place-items:center;font:9px var(--mono);color:var(--muted);flex:none}
+  .side-projects .p.sel .sq{border-color:var(--seal);color:var(--seal)}
+  .side-projects .p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .thread{display:flex;gap:8px;align-items:baseline;width:100%;padding:6px 10px;font-size:12.5px;color:var(--ink-2);text-align:left}
+  .thread:hover{background:#ece5d4}
+  .thread.sel{color:var(--ink);font-weight:600}
+  .thread.sel::before{content:"—";color:var(--seal);margin-right:2px}
+  .thread time{margin-left:auto;font:10.5px var(--mono);color:var(--muted);flex:none}
+  .side-foot{margin-top:12px;padding:12px 8px 0;border-top:1px solid var(--rule)}
+  .local{display:flex;align-items:center;gap:7px;font:11px var(--mono);color:var(--muted);letter-spacing:.04em}
+  .led{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px #3d6b4920}
+  .me{display:flex;align-items:center;gap:9px;margin-top:10px;width:100%;text-align:left}
+  .me .av{width:28px;height:28px;border:1px solid var(--rule-2);border-radius:2px;display:grid;place-items:center;font:600 13px var(--serif);background:var(--panel)}
+  .me b{display:block;font-size:12px;font-weight:600}
+  .me small{display:block;font-size:10.5px;color:var(--muted)}
+
+  /* ---------- main ---------- */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .topbar{display:flex;align-items:center;gap:12px;height:54px;min-height:54px;padding:0 26px;border-bottom:1px solid var(--rule)}
+  .crumb{display:flex;align-items:center;gap:8px;font:11.5px var(--mono);color:var(--muted);letter-spacing:.04em}
+  .crumb b{color:var(--ink);font-weight:500}
+  .crumb .sep{color:var(--rule-2)}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .chip{display:inline-flex;align-items:center;gap:7px;padding:4px 9px;border:1px solid var(--rule);background:var(--panel);
+    font:11.5px var(--mono);color:var(--ink-2)}
+  .ghost{padding:5px 10px;border:1px solid transparent;font-size:12.5px;color:var(--ink-2)}
+  .ghost:hover{border-color:var(--rule);background:var(--panel)}
+  .view{flex:1;min-height:0;display:none}
+  .view.on{display:flex}
+  #view-chat .chat{display:flex;flex-direction:column;min-width:0;flex:1}
+  .chat-head{padding:22px 30px 14px;border-bottom:1px solid var(--rule)}
+  .chat-head .kicker{font:10.5px var(--mono);letter-spacing:.18em;color:var(--seal);text-transform:uppercase}
+  .chat-head h1{margin:6px 0 4px;font:600 25px/1.25 var(--serif);letter-spacing:.02em}
+  .chat-head .meta{display:flex;flex-wrap:wrap;gap:14px;font:11.5px var(--mono);color:var(--muted)}
+  .chat-head .meta b{font-weight:500;color:var(--ink-2)}
+  .transcript{flex:1;min-height:0;overflow:auto;padding:22px 30px 30px;scrollbar-width:thin}
+  .doc{max-width:740px;margin:0 auto}
+  .day{display:flex;align-items:center;gap:12px;font:10.5px var(--mono);color:var(--muted);letter-spacing:.12em;margin:2px 0 22px}
+  .day::before,.day::after{content:"";flex:1;border-top:1px solid var(--rule)}
+  .msg{margin:0 0 26px}
+  .who{display:flex;align-items:baseline;gap:9px;margin-bottom:7px}
+  .who b{font:600 14px/1 var(--serif);letter-spacing:.06em}
+  .who .role{font:10.5px var(--mono);color:var(--muted);letter-spacing:.08em}
+  .who time{margin-left:auto;font:10.5px var(--mono);color:var(--muted)}
+  .msg p{margin:0 0 10px}
+  .msg.user{max-width:78%;margin-left:auto;background:#efe7d6;border:1px solid var(--rule);padding:11px 15px;border-radius:3px}
+  .msg.user .who{margin-bottom:4px}
+  .msg.user .who b{font-size:12.5px}
+  .acts{margin:14px 0 4px;border-top:1px solid var(--rule)}
+  .act{display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px dotted var(--rule-2);font-size:12.5px;color:var(--ink-2)}
+  .act .mk{color:var(--ok);font-family:var(--mono);font-size:11px}
+  .act .path{font:11.5px var(--mono);color:var(--muted)}
+  .act time{margin-left:auto;font:10.5px var(--mono);color:var(--muted)}
+  .note{margin:14px 0 0;padding:10px 14px;border-left:2px solid var(--seal);background:#f6efe2;font-size:12.5px;color:var(--ink-2)}
+  .approval{position:relative;margin:26px 0 8px;border:1px solid var(--rule-2);background:var(--panel);padding:16px 18px}
+  .approval h4{margin:0 0 4px;font:600 14px var(--serif);letter-spacing:.04em}
+  .approval p{margin:0 0 12px;color:var(--ink-2);font-size:12.5px}
+  .approval .row{display:flex;gap:8px;flex-wrap:wrap}
+  .stamp{position:absolute;top:-9px;right:16px;padding:2px 7px;border:1.5px solid var(--seal);color:var(--seal);
+    font:600 11px/1.4 var(--serif);letter-spacing:.16em;background:var(--panel);transform:rotate(-3deg)}
+  .btn{padding:7px 13px;border:1px solid var(--ink);background:var(--ink);color:var(--panel);font-size:12.5px;border-radius:2px;transition:opacity .15s}
+  .btn:hover{opacity:.86}
+  .btn.line{background:transparent;color:var(--ink);border-color:var(--rule-2)}
+  .btn.line:hover{background:var(--panel-2);opacity:1}
+  .composer{border-top:1px solid var(--rule);background:var(--paper);padding:12px 30px 20px}
+  .compose{max-width:740px;margin:0 auto;border:1px solid var(--rule-2);background:var(--panel);padding:12px 14px;box-shadow:0 10px 26px #1a18130a}
+  .compose textarea{width:100%;border:0;outline:0;background:none;resize:none;font:14px/1.7 var(--sans);color:var(--ink);min-height:54px}
+  .compose textarea::placeholder{color:var(--muted)}
+  .compose-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dotted var(--rule-2)}
+  .compose-bar .hint{font:10.5px var(--mono);color:var(--muted);margin-left:auto}
+  .send{width:34px;height:34px;background:var(--seal);color:#fff;display:grid;place-items:center;border-radius:2px;flex:none}
+  .send:hover{background:#8f3022}
+  .send .icon{width:16px;height:16px;stroke-width:1.8}
+
+  /* ---------- rail ---------- */
+  .rail{width:302px;flex:none;border-left:1px solid var(--rule);background:#f6f1e6;overflow:auto;padding:20px 18px 28px}
+  .rail-label{font:10px var(--mono);letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin:0 0 8px}
+  .rail-sec{margin-bottom:24px}
+  .run{border:1px solid var(--rule);background:var(--panel);padding:13px 14px}
+  .run-top{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .run-top b{font:600 13px var(--serif);letter-spacing:.03em}
+  .badge{margin-left:auto;font:10px var(--mono);padding:2px 7px;border:1px solid var(--rule-2);color:var(--warn);letter-spacing:.06em}
+  .steps{list-style:none;margin:0;padding:0}
+  .steps li{position:relative;padding:0 0 12px 18px;font-size:12px;color:var(--ink-2);line-height:1.5}
+  .steps li::before{content:"";position:absolute;left:2px;top:6px;width:6px;height:6px;border-radius:50%;background:var(--rule-2)}
+  .steps li::after{content:"";position:absolute;left:4.5px;top:13px;bottom:0;width:1px;background:var(--rule)}
+  .steps li:last-child::after{display:none}
+  .steps li.done{color:var(--muted)}
+  .steps li.done::before{background:var(--ok)}
+  .steps li.now{color:var(--ink);font-weight:600}
+  .steps li.now::before{background:var(--seal);box-shadow:0 0 0 3px #a33a2a18}
+  .steps small{display:block;font:10.5px var(--mono);color:var(--muted);font-weight:400}
+  .kv{display:flex;align-items:baseline;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px dotted var(--rule-2)}
+  .kv .k{color:var(--muted)}
+  .kv .dots{flex:1;border-bottom:1px dotted var(--rule-2);transform:translateY(-3px)}
+  .kv .v{font:12px var(--mono);font-variant-numeric:tabular-nums}
+  .files{list-style:none;margin:0;padding:0;font:11px var(--mono);color:var(--ink-2)}
+  .files li{padding:5px 0;border-bottom:1px dotted var(--rule-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .files li span{color:var(--muted)}
+  .pending{border:1px solid var(--rule-2);background:var(--seal-soft);padding:11px 13px;font-size:12px;color:var(--ink-2)}
+  .pending b{display:block;font:600 12.5px var(--serif);color:var(--seal);margin-bottom:2px}
+
+  /* ---------- overview ---------- */
+  #view-overview{overflow:auto;display:none}
+  #view-overview.on{display:block}
+  .page{padding:28px clamp(22px,3.4vw,44px) 44px;max-width:1240px;margin:0 auto}
+  .page-head{display:flex;align-items:flex-end;gap:16px;margin-bottom:26px;flex-wrap:wrap}
+  .page-head h1{margin:0;font:600 30px/1.2 var(--serif);letter-spacing:.02em}
+  .page-head p{margin:6px 0 0;color:var(--muted);font-size:13px}
+  .page-head .actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border:1px solid var(--rule);background:var(--panel)}
+  .metric{padding:16px 18px;border-right:1px solid var(--rule)}
+  .metric:last-child{border-right:0}
+  .metric .lb{font:10.5px var(--mono);letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  .metric .num{margin-top:8px;font:600 32px/1 var(--serif);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .metric .num small{font-size:15px;color:var(--muted);margin-left:3px}
+  .metric .sub{margin-top:7px;font-size:11.5px;color:var(--muted)}
+  .metric .sub em{font-style:normal;color:var(--ok)}
+  .cols{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:22px;margin-top:24px}
+  .block{border:1px solid var(--rule);background:var(--panel);padding:18px 20px}
+  .block-head{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+  .block-head h2{margin:0;font:600 16px var(--serif);letter-spacing:.04em}
+  .block-head .more{margin-left:auto;font-size:11.5px;color:var(--muted);border-bottom:1px solid var(--rule-2);padding-bottom:1px}
+  .block-head .more:hover{color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{text-align:left;font:10.5px var(--mono);letter-spacing:.1em;color:var(--muted);text-transform:uppercase;padding:0 8px 8px 0;border-bottom:1px solid var(--rule);font-weight:400}
+  td{padding:9px 8px 9px 0;border-bottom:1px dotted var(--rule-2);color:var(--ink-2);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  td .nm{color:var(--ink);font-weight:600;font-size:12.5px}
+  td .path{display:block;font:10.5px var(--mono);color:var(--muted);margin-top:2px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .st{font:10.5px var(--mono);letter-spacing:.04em;padding:2px 6px;border:1px solid var(--rule-2);white-space:nowrap}
+  .st.run{color:var(--ok);border-color:#9db4a4}
+  .st.wait{color:var(--warn);border-color:#c9ab7d}
+  .st.off{color:var(--muted)}
+  .rows{list-style:none;margin:0;padding:0}
+  .rows li{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dotted var(--rule-2);font-size:12.5px;color:var(--ink-2)}
+  .rows li:last-child{border-bottom:0}
+  .rows .sq{width:22px;height:22px;border:1px solid var(--rule-2);display:grid;place-items:center;font:9.5px var(--mono);color:var(--muted);flex:none}
+  .rows b{font-weight:600;color:var(--ink);font-size:12.5px;display:block}
+  .rows small{display:block;font:10.5px var(--mono);color:var(--muted)}
+  .rows .right{margin-left:auto;text-align:right;font:10.5px var(--mono);color:var(--muted)}
+  .bar{height:3px;background:#e6dfcd;margin-top:5px;width:120px}
+  .bar i{display:block;height:100%;background:var(--ink-2)}
+  .quote{margin:14px 0 0;font:12.5px/1.8 var(--serif);color:var(--ink-2);border-top:1px solid var(--rule);padding-top:12px}
+
+  /* review switcher, sits in the topbar so it never covers the composer */
+  .review{display:flex;align-items:center;gap:4px;margin-left:4px;padding-left:10px;border-left:1px solid var(--rule)}
+  .review .rlbl{font:10px var(--mono);color:var(--muted);letter-spacing:.08em;margin-right:4px;white-space:nowrap}
+  .review button{padding:3px 7px;border:1px solid var(--rule);font-size:11px;border-radius:2px;color:var(--ink-2);background:var(--panel)}
+  .review button:hover{border-color:var(--rule-2)}
+  .review button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+  .review a{font:10.5px var(--mono);color:var(--muted);margin-left:6px;text-decoration:underline;text-underline-offset:2px}
+
+  :focus-visible{outline:2px solid var(--seal);outline-offset:2px}
+  @media (max-width:1080px){.rail{display:none}}
+  @media (max-width:1040px){.review .rlbl{display:none}}
+  @media (max-width:900px){.app{grid-template-columns:1fr}.sidebar{display:none}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.metric:nth-child(2){border-right:0}.metric:nth-child(-n+2){border-bottom:1px solid var(--rule)}.cols{grid-template-columns:1fr}}
+  @media (max-width:760px){
+    .topbar{padding:0 14px}
+    .crumb span{display:none}
+    .top-actions .chip,.top-actions .ghost{display:none}
+    .review{border-left:0;padding-left:0;margin-left:0}
+    .chat-head{padding:16px 16px 12px}
+    .chat-head h1{font-size:22px}
+    .transcript{padding:16px 16px 20px}
+    .composer{padding:10px 16px 16px}
+    .page{padding:18px 16px 32px}
+    .compose-bar .hint{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4V5Z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></symbol>
+  <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5a3 3 0 0 1 0 6M21 20c0-2.5-1.4-4.6-3.5-5.5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4h7v16H4zM13 4h7v16h-7z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+</svg>
+
+<div class="app">
+  <aside class="sidebar">
+    <button class="brand" aria-label="ApiX 工作台">
+      <span class="seal">Ax</span>
+      <span><b>ApiX</b><small>本地 AGENT 工作空间</small></span>
+    </button>
+    <div class="side-scroll">
+      <div class="group">
+        <div class="group-label"><span class="cn">壹</span> 工作区</div>
+        <nav class="nav">
+          <a href="#" class="active"><svg class="icon"><use href="#i-chat"/></svg>与 ApiX 对话</a>
+          <a href="#overview" data-view-link="overview"><svg class="icon"><use href="#i-grid"/></svg>管理总览</a>
+          <a href="#"><svg class="icon"><use href="#i-term"/></svg>协作进度<span class="count">3</span></a>
+          <a href="#"><svg class="icon"><use href="#i-people"/></svg>任务与员工</a>
+        </nav>
+      </div>
+      <div class="group">
+        <div class="group-label"><span class="cn">贰</span> 设置</div>
+        <nav class="nav">
+          <a href="#"><svg class="icon"><use href="#i-sliders"/></svg>协作设置</a>
+          <a href="#"><svg class="icon"><use href="#i-book"/></svg>知识库与工具安全</a>
+          <a href="#"><svg class="icon"><use href="#i-folder"/></svg>项目记忆</a>
+          <a href="#"><svg class="icon"><use href="#i-layers"/></svg>Skills 与 MCP</a>
+        </nav>
+      </div>
+      <div class="group side-projects">
+        <div class="group-label"><span class="cn">叁</span> 我的项目</div>
+        <div class="p sel"><span class="sq">A</span><span>ApiX Control Center</span></div>
+        <div class="p"><span class="sq">B</span><span>Blog Engine</span></div>
+        <div class="p"><span class="sq">D</span><span>数据看板</span></div>
+      </div>
+      <div class="group">
+        <div class="group-label"><span class="cn">肆</span> 对话</div>
+        <button class="thread sel"><span>前端改版风格评审</span><time>14:02</time></button>
+        <button class="thread"><span>修复归档切换草稿</span><time>11:40</time></button>
+        <button class="thread"><span>接入个人助手记忆</span><time>昨天</time></button>
+      </div>
+    </div>
+    <div class="side-foot">
+      <div class="local"><span class="led"></span>本地服务 :3350 · 运行中</div>
+      <button class="me"><span class="av">A</span><span><b>ApiX Studio</b><small>个人工作空间</small></span></button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb"><b>ApiX</b><span class="sep">/</span><span>ApiX Control Center</span><span class="sep">/</span><b id="crumb-view">对话</b></div>
+      <div class="top-actions">
+        <span class="chip">Claude Sonnet 5.5</span>
+        <button class="ghost">全部对话</button>
+        <button class="ghost" aria-label="更多"><svg class="icon"><use href="#i-more"/></svg></button>
+        <div class="review" role="group" aria-label="样张视图切换">
+          <span class="rlbl">样张 01 · 纸墨</span>
+          <button data-view-btn="chat" aria-pressed="true">对话</button>
+          <button data-view-btn="overview" aria-pressed="false">总览</button>
+          <a href="index.html">对比</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- 对话 -->
+    <section class="view on" id="view-chat">
+      <div class="chat">
+        <div class="chat-head">
+          <div class="kicker">Conversation · 042</div>
+          <h1>前端改版风格评审</h1>
+          <div class="meta"><span>项目 <b>ApiX Control Center</b></span><span>员工 <b>Codex · Claude Code</b></span><span>模式 <b>逐项审批</b></span></div>
+        </div>
+
+        <div class="transcript">
+          <div class="doc">
+            <div class="day">今天 · 2026-11-14</div>
+
+            <div class="msg user">
+              <div class="who"><b>你</b><time>14:02</time></div>
+              <p>重新设计一下 ApiX 的前端界面。先给我几份不同风格的方案，我看过再决定最终怎么改。</p>
+            </div>
+
+            <div class="msg">
+              <div class="who"><b>ApiX</b><span class="role">主 Agent</span><time>14:02</time></div>
+              <p>收到。我先读取现有界面结构与设计规范，再产出可以放在一起比较的静态样张；在你选定之前不改动 <code>web/</code> 下的任何代码。</p>
+              <div class="acts">
+                <div class="act"><span class="mk">✓</span>读取 <span class="path">web/index.html</span><time>0.3s</time></div>
+                <div class="act"><span class="mk">✓</span>读取 <span class="path">web/styles/design-system.css</span><time>0.4s</time></div>
+                <div class="act"><span class="mk">✓</span>核对 <span class="path">docs/专题/界面设计规范.md</span><time>0.2s</time></div>
+                <div class="act"><span class="mk">✓</span>扫描样式表 <span class="path">web/styles/*.css · 11 份</span><time>0.6s</time></div>
+              </div>
+            </div>
+
+            <div class="msg">
+              <div class="who"><b>ApiX</b><span class="role">主 Agent</span><time>14:05</time></div>
+              <p>三份样张已经生成，覆盖同一套页面结构，只替换视觉语言，方便你按气质而不是按功能取舍：</p>
+              <div class="acts">
+                <div class="act"><span class="mk">01</span>纸墨 <span class="path">温暖纸面 · 宋体标题 · 朱红印章 · 无阴影</span></div>
+                <div class="act"><span class="mk">02</span>操作台 <span class="path">深色终端 · 等宽字体 · 状态灯 · 高密度</span></div>
+                <div class="act"><span class="mk">03</span>画布 <span class="path">冷白卡片 · 浮层输入 · 柔和投影 · 圆角</span></div>
+              </div>
+              <div class="note">每份都包含“对话工作区”和“管理总览”两个页面；右下角可切换视图。样张中的任务、员工与用量为示意数据。</div>
+            </div>
+
+            <div class="msg">
+              <div class="who"><b>ApiX</b><span class="role">主 Agent</span><time>14:06</time></div>
+              <div class="approval">
+                <span class="stamp">待批</span>
+                <h4>样张评审通过后，开始改真实前端</h4>
+                <p>选定一种风格（或组合）后，我会按现有页面逐项替换 <code>design-system.css</code> 令牌与布局，并同步跑 <code>npm run test:ui:all</code>。</p>
+                <div class="row"><button class="btn">选择一种风格</button><button class="btn line">先看细节再定</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer">
+          <div class="compose">
+            <textarea rows="2" placeholder="继续说明你的偏好，例如：保留纸墨的排版，但侧栏更紧凑…"></textarea>
+            <div class="compose-bar">
+              <span class="chip">ApiX 主模型</span>
+              <span class="chip">逐项审批</span>
+              <span class="hint">Enter 发送 · Shift + Enter 换行</span>
+              <button class="send" aria-label="发送"><svg class="icon"><use href="#i-send"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="rail" aria-label="运行详情">
+        <div class="rail-sec">
+          <h3 class="rail-label">当前运行</h3>
+          <div class="run">
+            <div class="run-top"><b>Codex · 前端样张</b><span class="badge">等待评审</span></div>
+            <ul class="steps">
+              <li class="done">读取仓库结构<small>42 个前端文件</small></li>
+              <li class="done">提炼信息架构<small>9 个页面 · 31 个组件</small></li>
+              <li class="done">生成三份样张<small>4 个文件 · 4m 12s</small></li>
+              <li class="now">等待你确认风格<small>未改动 web/ 源码</small></li>
+            </ul>
+          </div>
+        </div>
+        <div class="rail-sec">
+          <h3 class="rail-label">用量</h3>
+          <div class="kv"><span class="k">输入</span><span class="dots"></span><span class="v">18,240</span></div>
+          <div class="kv"><span class="k">输出</span><span class="dots"></span><span class="v">4,780</span></div>
+          <div class="kv"><span class="k">缓存命中</span><span class="dots"></span><span class="v">61%</span></div>
+          <div class="kv"><span class="k">费用</span><span class="dots"></span><span class="v">¥ 0.42</span></div>
+        </div>
+        <div class="rail-sec">
+          <h3 class="rail-label">本轮交付</h3>
+          <ul class="files">
+            <li>01-paper-ink.html <span>· 样张</span></li>
+            <li>02-operator.html <span>· 样张</span></li>
+            <li>03-studio.html <span>· 样张</span></li>
+            <li>index.html <span>· 对比页</span></li>
+          </ul>
+        </div>
+        <div class="rail-sec">
+          <h3 class="rail-label">待处理</h3>
+          <div class="pending"><b>1 项等待你确认</b>风格选定前不会修改前端源码。</div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- 总览 -->
+    <section class="view" id="view-overview">
+      <div class="page">
+        <div class="page-head">
+          <div><h1>管理总览</h1><p>2026-11-14 · 周五 · 本地服务运行正常</p></div>
+          <div class="actions"><button class="btn line">导出周报</button><button class="btn">新建任务</button></div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><div class="lb">进行中任务</div><div class="num">3</div><div class="sub">2 个等待审批</div></div>
+          <div class="metric"><div class="lb">今日运行</div><div class="num">12</div><div class="sub"><em>9 完成</em> · 3 进行中</div></div>
+          <div class="metric"><div class="lb">本周 Token</div><div class="num">1.24<small>M</small></div><div class="sub">缓存命中 58%</div></div>
+          <div class="metric"><div class="lb">累计费用</div><div class="num">¥ 18.6</div><div class="sub">预算剩余 82%</div></div>
+        </div>
+        <div class="cols">
+          <div>
+            <div class="block">
+              <div class="block-head"><h2>项目空间</h2><button class="more">管理项目</button></div>
+              <table>
+                <thead><tr><th>项目</th><th>状态</th><th>最近活动</th><th style="text-align:right">运行</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="nm">ApiX Control Center</span><span class="path">E:\Projects\wyy\ApiX-Control-Center</span></td><td><span class="st run">进行中</span></td><td class="num">14:06</td><td class="num" style="text-align:right">3</td></tr>
+                  <tr><td><span class="nm">Blog Engine</span><span class="path">E:\Projects\blog-engine</span></td><td><span class="st wait">待审批</span></td><td class="num">11:32</td><td class="num" style="text-align:right">1</td></tr>
+                  <tr><td><span class="nm">数据看板</span><span class="path">E:\Projects\dashboard</span></td><td><span class="st off">空闲</span></td><td class="num">昨天</td><td class="num" style="text-align:right">0</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="block" style="margin-top:22px">
+              <div class="block-head"><h2>近期任务</h2><button class="more">全部记录</button></div>
+              <ul class="rows">
+                <li><span class="sq">01</span><span><b>产出三份前端风格样张</b><small>Codex · 14:02 开始</small></span><span class="right">等待评审</span></li>
+                <li><span class="sq">02</span><span><b>修复归档切换时的草稿保留</b><small>Claude Code · 11:40</small></span><span class="right">已验收</span></li>
+                <li><span class="sq">03</span><span><b>个人助手本地记忆持久化</b><small>Codex · 10:15</small></span><span class="right">已验收</span></li>
+                <li><span class="sq">04</span><span><b>桌面通知去重与精确跳转</b><small>Claude Code · 昨天</small></span><span class="right">已验收</span></li>
+              </ul>
+            </div>
+          </div>
+          <div>
+            <div class="block">
+              <div class="block-head"><h2>员工状态</h2><button class="more">管理</button></div>
+              <ul class="rows">
+                <li><span class="sq">CX</span><span><b>Codex</b><small>GPT-5.2 · 本机</small></span><span class="right">运行中</span></li>
+                <li><span class="sq">CC</span><span><b>Claude Code</b><small>Sonnet 5.5 · 本机</small></span><span class="right">空闲</span></li>
+                <li><span class="sq">AX</span><span><b>ApiX 主 Agent</b><small>Claude Sonnet 5.5</small></span><span class="right">在线</span></li>
+              </ul>
+            </div>
+            <div class="block" style="margin-top:22px">
+              <div class="block-head"><h2>用量分布</h2><span class="more">本周</span></div>
+              <div style="font-size:12px;color:var(--ink-2)">
+                <div style="margin-bottom:12px">Codex · 612k<div class="bar"><i style="width:72%"></i></div></div>
+                <div style="margin-bottom:12px">Claude Code · 388k<div class="bar"><i style="width:46%"></i></div></div>
+                <div>ApiX 主 Agent · 240k<div class="bar"><i style="width:28%"></i></div></div>
+              </div>
+              <p class="quote">“先看清代价，再决定让谁动手。”<br><span style="font:10.5px var(--mono);color:var(--muted)">— 本周预算提醒 · 剩余 ¥ 41.2</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  const chat = document.getElementById('view-chat');
+  const overview = document.getElementById('view-overview');
+  const crumb = document.getElementById('crumb-view');
+  function show(view){
+    chat.classList.toggle('on', view === 'chat');
+    overview.classList.toggle('on', view === 'overview');
+    crumb.textContent = view === 'chat' ? '对话' : '管理总览';
+    document.querySelectorAll('[data-view-btn]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.viewBtn === view)));
+  }
+  document.querySelectorAll('[data-view-btn]').forEach(b => b.addEventListener('click', () => show(b.dataset.viewBtn)));
+  document.querySelectorAll('[data-view-link]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); show(a.dataset.viewLink); }));
+</script>
+</body>
+</html>

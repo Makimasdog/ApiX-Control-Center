@@ -72,7 +72,7 @@
 .coord-layout input:focus,
 .coord-layout select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .coord-layout textarea {
@@ -106,9 +106,9 @@
 }
 
 .coord-session.selected {
-  background: rgba(56, 189, 248, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .coord-session strong {
@@ -160,7 +160,7 @@
 .coord-pill {
   display: inline-block;
   white-space: nowrap;
-  background: rgba(56, 189, 248, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   padding: 6px 9px;
   border-radius: 8px;
@@ -367,7 +367,7 @@
 .coord-stream {
   white-space: pre-wrap;
   border-left: 3px solid var(--accent);
-  background: rgba(56, 189, 248, 0.05);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
   border-radius: 8px;
   padding: 12px 14px;
   margin: 12px 0;
@@ -547,7 +547,7 @@
 }
 
 #coord-conversation .coord-stream {
-  background: rgba(56, 189, 248, 0.05);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
   border: 0;
   border-left: 3px solid var(--accent);
   border-radius: 6px;
@@ -633,7 +633,7 @@
   position: absolute;
   bottom: 80px;
   right: 20px;
-  background: rgba(56, 189, 248, 0.9);
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
   color: var(--text-secondary);
   border: 0;
   border-radius: 50%;

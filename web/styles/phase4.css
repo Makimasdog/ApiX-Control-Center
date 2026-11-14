@@ -43,7 +43,7 @@
 
 .conversation-pill.selected {
   border-color: var(--accent);
-  background: rgba(56, 189, 248, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .conversation-pill > button:first-child {
@@ -110,7 +110,7 @@
 
 .memory-search input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .memory-search input::placeholder {

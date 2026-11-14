@@ -1,28 +1,29 @@
 /* HIG-inspired desktop foundations. Keep native Windows chrome and system typography. */
 :root {
   color-scheme: light;
-  --app-bg: #f4f6fa;
-  --sidebar-bg: #edf0f5;
+  --app-bg: #f4f6fb;
+  --sidebar-bg: #ffffff;
   --surface: #ffffff;
-  --surface-hover: #f0f3f8;
-  --surface-inset: #f7f8fb;
-  --text-primary: #1d2433;
-  --text-secondary: #515b6d;
-  --text-muted: #626c7e;
-  --border: #dce1e9;
+  --surface-hover: #f0f3fa;
+  --surface-inset: #f2f4fa;
+  --text-primary: #151a2c;
+  --text-secondary: #5b647c;
+  --text-muted: #656e80;
+  --border: #e6e9f2;
   --border-control: #8b95a6;
-  --accent: #3b5fc7;
-  --accent-hover: #2f4fa9;
-  --accent-subtle: #eaf0ff;
+  --accent: #3d4fd8;
+  --accent-hover: #2f3fb4;
+  --accent-subtle: #edf0ff;
+  --accent-alt: #0d9488;
   --on-accent: #ffffff;
-  --success: #197142;
-  --success-subtle: #e9f5ee;
-  --warning: #8c5100;
-  --warning-subtle: #fff3df;
-  --danger: #bd3039;
-  --danger-subtle: #fcecee;
-  --shadow: 0 1px 2px #18233608, 0 10px 28px #1823360a;
-  --shadow-overlay: 0 20px 70px #10182730;
+  --success: #16794f;
+  --success-subtle: #e7f6ee;
+  --warning: #8a5a0a;
+  --warning-subtle: #fdf5e4;
+  --danger: #b3402c;
+  --danger-subtle: #fdeee9;
+  --shadow: 0 1px 2px #18213a08, 0 8px 22px #18213a0b;
+  --shadow-overlay: 0 20px 70px #10182738;
   --ui-surface: var(--surface);
   --ui-line: var(--border);
   --ui-text: var(--text-primary);
@@ -37,27 +38,28 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --app-bg: #151920;
-    --sidebar-bg: #1b2029;
-    --surface: #222832;
-    --surface-hover: #2c3441;
-    --surface-inset: #1b212b;
-    --text-primary: #f4f6fa;
-    --text-secondary: #bdc6d4;
-    --text-muted: #aab5c5;
-    --border: #394351;
-    --border-control: #748298;
-    --accent: #a8b8ff;
-    --accent-hover: #c2ccff;
-    --accent-subtle: #2b3758;
-    --on-accent: #102942;
-    --success: #8bd9ab;
-    --success-subtle: #213c2f;
-    --warning: #f0c479;
-    --warning-subtle: #413424;
-    --danger: #ffabb1;
-    --danger-subtle: #462b32;
-    --shadow: 0 2px 8px #0002, 0 12px 36px #0002;
+    --app-bg: #12141c;
+    --sidebar-bg: #171a24;
+    --surface: #1c202b;
+    --surface-hover: #252b39;
+    --surface-inset: #232835;
+    --text-primary: #eef0f6;
+    --text-secondary: #b6bdcf;
+    --text-muted: #9aa2b5;
+    --border: #2c3342;
+    --border-control: #5b6478;
+    --accent: #9aa6ff;
+    --accent-hover: #b3bcff;
+    --accent-subtle: #262d4d;
+    --accent-alt: #5bd6c6;
+    --on-accent: #11152b;
+    --success: #7fdcae;
+    --success-subtle: #17352a;
+    --warning: #eec27c;
+    --warning-subtle: #3b3020;
+    --danger: #ff9d8c;
+    --danger-subtle: #3e2421;
+    --shadow: 0 2px 8px #0002, 0 12px 36px #0003;
     --shadow-overlay: 0 16px 64px #0008;
   }
 }
@@ -402,4 +404,118 @@ dialog[open], .assistant-dialog[open] { animation: apix-dialog-in 160ms ease-out
 @media (max-width: 760px) {
   .surface-card, .resource-card, .project-card, .model-card { padding: 18px; }
   .assistant-message:not(.from-user) { padding: 12px 14px; }
+}
+
+/* ---------- 画布：2026-11-14 风格基线 ---------- */
+.main-shell {
+  background:
+    radial-gradient(620px 260px at 88% -12%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(520px 220px at 6% -14%, color-mix(in srgb, var(--success) 4%, transparent), transparent 70%),
+    var(--app-bg);
+}
+.sidebar { background: var(--sidebar-bg); box-shadow: none; }
+.brand-mark {
+  border-radius: 10px;
+  background: linear-gradient(150deg, #4a5ae8, #3345cf);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent), inset 0 1px 0 #ffffff40;
+}
+.brand-copy strong { letter-spacing: -.3px; }
+.sidebar .nav-item { border-radius: 9px; }
+.sidebar .nav-item.active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+  box-shadow: none;
+  font-weight: 600;
+}
+.sidebar .nav-item.active .icon { color: var(--accent); }
+.sidebar-project.selected, .assistant-thread.selected {
+  background: var(--surface-inset);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.topbar {
+  background: color-mix(in srgb, var(--app-bg) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+.surface-card, .mission-card, .resource-card, .model-card, .project-card,
+.overview-card, .overview-metric, .overview-section, .coord-panel {
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+.resource-card, .project-card, .model-card { transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
+.resource-card:hover, .project-card:hover, .model-card:hover { transform: translateY(-2px); box-shadow: 0 14px 34px #18213a12; }
+.primary-button, .assistant-composer .send-button {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.primary-button { border-radius: 10px; }
+.outline-button { border-radius: 10px; }
+.icon-button { border-radius: 9px; }
+input:not([type="checkbox"]):not([type="radio"]), select, textarea { border-radius: 10px; background: var(--surface); }
+.top-model-button { border-radius: 10px; }
+dialog, .assistant-dialog { border-radius: 18px; }
+
+#page-assistant .assistant-workspace { background: var(--app-bg); color: var(--text-primary); }
+.assistant-header {
+  background: color-mix(in srgb, var(--app-bg) 82%, transparent);
+  backdrop-filter: blur(16px);
+}
+.assistant-welcome > span {
+  border-radius: 13px;
+  background: linear-gradient(150deg, #4a5ae8, #3345cf);
+  color: #fff;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.assistant-welcome h1 { font-weight: 700; letter-spacing: -.8px; }
+.assistant-message:not(.from-user) {
+  padding: 13px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px 16px 16px 16px;
+  box-shadow: var(--shadow);
+}
+.assistant-message.from-user {
+  background: var(--accent-subtle);
+  border-radius: 16px 4px 16px 16px;
+  padding: 12px 16px;
+  box-shadow: none;
+}
+.assistant-team { border-bottom-color: var(--border); }
+#assistant-workers .agent-worker-row { border-radius: 12px; box-shadow: var(--shadow); }
+#assistant-workers .agent-worker-row[aria-pressed="true"] { background: var(--accent-subtle); border-color: var(--accent); }
+.assistant-inspector { background: var(--surface); }
+.assistant-composer {
+  border-radius: 18px;
+  border-color: var(--border-control);
+  box-shadow: var(--shadow);
+}
+.assistant-composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-subtle), var(--shadow);
+}
+.assistant-composer .send-button {
+  border-radius: 11px;
+  color: var(--on-accent);
+}
+#assistant-thread-list .assistant-thread.selected { color: var(--text-primary); }
+
+.overview-metrics .surface-card { padding: 16px 18px; border-radius: 16px; }
+.overview-metrics strong { font-weight: 700; letter-spacing: -.8px; }
+.overview-grid .surface-card, .overview-board-section { border-radius: 16px; }
+.overview-action:hover, .overview-person:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+.overview-action-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+.overview-person-mark { background: var(--accent-subtle); color: var(--accent); border-radius: 9px; }
+.overview-department-list span { background: var(--surface-inset); }
+.overview-lane { background: var(--surface-inset); border-radius: 12px; }
+.overview-task { background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); }
+
+@media (prefers-color-scheme: dark) {
+  .brand-mark, .assistant-welcome > span { background: linear-gradient(150deg, #6f7ce8, #4d5bd0); }
+  .resource-card:hover, .project-card:hover, .model-card:hover { box-shadow: 0 14px 34px #0006; }
+}
+.page-intro h1, .overview-header h1 { font-weight: 700; letter-spacing: -.7px; }
+@media (max-width: 760px) {
+  .assistant-composer > div { flex-wrap: wrap; }
+  .assistant-composer .assistant-mode { order: 1; }
+  #assistant-stop, #assistant-resume { order: 2; }
+  .assistant-composer .send-button { order: 3; margin-left: auto; }
+  #assistant-mode-hint { order: 4; flex: 1 1 100%; margin: 0; }
 }

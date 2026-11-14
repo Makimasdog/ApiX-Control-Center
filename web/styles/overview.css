@@ -57,7 +57,7 @@
 .overview-filters input:focus,
 .overview-filters select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .overview-header-actions select {
@@ -155,7 +155,7 @@
 
 .overview-action:hover,
 .overview-person:hover {
-  background: rgba(56, 189, 248, 0.05);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
 .overview-action > span:nth-child(2),
@@ -184,7 +184,7 @@
   border-radius: 50%;
   background: var(--accent-subtle);
   flex: none;
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .overview-placeholder {
@@ -201,7 +201,7 @@
   width: 34px;
   height: 34px;
   border-radius: 11px;
-  background: rgba(56, 189, 248, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   font-size: 13px;
   font-weight: 700;
@@ -302,7 +302,7 @@
 
 .overview-lane-head span {
   font-size: 11px;
-  background: rgba(100, 116, 139, 0.2);
+  background: var(--surface);
   color: var(--text-secondary);
   border-radius: 8px;
   padding: 3px 7px;
@@ -314,7 +314,7 @@
 }
 
 .overview-lane.lane-review .overview-lane-head {
-  border-top: 3px solid #A855F7;
+  border-top: 3px solid var(--accent-alt);
 }
 
 .overview-lane.lane-attention .overview-lane-head {
@@ -349,7 +349,7 @@
 
 .overview-task:hover {
   border-color: var(--accent);
-  box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 20%, transparent);
   transform: translateY(-1px);
 }
 

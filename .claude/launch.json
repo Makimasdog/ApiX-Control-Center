@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "design-mockups",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "4180", "--bind", "127.0.0.1", "--directory", "协作/设计样张/2026-11-14"],
+      "port": 4180
+    },
+    {
+      "name": "apix-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 4173
+    },
+    {
+      "name": "apix-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".tmp/ui-preview/start.mjs"],
+      "port": 4175
+    }
+  ]
+}

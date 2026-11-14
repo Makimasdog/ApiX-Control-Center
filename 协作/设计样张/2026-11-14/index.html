@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ApiX 前端改版 · 三份风格样张</title>
+<style>
+  :root{
+    --bg:#12141a; --panel:#191c24; --panel-2:#1e222c; --line:#2a2f3b;
+    --text:#eef0f6; --text-2:#b3bacb; --dim:#7f8799;
+    --sans:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    --mono:"Cascadia Code",Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.7 var(--sans);
+    background-image:radial-gradient(900px 400px at 50% -10%,#2b3350 0,transparent 70%)}
+  a{color:inherit}
+  .wrap{max-width:1320px;margin:0 auto;padding:44px 28px 64px}
+  header{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-bottom:8px}
+  .tag{font:10.5px var(--mono);letter-spacing:.18em;color:#8fa0ff}
+  h1{margin:8px 0 6px;font-size:34px;line-height:1.2;letter-spacing:-.8px;font-weight:650}
+  header p{margin:0;color:var(--text-2);font-size:13.5px;max-width:70ch}
+  .meta{margin-left:auto;font:11px var(--mono);color:var(--dim);text-align:right;line-height:2}
+  .note{margin:22px 0 26px;padding:13px 16px;border:1px solid var(--line);border-left:2px solid #8fa0ff;background:#171a22;color:var(--text-2);font-size:12.5px;border-radius:4px}
+  .note b{color:var(--text)}
+
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;transition:border-color .18s,transform .18s}
+  .card:hover{border-color:#3d4456;transform:translateY(-2px)}
+  .shot{display:block;position:relative;height:236px;overflow:hidden;border-bottom:1px solid var(--line);background:#222}
+  .shot iframe{position:absolute;top:0;left:0;width:1440px;height:900px;border:0;transform:scale(.26);transform-origin:0 0;pointer-events:none;background:#fff}
+  .shot .open{position:absolute;right:8px;bottom:8px;pointer-events:none;font:10.5px var(--mono);color:#fff;
+    background:#12141ac9;padding:3px 8px;border-radius:3px;border:1px solid #ffffff24}
+  .card-body{padding:16px 17px 18px;display:flex;flex-direction:column;flex:1}
+  .card-head{display:flex;align-items:baseline;gap:9px}
+  .no{font:10px var(--mono);color:var(--dim)}
+  .card h2{margin:0;font-size:19px;font-weight:650;letter-spacing:-.2px}
+  .vibe{margin-left:auto;font:10px var(--mono);color:var(--dim);letter-spacing:.08em}
+  .desc{margin:7px 0 12px;color:var(--text-2);font-size:12.5px;min-height:58px}
+  .swatches{display:flex;gap:5px;margin-bottom:12px}
+  .sw{width:22px;height:22px;border-radius:4px;border:1px solid #ffffff1a}
+  .facts{list-style:none;margin:0 0 16px;padding:0;font-size:12px;color:var(--text-2)}
+  .facts li{display:flex;gap:8px;padding:4px 0;border-top:1px dashed #262b36}
+  .facts li:first-child{border-top:0}
+  .facts .k{color:var(--dim);width:52px;flex:none}
+  .facts .good{color:#8fdbb0}
+  .facts .cons{color:#e6b98a}
+  .card .go{margin-top:auto;display:flex;gap:8px}
+  .btn{flex:1;text-align:center;text-decoration:none;padding:9px 12px;border:1px solid #3a4152;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--text);background:#20242e}
+  .btn:hover{background:#262b37}
+  .btn.primary{background:#eef0f6;color:#12141a;border-color:#eef0f6}
+  .btn.primary:hover{background:#fff}
+
+  h3.sec{margin:40px 0 6px;font-size:15px;font-weight:650;letter-spacing:.02em}
+  .sec-note{color:var(--dim);font-size:12px;margin:0 0 14px}
+  .matrix{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .matrix th,.matrix td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  .matrix th{font:10.5px var(--mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase;background:#15181f;font-weight:400}
+  .matrix tr:last-child td{border-bottom:0}
+  .matrix td:first-child{color:var(--text-2);width:150px;font-family:var(--mono);font-size:11.5px}
+  .matrix td b{color:var(--text);font-weight:600}
+  .matrix td{color:var(--text-2)}
+  footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);color:var(--dim);font-size:11.5px;display:flex;gap:16px;flex-wrap:wrap}
+  footer code{font:10.5px var(--mono);color:var(--text-2)}
+  @media (max-width:1000px){.cards{grid-template-columns:1fr}.shot{height:436px}.shot iframe{transform:scale(.48)}.meta{margin-left:0;text-align:left}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="tag">APIX FRONTEND · STYLE REVIEW</div>
+      <h1>前端改版：三份风格样张</h1>
+      <p>同一套页面结构、同一批内容，只替换视觉语言。每份都包含「与 ApiX 对话」和「管理总览」，右下角可切换；点开任意一份可全屏查看。</p>
+    </div>
+    <div class="meta">2026-11-14<br>静态样张 · 未改源码<br>数据为示意</div>
+  </header>
+
+  <div class="note">
+    <b>怎么用：</b>先挑整体气质，再挑细节。三份都存在取舍——01 安静耐读但密度低，02 信息密度最高但对非技术场景偏冷，03 亲和易上手但组件圆角与投影更重。也可以组合：例如 01 的排版 + 02 的侧栏密度。
+  </div>
+
+  <div class="cards">
+    <article class="card">
+      <a class="shot" href="01-paper-ink.html" aria-label="打开纸墨样张"><iframe src="01-paper-ink.html" loading="lazy" title="纸墨预览"></iframe><span class="open">打开完整样张 ↗</span></a>
+      <div class="card-body">
+        <div class="card-head"><span class="no">01</span><h2>纸墨</h2><span class="vibe">CALM / EDITORIAL</span></div>
+        <p class="desc">暖纸面、宋体标题、朱红印章与发丝线。像一份排得很好的工作记录：无阴影、低饱和，长时间阅读不累。</p>
+        <div class="swatches">
+          <span class="sw" style="background:#f3efe4"></span><span class="sw" style="background:#fbf8f0"></span>
+          <span class="sw" style="background:#1a1813"></span><span class="sw" style="background:#a33a2a"></span>
+          <span class="sw" style="background:#3d6b49"></span>
+        </div>
+        <ul class="facts">
+          <li><span class="k">适合</span><span class="good">重阅读、重记录；安静的个人工作台</span></li>
+          <li><span class="k">代价</span><span class="cons">信息密度偏低；状态对比弱于另两份</span></li>
+        </ul>
+        <div class="go"><a class="btn primary" href="01-paper-ink.html">查看样张</a></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <a class="shot" href="02-operator.html" aria-label="打开操作台样张"><iframe src="02-operator.html" loading="lazy" title="操作台预览"></iframe><span class="open">打开完整样张 ↗</span></a>
+      <div class="card-body">
+        <div class="card-head"><span class="no">02</span><h2>操作台</h2><span class="vibe">DENSE / CONTROL</span></div>
+        <p class="desc">深色终端语言：等宽字体、状态灯、ASCII 进度条与底部状态栏。最像“控制中心”，运行状态一眼可见。</p>
+        <div class="swatches">
+          <span class="sw" style="background:#090b0a"></span><span class="sw" style="background:#0d110f"></span>
+          <span class="sw" style="background:#d6e2d8"></span><span class="sw" style="background:#6fe39c"></span>
+          <span class="sw" style="background:#e3b263"></span>
+        </div>
+        <ul class="facts">
+          <li><span class="k">适合</span><span class="good">多 Agent 并行、盯状态与用量</span></li>
+          <li><span class="k">代价</span><span class="cons">长时间阅读偏累；对非技术用户偏冷</span></li>
+        </ul>
+        <div class="go"><a class="btn primary" href="02-operator.html">查看样张</a></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <a class="shot" href="03-studio.html" aria-label="打开画布样张"><iframe src="03-studio.html" loading="lazy" title="画布预览"></iframe><span class="open">打开完整样张 ↗</span></a>
+      <div class="card-body">
+        <div class="card-head"><span class="no">03</span><h2>画布</h2><span class="vibe">SOFT / PRODUCT</span></div>
+        <p class="desc">冷白卡片、圆角浮层输入与柔和投影，用颜色区分 Agent 与状态。最接近成熟产品的工作台观感，上手门槛最低。</p>
+        <div class="swatches">
+          <span class="sw" style="background:#f4f6fb"></span><span class="sw" style="background:#ffffff"></span>
+          <span class="sw" style="background:#151a2c"></span><span class="sw" style="background:#3d4fd8"></span>
+          <span class="sw" style="background:#0e9f8e"></span>
+        </div>
+        <ul class="facts">
+          <li><span class="k">适合</span><span class="good">日常对话为主；展示与首次使用</span></li>
+          <li><span class="k">代价</span><span class="cons">投影/圆角多；深色适配成本最高</span></li>
+        </ul>
+        <div class="go"><a class="btn primary" href="03-studio.html">查看样张</a></div>
+      </div>
+    </article>
+  </div>
+
+  <h3 class="sec">对比矩阵</h3>
+  <p class="sec-note">决定前可以按这几项权衡；三份样张都保留了现有导航结构与审批流程，不改变任何功能契约。</p>
+  <table class="matrix">
+    <thead><tr><th>维度</th><th>01 纸墨</th><th>02 操作台</th><th>03 画布</th></tr></thead>
+    <tbody>
+      <tr><td>整体气质</td><td><b>安静、编辑感</b></td><td><b>硬核、控制台</b></td><td><b>轻快、产品感</b></td></tr>
+      <tr><td>信息密度</td><td>低</td><td>高</td><td>中</td></tr>
+      <tr><td>长时间阅读</td><td>最舒适</td><td>一般</td><td>舒适</td></tr>
+      <tr><td>状态可读性</td><td>中（文字为主）</td><td>最强（灯 + 数字）</td><td>强（彩色胶囊）</td></tr>
+      <tr><td>深色模式</td><td>可选（纸墨夜间版）</td><td>原生</td><td>需另做一套令牌</td></tr>
+      <tr><td>改造量</td><td>中（需换字体与规则）</td><td>中高（多处组件重排）</td><td>低（沿用现有令牌）</td></tr>
+      <tr><td>风险</td><td>宋体在 Windows 上的渲染差异</td><td>对比度与可读性要逐项校验</td><td>容易接近常见 SaaS 观感</td></tr>
+    </tbody>
+  </table>
+
+  <footer>
+    <span>文件：<code>协作/设计样张/2026-11-14/</code></span>
+    <span>静态 HTML · 无构建 · 离线可用</span>
+    <span>样张中的项目、员工与用量均为示意数据</span>
+  </footer>
+</div>
+</body>
+</html>
