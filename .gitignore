@@ -16,3 +16,5 @@ coverage/
 __pycache__/
 provider-runtimes/
 .alma-snapshots
+
+.archify/
