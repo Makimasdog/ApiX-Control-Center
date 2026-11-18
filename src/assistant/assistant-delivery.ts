@@ -125,9 +125,16 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
    const source=known&&chain===(b?.sha256??null)?'agent_file_operations':'unattributed_or_external',detail=(a&&!a.content&&a.detail!=='text')||(b&&!b.content&&b.detail!=='text')?{diff:'仅有元数据：二进制或超出文本预算',diffComplete:false}:reviewDiff(a?.content??'',b?.content??'');
    if(detail.diff.length>remaining){detail.diff=detail.diff.slice(0,remaining);detail.diffComplete=false;}remaining-=detail.diff.length;return [{path,kind:!a?'added':!b?'deleted':'modified',beforeSha256:a?.sha256??null,afterSha256:b?.sha256??null,beforeBytes:a?.size??null,afterBytes:b?.size??null,source,...detail}];});
  }
- async function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {changes:[],baseline:null,final:null};const root=deps.root(s.project_id),initial=snapshot(b.ref),final=(await projectIo('reviewSnapshot',[root,deps.artifacts?.(s)]));if(deps.root(s.project_id)!==root)throw new Error('扫描期间项目路径已变化');return {changes:net(s,task,initial,final),baseline:b,final};}
+ /**
+  * observe - 对比任务基线与当前工作区
+  *
+  * observed=false 表示**根本没有观察**（没有任务、没有项目根、没有基线），
+  * 与「观察了，但没有变化」是两件事。此前两者都返回 changes:[]，
+  * 调用方无法区分，于是"无法核对"会被当成"确认没有改动"静默放过。
+  */
+ async function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {observed:false,changes:[] as never[],baseline:null,final:null};const root=deps.root(s.project_id),initial=snapshot(b.ref),final=(await projectIo('reviewSnapshot',[root,deps.artifacts?.(s)]));if(deps.root(s.project_id)!==root)throw new Error('扫描期间项目路径已变化');return {observed:true,changes:net(s,task,initial,final),baseline:b,final};}
  async function freeze(s:Session,modelSummary:string){
-  const sourceRoot=deps.root?.(s.project_id),task=current(s.id);if(!task)return null;let observed:Awaited<ReturnType<typeof observe>>;try{observed=(await observe(s));}catch(e){if(s.needs_verification)throw e;observed={changes:[],baseline:null,final:null};}
+  const sourceRoot=deps.root?.(s.project_id),task=current(s.id);if(!task)return null;let observed:Awaited<ReturnType<typeof observe>>;try{observed=(await observe(s));}catch(e){if(s.needs_verification)throw e;observed={observed:false,changes:[],baseline:null,final:null};}
   if(s.needs_verification&&(!observed.baseline||!observed.final))throw new Error('没有可核对的任务基线，不能创建代码交付；请明确开始新任务');
   const previous=entries(s,'delivery_record').filter(e=>e.taskId===task.id).at(-1),verification=(await deps.verification(s));
   assertCurrent(s);if(current(s.id)?.id!==task.id||deps.root?.(s.project_id)!==sourceRoot)throw new Error('扫描期间任务或路径已变化');

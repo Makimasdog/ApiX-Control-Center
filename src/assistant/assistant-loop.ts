@@ -574,7 +574,17 @@ export function createAssistantLoop(deps:Dependencies){
             if(decision.outcome==='blocked')event(id,'system','supervision_waiting',{content:'员工仍在执行、排队或自动恢复，ApiX 将继续监督；当前没有把流程标记为失败。'});
             update(id,'waiting_agents');break;
           }
-          if(decision.outcome==='completed'&&!s.needs_verification){const observed=await deliveries.observe(s);if(controllers.get(id)!.signal.aborted)break;if(get(id).version!==s.version)continue;if(observed.changes.length){db.prepare('UPDATE assistant_sessions SET needs_verification=1,verification=NULL WHERE id=?').run(id);s=get(id);}}
+          if(decision.outcome==='completed'&&!s.needs_verification){
+            const observed=await deliveries.observe(s);if(controllers.get(id)!.signal.aborted)break;if(get(id).version!==s.version)continue;
+            if(observed.changes.length){db.prepare('UPDATE assistant_sessions SET needs_verification=1,verification=NULL WHERE id=?').run(id);s=get(id);}
+            // 观察不到 ≠ 没有改动。存在项目根与交付任务、却拿不到基线时（例如基线扫描受限），
+            // 无法断言"什么都没改"，不能把它当成已确认的空改动直接完成。
+            // 此时要求核对：有验收契约就按契约验，没有就停在 needs_review。
+            else if(!observed.observed&&deps.projectRoot&&deliveries.current(id)){
+              event(id,'system','completion_unobserved',{content:'本次无法建立任务基线，无法确认工作区是否有改动；已要求核对，不视为已确认的空改动。',taskId:deliveries.current(id)?.id});
+              db.prepare('UPDATE assistant_sessions SET needs_verification=1,verification=NULL WHERE id=?').run(id);s=get(id);
+            }
+          }
           if(decision.outcome==='completed'&&s.needs_verification){const state=(await verificationState(s));if(controllers.get(id)!.signal.aborted)break;if(get(id).version!==s.version)continue;if(state.verificationStatus!=='verified'){event(id,'tool','completion_rejected',{error:'缺少当前代码和契约的全部可信检查证据',...state});if(state.verificationStatus==='needs_review'||state.verificationStatus==='unknown'){event(id,'assistant','answer',{content:'交付尚未通过可信验证，需要审查。请核对验收契约、代码与真实执行证据；模型的完成声明不构成验收。'});update(id,'attention');break;}continue;}event(id,'system','delivery_verified',state);}
           const autoDeliveryVersion=deps.autoDeliveryVersion?.(s.project_id,contract(s));
           const policyVersion=deps.policy(s.project_id).version;
