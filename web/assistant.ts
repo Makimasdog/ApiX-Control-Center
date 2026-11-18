@@ -10,7 +10,7 @@ type Pending={id:string;kind:string;question:string;tool?:string;toolDescription
 type ChildAttention={childSessionId:string;reason:string;taskId:string|null;fingerprint?:string|null;title?:string;unlinked?:boolean;canResume?:boolean;autoRepair?:boolean;employeeId?:string|null};
 type Session={modelConfigurationBlocked?:boolean;childAttention?:ChildAttention|null;promptStrategy?:'legacy'|'stable-prefix-v1';promptSettingsVersion?:number;generation?:string|null;optimizationMode?:'standard'|'saving';task_id?:string|null;limits?:{maxCalls:number};review?:any;capabilities?:{managedCommands:{available:boolean;reason:string|null}};verificationStatus?:string;acceptanceStatus?:string;id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;child_session_id:string|null;busy:boolean;pending:Pending|null;workerInteractions?:RuntimeInteraction[];previousEventId:number|null;events:{id:number;role:string;kind:string;body:Record<string,unknown>}[];notes:{title:string;content:string;source:string;version:number;kind:string;status:string}[];policy:{mode:string;version:number}};
 const root=document.querySelector<HTMLElement>('#page-assistant')!;
-root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-main"><header class="assistant-header"><div><strong id="assistant-project">ApiX</strong><span id="assistant-status">通用 Agent · 自动循环</span></div><div><button id="assistant-personal-memory" class="text-action" aria-haspopup="dialog">个人记忆</button><button id="assistant-details" class="text-action" aria-expanded="false" aria-controls="assistant-inspector">交付与详情</button><button id="assistant-advanced" class="text-action">协作进度</button><button id="assistant-config" class="text-action">协作设置</button><button id="assistant-new" class="outline-button">新对话</button></div></header><section class="assistant-team" aria-label="协作工作台"><header><div><h2>协作工作台</h2><p>主会话统筹目标，员工过程与成果在此汇合。</p></div><button class="text-action" id="assistant-employees">管理员工</button></header><div id="assistant-workers"><p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p></div></section><div id="assistant-transcript" class="assistant-transcript" aria-live="polite"><div class="assistant-welcome"><span>ApiX</span><h1>今天想完成什么？</h1><p>直接描述目标。我会选择工具、加载 Skill，或协调本机 Agent，检查结果后继续推进。</p></div></div><p id="assistant-error" role="alert"></p><div class="assistant-compose-wrap"><div id="assistant-pending"></div><section id="assistant-worker-interactions" aria-label="员工等待你的决定" hidden></section><form id="assistant-form" class="assistant-composer"><textarea id="assistant-input" rows="3" maxlength="10000" placeholder="向 ApiX 描述任务，也可以在执行中补充要求…" aria-label="给 ApiX 的消息"></textarea><div class="assistant-compose-toolbar">
+root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-main"><header class="assistant-header"><div><strong id="assistant-project">ApiX</strong><span id="assistant-status">通用 Agent · 自动循环</span></div><div><button id="assistant-personal-memory" class="text-action" aria-haspopup="dialog">个人记忆</button><button id="assistant-details" class="text-action" aria-expanded="false" aria-controls="assistant-inspector">交付与详情</button><button id="assistant-advanced" class="text-action">协作进度</button><button id="assistant-config" class="text-action">协作设置</button><button id="assistant-new" class="outline-button">新对话</button></div></header><section class="assistant-team" aria-label="协作工作台"><header><div><h2>协作工作台</h2><p>主会话统筹目标，员工过程与成果在此汇合。</p></div><button class="text-action" id="assistant-employees">管理员工</button></header><div id="assistant-workers"><p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p></div></section><div id="assistant-transcript" class="assistant-transcript" aria-live="polite"><div class="assistant-welcome"><span>ApiX</span><h1>今天想完成什么？</h1><p>直接描述目标。我会选择工具、加载 Skill，或协调本机 Agent，检查结果后继续推进。</p></div></div><div id="assistant-thinking" class="assistant-thinking" hidden aria-live="polite"><span class="thinking-caret" aria-hidden="true"></span><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="thinking-label" data-thinking-label>正在思考</span><span class="thinking-elapsed" data-thinking-elapsed></span></div><p id="assistant-error" role="alert"></p><div class="assistant-compose-wrap"><div id="assistant-pending"></div><section id="assistant-worker-interactions" aria-label="员工等待你的决定" hidden></section><form id="assistant-form" class="assistant-composer"><textarea id="assistant-input" rows="3" maxlength="10000" placeholder="向 ApiX 描述任务，也可以在执行中补充要求…" aria-label="给 ApiX 的消息"></textarea><div class="assistant-compose-toolbar">
   <div class="assistant-compose-mode">
     <label class="assistant-mode"><select id="assistant-execution-mode" aria-label="执行方式" aria-describedby="assistant-mode-hint">
       <option value="full_access">自动执行</option><option value="ask_approval">逐次确认</option><option value="read_only">只读</option>
@@ -67,6 +67,7 @@ function showWorkerInteractions(s:Session){
   }
   box.hidden=!items.length;
 }
+const renderedEventIds=new Set<number>();let renderedSession='';
 function renderTranscript(s:Session){
   const events=[...new Map([...olderEvents,...s.events].map(event=>[event.id,event])).values()].sort((first,second)=>first.id-second.id);
   const cursor=olderCursor===undefined?s.previousEventId:olderCursor;
@@ -74,10 +75,36 @@ function renderTranscript(s:Session){
   const box=$('#assistant-transcript'),selection=window.getSelection();
   if(signature===lastRender||selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
   const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<100;
+  if(renderedSession!==s.id){renderedSession=s.id;renderedEventIds.clear();}
   box.innerHTML=(cursor?'<button class="text-action" id="assistant-load-older">加载更早记录</button>':'')+assistantTimeline(events,collaborationSpeech);
+  // 只给本轮新到达的消息加入场动画；整段 innerHTML 每次刷新都是新节点，因此必须按事件 id 判定。
+  for(const node of box.querySelectorAll<HTMLElement>('[data-event-id]')){
+    const id=Number(node.dataset.eventId);
+    if(!renderedEventIds.has(id))node.classList.add('is-new');
+    renderedEventIds.add(id);
+  }
   lastRender=signature;
   if(nearBottom)box.scrollTop=box.scrollHeight;
 }
+const thinkingPhases:Record<string,string>={running:'正在思考并调用工具',waiting_agents:'等待员工执行与验收',waiting_user:'需要你的决定'};
+let thinkingSince=0;
+function setThinking(busy:boolean,status?:string|null,tool?:string){
+  const box=root.querySelector<HTMLElement>('#assistant-thinking');
+  if(!box)return;
+  if(!busy){box.hidden=true;thinkingSince=0;return;}
+  const label=box.querySelector<HTMLElement>('[data-thinking-label]');
+  if(label)label.textContent=tool?`正在调用 ${tool}`:thinkingPhases[status??'']??'正在处理';
+  const dots=box.querySelector<HTMLElement>('.thinking-dots');
+  if(dots)dots.hidden=status!=='waiting_agents';
+  box.dataset.phase=status??'';
+  if(box.hidden){box.hidden=false;thinkingSince=Date.now();}
+}
+setInterval(()=>{
+  const box=root.querySelector<HTMLElement>('#assistant-thinking');
+  if(!box||box.hidden||!thinkingSince)return;
+  const node=box.querySelector<HTMLElement>('[data-thinking-elapsed]');
+  if(node)node.textContent='· '+Math.max(1,Math.round((Date.now()-thinkingSince)/1000))+'s';
+},1000);
 function render(s:Session){
   if(current?.id!==s.id)collaborationSpeech=[];
   const pendingMessage=messageRequests.get(s.id);
@@ -85,7 +112,12 @@ function render(s:Session){
     messageRequests.delete(s.id);$('#assistant-error').textContent='';
     const input=$<HTMLTextAreaElement>('#assistant-input');if(input.value.trim()===pendingMessage.content)input.value='';
   }
-  updateModel('assistant',s.id,s.busy||['running','waiting_agents','waiting_user'].includes(s.status));
+  const sessionBusy=Boolean(s.busy||['running','waiting_agents','waiting_user'].includes(s.status));
+  updateModel('assistant',s.id,sessionBusy);
+  const lastEvent=s.events.at(-1);
+  const runningTool=lastEvent?.kind==='tool_started'?String(lastEvent.body.tool??''):'';
+  setThinking(sessionBusy,s.status,runningTool);
+  $('#assistant-transcript').dataset.busy=String(sessionBusy);
   if(active&&current?.id!==s.id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:s.id,kind:'assistant'}}));
   if(current?.id!==s.id||current?.promptStrategy!==s.promptStrategy){$('#assistant-prompt-strategy').hidden=s.promptSettingsVersion===undefined;$<HTMLSelectElement>('#assistant-optimization [name=promptStrategy]').value=s.promptStrategy??'legacy';}if(current?.id!==s.id){$('#assistant-usage').textContent='点击刷新任务用量查看当前任务。';$('#assistant-optimization-status').textContent='';$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';}if(current?.optimizationMode!==s.optimizationMode)$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';if(current&&current.id!==s.id){olderEvents=[];olderCursor=undefined;notesSignature='';}
   if(modeProject!==s.project_id){modeProject=s.project_id;}if(!modeDirty)executionMode.value=s.policy.mode;
@@ -235,7 +267,7 @@ root.addEventListener('click',event=>{const target=event.target;if(!(target inst
   if(target.closest('#assistant-load-older')&&current){const id=current.id,version=generation,cursor=olderCursor===undefined?current.previousEventId:olderCursor;const box=$('#assistant-transcript'),height=box.scrollHeight,top=box.scrollTop;void api<{events:Session['events'];previousEventId:number|null}>('/api/assistant/sessions/'+id+'/events?before='+cursor).then(page=>{if(generation!==version||current?.id!==id)return;olderEvents=[...page.events,...olderEvents,...current.events];olderCursor=page.previousEventId;lastRender='';render(current);box.scrollTop=top+box.scrollHeight-height;}).catch(error);}
   const note=target.closest<HTMLElement>('[data-delete-note]');if(note&&current)void api<Session>('/api/assistant/sessions/'+current.id+'/memory',{title:note.dataset.deleteNote,version:Number(note.dataset.version),delete:true}).then(applyCurrent).catch(error);
 });
-function clearSession(){destination=undefined;$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="outline-button" data-choose-conversation-model>模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';lastChildAttention='';clearAttentionDialog();$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
+function clearSession(){destination=undefined;setThinking(false);renderedEventIds.clear();renderedSession='';$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="outline-button" data-choose-conversation-model>模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';lastChildAttention='';clearAttentionDialog();$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
 document.addEventListener('apix:open-assistant',((event:CustomEvent<string|AssistantDestination>)=>{
   const target=typeof event.detail==='string'?{id:event.detail}:event.detail;
   if(!target.interactionId||current?.id!==target.id)selectSession(target.id);
