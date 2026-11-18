@@ -80,6 +80,10 @@ import {createTaskDelivery} from './src/projects/task-delivery.mjs';
 import {createDeliveryInspection} from './src/projects/delivery-inspection.mjs';
 import {createAutonomy} from './dist/src/coordination/autonomy.js';
 import {createAssistantLoop} from './dist/src/assistant/assistant-loop.js';
+import {createPersonalMemory} from './dist/src/assistant-core/personal-memory.js';
+import {createAgentSkills} from './dist/src/assistant-core/skills/registry.js';
+import {createAssistantGateway} from './dist/src/assistant-core/gateway.js';
+import {createChannelRelay} from './dist/src/assistant-core/channels/channel-relay.js';
 import {createAssistantCommands} from './dist/src/assistant/assistant-commands.js';
 import {createAssistantCoding} from './dist/src/assistant/assistant-coding.js';
 import {createAssistantInference,managerInferenceError,InferenceAccountingError} from './dist/src/assistant/assistant-inference.js';
@@ -1626,12 +1630,15 @@ const conversationModels=createConversationModels(store,()=>coordinator.getSetti
 const assistantCommands=createAssistantCommands({...store,root:projectId=>assistantProject(projectId).path,env:()=>workerEnvironment(process.env,'assistant-tool',managerApiKeys()),protectedValues:()=>managerApiKeys().map(key=>process.env[key]).filter(Boolean),policy:projectId=>permissions.get(projectId)});
 const npmValidation=createNpmValidation({...store,directory:join(dataDir,'npm-validation'),root:projectId=>assistantProject(projectId).path,command:(s,args,signal,context)=>assistantCommands.execute(s,'npm_validation',args,signal,context)});
 const assistantCoding=createAssistantCoding(store,projectId=>assistantProject(projectId).path);
+export const agentSkills=createAgentSkills(store,dataDir,id=>assistantProject(id).path,id=>permissions.get(id).mode);
 export const knowledgeBase=createKnowledgeBase(store);
 export const toolGovernance=createToolGovernance(store);
 export const toolProgress=createToolProgress(store);
 // assistant 是 Assistant 循环实例，负责与用户交互、调用工具、管理对话
 // [→ 见 dist/src/assistant/assistant-loop.js]
 const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance:toolGovernance,progress:toolProgress,memory:projectMemory,npmCheck:(s,c,id,signal)=>npmValidation.run(s,c,id,signal),onCreated:id=>conversationModels.initialize('assistant',id),
+  skillTools:projectId=>agentSkills.tools(projectId),
+  callSkill:(s,name,args,version,signal)=>agentSkills.call(s.project_id,name,version,args,signal,(tool,values,abort)=>assistantCoding.execute(s,tool,values,abort)),
   toolDefinitions:projectId=>mcp.catalog(projectId),discoverTools:(projectId,signal)=>mcp.discover(projectId,signal),callExternal:(s,name,args,version,signal)=>mcp.call(s.project_id,name,args,version,signal),contextTokens:id=>{const config=conversationModels.get('assistant',id).settings;return Number(config.contextWindow??getProviderConfig(config.provider)?.models.find(m=>m.id===config.model)?.contextWindow??process.env.APIX_ASSISTANT_CONTEXT_TOKENS??32768);},
   defaultProject:()=>{const path=join(dataDir,'assistant-workspace');mkdirSync(path,{recursive:true});return projectAtDirectory(path)?.id??createProject({name:'通用工作区',path});},
   policy:projectId=>permissions.get(projectId),
@@ -1690,6 +1697,9 @@ const assistant=createAssistantLoop({...store,knowledge:knowledgeBase,governance
   child:id=>{const child=coordinator.sessionDetails(id);const state=child.autonomy?.state;const status=['running','ready'].includes(state)?'running':state==='attention'?'attention':state==='completed'?'completed':child.derivedStatus;return {status,complete:status==='completed'&&child.tasks.length>0&&child.tasks.every(t=>t.status==='accepted'),details:{id:child.id,status,tasks:child.tasks.map(t=>({id:t.id,status:t.status,employee_id:t.employee_id,delivery_commit:t.delivery_commit})),reports:rows("SELECT m.id,m.from_agent,m.task_id,substr(m.payload,1,3000) AS payload FROM agent_messages m JOIN tasks t ON t.id=m.task_id WHERE t.plan_id=? AND m.to_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 10",child.plan_id),autonomy:child.autonomy?{state:child.autonomy.state,reason:child.autonomy.reason,contractDigest:child.autonomy.architecture?.digest,checks:child.autonomy.checks.map(c=>({id:c.id,status:c.status,fingerprint:c.fingerprint})),repairs:child.autonomy.repairs.map(r=>({id:r.id,status:r.status,attempt:r.attempt}))}:null}};},
   stopChild:id=>{const child=coordinator.sessionDetails(id);if(child.busy&&!child.tasks.length||child.derivedStatus==='completed')return;coordinator.stopSession(id,{revision:child.revision});}
 });
+export const personalMemory=createPersonalMemory(store,join(dataDir,'personal-memory'));
+export const assistantGateway=createAssistantGateway(store,id=>assistantProject(id).path);
+export const assistantChannels=createChannelRelay(store,assistant);
 notifyAssistant=id=>assistant.notify(id);
 setInterval(()=>{void assistant.tick().catch(()=>process.stderr.write('Assistant loop 监督失败\n'));},1000).unref();
 // ===== 导出函数与 Agent 工具通道 =====
@@ -1698,6 +1708,7 @@ export const createAssistantSession=assistant.create;
 export const assistantSession=assistant.details;
 export const assistantSessions=assistant.list;
 export const assistantMessage=assistant.message;
+export const assistantMedia=assistant.readMedia;
 export const assistantReply=assistant.reply;
 export const assistantStop=assistant.stop;
 export const assistantResume=assistant.resume;

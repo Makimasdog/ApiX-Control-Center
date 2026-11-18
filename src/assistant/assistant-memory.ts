@@ -28,7 +28,7 @@ function terms(value:string){return new Set((value.toLowerCase().match(/[a-z0-9_
  * 设计意图：标题匹配权重 4 分，正文匹配 1 分，用户/反馈类型额外加 1 分；
  * 超过 24 小时未更新的笔记标记为 stale。
  */
-export function recallNotes(query:string,notes:RecallNote[],budget=6000){
+export function recallNotes<T extends RecallNote>(query:string,notes:T[],budget=6000){
   const input=terms(query);let remaining=budget;
   return notes.filter(n=>n.status==='active').map(n=>{const title=terms(n.title),body=terms(n.content);let score=0;for(const term of input)score+=(title.has(term)?4:0)+(body.has(term)?1:0);if(['user','feedback'].includes(n.kind))score+=1;return {note:n,score};}).filter(n=>n.score>0).sort((a,b)=>b.score-a.score||b.note.updated_at.localeCompare(a.note.updated_at)||a.note.title.localeCompare(b.note.title)).slice(0,5).flatMap(({note:n,score})=>{if(n.content.length>remaining)return [];remaining-=n.content.length;return [{...n,score,stale:Date.now()-Date.parse(n.updated_at)>86400000,authority:'reference_only'}];});
 }

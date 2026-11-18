@@ -1,6 +1,7 @@
 import {fetch} from './local-fetch.mjs';
 import { test } from "node:test";
 import {startModelFixture} from './fake-model-http.mjs';
+import {serviceDiagnostics,stopService,waitServiceReady} from './service-diagnostics.mjs';
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
@@ -55,11 +56,19 @@ async function startServer(port, dataDir) {
   const child = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs"), APIX_CODEX_ENTRY: join(root, "test", "fake-codex.mjs") }, stdio: ["ignore", "ignore", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString()).slice(-4000); serverErrors.set(port, stderr); });
-  try { await waitFor(async () => { try { return (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok; } catch { return false; } }); }
-  catch (error) { throw new Error(`ApiX server did not start (exit ${child.exitCode}): ${stderr || error.message}`); }
-  child.once('exit',()=>void model.close());
-  await post(port,'/api/manager/settings',{baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''});
-  return child;
+  const diagnostics = serviceDiagnostics(child);
+  let closingModel;
+  const closeModel = () => closingModel ??= model.close();
+  child.once('close', () => void closeModel());
+  try {
+    await waitServiceReady(diagnostics, `http://127.0.0.1:${port}/api/snapshot`, { timeoutMs: 30000 });
+    await post(port, '/api/manager/settings', {baseUrl:model.baseUrl,model:'fixture-model',apiType:'openai-completions',apiKeyEnv:''});
+    return child;
+  } catch (error) {
+    try { await stopService(child); }
+    finally { await closeModel(); }
+    throw error;
+  }
 }
 
 test("P0 task lifecycle, both adapters, stop, review, and restart history", async () => {
@@ -115,7 +124,7 @@ test("P0 task lifecycle, both adapters, stop, review, and restart history", asyn
     const interrupted = await post(port, "/api/tasks", { projectId, employeeId: employees.pi, prompt: "hold" });
     const active = await post(port, `/api/approvals/${interrupted.approvalId}`, { approved: true });
     assert.equal((await snapshot(port)).runs.find((item) => item.id === active.runId).status, "running");
-    server.kill(); await new Promise((done) => server.once("exit", done));
+    await stopService(server);
     server = await startServer(port, dataDir);
     const restored = await snapshot(port);
     assert.equal(restored.tasks.length, 7);
@@ -128,7 +137,7 @@ test("P0 task lifecycle, both adapters, stop, review, and restart history", asyn
     const disabledTask = await fetch(`http://127.0.0.1:${port}/api/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ projectId, employeeId: employees.pi, prompt: "unavailable" }) });
     assert.equal(disabledTask.status, 400);
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
@@ -163,7 +172,7 @@ test("schema migration preserves a pending task from version 1", async () => {
     await post(port, `/api/approvals/${approvalId}`, { approved: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === taskId)?.status === "completed");
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
@@ -202,7 +211,7 @@ test("Director creates a matched dependency plan and advances the DAG", async ()
     assert.equal(finished.workspaces.filter((item) => planTasks.some((task) => task.id === item.task_id)).length, 2);
     assert(finished.tasks.filter((item) => item.plan_id === plan.id).every((item) => item.workspace_path));
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
@@ -270,7 +279,7 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
     await waitFor(async () => (await snapshot(port)).meetings.find((item) => item.id === meetingId)?.derived_status === "completed");
     const meetingResult = (await snapshot(port)).sharedArtifacts.filter((item) => meetingItems.some((entry) => entry.task_id === item.task_id));
     assert.equal(meetingResult.length, 2);
-    server.kill(); await new Promise((done) => server.once("exit", done));
+    await stopService(server);
     server = await startServer(port, dataDir);
     assert.equal((await snapshot(port)).integrations.find((item) => item.id === integration.id).status, "applied");
     assert.equal((await snapshot(port)).meetings.find((item) => item.id === meetingId).derived_status, "completed");
@@ -301,7 +310,7 @@ test("Phase 3 parallel work, meeting review, integration approval, conflict, and
     assert.equal(await readFile(join(repo, "b.txt"), "utf8"), "main");
     assert.equal(await readFile(join(repo2, "a.txt"), "utf8"), "secondary");
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     execFileSync("git", ["worktree", "prune"], { cwd: repo });
     execFileSync("git", ["worktree", "prune"], { cwd: repo2 });
     for (const path of [dataDir, repo, repo2]) {
@@ -332,7 +341,7 @@ test("Codex runs in an approved non-Git project and keeps CLI failures visible",
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === failed.taskId)?.status === "failed");
     assert.match((await snapshot(port)).tasks.find((item) => item.id === failed.taskId).result, /fixture failed before a response/);
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     for (const path of [dataDir, projectPath]) {
       const absolute = resolve(path);
       assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
@@ -406,7 +415,7 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.equal((await snapshot(port)).tasks.find((item) => item.id === resumed.taskId).status, "awaiting_approval");
     await post(port, `/api/approvals/${resumed.approvalId}`, { approved: true });
     await waitFor(async () => (await snapshot(port)).tasks.find((item) => item.id === resumed.taskId)?.status === "completed");
-    server.kill(); await new Promise((done) => server.once("exit", done));
+    await stopService(server);
     server = await startServer(port, dataDir);
     const restored = await snapshot(port);
     assert.equal(restored.conversations.filter((item) => item.project_id === projectId).length, 2);
@@ -418,7 +427,7 @@ test("Phase 4 conversations, memory lifecycle, employee removal, and explicit re
     assert.equal(database.prepare("SELECT COUNT(*) AS count FROM memory_fts").get().count, 0);
     database.close();
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
@@ -481,7 +490,7 @@ test("ApiX Director drafts an editable plan, records grounded memory, and keeps 
     assert.equal(cancelled.cancelled, 2);
     assert((await snapshot(port)).tasks.filter((item) => replacementPlan.taskIds.includes(item.id)).every((item) => item.status === "cancelled"));
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });
@@ -505,7 +514,7 @@ test("two Codex roles run concurrently in separate project conversations", async
     await waitFor(async () => (await snapshot(port)).tasks.filter((item) => [first.taskId, second.taskId].includes(item.id)).every((item) => item.status === "running"));
     await waitFor(async () => (await snapshot(port)).tasks.filter((item) => [first.taskId, second.taskId].includes(item.id)).every((item) => item.status === "completed"), 7000);
   } finally {
-    if (server && server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     const absolute = resolve(dataDir);
     assert(absolute.startsWith(resolve(tmpdir()) + (process.platform === "win32" ? "\\" : "/")));
     await rm(absolute, { recursive: true, force: true });

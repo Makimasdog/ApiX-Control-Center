@@ -9,6 +9,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import ts from 'typescript';
 import {staticFilePath} from '../src/infrastructure/static-files.mjs';
+import {serviceDiagnostics,stopService,waitServiceReady} from './service-diagnostics.mjs';
 
 test('static asset mapping keeps public URLs and rejects private paths', () => {
   const root = resolve('.');
@@ -35,17 +36,10 @@ test('production server serves relocated assets and keeps its static access boun
     env:{...process.env,PORT:String(port),APIX_DATA_DIR:directory},
     windowsHide:true,stdio:['ignore','pipe','pipe'],
   });
-  const exited = once(child, 'close');
-  let diagnostics = '';
-  child.stderr.on('data', chunk => { diagnostics = (diagnostics + chunk).slice(-8000); });
+  const diagnostics = serviceDiagnostics(child);
+  const base = `http://127.0.0.1:${port}`;
   try {
-    await new Promise((done, reject) => {
-      const timer = setTimeout(() => reject(Error('Server startup deadline: ' + diagnostics)), 15000);
-      child.once('error', error => { clearTimeout(timer); reject(error); });
-      child.once('exit', code => { clearTimeout(timer); reject(Error(`Server exited ${code}: ${diagnostics}`)); });
-      child.stdout.on('data', chunk => { if (String(chunk).includes('ApiX Web:')) { clearTimeout(timer); done(); } });
-    });
-    const base = `http://127.0.0.1:${port}`;
+    await waitServiceReady(diagnostics, base+'/api/gateway/status', {timeoutMs:30000});
     const page = await fetch(base);
     assert.equal(page.status, 200);
     const html = await page.text();
@@ -83,8 +77,7 @@ test('production server serves relocated assets and keeps its static access boun
     assert.equal((await fetch(`${base}/%ZZ`)).status, 400);
     assert.equal((await fetch(`${base}/dist/src/assistant-result.js`)).status, 200);
   } finally {
-    child.kill();
-    await exited;
-    await rm(directory, {recursive:true,force:true,maxRetries:10,retryDelay:100});
+    try { await stopService(child); }
+    finally { await rm(directory, {recursive:true,force:true,maxRetries:10,retryDelay:100}); }
   }
 });

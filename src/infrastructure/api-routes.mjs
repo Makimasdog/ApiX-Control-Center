@@ -27,6 +27,8 @@
  *   8. 旧接口 — legacy:true 标记，引导迁移到新的协调会话 API
  */
 import {ToolError} from '../../dist/src/assistant/tool-governance.js';
+import {builtinMarket} from '../../dist/src/assistant-core/skills/market.js';
+import {agentSkills,assistantChannels,assistantGateway,personalMemory} from '../../control-plane.mjs';
 import {changeBus} from './change-bus.mjs';
 import {browseFolders} from '../projects/project-folders.mjs';
 // ── 控制面业务函数导入（来自 control-plane.mjs）──
@@ -67,7 +69,7 @@ import { workflowSettings, saveWorkflow, stopCoordinationSession, readiness, ins
 // 自治设置
 import { autonomySettings, saveAutonomySettings, resumeAutonomySession } from '../../control-plane.mjs';
 // 助手会话管理
-import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
+import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantMedia, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
 
 /**
  * requiredProject - 从查询参数中提取必需的 projectId
@@ -115,6 +117,28 @@ const post=(pattern,handler,limit=defaultLimit,extra={})=>({method:'POST',patter
  * server.mjs 负责执行管线：匹配路由 → 解析参数 → 检查限额 → 调用处理器 → 序列化响应
  */
 export const apiRoutes=[
+  get(/^\/api\/gateway\/status$/,()=>assistantGateway.status()),
+  get(/^\/api\/assistant\/channels$/,()=>assistantChannels.status()),
+  post(/^\/api\/projects\/([^/]+)\/gateway\/events$/,({m,body})=>assistantGateway.ingest(m[1],body),configLimit),
+  get(/^\/api\/projects\/([^/]+)\/gateway$/,({m})=>assistantGateway.projectState(m[1])),
+  post(/^\/api\/projects\/([^/]+)\/gateway\/rules$/,({m,body})=>assistantGateway.save(m[1],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/gateway\/rules\/([^/]+)$/,({m,body})=>assistantGateway.save(m[1],body,m[2]),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/gateway\/rules\/([^/]+)\/delete$/,({m,body})=>assistantGateway.remove(m[1],m[2],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/gateway\/runs\/([^/]+)\/read$/,({m})=>assistantGateway.markRead(m[1],m[2]),configLimit),
+  get(/^\/api\/agent-skills\/market$/,({query})=>builtinMarket.search(query.get('q')??'')),
+  get(/^\/api\/agent-skills\/market\/([^/]+)\/([^/]+)$/,({m})=>builtinMarket.get(m[1],m[2])),
+  get(/^\/api\/projects\/([^/]+)\/agent-skills$/,({m})=>agentSkills.list(m[1])),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/install$/,({m,body})=>agentSkills.install(m[1],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/enabled$/,({m,body})=>agentSkills.setEnabled(m[1],m[2],body),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/remove$/,({m})=>agentSkills.remove(m[1],m[2]),configLimit),
+  post(/^\/api\/projects\/([^/]+)\/agent-skills\/([^/]+)\/run$/,({m,body})=>agentSkills.run(m[1],m[2],body),configLimit),
+  get(/^\/api\/personal-memory$/,()=>personalMemory.list()),
+  get(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)$/,({m})=>personalMemory.get(m[1],m[2])),
+  get(/^\/api\/personal-memory\/sessions\/([^/]+)\/recall$/,({m})=>personalMemory.recallForSession(m[1])),
+  post(/^\/api\/personal-memory\/recall$/,({body})=>personalMemory.recall(body),messageLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)$/,({m,body})=>personalMemory.save(m[1],body),configLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)$/,({m,body})=>personalMemory.save(m[1],body,m[2]),configLimit),
+  post(/^\/api\/personal-memory\/(work|long-term)\/([^/]+)\/delete$/,({m,body})=>personalMemory.remove(m[1],m[2],body),configLimit),
   // ===== 总览与事件流 =====
   // raw:true 表示处理器自行写响应头和数据流（SSE/ETag），server.mjs 不再自动序列化
   //
@@ -199,6 +223,15 @@ export const apiRoutes=[
   // 助手会话：创建/发消息/启动任务/交付审查/回复/停止/恢复
   post(/^\/api\/assistant\/sessions$/,({body})=>createAssistantSession(body)),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/messages$/,({m,body})=>assistantMessage(m[1],body),messageLimit),
+  post(/^\/api\/assistant\/sessions\/([^/]+)\/channel-messages$/,({m,body})=>assistantMessage(m[1],body),[6*1024*1024,true]),
+  get(/^\/api\/assistant\/sessions\/([^/]+)\/media\/([^/]+)$/,({m,res})=>{
+    const file=assistantMedia(m[1],m[2]);
+    const name=encodeURIComponent(Buffer.from(file.name).toString('utf8')).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16));
+    res.writeHead(200,{'Content-Type':file.mime,'Content-Length':file.bytes.byteLength,
+      'Content-Disposition':(file.inline?'inline':'attachment')+"; filename*=UTF-8''"+name,
+      'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Cross-Origin-Resource-Policy':'same-origin','Content-Security-Policy':"default-src 'none'"});
+    res.end(file.bytes);
+  },{raw:true}),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/tasks$/,({m,body})=>assistantStartTask(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/delivery-review$/,({m,body})=>assistantReviewDelivery(m[1],body),messageLimit),
   post(/^\/api\/assistant\/sessions\/([^/]+)\/reply$/,async({m,body})=>assistantReply(m[1],body),messageLimit),

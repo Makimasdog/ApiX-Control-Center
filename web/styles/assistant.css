@@ -42,3 +42,37 @@ body .sidebar{overflow-y:auto}body #assistant-thread-list{display:block!importan
 .token-usage-record {border-top:1px solid var(--border);padding-block:10px;}
 #assistant-optimization {display:grid;gap:8px;margin-block:12px;}
 #assistant-optimization label {display:grid;gap:4px;}
+.personal-memory-dialog form[method=dialog]{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}
+.personal-memory-dialog h2,.personal-memory-dialog p{margin:0}
+.personal-memory-dialog form[method=dialog] p{flex-basis:100%;color:var(--text-secondary)}
+.personal-memory-dialog label{padding:0;border:0;min-width:0}
+.personal-memory-dialog label:has(input:not([type=checkbox]),textarea,select){display:grid}
+.personal-memory-dialog input:not([type=checkbox]),.personal-memory-dialog textarea,.personal-memory-dialog select{width:100%;min-width:0;margin:0}
+.personal-memory-dialog [data-memory-status]{margin-top:12px}
+.personal-gateway-dialog .gateway-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.personal-gateway-dialog h2,.personal-gateway-dialog h3{margin:0}
+.personal-gateway-dialog section,.personal-gateway-dialog [data-gateway-form]{margin:12px 0}
+.personal-gateway-dialog label{padding:0;border:0;min-width:0}
+.personal-gateway-dialog label:has(input:not([type=checkbox]),select){display:grid}
+.personal-gateway-dialog [hidden]{display:none!important}
+.personal-gateway-dialog input:not([type=checkbox]),.personal-gateway-dialog select{width:100%;min-width:0}
+.personal-gateway-dialog .gateway-run{padding:8px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.personal-gateway-dialog .gateway-run p{white-space:pre-wrap;margin:4px 0}
+.personal-gateway-dialog [data-gateway-runs]{max-height:220px;overflow:auto}
+.assistant-media-controls{flex-wrap:wrap;margin:0 0 8px;font-size:12px}
+.assistant-media-controls label{display:flex;align-items:center;gap:6px;min-width:0}
+.assistant-media-controls input[type=file]{max-width:min(180px,45vw);font-size:inherit}
+.assistant-attachment{margin:8px 0 0;overflow-wrap:anywhere}
+.assistant-attachment img{display:block;max-width:min(360px,100%);max-height:260px;object-fit:contain}
+.assistant-attachment audio{max-width:100%}
+.assistant-external-session #assistant-form,.assistant-external-session #assistant-task-form{display:none}
+#assistant-channel-hint{font-size:13px;color:var(--text-secondary)}
+.skill-management-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.agent-skill-dialog{overflow:auto}
+.agent-skill-dialog>form[method=dialog]{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.agent-skill-dialog>form[method=dialog] h2{margin:0}
+.agent-skill-dialog .stacked-form,.agent-skill-dialog section{margin-top:16px}
+.agent-skill-dialog label{display:grid;gap:6px;padding:0;border:0}
+.agent-skill-dialog select,.agent-skill-dialog textarea{width:100%;min-width:0;margin:0}
+.agent-skill-dialog [data-skill-details]{overflow-wrap:anywhere}
+.agent-skill-dialog [data-skill-status]{color:var(--text-secondary);overflow-wrap:anywhere}
