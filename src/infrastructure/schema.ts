@@ -46,8 +46,7 @@ export const moduleSchemas: Record<string, string> = {
   // 来源：src/assistant/assistant-loop.ts
   "assistant-assistant-loop": `CREATE TABLE IF NOT EXISTS assistant_sessions(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,steps INTEGER NOT NULL DEFAULT 0,summary TEXT NOT NULL DEFAULT '',compacted_through INTEGER NOT NULL DEFAULT 0,pending TEXT,child_session_id TEXT,needs_verification INTEGER NOT NULL DEFAULT 0,verification TEXT,started_at TEXT NOT NULL,updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS assistant_events(id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),role TEXT NOT NULL,kind TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS assistant_event_session ON assistant_events(session_id,id);
-    CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));`,
+    CREATE INDEX IF NOT EXISTS assistant_event_session ON assistant_events(session_id,id);`,
   // 来源：src/assistant/assistant-loop.ts
   "assistant-assistant-loop-2": `CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)`,
   // 来源：src/assistant/assistant-loop.ts
