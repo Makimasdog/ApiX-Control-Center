@@ -599,6 +599,12 @@ function finalizeRun(runId, status, source, exitCode = null, evidence = null, op
   });
   return runFinalizer.finalize(runId, status, source, exitCode, evidence, options);
 }
+// 已发出过"并行范围未声明"审计事件的任务，仅用于去重；上限防止长期运行无限增长
+const scopeWarned = new Set();
+const rememberScopeWarning = (taskId) => {
+  if (scopeWarned.size >= 500) scopeWarned.clear();
+  scopeWarned.add(taskId);
+};
 /**
  * parallelScope - 检查同计划并行任务的文件范围
  *
@@ -606,7 +612,6 @@ function finalizeRun(runId, status, source, exitCode = null, evidence = null, op
  * 因此未声明的情况不改写既有并行语义（会破坏现有协作场景），但记录一次可审计警告，
  * 让审查者知道这次并行缺少文件边界证明。
  */
-const scopeWarned = new Set();
 function parallelScope(task) {
   if (!task.plan_id) return null;
   const running = rows("SELECT t.id FROM tasks t WHERE t.plan_id=? AND t.id<>? AND t.status='running'", task.plan_id, task.id);
@@ -617,7 +622,7 @@ function parallelScope(task) {
     if (own.length && paths.length && overlaps(own, paths)) return '并行任务写入范围重叠，请增加依赖或调整文件归属';
   }
   if ((!own.length || running.some(other => !scheduling.taskSpec(other.id).writePaths.length)) && !scopeWarned.has(task.id)) {
-    scopeWarned.add(task.id);
+    rememberScopeWarning(task.id);
     coordinator.recordTask(task.id, 'task.parallel_scope_unverified', { taskId: task.id, parallelWith: running.map(other => other.id) });
   }
   return null;
