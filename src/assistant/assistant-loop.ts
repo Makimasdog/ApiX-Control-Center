@@ -519,12 +519,15 @@ export function createAssistantLoop(deps:Dependencies){
   async function run(id:string){
     if(unsavedSafety.has(id)||busy.has(id)||get(id).status!=='running')return;busy.add(id);controllers.set(id,new AbortController());const deadline=timeBudget(id);
     try{
+      // 上下文因会话版本变化而重算的次数上限：这条 continue 发生在 steps++ 之前，
+      // 若会话版本被外部持续写高（另一标签页、tick 唤醒），理论上可以无界空转。
+      let contextRestarts=0;
       // 主循环：每轮迭代 = 一次 LLM 推理 + 一次工具执行
       while(get(id).status==='running'){
         let s=get(id);if(s.steps>=progress.settings(s.project_id).maxCalls||Date.now()-Date.parse(s.started_at)>progress.settings(s.project_id).maxMs)throw new Error('达到本轮模型步骤或时间预算；请检查后继续');
         // 第 1 阶段：组装上下文（含记忆召回、历史折叠、Token 预算控制）
         let preparedContext:Awaited<ReturnType<typeof context>>;
-        try{preparedContext=await context(s);}catch(error){if((error as {code?:string})?.code==='SESSION_CHANGED'&&get(id).status==='running')continue;throw error;}
+        try{preparedContext=await context(s);}catch(error){if((error as {code?:string})?.code==='SESSION_CHANGED'&&get(id).status==='running'){if(++contextRestarts>3)throw new Error('会话在上下文组装期间反复变化，已停止本轮；请刷新后重新发送');continue;}throw error;}
         const currentContext=preparedContext.value;s=get(id);if(s.status!=='running')break;
         const revision=s.version;db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);
         // 第 2 阶段：拼接系统指令 + 工具目录 + 上下文，发送给 LLM
@@ -533,7 +536,7 @@ export function createAssistantLoop(deps:Dependencies){
         try{malformed=await deps.infer(s.project_id,prompt,controllers.get(id)?.signal,id,'assistant_loop',descriptor);decision=parseAction(malformed);}catch(error){if(!(error instanceof SyntaxError))throw error;
           // 格式修复：LLM 首次返回非 JSON 时，发送一次纠正提示要求严格 JSON 格式
           event(id,'system','protocol_repair',{content:'模型未按 JSON 动作契约回复，正在请求一次格式纠正；未执行任何工具。'});
-          const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=24)throw new Error('已达到本轮步数上限，未执行格式无效的操作');
+          const fresh=get(id);if(fresh.status!=='running'||fresh.version!==revision)continue;if(fresh.steps>=progress.settings(fresh.project_id).maxCalls)throw new Error('已达到本轮步数上限，未执行格式无效的操作');
           db.prepare('UPDATE assistant_sessions SET steps=steps+1 WHERE id=?').run(id);
           const previous=malformed.length>2000?malformed.slice(0,2000)+'…':malformed;
           try{malformed=await deps.infer(s.project_id,prompt+'\n\n上次回复不是合法 JSON 动作：'+safeError(error)+'\n上次回复片段：'+JSON.stringify(previous)+'\n不要输出 DSML/XML、tool_calls 或 Markdown。只返回一个 JSON 对象：首个字符必须是 {，最后一个字符必须是 }；action 只能是 tool、ask、clarify、finish；查询员工额度使用 inspect_quota，不调用不存在的工具。',controllers.get(id)?.signal,id,'format_repair');decision=parseAction(malformed);}catch(repairError){if(repairError instanceof SyntaxError)throw new Error('模型连续两次未返回有效 JSON 动作；没有执行未识别操作，请检查模型协议兼容性后继续');throw repairError;}
