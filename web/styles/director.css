@@ -27,7 +27,7 @@
 .plan-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-card);
   padding: 20px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: all 0.2s;
@@ -125,7 +125,7 @@
   gap: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--r-card);
   padding: 14px 16px;
   font-size: 11px;
   color: var(--text-secondary);
@@ -157,7 +157,7 @@
   grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: 10px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--r-card);
   padding: 14px;
   background: var(--surface);
   transition: all 0.2s;

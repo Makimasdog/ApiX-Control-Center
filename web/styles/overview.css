@@ -44,7 +44,7 @@
 .overview-filters input,
 .overview-filters select {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   padding: 10px 12px;
   background: var(--surface);
   color: var(--text-primary);
@@ -200,7 +200,7 @@
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 11px;
+  border-radius: var(--r-mark);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   font-size: 13px;
@@ -239,7 +239,7 @@
   align-items: center;
   background: rgba(30, 41, 59, 0.5);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 6px 9px;
   color: var(--text-secondary);
   font-size: 11px;
@@ -282,7 +282,7 @@
 .overview-lane {
   background: rgba(17, 24, 39, 0.5);
   border: 1px solid var(--border);
-  border-radius: 13px;
+  border-radius: var(--r-card);
   min-height: 245px;
 }
 
@@ -304,7 +304,7 @@
   font-size: 11px;
   background: var(--surface);
   color: var(--text-secondary);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 3px 7px;
   font-weight: 700;
 }
@@ -339,7 +339,7 @@
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   padding: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   cursor: pointer;

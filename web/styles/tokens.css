@@ -1,28 +1,37 @@
+/* ApiX 设计令牌 · 唯一色值来源
+ *
+ * 配色与密度参照本机 Alma 桌面端（shadcn 语义命名 + One Dark 深色值），
+ * 目的是让 ApiX 看起来像一台"本机工具"，而不是一块 SaaS 仪表盘：
+ * 深色下画布比卡片亮（#282c34 / #21252b），浅色下画布纯白、侧栏用 --sidebar-bg 区分，
+ * 卡片只有 1px 描边、不用投影；主色是 Alma 的蓝（深）/ 青（浅）。
+ *
+ * 命名沿用项目既有 21 个语义令牌，其余文件不应再出现十六进制色值。 */
 :root {
   color-scheme: light;
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "Cascadia Mono", Consolas, "Microsoft YaHei UI", ui-monospace, monospace;
+  --font-sans: "Segoe UI Variable Text", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "IoskeleyMono", Consolas, "Microsoft YaHei UI", ui-monospace, monospace;
 
-  --fs-display: 28px;
-  --lh-display: 36px;
-  --fs-h1: 22px;
-  --lh-h1: 32px;
-  --fs-h2: 18px;
-  --lh-h2: 26px;
-  --fs-h3: 16px;
-  --lh-h3: 24px;
-  --fs-lead: 15px;
-  --lh-lead: 24px;
-  --fs-body: 14px;
-  --lh-body: 22px;
+  /* 字号：13px 基准，贴近 Alma 的桌面密度 */
+  --fs-display: 26px;
+  --lh-display: 32px;
+  --fs-h1: 21px;
+  --lh-h1: 28px;
+  --fs-h2: 16px;
+  --lh-h2: 24px;
+  --fs-h3: 14px;
+  --lh-h3: 22px;
+  --fs-lead: 14px;
+  --lh-lead: 22px;
+  --fs-body: 13px;
+  --lh-body: 20px;
   --fs-form: 13px;
   --lh-form: 20px;
   --fs-caption: 12px;
   --lh-caption: 18px;
   --fs-micro: 11px;
   --lh-micro: 16px;
-  --measure: 42em;
+  --measure: 44em;
 
   --s-1: 4px;
   --s-2: 8px;
@@ -36,80 +45,89 @@
   --w-default: 880px;
   --w-wide: 1120px;
   --gutter: 32px;
-  --gap-grid: 24px;
-  --sidebar-width: 244px;
-  --topbar-height: 64px;
+  --gap-grid: 16px;
+  --sidebar-width: 236px;
+  --topbar-height: 56px;
 
-  --r-xs: 6px;
-  --r-sm: 9px;
-  --r-control: 10px;
-  --r-mark: 12px;
-  --r-card: 16px;
-  --r-dialog: 18px;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-control: 8px;
+  --r-mark: 10px;
+  --r-card: 12px;
+  --r-dialog: 16px;
   --r-pill: 999px;
 
   --h-control-sm: 28px;
-  --h-control: 32px;
+  --h-control: 34px;
   --h-control-lg: 36px;
-  --h-row: 40px;
-  --h-list-row: 48px;
+  --h-row: 32px;
+  --h-list-row: 36px;
   --h-attention: 48px;
   --h-bottombar: 56px;
   --icon-sm: 14px;
   --icon: 16px;
   --icon-lg: 24px;
 
-  --app-bg: #f4f6fb;
-  --sidebar-bg: #ffffff;
+  /* ---- 表面 ---- */
+  --app-bg: #ffffff;
+  --sidebar-bg: #f8fafc;
   --surface: #ffffff;
-  --surface-hover: #f0f3fa;
-  --surface-inset: #f2f4fa;
-
-  /* 层级表面：卡片与浮层用 --surface-raised，输入/代码块用 --surface-inset */
+  --surface-hover: #f1f5f9;
+  --surface-inset: #f8fafc;
   --surface-raised: #ffffff;
   --control-bg: #ffffff;
+  --nav-active: #f1f5f9;
 
-  /* 品牌渐变：仅用于品牌方块与主按钮，不得用于正文 */
-  --gradient-brand: linear-gradient(140deg, #5b6bf0 0%, #3d4fd8 52%, #2f3fb4 100%);
-  --gradient-accent: linear-gradient(180deg, #4a5ae8 0%, #3d4fd8 100%);
+  /* ---- 文本 ---- */
+  --text-primary: #1a1a1a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
 
-  --text-primary: #151a2c;
-  --text-secondary: #5b647c;
-  --text-muted: #656e80;
+  /* ---- 描边 ---- */
+  --border: #e2e8f0;
+  --border-control: #808fa4;
 
-  --border: #e6e9f2;
-  --border-control: #848e9f;
-
-  --accent: #3d4fd8;
-  --accent-hover: #2f3fb4;
-  --accent-subtle: #edf0ff;
+  /* ---- 主色（Alma 浅色主色 #7299a0 压深到可用作正文） ---- */
+  --accent: #2a7780;
+  --accent-hover: #236871;
+  --accent-subtle: #e8f1f2;
   --accent-alt: #0d9488;
   --accent-alt-text: #0b7f76;
-  --on-accent: #ffffff;
+  --on-accent: #f8fafc;
+  --gradient-brand: var(--accent);
+  --gradient-accent: var(--accent);
 
-  --success: #16794f;
-  --success-subtle: #e7f6ee;
+  /* ---- 状态 ---- */
+  --success: #3d7a4f;
+  --success-subtle: #eaf4ee;
   --warning: #8a5a0a;
-  --warning-subtle: #fdf5e4;
-  --danger: #b3402c;
-  --danger-subtle: #fdeee9;
+  --warning-subtle: #fdf3e2;
+  --danger: #b2453f;
+  --danger-subtle: #fceceb;
 
-  --focus-ring: #3d4fd8;
+  /* ---- 对话气泡 ---- */
+  --chat-user-bg: var(--accent);
+  --chat-user-fg: var(--on-accent);
+  --chat-agent-bg: var(--surface);
+  --code-bg: #f8fafc;
+  --code-fg: #334155;
+
+  --focus-ring: #2a7780;
   --focus-width: 2px;
-  --focus-offset: 3px;
-  --overlay-backdrop: rgba(19, 27, 43, 0.4);
+  --focus-offset: 2px;
+  --overlay-backdrop: rgba(15, 23, 42, 0.32);
 
-  --shadow-1: 0 1px 2px #18213a08, 0 8px 22px #18213a0b;
-  --shadow-2: 0 4px 12px -2px #18213a14, 0 2px 4px -2px #18213a0d;
-  --shadow-3: 0 20px 70px #10182738;
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 4px 16px -4px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-3: 0 24px 64px -12px rgba(15, 23, 42, 0.28);
 
-  --dur-1: 140ms;
-  --dur-2: 180ms;
-  --dur-3: 240ms;
-  --dur-4: 320ms;
+  --dur-1: 120ms;
+  --dur-2: 160ms;
+  --dur-3: 200ms;
+  --dur-4: 260ms;
   --ease-in: cubic-bezier(0.2, 0, 0, 1);
   --ease-out: cubic-bezier(0.4, 0, 1, 1);
-  --ease-standard: ease;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
 
   --z-base: 0;
   --z-sticky: 10;
@@ -124,70 +142,66 @@
   --z-skip: 100;
 }
 
+/* 深色：One Dark（Alma 深色主题原值） */
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
 
-    --app-bg: #12141c;
-    --sidebar-bg: #171a24;
-    --surface: #1c202b;
-    --surface-hover: #252b39;
-    --surface-inset: #232835;
+    --app-bg: #282c34;
+    --sidebar-bg: #21252b;
+    --surface: #21252b;
+    --surface-hover: #2c313c;
+    --surface-inset: #1d2026;
+    --surface-raised: #21252b;
+    --control-bg: #282c34;
+    --nav-active: #2c313c;
 
-    --surface-raised: #212633;
-    --control-bg: #1f2430;
+    --text-primary: #dcdfe4;
+    --text-secondary: #aab3c0;
+    --text-muted: #949cab;
 
-    --gradient-brand: linear-gradient(140deg, #8f9bff 0%, #7a87f2 55%, #606dd6 100%);
-    --gradient-accent: linear-gradient(180deg, #a9b4ff 0%, #9aa6ff 100%);
+    --border: #3e4451;
+    --border-control: #6b768f;
 
-    --text-primary: #eef0f6;
-    --text-secondary: #b6bdcf;
-    --text-muted: #9aa2b5;
+    --accent: #61afef;
+    --accent-hover: #7cbcff;
+    --accent-subtle: #24313f;
+    --accent-alt: #98c379;
+    --accent-alt-text: #98c379;
+    --on-accent: #0c111a;
 
-    --border: #2c3342;
-    --border-control: #66718a;
+    --success: #98c379;
+    --success-subtle: #2a3524;
+    --warning: #e5c07b;
+    --warning-subtle: #38321f;
+    --danger: #e8838b;
+    --danger-subtle: #3a2729;
 
-    --accent: #9aa6ff;
-    --accent-hover: #b3bcff;
-    --accent-subtle: #262d4d;
-    --accent-alt: #5bd6c6;
-    --accent-alt-text: #5bd6c6;
-    --on-accent: #11152b;
+    --chat-user-bg: #2f3643;
+    --chat-user-fg: #f6f8fb;
+    --chat-agent-bg: #21252b;
+    --code-bg: #1a1d22;
+    --code-fg: #c8d0da;
 
-    --success: #7fdcae;
-    --success-subtle: #17352a;
-    --warning: #eec27c;
-    --warning-subtle: #3b3020;
-    --danger: #ff9d8c;
-    --danger-subtle: #3e2421;
+    --focus-ring: #61afef;
+    --overlay-backdrop: rgba(0, 0, 0, 0.55);
 
-    --focus-ring: #9aa6ff;
-    --overlay-backdrop: rgba(0, 0, 0, 0.52);
-
-    --shadow-1: 0 2px 8px #0002, 0 12px 36px #0003;
-    --shadow-2: 0 6px 16px -4px #0009, inset 0 1px 0 #ffffff0a;
-    --shadow-3: 0 16px 64px #0008;
+    --shadow-1: none;
+    --shadow-2: 0 6px 20px -6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-3: 0 28px 70px -16px rgba(0, 0, 0, 0.7);
   }
 }
 
 @media (max-width: 1359px) {
-  :root {
-    --gutter: 24px;
-  }
+  :root { --gutter: 24px; }
 }
 
 @media (max-width: 1023px) {
-  :root {
-    --gutter: 16px;
-    --gap-grid: 16px;
-  }
+  :root { --gutter: 16px; --gap-grid: 12px; }
 }
 
 @media (max-width: 767px) {
-  :root {
-    --gutter: 12px;
-    --gap-grid: 12px;
-  }
+  :root { --gutter: 12px; --gap-grid: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

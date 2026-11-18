@@ -92,7 +92,7 @@ svg.icon {
 .brand-mark {
   width: 37px;
   height: 37px;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   display: grid;
   place-items: center;
   color: var(--text-secondary);
@@ -153,7 +153,7 @@ svg.icon {
   width: 100%;
   height: 42px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
@@ -208,7 +208,7 @@ svg.icon {
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--text-secondary);
   transition: all 0.2s;
@@ -243,7 +243,7 @@ svg.icon {
   height: 39px;
   padding: 0 13px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
@@ -261,7 +261,7 @@ svg.icon {
 .sidebar-project .project-icon {
   width: 23px;
   height: 23px;
-  border-radius: 7px;
+  border-radius: var(--r-xs);
 }
 
 .sidebar-project .project-icon .icon {
@@ -295,7 +295,7 @@ svg.icon {
   margin: 0 8px 13px;
   padding: 11px 10px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   background: color-mix(in srgb, var(--accent) 5%, transparent);
   color: var(--accent);
   font-size: 10px;
@@ -346,7 +346,7 @@ svg.icon {
   height: 31px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   background: linear-gradient(140deg, var(--accent-subtle), var(--accent-subtle));
   color: var(--text-secondary);
   font-weight: 700;
@@ -461,7 +461,7 @@ svg.icon {
 .top-model-icon {
   width: 25px;
   height: 25px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--accent) 15%, transparent);
@@ -555,7 +555,7 @@ svg.icon {
 
 .outline-button,
 .primary-button {
-  border-radius: 10px;
+  border-radius: var(--r-control);
   min-height: 34px;
   padding: 0 13px;
   display: inline-flex;
@@ -637,7 +637,7 @@ svg.icon {
   place-items: center;
   width: 35px;
   height: 35px;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   flex: none;
 }
 
@@ -669,7 +669,7 @@ svg.icon {
 .context-project .project-icon {
   width: 22px;
   height: 22px;
-  border-radius: 7px;
+  border-radius: var(--r-xs);
 }
 
 .context-project .project-icon .icon {
@@ -709,7 +709,7 @@ svg.icon {
   margin: 0 auto 16px;
   display: grid;
   place-items: center;
-  border-radius: 16px;
+  border-radius: var(--r-card);
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 20%, transparent);
@@ -743,7 +743,7 @@ svg.icon {
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   flex: none;
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
@@ -831,7 +831,7 @@ svg.icon {
   max-width: 100%;
   margin: 4px 0 9px;
   padding: 7px 9px;
-  border-radius: 7px;
+  border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
   font-size: 10px;
@@ -885,7 +885,7 @@ svg.icon {
   padding: 11px 12px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-card);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   transition: all 0.2s;
 }
@@ -930,7 +930,7 @@ svg.icon {
   align-items: center;
   gap: 5px;
   padding: 5px 7px;
-  border-radius: 6px;
+  border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
   font-size: 9px;
@@ -964,7 +964,7 @@ svg.icon {
   height: 31px;
   flex: none;
   border: 0;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   background: var(--warning-subtle);
   color: var(--text-secondary);
   box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
@@ -1016,7 +1016,7 @@ svg.icon {
   height: 22px;
   display: grid;
   place-items: center;
-  border-radius: 7px;
+  border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   font-size: 9px;
@@ -1068,7 +1068,7 @@ svg.icon {
   height: 27px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   flex: none;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
@@ -1133,7 +1133,7 @@ svg.icon {
   padding: 7px;
   background: var(--surface-inset);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: var(--r-xs);
   font-size: 9px;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
@@ -1151,7 +1151,7 @@ svg.icon {
   background: var(--surface-inset);
   border: 1px solid var(--border);
   padding: 10px;
-  border-radius: 11px;
+  border-radius: var(--r-mark);
 }
 
 .activity-footer-icon {
@@ -1159,7 +1159,7 @@ svg.icon {
   height: 28px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
 }
@@ -1227,7 +1227,7 @@ svg.icon {
 .model-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-card);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
@@ -1236,7 +1236,7 @@ svg.icon {
 }
 
 .featured-card {
-  background: linear-gradient(142deg, var(--surface) 0%, var(--surface) 60%, color-mix(in srgb, var(--accent) 5%, transparent) 100%);
+  background: var(--surface);
 }
 
 .card-heading {
@@ -1266,7 +1266,7 @@ svg.icon {
 .soft-badge {
   background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
-  border-radius: 20px;
+  border-radius: var(--r-dialog);
   padding: 5px 8px;
   font-size: 9px;
   font-weight: 700;
@@ -1313,7 +1313,7 @@ svg.icon {
   width: 100%;
   height: 36px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   padding: 0 11px;
   background: var(--surface);
   color: var(--text-primary);
@@ -1420,7 +1420,7 @@ svg.icon {
 .item-icon {
   width: 35px;
   height: 35px;
-  border-radius: 11px;
+  border-radius: var(--r-mark);
   display: grid;
   place-items: center;
   background: color-mix(in srgb, var(--accent) 15%, transparent);
@@ -1508,7 +1508,7 @@ svg.icon {
   font-weight: 700;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 15%, transparent);
-  border-radius: 20px;
+  border-radius: var(--r-dialog);
   padding: 5px 8px;
 }
 
@@ -1542,7 +1542,7 @@ svg.icon {
   padding: 25px;
   text-align: center;
   border: 1px dashed var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-card);
   background: rgba(30, 41, 59, 0.3);
   color: var(--text-secondary);
   font-size: 11px;
@@ -1605,7 +1605,7 @@ svg.icon {
   border: 0;
   width: 33px;
   height: 19px;
-  border-radius: 20px;
+  border-radius: var(--r-dialog);
   background: var(--surface);
   padding: 2px;
   transition: background 0.2s;
@@ -1636,7 +1636,7 @@ svg.icon {
   max-height: calc(100vh - 30px);
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: var(--r-dialog);
   padding: 22px;
   background: var(--surface);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
@@ -1673,7 +1673,7 @@ svg.icon {
   left: 50%;
   transform: translate(-50%, 20px);
   padding: 11px 16px;
-  border-radius: 10px;
+  border-radius: var(--r-control);
   background: var(--surface);
   color: var(--text-primary);
   font-size: 11px;
@@ -1877,7 +1877,7 @@ svg.icon {
 .mission-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--r-card);
   padding: 18px 20px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: all 0.2s;
@@ -1921,7 +1921,7 @@ svg.icon {
   flex: none;
   font-size: 10px;
   font-weight: 700;
-  border-radius: 18px;
+  border-radius: var(--r-dialog);
   padding: 5px 9px;
   background: rgba(100, 116, 139, 0.2);
   color: var(--text-secondary);
@@ -1970,7 +1970,7 @@ svg.icon {
   font: 11px/1.6 ui-monospace, Consolas, monospace;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   padding: 12px;
   color: var(--text-primary);
 }
@@ -1978,7 +1978,7 @@ svg.icon {
 #employee-select {
   max-width: 200px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: var(--surface);
   color: var(--text-primary);
   padding: 5px 8px;
@@ -2002,7 +2002,7 @@ svg.icon {
 /* Conversation controls and task log viewer share the desktop theme. */
 .conversation-model-picker{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 2px;color:var(--text-primary);font-size:12px}
 .conversation-model-picker label{display:flex;align-items:center;gap:6px}
-.conversation-model-picker input,.conversation-model-picker select{background:var(--surface);color:var(--text-primary);border:1px solid var(--border-control);border-radius:8px;padding:7px;max-width:230px}
+.conversation-model-picker input,.conversation-model-picker select{background:var(--surface);color:var(--text-primary);border:1px solid var(--border-control);border-radius: var(--r-sm);padding:7px;max-width:230px}
 .conversation-model-picker select:disabled{background:var(--surface-inset);color:var(--text-secondary);-webkit-text-fill-color:var(--text-secondary);opacity:1}
 .conversation-model-picker small,.conversation-model-feedback{color:var(--text-secondary)}
 #task-details-dialog{width:min(1080px,calc(100vw - 32px));height:min(820px,calc(100dvh - 40px));max-height:calc(100dvh - 40px);box-sizing:border-box;padding:0;color:var(--text-primary);overflow:hidden}
@@ -2013,13 +2013,13 @@ svg.icon {
 .task-event-overview>strong{margin-left:12px}.task-event-overview p{white-space:pre-wrap;line-height:1.7;color:var(--text-secondary)}
 .task-event-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:0 0 12px}
 .task-event-toolbar label{display:flex;align-items:center;gap:8px;font-size:13px}
-.task-event-toolbar input,.task-event-toolbar select{background:var(--control-bg);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:9px;max-width:100%}
+.task-event-toolbar input,.task-event-toolbar select{background:var(--control-bg);color:var(--text-primary);border:1px solid var(--border);border-radius: var(--r-sm);padding:9px;max-width:100%}
 .task-event-toolbar small,.task-event-count,.task-event-empty{color:var(--text-secondary);font-size:12px}
 .task-event-card{border:1px solid var(--border);background:var(--surface);border-radius:var(--r-control);margin-bottom:10px;min-width:0}
 .task-event-card summary{cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 14px;padding:14px;list-style:disclosure-closed}
 .task-event-kind{color:var(--accent-alt-text);font-family:ui-monospace,monospace;font-size:12px;overflow-wrap:anywhere}.task-event-kind.is-warning{color:var(--warning)}
 .task-event-card time{color:var(--text-secondary);font-size:12px}.task-event-preview{grid-column:1/-1;color:var(--text-primary);font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
-#task-details-content pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-width:100%;background:var(--surface-inset);color:var(--text-primary);font:12px/1.7 ui-monospace,monospace;padding:14px;margin:0;border-radius:8px;overflow:auto}
+#task-details-content pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-width:100%;background:var(--surface-inset);color:var(--text-primary);font:12px/1.7 ui-monospace,monospace;padding:14px;margin:0;border-radius: var(--r-sm);overflow:auto}
 @media(max-width:600px){#task-details-content{padding:12px}#task-details-dialog .dialog-top{padding:14px}.task-event-card summary{grid-template-columns:minmax(0,1fr)}.task-event-card time{grid-column:1}.conversation-model-picker input{max-width:180px}}
 
 .task-event-card summary::after{content:"展开原始日志 ⌄";grid-column:1/-1;color:var(--accent-alt-text);font:12px/1.5 system-ui}.task-event-card[open] summary::after{content:"收起原始日志 ⌃"}
