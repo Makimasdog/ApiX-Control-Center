@@ -383,6 +383,27 @@ if(!db.prepare('SELECT version FROM schema_migrations WHERE version=13').get()) 
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }
+// Schema 迁移版本 14：为核心热表补索引
+// 用途：events/artifacts/tasks/runs 是每次快照、恢复、任务详情的必经路径，
+// 此前没有任何索引，全部依赖全表扫。索引是纯加法，不改变任何语义。
+if(!db.prepare('SELECT version FROM schema_migrations WHERE version=14').get()) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS events_run ON events(run_id,id);
+      CREATE INDEX IF NOT EXISTS artifacts_run ON artifacts(run_id);
+      CREATE INDEX IF NOT EXISTS artifacts_created ON artifacts(created_at DESC);
+      CREATE INDEX IF NOT EXISTS tasks_project_status ON tasks(project_id,status);
+      CREATE INDEX IF NOT EXISTS tasks_plan ON tasks(plan_id);
+      CREATE INDEX IF NOT EXISTS tasks_conversation ON tasks(conversation_id);
+      CREATE INDEX IF NOT EXISTS tasks_employee_status ON tasks(employee_id,status);
+      CREATE INDEX IF NOT EXISTS runs_task ON runs(task_id);
+      CREATE INDEX IF NOT EXISTS runs_status ON runs(status);
+      CREATE INDEX IF NOT EXISTS shared_artifacts_task ON shared_artifacts(task_id);
+      CREATE INDEX IF NOT EXISTS shared_artifacts_plan ON shared_artifacts(plan_id);
+      INSERT INTO schema_migrations VALUES (14);`);
+    db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+}
 // ===== 内存状态与启动恢复 =====
 // now() 返回 ISO 8601 时间戳，用于所有数据库时间字段
 const now = () => new Date().toISOString();
@@ -442,8 +463,20 @@ export async function scanRuntimes() { await Promise.all([refreshExecutables(),s
 // 注意：初始化顺序很重要，后面的服务可能依赖前面的服务
 
 // 数据库查询辅助函数
-const rows = (sql, ...params) => db.prepare(sql).all(...params);
-const row = (sql, ...params) => db.prepare(sql).get(...params);
+// 预编译语句缓存：node:sqlite 的 prepare 每次都要解析 SQL。
+// 本进程的 SQL 是静态字符串集合，编译一次即可复用；上限防止异常入参把内存撑大。
+const statements = new Map();
+const STATEMENT_CACHE_LIMIT = 800;
+const prep = (sql) => {
+  const cached = statements.get(sql);
+  if (cached) return cached;
+  const statement = db.prepare(sql);
+  if (statements.size >= STATEMENT_CACHE_LIMIT) statements.clear();
+  statements.set(sql, statement);
+  return statement;
+};
+const rows = (sql, ...params) => prep(sql).all(...params);
+const row = (sql, ...params) => prep(sql).get(...params);
 // store 对象封装数据库访问，传给各服务模块
 const store = { db, row, rows, now };
 const tokenUsage=createTokenUsage(store);
