@@ -195,14 +195,61 @@ export function createCoordinator(deps: Dependencies) {
     events.sort((left,right)=>right.time.localeCompare(left.time));
     return {planId:s.plan_id,events:events.slice(0,24)};
   }
+  // 上一次写入的快照签名（用于去重），上限防止长期运行无限增长
+  const snapshotSignatures = new Map<string, string>();
+  const SNAPSHOT_SIGNATURE_LIMIT = 500;
+  // 快照里每个任务的 result 只保留这么多字符；完整内容在 tasks.result 与 artifacts
+  const SNAPSHOT_RESULT_PREVIEW = 2000;
+
+  /**
+   * boundedTask - 快照里的任务投影，限制大字段体积
+   *
+   * 快照用于时光机回放会话**状态**，不是用来看完整报告的。
+   * 完整内容在 tasks.result 与 artifacts 里，这里只保留有界预览，
+   * 避免每次快照都把每个任务的完整输出复制一遍。
+   */
+  function boundedTask(task: Task) {
+    // tasksOf 用的是 SELECT *，运行期带 result / queue_reason 等列，Task 类型只声明了核心字段
+    const row = task as Task & { result?: string };
+    const result = String(row.result ?? '');
+    if (result.length <= SNAPSHOT_RESULT_PREVIEW) return task;
+    return {...row, result: result.slice(0, SNAPSHOT_RESULT_PREVIEW), resultTruncated: true, resultBytes: result.length};
+  }
+
   /**
    * checkpoint - 创建会话快照（写入事件溯源账本）
    * @param id - 会话 ID
+   * @returns 是否真的写入了新快照
+   *
    * 设计意图：快照用于审计和时光机回放（[→ 见 memory.ts stateAt()]）
+   *
+   * 去重原因：recordTask 对每个运行时事件都会调用 checkpoint。
+   * 一次运行会产生几十条 turn/usage/message 事件，而它们并不改变
+   * 会话投影。此前每条事件都写一份「整份会话 + 全部任务」的快照，
+   * 实测 50 条事件写出 4MB。现在按投影签名去重：
+   *   - 签名只覆盖真正影响回放的字段（状态、归属、队列原因、结果长度）
+   *   - 时间戳变化不算状态变化
+   *   - 状态确实变化时仍会写快照，回放精度不受影响
    */
   function checkpoint(id: string) {
     const s = session(id);
-    memory.append(s.project_id, id, 'coordination.snapshot', { ...s, requirements: requirementsOf(s), tasks: tasksOf(s) });
+    const tasks = tasksOf(s);
+    const projection = { ...s, requirements: requirementsOf(s), tasks: tasks.map(boundedTask) };
+    const signature = createHash('sha256').update(JSON.stringify({
+      ...s, updated_at: undefined, created_at: undefined,
+      requirements: projection.requirements,
+      tasks: projection.tasks.map(task => {
+        const row = task as Task & { queue_reason?: string | null; verification_status?: string | null; delivery_commit?: string | null; result?: string };
+        return {id: row.id, status: row.status, employee_id: row.employee_id,
+          queue_reason: row.queue_reason, verification_status: row.verification_status,
+          delivery_commit: row.delivery_commit, result: row.result};
+      }),
+    })).digest('hex');
+    if (snapshotSignatures.get(id) === signature) return false;
+    if (snapshotSignatures.size >= SNAPSHOT_SIGNATURE_LIMIT) snapshotSignatures.clear();
+    snapshotSignatures.set(id, signature);
+    memory.append(s.project_id, id, 'coordination.snapshot', projection);
+    return true;
   }
   /**
    * turn - 记录一轮交互（写入 turns 表和事件账本）

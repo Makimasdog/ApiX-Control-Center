@@ -650,8 +650,12 @@ function recordOutput(runId, output, status) {
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
   db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(output, now(), run.task_id);
   const artifactId = randomUUID();
+  const digest = createHash("sha256").update(output).digest("hex");
   db.prepare("INSERT INTO artifacts(id,run_id,kind,content,created_at) VALUES (?,?,?,?,?)").run(artifactId, runId, "agent-response", output, now());
-  coordinator.recordTask(run.task_id, 'artifact.collected', { artifactId, runId, content: output, status });
+  // 账本里只留引用与有界摘要：完整正文已在 artifacts（按 artifactId 可取）。
+  // 此前这里复制一份全文，等于同一份输出在库里存四次
+  // （tasks.result / artifacts / apix_ledger / shared_artifacts）。
+  coordinator.recordTask(run.task_id, 'artifact.collected', { artifactId, runId, digest, contentBytes: Buffer.byteLength(output), excerpt: output.slice(0, 2000), status });
   const task = row("SELECT plan_id,project_id,employee_id,conversation_id FROM tasks WHERE id=?", run.task_id);
   if (task?.plan_id) db.prepare("INSERT INTO shared_artifacts(id,plan_id,task_id,kind,content,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(), task.plan_id, run.task_id, "agent-response", output, now());
   if (task?.employee_id) {
