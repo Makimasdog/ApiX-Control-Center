@@ -977,6 +977,9 @@ const snapshotEpoch=randomUUID();
 export function snapshot(ifNoneMatch) {
   const etag='"'+snapshotEpoch+':'+row('SELECT total_changes() AS n').n+':'+row('PRAGMA data_version').data_version+':'+Math.floor(Date.now()/10000)+'"';
   if(ifNoneMatch===etag)return {etag,notModified:true};
+  // 快照每个域都设上限：此前 artifacts / sharedArtifacts / directorMessages 无 LIMIT，
+  // 大字段随历史无限增长，而前端每 1.5 秒拉一次全量。完整内容仍可通过
+  // taskDetails / 交付详情按 id 读取，这里只保留最近窗口。
   const data={
     plans: plans(),
     runtimes: runtimes(),
@@ -986,13 +989,13 @@ export function snapshot(ifNoneMatch) {
     profiles: rows("SELECT * FROM project_profiles").map(safeProfile),
     memories: projectMemory.list(),
     directorThreads: rows("SELECT * FROM director_threads ORDER BY updated_at DESC"),
-    directorMessages: rows("SELECT * FROM director_messages ORDER BY created_at,id"),
+    directorMessages: rows("SELECT * FROM (SELECT * FROM director_messages ORDER BY created_at DESC,id DESC LIMIT 500) ORDER BY created_at,id"),
     directorProposals: rows("SELECT * FROM director_proposals ORDER BY created_at DESC").map((item) => ({ ...item, steps: JSON.parse(item.steps_json) })),
     tasks: rows("SELECT t.*, p.name AS project_name, e.name AS employee_name FROM tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN employees e ON e.id=t.employee_id ORDER BY t.created_at DESC"),
     approvals: rows("SELECT * FROM approvals ORDER BY created_at DESC"),
     runs: rows("SELECT r.*,b.phase AS runtime_phase,(SELECT COUNT(*) FROM agent_runtime_interactions i WHERE i.run_id=r.id AND i.state='pending') AS pending_interactions FROM runs r LEFT JOIN agent_run_bindings b ON b.run_id=r.id ORDER BY r.started_at DESC").map((item) => ({ ...item, status_confidence: ["process-exit","native-runtime"].includes(item.status_source) ? "confirmed" : item.status_source === "recovery" ? "unavailable" : "observed" })),
     events: rows("SELECT * FROM events ORDER BY id DESC LIMIT 300").map((item) => ({ ...item, payload: JSON.parse(item.payload) })),
-    artifacts: rows("SELECT * FROM artifacts ORDER BY created_at DESC"),
+    artifacts: rows("SELECT * FROM artifacts ORDER BY created_at DESC LIMIT 200"),
     dependencies: rows("SELECT * FROM task_dependencies"),
     workspaces: rows("SELECT * FROM workspaces ORDER BY created_at DESC"),
     departments: rows("SELECT d.*,e.name AS manager_name FROM departments d LEFT JOIN employees e ON e.id=d.manager_id ORDER BY d.name"),
@@ -1000,7 +1003,7 @@ export function snapshot(ifNoneMatch) {
     packs: rows("SELECT id,version,name,created_at FROM workflow_packs ORDER BY name,version DESC"),
     meetings: rows("SELECT m.*,CASE WHEN EXISTS (SELECT 1 FROM meeting_items i JOIN tasks t ON t.id=i.task_id WHERE i.meeting_id=m.id AND t.status IN ('failed','blocked','cancelled','unknown','rejected','needs_revision')) THEN 'blocked' WHEN NOT EXISTS (SELECT 1 FROM meeting_items i JOIN tasks t ON t.id=i.task_id WHERE i.meeting_id=m.id AND t.status NOT IN ('completed','accepted')) THEN 'completed' WHEN EXISTS (SELECT 1 FROM meeting_items i JOIN tasks t ON t.id=i.task_id WHERE i.meeting_id=m.id AND t.status IN ('running','stopping')) THEN 'running' ELSE m.status END AS derived_status FROM meetings m ORDER BY m.created_at DESC"),
     meetingItems: rows("SELECT * FROM meeting_items"),
-    sharedArtifacts: rows("SELECT * FROM shared_artifacts ORDER BY created_at DESC"),
+    sharedArtifacts: rows("SELECT * FROM shared_artifacts ORDER BY created_at DESC LIMIT 200"),
     integrations: rows("SELECT * FROM integration_reviews ORDER BY created_at DESC"),
     mailboxes: rows("SELECT * FROM agent_mailboxes ORDER BY created_at"),
     messages: rows("SELECT * FROM agent_messages ORDER BY created_at DESC LIMIT 300").map(publicMessage),
