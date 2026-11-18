@@ -211,3 +211,19 @@ createServer(async (request,response)=>{
 // shuttingDown 标志防止信号重复触发导致多次退出
 let shuttingDown=false;
 for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{if(shuttingDown)return;shuttingDown=true;setTimeout(()=>process.exit(0),10000).unref();void Promise.allSettled([closeMcpConnections(),closeAgentRuntimes()]).finally(()=>process.exit(0));});
+// ===== 未捕获错误兜底 =====
+// 此前没有任何兜底：漏一个 .catch 就会按 Node 默认行为直接杀进程，
+// 所有在跑的 Agent 会留在无法核对的中间态，而 stderr 里什么都没有。
+// 区分处理：
+//   - unhandledRejection 只记录。拒绝是请求级的，进程状态仍然可信，继续服务。
+//   - uncaughtException 记录后走正常退出流程。此时进程状态已不可信，
+//     继续服务比重启更危险；退出后重启会把未完成的 Run 按 unknown 收口。
+const reportFatal = (label, value) => process.stderr.write(`ApiX ${label}: ${value instanceof Error ? (value.stack ?? value.message) : String(value)}\n`);
+process.on('unhandledRejection', reason => reportFatal('unhandled rejection', reason));
+process.on('uncaughtException', error => {
+  reportFatal('uncaught exception', error);
+  if (shuttingDown) return;
+  shuttingDown = true;
+  setTimeout(() => process.exit(1), 10000).unref();
+  void Promise.allSettled([closeMcpConnections(), closeAgentRuntimes()]).finally(() => process.exit(1));
+});
