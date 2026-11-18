@@ -1,0 +1,5600 @@
+{
+  "version": 0,
+  "migrations": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "tables": {
+    "agent_health": {
+      "columns": [
+        {
+          "name": "last_activity_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "last_probe_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "misses",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "schema_version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_locks": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "lease_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "owner_agent_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "released_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "resource_key",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "resource_type",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_mailboxes": {
+      "columns": [
+        {
+          "name": "agent_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "enabled",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_message_artifacts": {
+      "columns": [
+        {
+          "name": "artifact_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "digest",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "excerpt",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "source_task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_message_attempts": {
+      "columns": [
+        {
+          "name": "attempt_no",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_message_events": {
+      "columns": [
+        {
+          "name": "actor_agent",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "event_type",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_messages": {
+      "columns": [
+        {
+          "name": "acknowledged_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "completed_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "context_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "conversation_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "correlation_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "delivered_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "from_agent",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "max_retries",
+          "type": "integer",
+          "notnull": true,
+          "default": "3",
+          "pk": 0
+        },
+        {
+          "name": "next_retry_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload_bytes",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "priority",
+          "type": "text",
+          "notnull": true,
+          "default": "'normal'",
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reply_to",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "retry_count",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "source_run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "target_run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "target_task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "timeout_ms",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "to_agent",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "type",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_provider_bindings": {
+      "columns": [
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "provider_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_providers": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_run_bindings": {
+      "columns": [
+        {
+          "name": "backend",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "config_fingerprint",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "cwd",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "executor_version",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "native_session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "phase",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "resume_from_run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "sdk_version",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "stop_evidence",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_runtime_continuations": {
+      "columns": [
+        {
+          "name": "resume_run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "agent_runtime_deliveries": {
+      "columns": [
+        {
+          "name": "input_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "mode",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "turn_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_runtime_interactions": {
+      "columns": [
+        {
+          "name": "answer_delivery",
+          "type": "text",
+          "notnull": true,
+          "default": "'not_sent'",
+          "pk": 0
+        },
+        {
+          "name": "answer_hash",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "answer_request_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "answer_source",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "answered_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "expires_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "permission_version",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "agent_runtime_turns": {
+      "columns": [
+        {
+          "name": "ended_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "input_message_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "native_turn_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "usage_json",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_adapters": {
+      "columns": [
+        {
+          "name": "args_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "executable",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "format",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "mailbox",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_agent_tokens": {
+      "columns": [
+        {
+          "name": "agent_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "token_hash",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "apix_grants": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "manager_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "apix_guidance": {
+      "columns": [
+        {
+          "name": "action",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "focus",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "message_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "outbound_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_ledger": {
+      "columns": [
+        {
+          "name": "actor",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "aggregate_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "schema_version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        },
+        {
+          "name": "sequence",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "apix_manager_settings": {
+      "columns": [
+        {
+          "name": "api_key_env",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "api_type",
+          "type": "text",
+          "notnull": true,
+          "default": "'openai-completions'",
+          "pk": 0
+        },
+        {
+          "name": "base_url",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "context_window",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_mcp_servers": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "apix_mcp_tools": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "remote_name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "server_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_policies": {
+      "columns": [
+        {
+          "name": "mode",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_run_usage": {
+      "columns": [
+        {
+          "name": "cached_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "input_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "output_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "apix_workflows": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "approvals": {
+      "columns": [
+        {
+          "name": "action",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "prompt_hash",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "resolved_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "target_path",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "artifacts": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_compaction_blocks": {
+      "columns": [
+        {
+          "name": "checkpoint_through",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "effective_watermark",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "generation",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "input_signature",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_effects": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "input_fingerprint",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "output_fingerprint",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "result_event_id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "schema_version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        },
+        {
+          "name": "scope_key",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "tool",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_events": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_memory_meta": {
+      "columns": [
+        {
+          "name": "key",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "value",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_memory_usage": {
+      "columns": [
+        {
+          "name": "agent",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 4
+        },
+        {
+          "name": "note_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "used_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 3
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_message_requests": {
+      "columns": [
+        {
+          "name": "content_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "request_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_note_versions": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "note_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_notes": {
+      "columns": [
+        {
+          "name": "category",
+          "type": "text",
+          "notnull": true,
+          "default": "'project'",
+          "pk": 0
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "evidence_event_id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": "'project'",
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "scope",
+          "type": "text",
+          "notnull": true,
+          "default": "'project'",
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": "'active'",
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_optimization": {
+      "columns": [
+        {
+          "name": "mode",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_outputs": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "event_id",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "sha256",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_prompt_frames": {
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "generation_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "rendered_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "rendered_text",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "sequence",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "source_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_prompt_generations": {
+      "columns": [
+        {
+          "name": "boundary",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "checkpoint",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "discoveries",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "header",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "instruction_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "instruction_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "integrity",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "manifest",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "scan_watermark",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_prompt_settings": {
+      "columns": [
+        {
+          "name": "active_generation",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "strategy",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_sessions": {
+      "columns": [
+        {
+          "name": "archived_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "child_session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "compacted_through",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "needs_verification",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "pending",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "steps",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "verification",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_supervision": {
+      "columns": [
+        {
+          "name": "digest",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "last_wake_at",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "wakes",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "assistant_tool_discoveries": {
+      "columns": [
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "version",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "autonomy_checks": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "fingerprint",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "autonomy_plans": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "policy_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "workflow_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "autonomy_policies": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "autonomy_repairs": {
+      "columns": [
+        {
+          "name": "attempt",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "instruction",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "autonomy_tasks": {
+      "columns": [
+        {
+          "name": "last_checkpoint",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "module_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "original_prompt",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "repairs",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "code_handoffs": {
+      "columns": [
+        {
+          "name": "base_sha",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "input_commit",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "report",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "conversation_model_links": {
+      "columns": [
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "conversation_models": {
+      "columns": [
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "settings",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "conversations": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "coordination_checks": {
+      "columns": [
+        {
+          "name": "conflicts",
+          "type": "text",
+          "notnull": true,
+          "default": "'[]'",
+          "pk": 0
+        },
+        {
+          "name": "model_error",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "model_mode",
+          "type": "text",
+          "notnull": true,
+          "default": "'rules'",
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "coordination_events": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "ref_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "ref_type",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "coordination_plan_briefs": {
+      "columns": [
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "requirements_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "coordination_sessions": {
+      "columns": [
+        {
+          "name": "archived_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "confirmed_revision",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "interaction_mode",
+          "type": "text",
+          "notnull": true,
+          "default": "'conversational'",
+          "pk": 0
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "requirements_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "coordination_turns": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "departments": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "manager_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "director_messages": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": "'complete'",
+          "pk": 0
+        },
+        {
+          "name": "thread_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "director_proposals": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "goal",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source_message_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": "'draft'",
+          "pk": 0
+        },
+        {
+          "name": "steps_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "thread_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "director_threads": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "employee_runtime_settings": {
+      "columns": [
+        {
+          "name": "backend",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "employees": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "deleted_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "department",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "enabled",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "events": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "payload",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "execution_settings": {
+      "columns": [
+        {
+          "name": "employee_limit",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "paused",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_limit",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "integration_reviews": {
+      "columns": [
+        {
+          "name": "base_sha",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "report",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "repository_path",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "workspace_path",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "kb_chunks": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "doc_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "doc_version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "end_line",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "ordinal",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "start_line",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "kb_documents": {
+      "columns": [
+        {
+          "name": "digest",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "error",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "filename",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "space_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "kb_fts": {
+      "virtual": true,
+      "sql": "CREATE VIRTUAL TABLE kb_fts USING fts5(chunk_id UNINDEXED,tokens)"
+    },
+    "kb_fts_config": {
+      "columns": [
+        {
+          "name": "k",
+          "type": "",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "v",
+          "type": "",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "kb_fts_content": {
+      "columns": [
+        {
+          "name": "c0",
+          "type": "",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "c1",
+          "type": "",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "kb_fts_data": {
+      "columns": [
+        {
+          "name": "block",
+          "type": "blob",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "kb_fts_docsize": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "sz",
+          "type": "blob",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "kb_fts_idx": {
+      "columns": [
+        {
+          "name": "pgno",
+          "type": "",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "segid",
+          "type": "",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "term",
+          "type": "",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "kb_grants": {
+      "columns": [
+        {
+          "name": "space_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "kb_queries": {
+      "columns": [
+        {
+          "name": "has_sources",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "turn_id",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "kb_receipts": {
+      "columns": [
+        {
+          "name": "citation",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "kb_spaces": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "meeting_items": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "meeting_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "meetings": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "topic",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "memories": {
+      "columns": [
+        {
+          "name": "category",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "scope",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source_message_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "memory_fts": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "rowid",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "memory_revisions": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "memory_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "model_prompt_diagnostics": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "config_revision",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "layout",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "process_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "response_headers",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "route_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "usage_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "model_token_usage": {
+      "columns": [
+        {
+          "name": "api_type",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "attempt",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "cache_write_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "cached_input_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "duration_ms",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "estimated_prompt_tokens",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "input_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "invocation_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "output_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "provider",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "purpose",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reasoning_tokens",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "usage_complete",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "model_usage_details": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "usage_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "personal_work_memory": {
+      "columns": [
+        {
+          "name": "document",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "planning_meetings": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "round",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "plans": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "goal",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "mode",
+          "type": "text",
+          "notnull": true,
+          "default": "'director'",
+          "pk": 0
+        },
+        {
+          "name": "pack_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "pack_version",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "project_profiles": {
+      "columns": [
+        {
+          "name": "constraints",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "decisions",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "goals",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "summary",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": "1",
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "project_repositories": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "projects": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "runs": {
+      "columns": [
+        {
+          "name": "ended_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "exit_code",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "finalized_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "mailbox_seen_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "pid",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status_source",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "stop_evidence",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "stop_requested_at",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "runtime_pauses": {
+      "columns": [
+        {
+          "name": "paused",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "source_run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_account_pauses": {
+      "columns": [
+        {
+          "name": "account_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "source_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_accounts": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_attempts": {
+      "columns": [
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "observed_model",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_policies": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_profiles": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_reservations": {
+      "columns": [
+        {
+          "name": "account_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "actual",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "amount",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "currency",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "scheduling_tasks": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "decision",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "schema_migrations": {
+      "columns": [
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "shared_artifacts": {
+      "columns": [
+        {
+          "name": "content",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "task_dependencies": {
+      "columns": [
+        {
+          "name": "depends_on_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "tasks": {
+      "columns": [
+        {
+          "name": "conversation_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "delivery_commit",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "delivery_fingerprint",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "department_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "employee_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "input_commit",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": "'work'",
+          "pk": 0
+        },
+        {
+          "name": "plan_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "prompt",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "queue_reason",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "recovery_fingerprint",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "repository_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "result",
+          "type": "text",
+          "notnull": true,
+          "default": "''",
+          "pk": 0
+        },
+        {
+          "name": "resumes_task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "runtime",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "updated_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "verification_status",
+          "type": "text",
+          "notnull": true,
+          "default": "'pending'",
+          "pk": 0
+        },
+        {
+          "name": "workspace_path",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "tool_access": {
+      "columns": [
+        {
+          "name": "allow_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "deny_json",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "role",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "tool_audit": {
+      "columns": [
+        {
+          "name": "args_summary",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "outcome",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "subject",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "tool",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "tool_limits": {
+      "columns": [
+        {
+          "name": "body",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "project_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "tool_observations": {
+      "columns": [
+        {
+          "name": "blocked",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "bytes",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "code",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "integer",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "result_hash",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "session_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "signature",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "turn_id",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    },
+    "workflow_packs": {
+      "columns": [
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "definition",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "notnull": true,
+          "default": null,
+          "pk": 2
+        }
+      ],
+      "migrations": []
+    },
+    "workflow_recoveries": {
+      "columns": [
+        {
+          "name": "attempts",
+          "type": "integer",
+          "notnull": true,
+          "default": "0",
+          "pk": 0
+        },
+        {
+          "name": "last_run_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "original_prompt",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "started_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "state",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
+    "workspaces": {
+      "columns": [
+        {
+          "name": "base_sha",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "common_dir",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "created_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "id",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        },
+        {
+          "name": "kind",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "path",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "task_id",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        }
+      ],
+      "migrations": []
+    }
+  },
+  "indexes": {
+    "agent_locks_active_resource": {
+      "table": "agent_locks",
+      "sql": "CREATE UNIQUE INDEX agent_locks_active_resource ON agent_locks(project_id,resource_type,resource_key)WHERE released_at IS NULL"
+    },
+    "agent_locks_owner": {
+      "table": "agent_locks",
+      "sql": "CREATE INDEX agent_locks_owner ON agent_locks(project_id,owner_agent_id,released_at)"
+    },
+    "agent_message_events_project": {
+      "table": "agent_message_events",
+      "sql": "CREATE INDEX agent_message_events_project ON agent_message_events(project_id,id)"
+    },
+    "agent_messages_correlation": {
+      "table": "agent_messages",
+      "sql": "CREATE INDEX agent_messages_correlation ON agent_messages(project_id,correlation_id,created_at)"
+    },
+    "agent_messages_inbox": {
+      "table": "agent_messages",
+      "sql": "CREATE INDEX agent_messages_inbox ON agent_messages(project_id,to_agent,status,created_at)"
+    },
+    "agent_messages_run": {
+      "table": "agent_messages",
+      "sql": "CREATE INDEX agent_messages_run ON agent_messages(project_id,to_agent,target_task_id,target_run_id,status)"
+    },
+    "apix_guidance_task": {
+      "table": "apix_guidance",
+      "sql": "CREATE INDEX apix_guidance_task ON apix_guidance(task_id,updated_at)"
+    },
+    "apix_ledger_aggregate": {
+      "table": "apix_ledger",
+      "sql": "CREATE INDEX apix_ledger_aggregate ON apix_ledger(aggregate_id,sequence)"
+    },
+    "apix_ledger_project": {
+      "table": "apix_ledger",
+      "sql": "CREATE INDEX apix_ledger_project ON apix_ledger(project_id,sequence)"
+    },
+    "apix_ledger_project_aggregate": {
+      "table": "apix_ledger",
+      "sql": "CREATE INDEX apix_ledger_project_aggregate ON apix_ledger(project_id,aggregate_id,sequence)"
+    },
+    "artifacts_created": {
+      "table": "artifacts",
+      "sql": "CREATE INDEX artifacts_created ON artifacts(created_at DESC)"
+    },
+    "artifacts_run": {
+      "table": "artifacts",
+      "sql": "CREATE INDEX artifacts_run ON artifacts(run_id)"
+    },
+    "assistant_effect_pending": {
+      "table": "assistant_effects",
+      "sql": "CREATE UNIQUE INDEX assistant_effect_pending ON assistant_effects(session_id,scope_key)WHERE state='started'"
+    },
+    "assistant_effect_scope": {
+      "table": "assistant_effects",
+      "sql": "CREATE INDEX assistant_effect_scope ON assistant_effects(session_id,scope_key)"
+    },
+    "assistant_event_session": {
+      "table": "assistant_events",
+      "sql": "CREATE INDEX assistant_event_session ON assistant_events(session_id,id)"
+    },
+    "assistant_note_id": {
+      "table": "assistant_notes",
+      "sql": "CREATE UNIQUE INDEX assistant_note_id ON assistant_notes(id)"
+    },
+    "assistant_output_event": {
+      "table": "assistant_outputs",
+      "sql": "CREATE UNIQUE INDEX assistant_output_event ON assistant_outputs(session_id,event_id)"
+    },
+    "coordination_events_session": {
+      "table": "coordination_events",
+      "sql": "CREATE INDEX coordination_events_session ON coordination_events(session_id,id)"
+    },
+    "coordination_sessions_project": {
+      "table": "coordination_sessions",
+      "sql": "CREATE INDEX coordination_sessions_project ON coordination_sessions(project_id,updated_at)"
+    },
+    "coordination_turns_session": {
+      "table": "coordination_turns",
+      "sql": "CREATE INDEX coordination_turns_session ON coordination_turns(session_id,created_at)"
+    },
+    "events_run": {
+      "table": "events",
+      "sql": "CREATE INDEX events_run ON events(run_id,id)"
+    },
+    "model_prompt_diagnostics_scope": {
+      "table": "model_prompt_diagnostics",
+      "sql": "CREATE INDEX model_prompt_diagnostics_scope ON model_prompt_diagnostics(project_id,session_id,route_id,purpose,layout)"
+    },
+    "model_token_usage_scope": {
+      "table": "model_token_usage",
+      "sql": "CREATE INDEX model_token_usage_scope ON model_token_usage(project_id,session_id,task_id,created_at)"
+    },
+    "runs_status": {
+      "table": "runs",
+      "sql": "CREATE INDEX runs_status ON runs(status)"
+    },
+    "runs_task": {
+      "table": "runs",
+      "sql": "CREATE INDEX runs_task ON runs(task_id)"
+    },
+    "runtime_native_turn": {
+      "table": "agent_runtime_turns",
+      "sql": "CREATE UNIQUE INDEX runtime_native_turn ON agent_runtime_turns(run_id,native_turn_id)WHERE native_turn_id IS NOT NULL"
+    },
+    "shared_artifacts_plan": {
+      "table": "shared_artifacts",
+      "sql": "CREATE INDEX shared_artifacts_plan ON shared_artifacts(plan_id)"
+    },
+    "shared_artifacts_task": {
+      "table": "shared_artifacts",
+      "sql": "CREATE INDEX shared_artifacts_task ON shared_artifacts(task_id)"
+    },
+    "tasks_conversation": {
+      "table": "tasks",
+      "sql": "CREATE INDEX tasks_conversation ON tasks(conversation_id)"
+    },
+    "tasks_employee_status": {
+      "table": "tasks",
+      "sql": "CREATE INDEX tasks_employee_status ON tasks(employee_id,status)"
+    },
+    "tasks_plan": {
+      "table": "tasks",
+      "sql": "CREATE INDEX tasks_plan ON tasks(plan_id)"
+    },
+    "tasks_project_status": {
+      "table": "tasks",
+      "sql": "CREATE INDEX tasks_project_status ON tasks(project_id,status)"
+    },
+    "tool_progress_turn": {
+      "table": "tool_observations",
+      "sql": "CREATE INDEX tool_progress_turn ON tool_observations(session_id,turn_id,id)"
+    }
+  }
+}
