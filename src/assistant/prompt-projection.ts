@@ -4,6 +4,8 @@ import {canonical} from './tool-governance.js';
 import {requestHash,diagnosticHostFields,type PromptDescriptor} from '../models/prompt-diagnostics.js';
 import {createContextOutputs,type ContextEvent} from './assistant-context.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 export type PromptStrategy='legacy'|'stable-prefix-v1';
 export type GenerationReason='explicit_strategy_switch'|'layout_version'|'optimization_mode'|'catalog_contract'|'model_route'|'compaction'|'history_rewind'|'permission_scope_change'|'instructions';
 interface Session {id:string;version:number;summary:string;compacted_through:number}
@@ -19,18 +21,7 @@ const sourceHash=(e:ContextEvent)=>requestHash(canonical(e));
 /** 私有模型视图；原始事件和输出引用仍是事实源，GET 只允许无写入预览。 */
 export function createPromptProjection(store:Store,outputs:ReturnType<typeof createContextOutputs>){
   const {db,row,rows}=store;
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_prompt_settings(
-    session_id TEXT PRIMARY KEY REFERENCES assistant_sessions(id) ON DELETE CASCADE,
-    strategy TEXT NOT NULL CHECK(strategy IN ('legacy','stable-prefix-v1')),version INTEGER NOT NULL,active_generation TEXT,FOREIGN KEY(session_id,active_generation) REFERENCES assistant_prompt_generations(session_id,id));
-    CREATE TABLE IF NOT EXISTS assistant_prompt_generations(
-    id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES assistant_sessions(id) ON DELETE CASCADE,
-    boundary TEXT NOT NULL,header TEXT NOT NULL,checkpoint TEXT NOT NULL,scan_watermark INTEGER NOT NULL,
-    instruction_hash TEXT NOT NULL,instruction_version INTEGER NOT NULL,reason TEXT NOT NULL,discoveries TEXT NOT NULL,integrity TEXT NOT NULL,manifest TEXT NOT NULL,
-    UNIQUE(session_id,id));
-    CREATE TABLE IF NOT EXISTS assistant_prompt_frames(
-    generation_id TEXT NOT NULL REFERENCES assistant_prompt_generations(id) ON DELETE CASCADE,
-    sequence INTEGER NOT NULL,event_id INTEGER,source_hash TEXT NOT NULL,rendered_text TEXT NOT NULL,rendered_hash TEXT NOT NULL,
-    PRIMARY KEY(generation_id,sequence),UNIQUE(generation_id,event_id));`);
+  ensureModuleSchema(db, "assistant-prompt-projection");
   function settings(id:string){
     const s=row<{strategy:PromptStrategy;version:number;active_generation:string|null}>('SELECT * FROM assistant_prompt_settings WHERE session_id=?',id);
     return {promptStrategy:s?.strategy??'legacy',promptSettingsVersion:s?.version??0,generation:s?.active_generation??null};

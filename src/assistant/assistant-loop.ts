@@ -45,6 +45,8 @@ import {createPromptProjection,type PromptStrategy} from './prompt-projection.js
 import {createContextCompaction,CompactionNoGainError} from './context-compaction.js';
 import type {PromptDescriptor} from '../models/prompt-diagnostics.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 助手会话数据结构 — 对应 assistant_sessions 表的一行 */
 export interface AssistantSession {id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;compacted_through:number;pending:string|null;child_session_id:string|null;needs_verification:number;verification:string|null;started_at:string;updated_at:string;task_id?:string|null}
 /** 事件记录 — 对应 assistant_events 表的一行，记录会话中的所有交互 */
@@ -116,20 +118,17 @@ export function createAssistantLoop(deps:Dependencies){
   /** controllers — 每个会话的 AbortController，用于中断正在进行的 LLM 推理或工具执行 */
   const controllers=new Map<string,AbortController>();
   const unsavedSafety=new Map<string,string>();
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_sessions(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,status TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,steps INTEGER NOT NULL DEFAULT 0,summary TEXT NOT NULL DEFAULT '',compacted_through INTEGER NOT NULL DEFAULT 0,pending TEXT,child_session_id TEXT,needs_verification INTEGER NOT NULL DEFAULT 0,verification TEXT,started_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS assistant_events(id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),role TEXT NOT NULL,kind TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS assistant_event_session ON assistant_events(session_id,id);
-    CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));`);
+  ensureModuleSchema(db, "assistant-assistant-loop");
   const memory=deps.memory??createProjectMemory(deps);
-  db.exec('CREATE TABLE IF NOT EXISTS assistant_tool_discoveries(session_id TEXT NOT NULL,name TEXT NOT NULL,version TEXT NOT NULL,PRIMARY KEY(session_id,name));CREATE TABLE IF NOT EXISTS assistant_supervision(session_id TEXT PRIMARY KEY,digest TEXT NOT NULL,last_wake_at INTEGER NOT NULL DEFAULT 0,wakes INTEGER NOT NULL DEFAULT 0)');
-  db.exec('CREATE TABLE IF NOT EXISTS assistant_message_requests(session_id TEXT NOT NULL REFERENCES assistant_sessions(id),request_id TEXT NOT NULL,content_hash TEXT NOT NULL,event_id INTEGER NOT NULL REFERENCES assistant_events(id),created_at TEXT NOT NULL,PRIMARY KEY(session_id,request_id))');
+  ensureModuleSchema(db, "assistant-assistant-loop-2");
+  ensureModuleSchema(db, "assistant-assistant-loop-3");
   const governance=deps.governance??createToolGovernance(deps),progress=deps.progress??createToolProgress(deps),knowledge=deps.knowledge;
   // === 子模块初始化 ===
   /** 副作用日志 — 记录工具执行产生的副作用，支持复用和核对 [→ 见 src/assistant/assistant-effects.ts] */
   const effects=createEffectJournal(deps);
   /** Token 用量统计 — 跟踪每个项目/会话的推理消耗 */
   const usage=createTokenUsage(deps);
-  db.exec("CREATE TABLE IF NOT EXISTS assistant_optimization(session_id TEXT PRIMARY KEY REFERENCES assistant_sessions(id),mode TEXT NOT NULL CHECK(mode IN ('standard','saving')))");
+  ensureModuleSchema(db, "assistant-assistant-loop-4");
   const saving=(id:string)=>row<{mode:string}>('SELECT mode FROM assistant_optimization WHERE session_id=?',id)?.mode==='saving';
   // 模型看到的目录可以精简，但实际执行仍使用完整 registry 做参数和权限检查。
   function catalog(s:AssistantSession){return optimizedCatalog(registry(s).catalog(),saving(s.id),rows<{name:string}>('SELECT name FROM assistant_tool_discoveries WHERE session_id=?',s.id).map(t=>t.name));}

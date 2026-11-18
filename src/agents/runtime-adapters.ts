@@ -3,6 +3,8 @@ import { dirname, extname, isAbsolute, join, resolve, sep } from 'node:path';
 import type { Store, AgentCapabilities } from '../coordination/contracts.js';
 import { object, text } from '../coordination/contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 export interface Command { executable: string; prefix: string[] }
 interface CustomAdapter { id: string; name: string; executable: string; args_json: string; format: 'plain' | 'jsonl'; mailbox: number }
 const builtins = [
@@ -40,7 +42,7 @@ function npmShimCommand(id: string, shim: string): Command | null {
 }
 export function createRuntimeAdapters(store: Store, findExecutable: (name: string) => string | null) {
   const { db, row, rows } = store;
-  db.exec('CREATE TABLE IF NOT EXISTS apix_adapters(id TEXT PRIMARY KEY,name TEXT NOT NULL,executable TEXT NOT NULL,args_json TEXT NOT NULL,format TEXT NOT NULL)');
+  ensureModuleSchema(db, "agents-runtime-adapters");
   if(!rows<{name:string}>('PRAGMA table_info(apix_adapters)').some(c=>c.name==='mailbox')) db.exec('ALTER TABLE apix_adapters ADD COLUMN mailbox INTEGER NOT NULL DEFAULT 0');
   function command(id: string): Command | null {
     const env = process.env[`APIX_${id.toUpperCase()}_ENTRY`];

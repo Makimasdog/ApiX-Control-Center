@@ -14,6 +14,8 @@
  */
 import {type Store} from '../coordination/contracts.js';
 import {digest,ToolError} from './tool-governance.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 默认工具调用预算参数 */
 const defaults={maxCalls:24,maxFailures:3,maxNoProgress:3,maxPolls:6,maxMs:1800000,maxBytes:2000000,pollMs:1000};
 type Limits=typeof defaults;
@@ -37,8 +39,7 @@ function toolSignature(tool:string,args:unknown,accessVersion:string|number){
  * @returns 包含 settings / save / check / observe / signature 方法的追踪器
  */
 export function createToolProgress({db,row,rows,now}:Store){
-  db.exec(`CREATE TABLE IF NOT EXISTS tool_limits(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL,version INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS tool_observations(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL,turn_id INTEGER NOT NULL,signature TEXT NOT NULL,result_hash TEXT NOT NULL,code TEXT,bytes INTEGER NOT NULL,blocked INTEGER NOT NULL,created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS tool_progress_turn ON tool_observations(session_id,turn_id,id);`);
+  ensureModuleSchema(db, "assistant-tool-progress");
   /** settings - 获取项目的工具调用预算设置（与默认值合并） */
   function settings(projectId:string){if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new ToolError('NOT_FOUND','项目不存在','correct_input',{},404);const p=row<{body:string;version:number}>('SELECT * FROM tool_limits WHERE project_id=?',projectId);return {...defaults,...p?JSON.parse(p.body):{},version:p?.version??0} as Limits&{version:number};}
   /** save - 保存项目的工具调用预算设置（带上限校验） */

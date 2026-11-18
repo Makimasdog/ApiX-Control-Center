@@ -17,6 +17,8 @@ import {mkdirSync,writeFileSync,readFileSync,renameSync,unlinkSync} from 'node:f
 import {join} from 'node:path';
 import {workerEnvironment} from '../infrastructure/environment.mjs';
 
+import {ensureModuleSchema} from '../../dist/src/infrastructure/schema.js';
+
 /**
  * loopback - 判断 URL 是否指向本机回环地址
  */
@@ -52,8 +54,7 @@ function runtimeConfig(path,value){
  */
 export function createAgentProviders({db,row,rows,now,dataDir,credentials,profile,saveProfile,managerSettings,saveManager,environment=process.env}){
   // 创建提供商表和绑定表
-  db.exec(`CREATE TABLE IF NOT EXISTS agent_providers(id TEXT PRIMARY KEY,version INTEGER NOT NULL,body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS agent_provider_bindings(employee_id TEXT PRIMARY KEY REFERENCES employees(id),provider_id TEXT REFERENCES agent_providers(id),version INTEGER NOT NULL);`);
+  ensureModuleSchema(db, "models-agent-providers");
 
   /** get - 根据 ID 获取提供商配置 */
   const get=id=>{const saved=row('SELECT * FROM agent_providers WHERE id=?',id);if(!saved)throw Error('供应商不存在，请刷新');return {id:saved.id,version:saved.version,...JSON.parse(saved.body)};};

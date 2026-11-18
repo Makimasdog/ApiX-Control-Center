@@ -16,6 +16,8 @@ import type {Store} from '../coordination/contracts.js';
 import {BUILTIN_PROVIDERS,getProviderConfig,validateModelConfig} from './model-providers.js';
 import type {ModelSettings} from './model-backend.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * modelCatalog - 根据当前模型设置匹配提供商，返回可用模型列表
  * @param settings - 当前模型配置
@@ -64,8 +66,8 @@ export function reasoningParameters(settings:ModelSettings):Record<string,unknow
 export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
   const {db,row,now}=deps;
   // 创建对话模型配置表，复合主键为 (kind, session_id)
-  db.exec('CREATE TABLE IF NOT EXISTS conversation_models(kind TEXT NOT NULL,session_id TEXT NOT NULL,settings TEXT NOT NULL,version INTEGER NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(kind,session_id))');
-  db.exec('CREATE TABLE IF NOT EXISTS conversation_model_links(kind TEXT NOT NULL,session_id TEXT NOT NULL,PRIMARY KEY(kind,session_id))');
+  ensureModuleSchema(db, "models-conversation-models");
+  ensureModuleSchema(db, "models-conversation-models-2");
 
   /**
    * get - 获取指定对话的模型配置，不存在则自动初始化

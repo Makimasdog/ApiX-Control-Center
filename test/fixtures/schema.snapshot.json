@@ -4240,6 +4240,32 @@
       ],
       "migrations": []
     },
+    "module_schema_versions": {
+      "columns": [
+        {
+          "name": "applied_at",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "digest",
+          "type": "text",
+          "notnull": true,
+          "default": null,
+          "pk": 0
+        },
+        {
+          "name": "key",
+          "type": "text",
+          "notnull": false,
+          "default": null,
+          "pk": 1
+        }
+      ],
+      "migrations": []
+    },
     "personal_work_memory": {
       "columns": [
         {

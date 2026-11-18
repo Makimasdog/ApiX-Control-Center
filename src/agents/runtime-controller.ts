@@ -8,6 +8,8 @@ import {createRuntimeInteractions,type QueueCliReply} from './runtime-interactio
 import type {GroundedReply} from '../coordination/worker-question.js';
 import {cliCapabilities,runtimeError,type RuntimeBackend,type RuntimeInput,type RunHandle} from './runtime-contract.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 interface Settings {backend:RuntimeBackend;version:number}
 interface Hooks {
   snapshot(id:string):unknown;
@@ -24,11 +26,7 @@ const capabilities=(backend:string)=>backend==='cli'?cliCapabilities:{steer:back
 
 export function createRuntimeController(store:Store){
   const {db,row,rows,now}=store;
-  db.exec(`CREATE TABLE IF NOT EXISTS employee_runtime_settings(employee_id TEXT PRIMARY KEY REFERENCES employees(id) ON DELETE CASCADE,backend TEXT NOT NULL,version INTEGER NOT NULL,updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS agent_run_bindings(run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,backend TEXT NOT NULL,config_fingerprint TEXT NOT NULL,phase TEXT NOT NULL,stop_evidence TEXT NOT NULL,native_session_id TEXT,resume_from_run_id TEXT,cwd TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS agent_runtime_turns(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,status TEXT NOT NULL,usage_json TEXT,started_at TEXT NOT NULL,ended_at TEXT);
-    CREATE TABLE IF NOT EXISTS agent_runtime_deliveries(message_id TEXT NOT NULL REFERENCES agent_messages(id) ON DELETE CASCADE,run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,request_id TEXT NOT NULL,input_hash TEXT NOT NULL,mode TEXT NOT NULL,state TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(message_id,run_id),UNIQUE(run_id,request_id));
-    CREATE TABLE IF NOT EXISTS agent_runtime_continuations(task_id TEXT PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,resume_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE);`);
+  ensureModuleSchema(db, "agents-runtime-controller");
   for(const [table,columns] of [['agent_run_bindings',['executor_version','sdk_version']],['agent_runtime_turns',['native_turn_id','input_message_id']],['agent_runtime_deliveries',['turn_id']]] as const)for(const column of columns)if(!rows<{name:string}>('PRAGMA table_info('+table+')').some(c=>c.name===column))db.exec('ALTER TABLE '+table+' ADD COLUMN '+column+' TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS runtime_native_turn ON agent_runtime_turns(run_id,native_turn_id) WHERE native_turn_id IS NOT NULL');
   const handles=new Map<string,RunHandle>(),secrets=new Map<string,string[]>();let hooks:Hooks;

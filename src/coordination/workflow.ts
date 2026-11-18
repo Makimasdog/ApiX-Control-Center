@@ -13,6 +13,8 @@
 import {type Store,object,text} from './contracts.js';
 import type {Permissions} from './permissions.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * createWorkflow - 创建自动协作工作流管理器
  * @param store - 数据库访问层，提供 db / row / rows / now 等基础方法 [→ 见 src/coordination/contracts.ts]
@@ -23,7 +25,7 @@ import type {Permissions} from './permissions.js';
 export function createWorkflow(store:Store,permissions:Permissions,employees:()=>{id:string}[]) {
   const {db,row}=store;
   // 初始化工作流配置表：每个项目一条记录，body 为 JSON 序列化的配置
-  db.exec('CREATE TABLE IF NOT EXISTS apix_workflows(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL)');
+  ensureModuleSchema(db, "coordination-workflow");
 
   /**
    * get - 读取指定项目的自动协作配置

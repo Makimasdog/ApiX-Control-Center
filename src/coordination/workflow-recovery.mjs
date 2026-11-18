@@ -15,6 +15,8 @@
  */
 import {redact} from '../../dist/src/assistant/tool-governance.js';
 import {classifyFault} from '../../dist/src/recovery/fault-policy.js';
+import {ensureModuleSchema} from '../../dist/src/infrastructure/schema.js';
+
 // 普通自动协作复用现有的恢复授权与预算闸门
 
 /**
@@ -33,7 +35,7 @@ import {classifyFault} from '../../dist/src/recovery/fault-policy.js';
  */
 export function createWorkflowRecovery({db,row,rows,now,workflow,permissions,scheduling,retry,record=()=>{},fault=task=>classifyFault(new Error(task.result??''),{kind:'agent'})}) {
   // 恢复记录表：跟踪每个任务的重试次数、状态和原因
-  db.exec(`CREATE TABLE IF NOT EXISTS workflow_recoveries(task_id TEXT PRIMARY KEY REFERENCES tasks(id),original_prompt TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,started_at TEXT NOT NULL,last_run_id TEXT,state TEXT NOT NULL,reason TEXT)`);
+  ensureModuleSchema(db, "coordination-workflow-recovery");
   // busy 互斥标志：防止 tick 被并发触发（单进程内简单锁）
   let busy=false;
 

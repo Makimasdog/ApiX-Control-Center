@@ -17,6 +17,8 @@ import {randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {recallNotes,type RecallNote} from './assistant-memory.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * sensitiveMemory - 检测文本是否包含敏感信息
  * 匹配模式：API 密钥、Bearer token、私钥、密码、邮箱、手机号、环境变量中的密钥值
@@ -52,10 +54,7 @@ export function memoryIndex(notes:RecallNote[]){
  */
 export function createProjectMemory(store:Store){
   const {db,row,rows,now}=store;
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));
-    CREATE TABLE IF NOT EXISTS assistant_memory_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS assistant_note_versions(note_id TEXT NOT NULL,version INTEGER NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(note_id,version));
-    CREATE TABLE IF NOT EXISTS assistant_memory_usage(project_id TEXT NOT NULL,note_id TEXT NOT NULL,session_id TEXT NOT NULL,version INTEGER NOT NULL,agent TEXT NOT NULL,used_at TEXT NOT NULL,PRIMARY KEY(note_id,session_id,version,agent));`);
+  ensureModuleSchema(db, "assistant-project-memory");
   for(const [name,definition] of Object.entries({id:"TEXT",kind:"TEXT NOT NULL DEFAULT 'project'",status:"TEXT NOT NULL DEFAULT 'active'",evidence_event_id:'INTEGER',scope:"TEXT NOT NULL DEFAULT 'project'",task_id:'TEXT',category:"TEXT NOT NULL DEFAULT 'project'"}))if(!rows<{name:string}>('PRAGMA table_info(assistant_notes)').some(c=>c.name===name))db.exec(`ALTER TABLE assistant_notes ADD COLUMN ${name} ${definition}`);
   db.prepare("UPDATE assistant_notes SET id='note-'||lower(hex(randomblob(16))) WHERE id IS NULL").run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_note_id ON assistant_notes(id)');

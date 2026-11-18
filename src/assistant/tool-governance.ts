@@ -17,6 +17,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {type Store,object} from '../coordination/contracts.js';
 import {type ToolDefinition} from './tool-registry.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** ToolError - 工具执行错误，包含错误码、建议动作和 HTTP 状态码 */
 export class ToolError extends Error {
   constructor(public code:string,message:string,public action='correct_input',public details:unknown={},public status=400){super(message);}
@@ -71,8 +73,7 @@ const coordinatorOnly=new Set(['configure_agents','configure_verification','dele
  */
 export function createToolGovernance(store:Store){
   const {db,row,rows,now}=store;
-  db.exec(`CREATE TABLE IF NOT EXISTS tool_access(project_id TEXT NOT NULL REFERENCES projects(id),subject TEXT NOT NULL,role TEXT NOT NULL,allow_json TEXT NOT NULL,deny_json TEXT NOT NULL,version INTEGER NOT NULL,PRIMARY KEY(project_id,subject));
-    CREATE TABLE IF NOT EXISTS tool_audit(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,subject TEXT NOT NULL,tool TEXT NOT NULL,args_summary TEXT NOT NULL,outcome TEXT NOT NULL,code TEXT,created_at TEXT NOT NULL);`);
+  ensureModuleSchema(db, "assistant-tool-governance");
   /** subject - 校验项目或员工存在性 */
   function subject(projectId:string,id:string){if(!row('SELECT id FROM projects WHERE id=?',projectId)||id!=='apix'&&!row('SELECT id FROM employees WHERE id=? AND deleted_at IS NULL',id))throw new ToolError('SUBJECT_NOT_FOUND','项目或员工不存在');}
   /** get - 获取指定主体的工具访问策略（默认 apix=coordinator，其他=planner） */

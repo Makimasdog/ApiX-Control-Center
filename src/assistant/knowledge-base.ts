@@ -17,6 +17,8 @@ import {credentialName} from '../validation/node-project.js';
 import {randomUUID,createHash} from 'node:crypto';
 import {type Store,object} from '../coordination/contracts.js';
 import {ToolError} from './tool-governance.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 const MAX_BYTES=1024*1024;
 /** 知识空间：项目级知识隔离单元 */
 interface Space {id:string;project_id:string;name:string;description:string;version:number}
@@ -54,12 +56,7 @@ const lineBreaks=(value:string)=>{let count=0;for(let i=0;i<value.length;i++)if(
  */
 export function createKnowledgeBase({db,row,rows,now}:Store){
   // 初始化所有知识库表结构
-  db.exec(`CREATE TABLE IF NOT EXISTS kb_spaces(id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),name TEXT NOT NULL,description TEXT NOT NULL,version INTEGER NOT NULL,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS kb_grants(space_id TEXT NOT NULL REFERENCES kb_spaces(id) ON DELETE CASCADE,subject TEXT NOT NULL,PRIMARY KEY(space_id,subject));
-    CREATE TABLE IF NOT EXISTS kb_documents(id TEXT PRIMARY KEY,space_id TEXT NOT NULL REFERENCES kb_spaces(id) ON DELETE CASCADE,filename TEXT NOT NULL,title TEXT NOT NULL,source TEXT NOT NULL,digest TEXT NOT NULL,version INTEGER NOT NULL,state TEXT NOT NULL,error TEXT,updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS kb_chunks(id TEXT PRIMARY KEY,doc_id TEXT NOT NULL REFERENCES kb_documents(id) ON DELETE CASCADE,doc_version INTEGER NOT NULL,ordinal INTEGER NOT NULL,content TEXT NOT NULL,start_line INTEGER NOT NULL,end_line INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS kb_queries(session_id TEXT NOT NULL,turn_id INTEGER NOT NULL,has_sources INTEGER NOT NULL,PRIMARY KEY(session_id,turn_id));
-    CREATE TABLE IF NOT EXISTS kb_receipts(session_id TEXT NOT NULL,citation TEXT NOT NULL,PRIMARY KEY(session_id,citation));`);
+  ensureModuleSchema(db, "assistant-knowledge-base");
   // 探测 FTS5 全文搜索支持：尝试创建并立即删除测试表
   let fts=true;
   try{db.exec('CREATE VIRTUAL TABLE temp.kb_fts_capability_probe USING fts5(probe);DROP TABLE temp.kb_fts_capability_probe');}

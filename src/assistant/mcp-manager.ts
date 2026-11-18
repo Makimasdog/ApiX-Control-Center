@@ -22,6 +22,8 @@ import {statSync} from 'node:fs';
 import {object,text,type Store} from '../coordination/contracts.js';
 import {createToolRegistry,type ToolDefinition} from './tool-registry.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** MCP 服务端配置：传输方式、命令、参数、环境变量等 */
 interface Config {id:string;name:string;transport:'stdio'|'http';command?:string;args:string[];url?:string;env:string[];headerEnv:Record<string,string>;enabled:boolean;version:number}
 /** 活跃的 MCP 连接：客户端实例 + 传输层 + 配置版本 */
@@ -34,7 +36,7 @@ interface Connection {client:Client;transport:StdioClientTransport|StreamableHTT
  */
 export function createMcpManager(store:Store,deps:{project(id:string):{path:string};environment():Record<string,string|undefined>}){
   const {db,row,rows,now}=store;const connections=new Map<string,Promise<Connection>>();
-  db.exec('CREATE TABLE IF NOT EXISTS apix_mcp_servers(project_id TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project_id,id));CREATE TABLE IF NOT EXISTS apix_mcp_tools(project_id TEXT NOT NULL,server_id TEXT NOT NULL,name TEXT NOT NULL,remote_name TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(project_id,name))');
+  ensureModuleSchema(db, "assistant-mcp-manager");
   const key=(projectId:string,id:string)=>projectId+':'+id;
   const configs=(projectId:string)=>{deps.project(projectId);return rows<{body:string}>('SELECT body FROM apix_mcp_servers WHERE project_id=? ORDER BY id',projectId).map(r=>JSON.parse(r.body) as Config);};
   /** 关闭单个 MCP 连接（Windows 上先 taskkill 确保进程树终止） */

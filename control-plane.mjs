@@ -76,6 +76,7 @@ import { createAgentMailbox } from "./dist/src/messaging/agent-mailbox.js";
 import { createEmployeeInsights } from "./dist/src/agents/employee-insights.js";
 import { workerPrompt } from "./dist/src/agents/worker-context.js";
 import {createScheduling,overlaps} from './dist/src/coordination/scheduling.js';
+import {applyAllModuleSchemas} from './dist/src/infrastructure/schema.js';
 import { consultClaude } from './src/models/consultation.mjs';
 import {projectReadiness} from './src/projects/readiness.mjs';
 import {createTaskDelivery} from './src/projects/task-delivery.mjs';
@@ -404,6 +405,10 @@ if(!db.prepare('SELECT version FROM schema_migrations WHERE version=14').get()) 
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }
+// 模块表统一预热：所有 CREATE TABLE 文本集中在 src/infrastructure/schema.ts。
+// 在迁移块之后执行一次，保证新装与升级走同一套模块建表逻辑，
+// 也让启动顺序不再取决于各模块工厂被实例化的先后。
+applyAllModuleSchemas(db);
 // ===== 内存状态与启动恢复 =====
 // now() 返回 ISO 8601 时间戳，用于所有数据库时间字段
 const now = () => new Date().toISOString();

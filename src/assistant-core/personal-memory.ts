@@ -5,6 +5,8 @@ import {recallNotes} from '../assistant/assistant-memory.js';
 import {ToolError} from '../assistant/tool-governance.js';
 import type {Store} from '../coordination/contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 export type MemoryTier = 'work' | 'long-term';
 export interface PersonalMemory {
   id: string;
@@ -102,7 +104,7 @@ function longTermFiles(directory: string) {
 }
 
 export function createPersonalMemory({db, row, rows, now}: Store, directory: string) {
-  db.exec('CREATE TABLE IF NOT EXISTS personal_work_memory(id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)))');
+  ensureModuleSchema(db, "assistant-core-personal-memory");
   const files = longTermFiles(directory);
 
   function get(tier: MemoryTier, id: string): PersonalMemory {

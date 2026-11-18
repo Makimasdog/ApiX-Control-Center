@@ -2,11 +2,13 @@ import {digest,redact} from '../assistant/tool-governance.js';
 import type {Store} from '../coordination/contracts.js';
 import {runtimeError,type RunHandle} from './runtime-contract.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 type InteractionRow={id:string;run_id:string;kind:string;payload_json:string;permission_version:string;state:string;answer_delivery:string;expires_at:string;answer_source:string|null};
 export type QueueCliReply=(runId:string,questionId:string,answer:string,source:'user'|'apix')=>void;
 
 export function createRuntimeInteractions({db,row,rows,now}:Store,guard:(runId:string)=>string,handle:(id:string)=>RunHandle|undefined,stop:(id:string)=>void=id=>handle(id)?.interrupt(),reviewing=new Set<string>(),queueCliReply?:QueueCliReply){
-  db.exec(`CREATE TABLE IF NOT EXISTS agent_runtime_interactions(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,kind TEXT NOT NULL,payload_json TEXT NOT NULL,permission_version TEXT NOT NULL,state TEXT NOT NULL,answer_request_id TEXT,answer_hash TEXT,answer_delivery TEXT NOT NULL DEFAULT 'not_sent',expires_at TEXT NOT NULL,answered_at TEXT);`);
+  ensureModuleSchema(db, "agents-runtime-interactions");
   if(!rows<{name:string}>('PRAGMA table_info(agent_runtime_interactions)').some(c=>c.name==='answer_source'))db.exec('ALTER TABLE agent_runtime_interactions ADD COLUMN answer_source TEXT');
   db.prepare("UPDATE agent_runtime_interactions SET state='invalidated',answer_delivery=CASE WHEN answer_request_id IS NULL THEN answer_delivery ELSE 'unknown' END WHERE state='pending'").run();
   db.prepare("UPDATE agent_runtime_interactions SET answer_delivery='unknown' WHERE answer_delivery='queued' AND json_extract(payload_json,'$.answerFormat')='cli'").run();

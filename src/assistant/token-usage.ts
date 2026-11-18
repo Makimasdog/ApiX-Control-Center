@@ -16,6 +16,8 @@ import type {Store} from '../coordination/contracts.js';
 import {unknownUsage,modelUsageDetails,type ModelAttempt,type ModelUsage,type UsageDetails} from '../models/model-usage.js';
 import type {DiagnosticScope,RequestDiagnostic} from '../models/prompt-diagnostics.js';
 import type {ModelSettings} from '../models/model-request.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 用量聚合结果类型：扩展 ModelUsage 增加调用次数、失败数等统计 */
 interface UsageTotals extends ModelUsage {calls:number;invocations:number;failed:number;pending:number;incomplete:number;retries:number;durationMs:number;estimatedPromptTokens:number}
 
@@ -26,21 +28,9 @@ interface UsageTotals extends ModelUsage {calls:number;invocations:number;failed
  * @returns 包含 start / finish / report 三个方法的用量追踪器
  */
 export function createTokenUsage({db,row,rows,now}:Store){
-  db.exec(`CREATE TABLE IF NOT EXISTS model_token_usage(
-    id TEXT PRIMARY KEY,invocation_id TEXT NOT NULL,attempt INTEGER NOT NULL,project_id TEXT NOT NULL,
-    session_id TEXT,task_id TEXT,purpose TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,api_type TEXT NOT NULL,
-    status TEXT NOT NULL,usage_complete INTEGER NOT NULL DEFAULT 0,input_tokens INTEGER,output_tokens INTEGER,
-    cached_input_tokens INTEGER,cache_write_tokens INTEGER,reasoning_tokens INTEGER,
-    estimated_prompt_tokens INTEGER NOT NULL,duration_ms INTEGER,created_at TEXT NOT NULL,
-    UNIQUE(invocation_id,attempt));
-    CREATE INDEX IF NOT EXISTS model_token_usage_scope ON model_token_usage(project_id,session_id,task_id,created_at);`);
-  db.exec(`CREATE TABLE IF NOT EXISTS model_usage_details(
-    usage_id TEXT PRIMARY KEY REFERENCES model_token_usage(id) ON DELETE CASCADE,body TEXT NOT NULL);`);
-  db.exec(`CREATE TABLE IF NOT EXISTS model_prompt_diagnostics(
-    usage_id TEXT PRIMARY KEY REFERENCES model_token_usage(id) ON DELETE CASCADE,
-    project_id TEXT NOT NULL,session_id TEXT NOT NULL,route_id TEXT NOT NULL,purpose TEXT NOT NULL,layout TEXT NOT NULL,
-    process_id TEXT NOT NULL,config_revision INTEGER,response_headers INTEGER NOT NULL DEFAULT 0,body TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS model_prompt_diagnostics_scope ON model_prompt_diagnostics(project_id,session_id,route_id,purpose,layout);`);
+  ensureModuleSchema(db, "assistant-token-usage");
+  ensureModuleSchema(db, "assistant-token-usage-2");
+  ensureModuleSchema(db, "assistant-token-usage-3");
   const routes=new Map<string,string>();
   function diagnosticScope(projectId:string,sessionId:string,purpose:string,settings:ModelSettings,revision:number|undefined,layout:string):DiagnosticScope{
     // 路由地址/配置引用只作为有界内存键；保存随机身份，不存 URL 或真实密钥的哈希。

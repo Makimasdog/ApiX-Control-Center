@@ -2,6 +2,8 @@ import {createHash} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {canonical} from './tool-governance.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 interface Checkpoint {id:string;summary:string;compacted_through:number}
 interface Input {sessionId:string;signature:string;effectiveWatermark:number;through:number}
 type Reason='in_progress'|'failed'|'no_gain';
@@ -15,10 +17,7 @@ export class CompactionNoGainError extends Error {
 
 /** 维护记录不进入有效输入签名；调用前先落进行中状态，进程中断也不能自动重复消费。 */
 export function createContextCompaction({db,row,rows,now}:Store){
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_compaction_blocks(
-    session_id TEXT PRIMARY KEY REFERENCES assistant_sessions(id) ON DELETE CASCADE,
-    input_signature TEXT NOT NULL,effective_watermark INTEGER NOT NULL,checkpoint_through INTEGER NOT NULL,
-    generation TEXT,reason TEXT NOT NULL CHECK(reason IN ('in_progress','failed','no_gain')),created_at TEXT NOT NULL);`);
+  ensureModuleSchema(db, "assistant-context-compaction");
   function input(s:Checkpoint):Input{
     const hash=createHash('sha256').update(canonical([s.compacted_through,s.summary]));let cursor=s.compacted_through,effectiveWatermark=cursor;
     const kinds=[...userKinds,...toolKinds];

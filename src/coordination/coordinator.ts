@@ -38,6 +38,8 @@ import {redact} from '../assistant/tool-governance.js';
 import type {QuestionEvidence} from './worker-question.js';
 import type {createRuntimeInteractions} from '../agents/runtime-interactions.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 外部依赖接口：扩展 Store 并注入所有协作模块 */
 interface Dependencies extends Store {
   projectContext?(projectId:string,query:string,sessionId:string):unknown; // 项目上下文查询
@@ -88,10 +90,7 @@ export function createCoordinator(deps: Dependencies) {
     finally{if(reserved)deps.scheduling.settle(id,null);}
   }
   // 初始化数据库表结构（含迁移逻辑）
-  db.exec(`CREATE TABLE IF NOT EXISTS coordination_checks(session_id TEXT PRIMARY KEY REFERENCES coordination_sessions(id), conflicts TEXT NOT NULL DEFAULT '[]', model_mode TEXT NOT NULL DEFAULT 'rules', model_error TEXT);
-    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL DEFAULT '', api_type TEXT NOT NULL DEFAULT 'openai-completions', api_key_env TEXT NOT NULL DEFAULT '');
-    CREATE TABLE IF NOT EXISTS apix_guidance(message_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), status TEXT NOT NULL, action TEXT, focus TEXT, outbound_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS apix_guidance_task ON apix_guidance(task_id,updated_at);`);
+  ensureModuleSchema(db, "coordination-coordinator");
   // 迁移：为旧表添加缺失的列（兼容历史数据库）
   const sessionColumns = rows<{name:string}>('PRAGMA table_info(coordination_sessions)');
   if (!sessionColumns.some(column => column.name === 'interaction_mode')) db.exec("ALTER TABLE coordination_sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'conversational'");

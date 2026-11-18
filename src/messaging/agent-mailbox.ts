@@ -14,6 +14,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Store } from '../coordination/contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * createAgentMailbox - 创建 Agent 凭据管理服务
  * @param store - 数据库存储依赖
@@ -22,7 +24,7 @@ import type { Store } from '../coordination/contracts.js';
 export function createAgentMailbox(store: Store) {
   const { db, row, now } = store;
   // 创建 Agent Token 表，存储 Token 的 SHA-256 哈希及关联的运行/项目/Agent 信息
-  db.exec('CREATE TABLE IF NOT EXISTS apix_agent_tokens(token_hash TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES runs(id),project_id TEXT NOT NULL,agent_id TEXT NOT NULL,created_at TEXT NOT NULL)');
+  ensureModuleSchema(db, "messaging-agent-mailbox");
 
   /** hash - 计算字符串的 SHA-256 哈希 */
   const hash = (value: string) => createHash('sha256').update(value).digest('hex');

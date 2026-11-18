@@ -15,6 +15,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {hostResultSummary} from './assistant-result.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 上下文事件接口 — 对应 assistant_events 表的一行 */
 export interface ContextEvent {id:number;role:string;kind:string;body:string}
 /**
@@ -38,7 +40,7 @@ export function contextWindow(value:unknown){const n=Number(value??32768);if(!Nu
  */
 export function createContextOutputs(store:Store){
   const {db,row,rows,now}=store;
-  db.exec('CREATE TABLE IF NOT EXISTS assistant_outputs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),event_id INTEGER NOT NULL,body TEXT NOT NULL,sha256 TEXT NOT NULL,created_at TEXT NOT NULL)');
+  ensureModuleSchema(db, "assistant-assistant-context");
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_output_event ON assistant_outputs(session_id,event_id)');
   function history(sessionId:string,events:ContextEvent[],fold=false,saving=false,persist=true){
     // 文件页不因事件变旧立即折叠；额外保留池按 UTF-8 限制单页 24 KiB、去重后 32 KiB，池外沿用原规则。

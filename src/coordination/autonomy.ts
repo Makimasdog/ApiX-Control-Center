@@ -26,6 +26,8 @@ import {autonomyDefaults,parseAutonomyPolicy,parseArchitecture,type AutonomyPoli
 import type {Permissions} from './permissions.js';
 import type {Scheduling} from './scheduling.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 自主交付计划记录（持久化到 autonomy_plans 表） */
 interface PlanRecord {plan_id:string;session_id:string;revision:number;policy_version:number;workflow_version:number;body:string;state:string;started_at:string|null;reason:string|null}
 /** 受管任务（扩展 Task 增加工作区和结果字段） */
@@ -71,11 +73,7 @@ export function createAutonomy(deps:Dependencies) {
   /** 已验证的契约摘要缓存：避免重复解析和校验 */
   const validatedContracts=new Map<string,string>();
   // 初始化自主交付相关数据表
-  db.exec(`CREATE TABLE IF NOT EXISTS autonomy_policies(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS autonomy_plans(plan_id TEXT PRIMARY KEY REFERENCES plans(id),session_id TEXT NOT NULL,revision INTEGER NOT NULL,policy_version INTEGER NOT NULL,workflow_version INTEGER NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL,started_at TEXT,reason TEXT);
-    CREATE TABLE IF NOT EXISTS autonomy_tasks(task_id TEXT PRIMARY KEY REFERENCES tasks(id),module_id TEXT NOT NULL,original_prompt TEXT NOT NULL,repairs INTEGER NOT NULL DEFAULT 0,last_checkpoint TEXT);
-    CREATE TABLE IF NOT EXISTS autonomy_checks(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,run_id TEXT,status TEXT NOT NULL,fingerprint TEXT,body TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS autonomy_repairs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,attempt INTEGER NOT NULL,employee_id TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,run_id TEXT);`);
+  ensureModuleSchema(db, "coordination-autonomy");
   // 迁移：为旧表添加 run_id 列
   if(!rows<{name:string}>('PRAGMA table_info(autonomy_repairs)').some(c=>c.name==='run_id'))db.exec('ALTER TABLE autonomy_repairs ADD COLUMN run_id TEXT');
   // 重启恢复：将中断的运行中检查标记为 interrupted

@@ -1,3 +1,4 @@
+import {ensureModuleSchema} from '../../dist/src/infrastructure/schema.js';
 /**
  * Agent 存活性检测 - 心跳探测、沉默超时与自动停止
  *
@@ -20,7 +21,7 @@ export function createAgentHealth({db,row,rows,now,probe,stop,record,owned,waiti
   // 参数校验：确保时限配置合理（maxRunMs >= silenceMs >= probeMs*2，probeMs >= 100ms）
   if(!Number.isSafeInteger(maxRunMs)||maxRunMs<silenceMs||!Number.isSafeInteger(silenceMs)||!Number.isSafeInteger(probeMs)||probeMs<100||silenceMs<probeMs*2)throw Error('Agent 失联检测时限无效');
   // 健康状态表：每个运行记录一条，跟踪最后活动时间和连续未回应次数
-  db.exec(`CREATE TABLE IF NOT EXISTS agent_health(run_id TEXT PRIMARY KEY,schema_version INTEGER NOT NULL DEFAULT 1,task_id TEXT NOT NULL,last_activity_at TEXT NOT NULL,last_probe_at TEXT,misses INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL);`);
+  ensureModuleSchema(db, "coordination-agent-health");
 
   /**
    * observe - 记录 Agent 活动证据（心跳响应），重置未回应计数
