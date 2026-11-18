@@ -220,7 +220,11 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     ensureMessageAccess(message, input.agentId, "ack");
     if (!["delivered", "queued"].includes(message.status)) return publicMessage(message);
     if (message.next_retry_at && message.next_retry_at > now()) throw new Error('尚未到达重试时间');
-    db.prepare("UPDATE agent_messages SET status='processing',acknowledged_at=? WHERE id=? AND status IN ('delivered','queued')").run(now(), id);
+    // ack 即续租：超时从"领取时刻"重新起算，而不是从投递时刻固定不变。
+    // 否则一个已经领取、正在处理的长任务会在处理途中被判定过期，
+    // 完成确认随即被 expireMessages 吞掉。
+    const renewedAt = new Date(Date.now() + Math.max(1000, Number(message.timeout_ms) || MESSAGE_DEFAULT_TIMEOUT_MS)).toISOString();
+    db.prepare("UPDATE agent_messages SET status='processing',acknowledged_at=?,expires_at=? WHERE id=? AND status IN ('delivered','queued')").run(now(), renewedAt, id);
     const attemptNo = message.retry_count + 1;
     db.prepare("INSERT OR IGNORE INTO agent_message_attempts(id,message_id,attempt_no,status,created_at) VALUES (?,?,?,?,?)").run(randomUUID(), id, attemptNo, "processing", now());
     appendMessageEvent(message.project_id, id, "message.acknowledged", input.agentId, { attemptNo });
@@ -232,6 +236,11 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     const message = row("SELECT * FROM agent_messages WHERE id=?", id);
     if (!message) throw new Error("消息不存在");
     ensureMessageAccess(message, input.agentId, "complete");
+    // 已完成的重复确认是幂等的，直接返回原状态。
+    // 但过期/失败/拒绝不能被当成"确认成功"：此前这里静默返回，
+    // 员工以为交付已记录，宿主却从未收到完成事件。
+    if (message.status === "expired") throw new Error("消息已超时，完成确认未记录；请重新发送或向 ApiX 报告");
+    if (["failed", "rejected"].includes(message.status)) throw new Error("消息已终止，不能确认完成");
     if (!["processing", "delivered", "queued"].includes(message.status)) return publicMessage(message);
     db.prepare("UPDATE agent_messages SET status='completed',completed_at=?,error=NULL WHERE id=? AND status IN ('processing','delivered','queued')").run(now(), id);
     db.prepare("UPDATE agent_message_attempts SET status='completed' WHERE message_id=? AND status='processing'").run(id);
