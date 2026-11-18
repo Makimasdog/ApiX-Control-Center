@@ -206,7 +206,7 @@
   width: auto;
   height: auto;
   cursor: pointer;
-  accent-color: #38BDF8;
+  accent-color: var(--accent);
 }
 
 .conflict {

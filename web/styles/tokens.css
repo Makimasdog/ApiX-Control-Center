@@ -65,12 +65,20 @@
   --surface-hover: #f0f3fa;
   --surface-inset: #f2f4fa;
 
+  /* 层级表面：卡片与浮层用 --surface-raised，输入/代码块用 --surface-inset */
+  --surface-raised: #ffffff;
+  --control-bg: #ffffff;
+
+  /* 品牌渐变：仅用于品牌方块与主按钮，不得用于正文 */
+  --gradient-brand: linear-gradient(140deg, #5b6bf0 0%, #3d4fd8 52%, #2f3fb4 100%);
+  --gradient-accent: linear-gradient(180deg, #4a5ae8 0%, #3d4fd8 100%);
+
   --text-primary: #151a2c;
   --text-secondary: #5b647c;
   --text-muted: #656e80;
 
   --border: #e6e9f2;
-  --border-control: #8b95a6;
+  --border-control: #848e9f;
 
   --accent: #3d4fd8;
   --accent-hover: #2f3fb4;
@@ -125,6 +133,12 @@
     --surface: #1c202b;
     --surface-hover: #252b39;
     --surface-inset: #232835;
+
+    --surface-raised: #212633;
+    --control-bg: #1f2430;
+
+    --gradient-brand: linear-gradient(140deg, #8f9bff 0%, #7a87f2 55%, #606dd6 100%);
+    --gradient-accent: linear-gradient(180deg, #a9b4ff 0%, #9aa6ff 100%);
 
     --text-primary: #eef0f6;
     --text-secondary: #b6bdcf;

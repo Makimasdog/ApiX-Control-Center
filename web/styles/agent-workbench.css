@@ -1,14 +1,15 @@
-.assistant-team{margin:0 20px;padding:14px 0;border-bottom:1px solid var(--border);color:var(--text-primary)}
-.assistant-team>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
-.assistant-team h2{font-size:14px;margin:0;font-weight:650}
-.assistant-team header p{font-size:12px;color:var(--text-muted);margin:4px 0 0}
-.assistant-team-empty{margin:8px 0 0;font-size:13px;color:var(--text-secondary);line-height:1.6}
-.assistant-team-empty small{display:block;color:var(--text-muted);font-size:12px}
-#assistant-workers{display:flex;gap:8px;overflow:auto;max-height:160px;padding:2px}
-#assistant-workers .agent-worker-row{flex:1 0 210px;max-width:340px;min-width:0;margin:0;padding:10px 12px;border:1px solid var(--border);border-left:3px solid var(--border-control);border-radius:6px;background:var(--surface);text-align:left;color:var(--text-primary);cursor:pointer}
+.assistant-team{margin:0;padding:var(--s-3) clamp(var(--s-4),3vw,var(--s-6));border-bottom:1px solid var(--border);color:var(--text-primary)}
+.assistant-team>header{display:flex;align-items:center;justify-content:space-between;gap:var(--s-3);margin-bottom:var(--s-2)}
+.assistant-team h2{font-size:var(--fs-form);margin:0;font-weight:600}
+.assistant-team header p{font-size:var(--fs-caption);color:var(--text-muted);margin:2px 0 0}
+.assistant-team-empty{margin:var(--s-2) 0 0;font-size:var(--fs-caption);color:var(--text-muted);line-height:1.7}
+.assistant-team-empty small{display:block;margin-top:var(--s-1);color:var(--text-muted);font-size:var(--fs-micro)}
+#assistant-workers{display:flex;gap:var(--s-2);overflow:auto;max-height:168px;padding:2px}
+#assistant-workers .agent-worker-row{flex:1 0 212px;max-width:340px;min-width:0;margin:0;padding:var(--s-3);border:1px solid var(--border);border-left:3px solid var(--border-control);border-radius:var(--r-sm);background:var(--surface);text-align:left;color:var(--text-primary);cursor:pointer;transition:border-color var(--dur-2),box-shadow var(--dur-2),background-color var(--dur-2)}
+#assistant-workers .agent-worker-row:hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--border));box-shadow:var(--shadow-1)}
 #assistant-workers .agent-worker-row strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;margin-bottom:5px}
 #assistant-workers .agent-worker-row span{display:block;font-size:12px;line-height:1.5;color:var(--text-secondary)}
-#assistant-workers .agent-worker-row[aria-pressed=true]{border-color:var(--accent);background:var(--surface-inset)}
+#assistant-workers .agent-worker-row[aria-pressed=true]{border-color:var(--accent);background:var(--accent-subtle)}
 #assistant-workers .agent-worker-row:disabled{cursor:default;opacity:.65}
 #assistant-workers button:focus-visible,.agent-run-panel button:focus-visible,.agent-run-panel summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 #assistant-run-dock[hidden]{display:none!important}
@@ -18,7 +19,7 @@
 .agent-run-panel h2{font-size:17px;margin:0 0 8px}.agent-run-panel h3{font-size:14px;margin:12px 0}
 .agent-run-panel [data-task-name]{margin:0 0 6px;line-height:1.6}.agent-run-panel small{display:block;color:var(--text-muted);line-height:1.5}
 .agent-run-panel [data-phase]{padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;line-height:1.7}
-.agent-run-panel [data-error]:empty{display:none}.agent-run-panel [data-error]{color:var(--danger,#b42318)}
+.agent-run-panel [data-error]:empty{display:none}.agent-run-panel [data-error]{color:var(--danger)}
 .agent-run-panel .agent-run-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px}
 .agent-run-layout>section,.agent-run-layout>aside{min-width:0}
 .agent-run-layout>aside{padding-left:16px;border-left:1px solid var(--border)}
@@ -53,4 +54,4 @@
 #assistant-worker-interactions small{display:block;color:var(--text-muted)}
 #assistant-worker-interactions label{display:block;margin:8px 0}
 #assistant-worker-interactions textarea{display:block;width:100%;min-height:48px;resize:vertical}
-#assistant-workers .agent-worker-failure{display:block;color:var(--danger,#b42318);line-height:1.5;margin-top:6px;overflow-wrap:anywhere;max-height:5em;overflow:auto}
+#assistant-workers .agent-worker-failure{display:block;color:var(--danger);line-height:1.5;margin-top:6px;overflow-wrap:anywhere;max-height:5em;overflow:auto}

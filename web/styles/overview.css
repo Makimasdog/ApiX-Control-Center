@@ -12,9 +12,9 @@
 }
 
 .overview-header h1 {
-  font-size: 34px;
-  letter-spacing: -1.2px;
-  margin: 9px 0;
+  font-size: clamp(var(--fs-h1), 2vw, 26px);
+  letter-spacing: -.02em;
+  margin: var(--s-2) 0;
   color: var(--text-primary);
 }
 
@@ -65,7 +65,7 @@
 }
 
 .overview-empty {
-  padding: 54px !important;
+  padding: var(--s-7) var(--s-5) !important;
   text-align: center;
 }
 
@@ -76,15 +76,15 @@
 .overview-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
 }
 
 .overview-metrics .surface-card {
-  padding: 20px;
+  padding: var(--s-4);
   display: grid;
-  gap: 8px;
-  border-radius: 17px;
+  gap: var(--s-2);
+  border-radius: var(--r-card);
   transition: all 0.2s;
 }
 
@@ -100,7 +100,7 @@
 }
 
 .overview-metrics strong {
-  font-size: 30px;
+  font-size: clamp(22px, 3vw, var(--fs-display));
   line-height: 1.1;
   letter-spacing: -1px;
   color: var(--text-primary);
@@ -114,13 +114,13 @@
 .overview-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
-  gap: 18px;
+  gap: var(--s-4);
 }
 
 .overview-grid .surface-card,
 .overview-board-section {
-  padding: 22px;
-  border-radius: 18px;
+  padding: var(--s-5);
+  border-radius: var(--r-card);
 }
 
 .overview-section-head {

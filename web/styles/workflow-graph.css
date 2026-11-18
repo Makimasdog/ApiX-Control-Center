@@ -20,7 +20,7 @@
 .workflow-edge.active { stroke:var(--accent); stroke-width:2; }
 .workflow-edge.attention { stroke:var(--danger); stroke-dasharray:5 4; }
 .workflow-edge.done { stroke:var(--success); }
-#page-coordinator .workflow-node { position:absolute; display:flex; flex-direction:column; text-align:left; padding:16px; border:1px solid var(--border-control); border-radius:12px; background:var(--surface); color:var(--text-primary); box-shadow:0 3px 10px #00000008; cursor:pointer; overflow:hidden; }
+#page-coordinator .workflow-node { position:absolute; display:flex; flex-direction:column; text-align:left; padding:16px; border:1px solid var(--border-control); border-radius:12px; background:var(--surface); color:var(--text-primary); box-shadow:0 3px 10px var(--border); cursor:pointer; overflow:hidden; }
 #page-coordinator .workflow-node:hover { border-color:var(--accent); box-shadow:0 4px 16px color-mix(in srgb, var(--accent) 10%, transparent); }
 #page-coordinator .workflow-node:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
 #page-coordinator .workflow-node.graph-node-active { border:2px solid var(--accent); padding:15px; }

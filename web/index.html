@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f4f6fa" />
+    <meta name="theme-color" content="#f4f6fb" />
     <title>ApiX · 智能工作区</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./phase4.css" />
@@ -46,6 +46,10 @@
       <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></symbol>
       <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></symbol>
       <symbol id="icon-close" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+      <symbol id="icon-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M2.8 20a6.2 6.2 0 0 1 12.4 0"/><path d="M16.5 5.6a3 3 0 0 1 0 5.8M18 20a5.6 5.6 0 0 0-1.6-3.9"/></symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5.5c0 4.3 2.9 7.7 7 9.5 4.1-1.8 7-5.2 7-9.5V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1Z"/></symbol>
     </svg>
 
     <div class="app-shell">
@@ -60,19 +64,19 @@
           <div class="section-caption">工作空间</div>
           <nav class="nav-list" aria-label="主导航">
             <button class="nav-item nav-primary" data-page-target="assistant" aria-label="与 ApiX 对话"><svg class="icon"><use href="#icon-spark"/></svg><span>与 ApiX 对话</span></button>
-            <button class="nav-item" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span><span class="nav-dot"></span></button>
-            <button class="nav-item" data-page-target="coordinator" aria-label="协作进度"><svg class="icon"><use href="#icon-terminal"/></svg><span>协作进度</span></button>
-            <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-terminal"/></svg><span>任务与员工</span></button>
+            <button class="nav-item" data-page-target="overview" aria-label="管理总览"><svg class="icon"><use href="#icon-grid"/></svg><span>管理总览</span></button>
+            <button class="nav-item" data-page-target="coordinator" aria-label="协作进度"><svg class="icon"><use href="#icon-activity"/></svg><span>协作进度</span></button>
+            <button class="nav-item" data-page-target="missions" aria-label="任务与员工"><svg class="icon"><use href="#icon-users"/></svg><span>任务与员工</span></button>
           </nav>
         </div>
 
         <div class="sidebar-section nav-section">
           <div class="section-caption">设置</div>
           <nav class="nav-list" aria-label="设置导航">
-            <button class="nav-item" data-page-target="settings" aria-label="应用与协作设置"><svg class="icon"><use href="#icon-spark"/></svg><span>协作设置</span></button>
-            <button class="nav-item" data-page-target="knowledge" aria-label="知识库与工具安全"><svg class="icon"><use href="#icon-file"/></svg><span>知识库与工具安全</span></button>
+            <button class="nav-item" data-page-target="settings" aria-label="应用与协作设置"><svg class="icon"><use href="#icon-settings"/></svg><span>协作设置</span></button>
+            <button class="nav-item" data-page-target="knowledge" aria-label="知识库与工具安全"><svg class="icon"><use href="#icon-shield"/></svg><span>知识库与工具安全</span></button>
             <details class="assistant-more"><summary>更多设置</summary>
-            <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-file"/></svg><span>项目记忆</span></button>
+            <button class="nav-item" data-page-target="memory" aria-label="项目记忆"><svg class="icon"><use href="#icon-bookmark"/></svg><span>项目记忆</span></button>
             <button class="nav-item" data-page-target="projects" aria-label="项目管理"><svg class="icon"><use href="#icon-folder"/></svg><span>项目管理</span></button>
             <button class="nav-item" data-page-target="resources" aria-label="Skills 与 MCP"><svg class="icon"><use href="#icon-layers"/></svg><span>Skills 与 MCP</span></button></details>
           </nav>
