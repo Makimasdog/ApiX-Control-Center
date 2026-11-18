@@ -48,12 +48,12 @@ async function load(generation:number){
       field('[data-interactions]').dataset.signature=signature;
       const items:RuntimeInteraction[]=interactions;
       field('[data-interactions]').replaceChildren(...items.map(item=>{
-        if(item.state==='pending')return interactionForm(item,api,()=>void load(generation),error=>{
+        if(item.state==='pending'&&!item.reviewing)return interactionForm(item,api,()=>void load(generation),error=>{
           if(generation===selection)field('[data-error]').textContent=String(error instanceof Error?error.message:error);
         });
         const status=document.createElement('p');
         const labels:Record<string,string>={answered:'已回答',denied:'已拒绝',invalidated:'已失效',expired:'已过期'};
-        status.textContent=(item.kind==='question'?'问题':'审批')+' · '+(labels[item.state]??item.state)+' · '+instructionState('',item.answerDelivery);
+        status.textContent=item.reviewing?'ApiX 正在核对项目依据':(item.kind==='question'?'问题':'审批')+' · '+(item.answerSource==='apix'?({accepted:'ApiX 已代答',queued:'ApiX 已答复，等待员工确认',cancelled:'员工未确认收到答复'}[item.answerDelivery as 'accepted'|'queued'|'cancelled']??'ApiX 的答复待核对'):labels[item.state]??item.state)+' · '+instructionState('',item.answerDelivery);
         return status;
       }));
     }

@@ -26,7 +26,12 @@ try{
     assert.equal(h.calls.length,0);
    }
    await page.locator('#assistant-input').fill('修复加法，实际运行检查，保留用户内容并交付');await page.locator('#assistant-form button[type=submit]').click();
-   if(kind==='delivery'){await page.locator('#assistant-dialog[open]').waitFor();await page.locator('#assistant-approve').click();}
+   if(kind==='delivery'){
+    await page.locator('#assistant-open-request').waitFor();
+    assert.equal(await page.locator('#assistant-dialog[open]').count(),0);
+    await page.locator('#assistant-open-request').click();
+    await page.locator('#assistant-approve').click();
+   }
    await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='本轮完成',{}, {timeout:120000});
    const current=async()=>{const sessions=await h.request('/api/assistant/sessions?projectId='+h.projectId);return h.request('/api/assistant/sessions/'+sessions[0].id);};
    let s=await current();assert.equal(s.verificationStatus,'verified');assert.equal(s.review.latestDelivery.version,1);
@@ -45,9 +50,16 @@ try{
    if(!await page.locator('[data-reviewed-delivery]').isVisible())await page.locator('#assistant-details').click();
    assert((await page.locator('[data-reviewed-delivery] h4').innerText()).includes('已验收'));
    if(kind==='delivery'){
-    await page.locator('details').filter({has:page.locator('#assistant-task-form')}).locator('summary').click();
-    await page.locator('#assistant-task-form [name=description]').fill('下一任务：仅新增说明');await page.locator('#assistant-task-form button').click();
-    await page.waitForFunction(()=>document.querySelector('[data-reviewed-delivery]')?.textContent.includes('src/note.md'),{}, {timeout:60000});
+    await page.locator('#assistant-input').fill('下一任务：仅新增说明');
+    const [submitted]=await Promise.all([
+      page.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/messages')),
+      page.locator('#assistant-form button[type=submit]').click(),
+    ]);
+    assert.equal(submitted.status(),200,await submitted.text());
+    const followup=await current();
+    const finished=await h.idle(followup.id);
+    assert.equal(finished.status,'completed',JSON.stringify(finished.events.slice(-3)));
+    await page.waitForFunction(()=>document.querySelector('[data-reviewed-delivery]')?.textContent.includes('src/note.md'));
     s=await current();assert.deepEqual(s.review.latestDelivery.netChanges.map(f=>f.path),['src/note.md']);
     const history=page.locator('[data-delivery-history="'+acceptedId+'"]');await page.locator('#assistant-delivery details').filter({has:history}).locator('summary').first().click();
     await history.click();await page.waitForFunction(()=>document.querySelector('#delivery-history-view')?.textContent.includes('验收'));

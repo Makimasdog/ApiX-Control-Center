@@ -93,7 +93,10 @@ export function projectBaseline(sourcePath,planId,dataDir,{create=true}={}){
   const staging=join(storage,key+'-'+randomUUID()),target=join(staging,'repo');
   mkdirSync(target,{recursive:true});
   try{
-    git(target,['init']);git(target,['config','core.autocrlf','false']);
+    const longPaths=process.platform==='win32'?['-c','core.longpaths=true']:[];
+    git(target,[...longPaths,'init']);
+    if(longPaths.length)git(target,[...longPaths,'config','--local','core.longpaths','true']);
+    git(target,['config','core.autocrlf','false']);
     let files=0,bytes=0,entries=0;
     /** copy - 递归复制项目文件到基线仓库，遵守排除规则和 .gitignore */
     function copy(from,to){

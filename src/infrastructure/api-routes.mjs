@@ -52,7 +52,7 @@ import {chatHistory,changeChatHistory} from '../../control-plane.mjs';
 // 核心数据操作（项目/员工/对话/记忆/任务/消息/锁等）
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact, freezeHistoricalDelivery } from '../../control-plane.mjs';
 // 协调会话管理
-import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from '../../control-plane.mjs';
+import { listCoordinationSessions, coordinationSessionDetails, coordinationCollaborationActivity, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from '../../control-plane.mjs';
 // 协调讨论、权限与管理者设置
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, testManagerConnection, searchCoordinationMemory, employeeDetails } from '../../control-plane.mjs';
 // 协调员工指令、运行时适配器与执行设置
@@ -180,6 +180,7 @@ export const apiRoutes=[
   get(/^\/api\/coordination\/memory$/,({query})=>searchCoordinationMemory(query.get('projectId'),query.get('q')??'')),
   get(/^\/api\/coordination\/sessions$/,({query})=>listCoordinationSessions(query.get('projectId'),query.get('summary')==='1')),
   get(/^\/api\/coordination\/sessions\/([^/]+)\/timeline$/,({m,query})=>coordinationTimeline(m[1],query.has('at')?Number(query.get('at')):undefined)),
+  get(/^\/api\/coordination\/sessions\/([^/]+)\/activity$/,({m})=>coordinationCollaborationActivity(m[1])),
   get(/^\/api\/coordination\/sessions\/([^/]+)$/,({m})=>coordinationSessionDetails(m[1])),
   // 记忆搜索
   get(/^\/api\/memories\/search$/,({query})=>searchMemories(query.get('projectId'),query.get('q'))),

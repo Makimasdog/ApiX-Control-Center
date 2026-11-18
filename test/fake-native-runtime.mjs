@@ -1,4 +1,5 @@
 import {createInterface} from 'node:readline';
+import {writeFileSync} from 'node:fs';
 if(process.argv.includes('exec')){let prompt='';for await(const chunk of process.stdin)prompt+=chunk;process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'CLI 回退完成，保留中文历史'}})+'\n'+JSON.stringify({type:'turn.completed',usage:{input_tokens:5,output_tokens:2}})+'\n');process.exit(0);}
 const codex=process.argv.includes('app-server');let turn=0,held=false,resumed=false;
 const send=value=>process.stdout.write(JSON.stringify(value)+'\n');
@@ -6,10 +7,14 @@ function codexTurn(id,prompt){
   turn++;held=prompt.includes('hold');send({id,result:{turn:{id:'t'+turn}}});send({method:'turn/started',params:{threadId:'session-fixture',turn:{id:'t'+turn}}});
   const finish=()=>{send({method:'item/agentMessage/delta',params:{threadId:'session-fixture',itemId:'output'+turn,delta:'中文公开输出 <script>test</script>'+(resumed?' · 原生延续':'')}});send({method:'thread/tokenUsage/updated',params:{threadId:'session-fixture',tokenUsage:{last:{inputTokens:10,outputTokens:3,cachedInputTokens:2}}}});send({method:'turn/completed',params:{threadId:'session-fixture',turn:{id:'t'+turn,status:'completed'}}});if(prompt.includes('duplicate'))send({method:'turn/completed',params:{threadId:'session-fixture',turn:{id:'t'+turn,status:'completed'}}});};
   if(prompt.includes('disconnect')){process.exit(1);return;}
-  if(prompt.includes('ask'))send({id:'question-'+turn,method:'item/tool/requestUserInput',params:{threadId:'session-fixture',turnId:'t'+turn,questions:[{id:'choice',header:'选择',question:'请选择范围',options:[{label:'只读',description:'保持只读'}]}]}});
-  else if(prompt.includes('approval'))send({id:'approval-'+turn,method:'item/commandExecution/requestApproval',params:{threadId:'session-fixture',turnId:'t'+turn,command:'node check.mjs'}});
+  const task=prompt.split('\n',1)[0];
+  if(task.includes('ask-grounded'))send({id:'question-'+turn,method:'item/tool/requestUserInput',params:{threadId:'session-fixture',turnId:'t'+turn,questions:[{id:'choice',question:'a.txt 规定使用什么换行？',options:[{label:'LF'},{label:'CRLF'}]},{id:'language',question:'结果用哪种语言？',options:[{label:'中文'},{label:'英文'}]},{id:'check',question:'现有验收清单使用哪个脚本？',options:[{label:'verify.mjs'},{label:'check.mjs'}]}]}});
+  else if(task.includes('ask-business'))send({id:'question-'+turn,method:'item/tool/requestUserInput',params:{threadId:'session-fixture',turnId:'t'+turn,questions:[{id:'choice',question:'应使用哪种计费方案？',options:[{label:'月付'},{label:'年付'}]}]}});
+  else if(/\bask\b/.test(task))send({id:'question-'+turn,method:'item/tool/requestUserInput',params:{threadId:'session-fixture',turnId:'t'+turn,questions:[{id:'choice',header:'选择',question:'请选择范围',options:[{label:'只读',description:'保持只读'}]}]}});
+  else if(/\bapproval\b/.test(task))send({id:'approval-'+turn,method:'item/commandExecution/requestApproval',params:{threadId:'session-fixture',turnId:'t'+turn,command:'node check.mjs'}});
   else if(!held)setTimeout(finish,60);
   globalThis.finish=finish;
+  globalThis.questionResult=task.includes('ask-grounded')?'LF':task.includes('ask-business')?'月付':null;
 }
 for await(const line of createInterface({input:process.stdin})){
   const m=JSON.parse(line);
@@ -19,7 +24,14 @@ for await(const line of createInterface({input:process.stdin})){
     else if(m.method==='turn/start')codexTurn(m.id,m.params.input[0].text);
     else if(m.method==='turn/steer'){if(m.params.input[0].text.includes('unknown-steer'))process.exit(1);send({id:m.id,result:{turnId:'t'+turn}});if(m.params.input[0].text.includes('finish'))setTimeout(()=>globalThis.finish(),20);}
     else if(m.method==='turn/interrupt'){send({id:m.id,result:{}});}
-    else if(!m.method&&String(m.id).startsWith('question-')||!m.method&&String(m.id).startsWith('approval-'))setTimeout(()=>globalThis.finish(),20);
+    else if(!m.method&&String(m.id).startsWith('question-')||!m.method&&String(m.id).startsWith('approval-')){
+      if(globalThis.questionResult){
+        if(m.result?.answers?.choice?.answers?.[0]!==globalThis.questionResult)process.exit(1);
+        if(globalThis.questionResult==='LF'&&(m.result.answers.language?.answers?.[0]!=='中文'||m.result.answers.check?.answers?.[0]!=='verify.mjs'))process.exit(1);
+        writeFileSync('a.txt','good');
+      }
+      setTimeout(()=>globalThis.finish(),20);
+    }
   }else{
     if(m.type==='control_request')send({type:'control_response',response:{subtype:'success',request_id:m.request_id,response:m.request.subtype==='initialize'?{commands:[],models:[],account:{}}:{}}});
     if(m.type==='control_response')globalThis.sdkFinish?.();

@@ -304,9 +304,9 @@ export function createScheduling(store: Store, dependencies: {
    * @returns 分配完成的步骤列表（含调度决策记录）
    * 设计意图：校验并行任务的文件范围不重叠，审查步骤尽量分配独立员工。
    */
-  function assign(projectId: string, steps: PlanStep[], reselect: boolean) {
+  function assign(projectId: string, steps: PlanStep[], reselect: boolean, allowedEmployees?: ReadonlySet<string>) {
     if(steps.some((s,i)=>s.dependsOn.some(n=>!Number.isInteger(n) || n<0 || n>=i)))throw new Error('依赖只能引用前序步骤');
-    const selected=steps.map(step=>{const spec=taskProfile(step.scheduling);const options=candidates(projectId,spec,step.employeeId);const chosen=reselect?options.find(e=>e.eligible):options.find(e=>e.employeeId===step.employeeId && e.eligible);
+    const selected=steps.map(step=>{const spec=taskProfile(step.scheduling);const options=candidates(projectId,spec,step.employeeId).filter(e=>!allowedEmployees||allowedEmployees.has(e.employeeId));const chosen=reselect?options.find(e=>e.eligible):options.find(e=>e.employeeId===step.employeeId && e.eligible);
       if(!chosen)throw new Error('没有满足任务能力、权限及预算约束的员工，请检查候选原因');
       return {...step,employeeId:chosen.employeeId,scheduling:spec,decision:{strategy:'balanced',selectedEmployeeId:chosen.employeeId,candidates:options,estimateSource:'user_approved_upper_bound'}};
     });

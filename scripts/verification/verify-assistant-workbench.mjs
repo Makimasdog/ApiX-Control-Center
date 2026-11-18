@@ -44,9 +44,19 @@ try{
     localStorage.setItem('apix.selectedProject',project);
     localStorage.setItem('apix.assistant.'+project,id);
     window.apixDesktop={onWorkerRequest:callback=>{window.simulateWorkerNotification=callback;}};
+    const animate=Element.prototype.animate;
+    window.collaborationMotions=[];
+    Element.prototype.animate=function(...args){
+      if(this.matches('.collaboration-wire i'))window.collaborationMotions.push(this.parentElement.dataset.kind);
+      return animate.apply(this,args);
+    };
   },{project:h.projectId,id:parent.id});
   await page.goto(h.origin);await page.locator('[data-page-target="assistant"]').first().click();
   const rows=page.locator('#assistant-workers [data-worker-run]');await rows.first().waitFor();assert.equal(await rows.count(),2);
+  const scene=page.locator('.collaboration-scene');
+  await scene.locator('.collaboration-agent').last().waitFor();
+  assert.equal(await scene.locator('.collaboration-agent').count(),3);
+  assert.equal(new Set(await scene.locator('.collaboration-avatars .collaboration-avatar').evaluateAll(nodes=>nodes.map(node=>getComputedStyle(node).backgroundColor))).size,3);
   const requests=page.locator('#assistant-worker-interactions');
   const question=requests.locator('form').filter({hasText:'范围核查员 · 员工提问'});
   const approval=requests.locator('form').filter({hasText:'文档核查员 · 操作审批'});
@@ -107,7 +117,13 @@ try{
     if(width===1280){await panel.locator('[data-show-results]').click();assert(await panel.locator('[data-artifacts]').isVisible());assert(await page.locator('#assistant-input').isVisible());await page.screenshot({path:join(output,'results-1280.png'),animations:'disabled'});await panel.locator('[data-show-process]').click();}
   }
   await page.emulateMedia({colorScheme:'dark'});await page.screenshot({path:join(output,'workbench-dark.png'),animations:'disabled'});
+  const longGuidance='请继续只读核查。'.repeat(32);
+  await panel.locator('[data-guidance] textarea').fill(longGuidance);
   await panel.locator('[data-guidance] button').click();await page.waitForFunction(()=>document.querySelector('[data-delivery]')?.textContent.includes('运行时已接收'));
+  const bubble=scene.locator('.collaboration-bubble');
+  await bubble.getByText(/请继续只读核查/).waitFor();
+  assert.equal(await bubble.locator('.collaboration-preview').textContent(),longGuidance.slice(0,120)+'…');
+  assert(await bubble.locator('.chat-avatar').isVisible());
   assert.equal(await panel.locator('[data-guidance] textarea').inputValue(),'');
   await Promise.all([
     page.waitForResponse(response=>response.url().includes('/api/runs/'+firstRun+'/interactions/')&&response.ok()),
@@ -119,6 +135,21 @@ try{
   assert.equal(answered[0].state,'answered');assert.equal(answered[0].answerDelivery,'accepted');
   assert.deepEqual(await h.request(notificationsPath),[approvalNotice]);
   await page.waitForFunction(()=>document.querySelector('[data-phase]')?.textContent.includes('执行结束'));
+  await scene.locator('.collaboration-wire[data-kind="delivery"]').waitFor();
+  await scene.locator('.collaboration-bubble').getByText(/中文公开输出/).waitFor();
+  assert(await page.evaluate(()=>window.collaborationMotions.includes('delivery')));
+  assert.equal(await scene.locator('script').count(),0);
+  await page.screenshot({path:join(output,'collaboration-delivery.png'),animations:'disabled'});
+  await page.emulateMedia({reducedMotion:'reduce'});
+  const motions=await page.evaluate(()=>window.collaborationMotions.length);
+  await h.request('/api/messages',{projectId:h.projectId,taskId:child.tasks[0].id,targetTaskId:child.tasks[1].id,
+    from:employees[0],to:employees[1],type:'event',idempotencyKey:'workbench-peer-message',payload:{summary:'交接核查范围'}});
+  await bubble.getByText('交接核查范围').waitFor();
+  await page.locator('#assistant-transcript .chat-bubble').getByText('交接核查范围',{exact:true}).waitFor();
+  assert.match(await bubble.innerText(),/范围核查员 → 文档核查员/);
+  assert.equal(await scene.locator('.collaboration-wire i').evaluate(node=>node.getAnimations().length),0);
+  assert.equal(await page.evaluate(()=>window.collaborationMotions.length),motions);
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await panel.locator('[data-show-results]').click();await panel.locator('[data-artifacts]').click();await panel.locator('[data-artifact-view] p').waitFor();
   assert((await panel.locator('[data-verification]').innerText()).includes('未验证'));
   assert.equal(await page.locator('[data-worker-run="'+firstRun+'"]').getAttribute('aria-pressed'),'true');

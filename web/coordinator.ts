@@ -10,12 +10,15 @@ import {autonomyView,type AutonomyState} from './autonomy-view.js';
 import type {AutonomyPolicy} from '../src/coordination/architecture.js';
 import type { TaskProfile } from '../src/coordination/scheduling.js';
 import {applicationModelSettings} from './application-settings.js';
+import {interactionForm,type RuntimeInteraction} from './runtime-interaction-form.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
 type Step = { prompt: string; employeeId: string; dependsOn: number[]; moduleId?:string;scheduling?:TaskProfile };
 interface Session {
+  workerQuestions?:RuntimeInteraction[];
   reviewTaskId?:string;
+  discussionIssue?:'model_blocked'|null;
   autonomy?:AutonomyState|null;autonomyPolicy?:AutonomyPolicy;autonomyRecoveryFingerprint?:string|null;
   workflow?:{enabled:boolean;version:number;employeeIds:string[]};
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
@@ -49,7 +52,7 @@ let executionPolicy:ExecutionPolicy|null=null;
 let inspectedDelivery:Delivery|null=null;
 let deliveryRequest=0;
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
-const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
+const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'等待你确认',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(path,body === undefined ? undefined : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await r.json(); if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`); return data as T;
@@ -141,7 +144,7 @@ root.innerHTML = html`<div class="coord-header"><div><div class="eyebrow">APIX �
 <div class="coord-layout"><aside class="coord-rail"><div id="coord-sessions"></div>
 </aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
-<section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">` + (interactionOptions('conversational')) + html`</select></label></div></div>
+<section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><button id="coord-hand-to-apix" type="button" class="outline-button" hidden>交给 ApiX 处理</button><label class="coord-mode">交互方式<select id="coord-interaction-mode">` + (interactionOptions('conversational')) + html`</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">任务对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="补充所选流程的要求或处理意见…" aria-label="补充当前协作流程"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
 <section id="coord-requirements" class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">` + (fields.map(([key,label])=>html`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')) + html`<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
 <section class="surface-card coord-section"><h3>权限由你决定</h3><p class="coord-muted">ApiX 与员工分别授权。请求批准会等待你审查计划；只读规划不会启动员工。更改权限将使已有执行授权失效。</p><div id="coord-permissions"></div></section>
@@ -191,6 +194,7 @@ layout.classList.add('inspector-closed');
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-back-assistant" class="outline-button">返回与 ApiX 对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
 $('.coord-header h1').textContent='协作进度';
 $('#desktop-back-assistant').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="assistant"]')?.click());
+$('#coord-hand-to-apix').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('.nav-item[data-page-target="assistant"]')?.click());
 $('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
 $('.coord-header').insertAdjacentHTML('afterend','<section id="desktop-readiness" aria-label="首次使用与配置检查"></section>');
 let setupUpdated=0;let setupRequest=0;
@@ -221,6 +225,7 @@ const records=document.createElement('details');records.className='coord-records
 document.addEventListener('apix:new-chat',()=>{document.querySelector<HTMLButtonElement>('[data-page-target="assistant"]')?.click();document.querySelector<HTMLButtonElement>('#assistant-new')?.click();});
 $('#coord-message button').textContent='↑';$('#coord-message button').setAttribute('aria-label','补充当前协作流程');
 $('#coord-message').insertAdjacentHTML('beforebegin','<div id="desktop-activity" class="desktop-activity" hidden></div>');
+$('#coord-message').insertAdjacentHTML('beforebegin','<section id="coord-worker-questions" aria-label="员工等待你的决定" hidden></section>');
 root.addEventListener('click',event=>{if((event.target as Element).closest('[data-review-plan]')){toggleInspector(true);$<HTMLDetailsElement>('.desktop-plan').open=true;}});
 $('.coord-goal-head').insertAdjacentHTML('beforeend','<div class="desktop-work-actions"><button id="desktop-stop" class="outline-button">停止工作</button><button id="desktop-details" class="outline-button" aria-expanded="true">工作详情</button></div>');
 $('#desktop-stop').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/stop`,{revision:current!.revision});}));
@@ -246,6 +251,15 @@ function render(s: Session) {
   updateModel('coordination',s.id,s.busy||s.tasks.some(t=>['running','queued','stopping'].includes(t.status)));
   if(inspectedDelivery&&s.tasks.find(t=>t.id===inspectedDelivery!.taskId)?.status!==inspectedDelivery.status){root.querySelector('#coord-delivery-panel')?.remove();inspectedDelivery=null;}
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
+  const questions=$('#coord-worker-questions'),items=s.workerQuestions??[];
+  questions.hidden=!items.length;
+  const signature=JSON.stringify(items);
+  if(questions.dataset.signature!==signature){
+    questions.dataset.signature=signature;
+    questions.replaceChildren(...items.map(item=>interactionForm(item,api,()=>void reload(),error=>{
+      if(current?.id===s.id)notice(error instanceof Error?error.message:String(error),true);
+    })));
+  }
   const tools=$('#desktop-tools');const toolKey=JSON.stringify(s.managerTools??[]);if(tools.dataset.key!==toolKey){tools.dataset.key=toolKey;tools.innerHTML=(s.managerTools??[]).map(e=>html`<p>${e.toolName} · ${e.phase==='start'?'开始':e.isError?'失败':'完成'}</p>`).join('')||'<p>本次对话尚无工具调用。</p>';}
   $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型规划或连接需要处理：${s.agent.error}`:'';
   const planPanel=$<HTMLDetailsElement>('.desktop-plan');if(planPanel.dataset.status!==s.status){planPanel.open=s.status==='plan_review';planPanel.dataset.status=s.status;}
@@ -253,7 +267,8 @@ function render(s: Session) {
   const automaticQuality=s.autonomy?.state==='running'&&s.autonomyPolicy?.enabled===true;
   const finished=automaticQuality?undefined:s.tasks.find(t=>t.status==='completed');
   const queued=s.tasks.filter(t=>t.status==='queued');const queueReasons=[...new Set(queued.map(t=>t.queue_reason||'等待调度复核'))];
-  activity.innerHTML=html`<div><strong>${statuses[s.derivedStatus]??s.derivedStatus}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${queued.length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span>` + (queueReasons.map(r=>html`<p>${r}</p>`).join('')) + (queued.length?'<button class="outline-button" data-queue-settings>查看执行暂停与账户阻塞</button>':'') + html`</div>` + (s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?html`<button class="outline-button" data-delivery="${finished.id}">查看变更并验收</button>`:'');
+  const attentionReason=s.autonomy?.state==='attention'?s.autonomy.reason:s.tasks.find(t=>['failed','blocked','unknown','needs_revision','rejected'].includes(t.status))?.result;
+  activity.innerHTML=html`<div><strong>${statuses[s.derivedStatus]??s.derivedStatus}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${queued.length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span>` + (attentionReason?html`<p>${String(attentionReason).slice(0,500)}</p>`:'') + (queueReasons.map(r=>html`<p>${r}</p>`).join('')) + (queued.length?'<button class="outline-button" data-queue-settings>查看执行暂停与账户阻塞</button>':'') + html`</div>` + (s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?html`<button class="outline-button" data-delivery="${finished.id}">查看变更并验收</button>`:'');
   $('#desktop-stop').hidden=!s.tasks.some(t=>['running','queued','awaiting_approval','stopping'].includes(t.status));
   if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
   if(!meetingSection.contains(document.activeElement)){
@@ -263,13 +278,14 @@ function render(s: Session) {
     for(const detail of meetingSection.querySelectorAll<HTMLDetailsElement>('details'))if(expanded.includes(detail.querySelector('summary')?.textContent))detail.open=true;
   }
   root.dataset.interactionMode=s.interaction_mode;
-  $('#coord-title').textContent=s.title; $('#coord-status').textContent=statuses[s.derivedStatus] ?? s.derivedStatus;
+  $('#coord-title').textContent=s.title; $('#coord-status').textContent=s.discussionIssue?'模型暂不可用':statuses[s.derivedStatus]??s.derivedStatus;
+  $('#coord-hand-to-apix').hidden=s.derivedStatus!=='attention';
   $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'任务对话':'需求澄清记录';
   $('#coord-message-label').textContent='补充当前协作流程';
   $<HTMLSelectElement>('#coord-interaction-mode').value=s.interaction_mode;
   $<HTMLSelectElement>('#coord-interaction-mode').disabled=!['clarifying','ready'].includes(s.status);
   $('#coord-score').textContent=`${Math.round(s.assessment.score*100)}% · v${s.revision}`;
-  $('#coord-backend').textContent=s.agent.mode==='api' ? 'ApiX 正在直接调用模型 API' : s.agent.mode==='pi' ? '历史记录 · 旧 Pi 后端；后续请求使用 ApiX 模型 API' : `规则引导${s.agent.error ? ` · ${s.agent.error}` : ' · 配置模型 API 后继续澄清'}`;
+  $('#coord-backend').textContent=s.discussionIssue?'本轮分析未完成，已有需求和消息已保留。':s.agent.mode==='api'?'ApiX 正在直接调用模型 API':s.agent.mode==='pi'?'历史记录 · 旧 Pi 后端；后续请求使用 ApiX 模型 API':s.agent.error?`规则引导 · ${s.agent.error}`:'等待 ApiX 分析项目需求';
   const hasMessages=s.turns.some(t=>t.kind==='message');
   const turns=s.turns.filter((t,i)=>!(hasMessages && (t.kind==='goal'||i===1&&t.kind==='clarification'))).map(t=>html`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${t.content}</p></article>`).join('');
   const history=$('#coord-turns');

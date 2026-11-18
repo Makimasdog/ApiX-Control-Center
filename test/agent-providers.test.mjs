@@ -33,8 +33,11 @@ test('CRUD persists private key references, never echoes secrets, rejects stale 
 test('bindings enforce protocols, preserve run boundaries and clear old cost assumptions atomically',()=>fixture(({db,deps,service,save,bind})=>{
   const p=save();assert.throws(()=>bind('claude',p),/不兼容/);bind('codex',p);assert.equal(deps.profile('codex').model,p.model);assert.equal(deps.profile('codex').pricing,null);assert.equal(deps.profile('codex').accountId,null);
   assert.throws(()=>service.remove(p),/正在使用/);assert.throws(()=>service.assertModel('codex','wrong'),/供应商中心/);
-  for(const state of ['running','starting','stopping','unknown','queued','awaiting_approval','completed']){db.prepare('INSERT INTO tasks VALUES (?,?,?)').run('t','codex',state);assert.throws(()=>bind('codex',null),/任务/);assert.throws(()=>service.save({...p,name:'edit'}),/任务/);db.exec('DELETE FROM tasks');}
-  bind('codex',null);assert.equal(deps.profile('codex').model,'');service.remove(p);
+  const rename=service.save({...p,name:'renamed'});
+  const boundProfile=deps.profile('codex');
+  for(const state of ['running','starting','stopping','unknown','queued','awaiting_approval','completed']){db.prepare('INSERT INTO tasks VALUES (?,?,?)').run('t','codex',state);assert.throws(()=>bind('codex',null),/任务/);assert.throws(()=>service.save({...rename,model:'other-model'}),/任务/);bind('codex',rename);db.exec('DELETE FROM tasks');}
+  assert.deepEqual(deps.profile('codex'),boundProfile);
+  bind('codex',null);assert.equal(deps.profile('codex').model,'');service.remove(rename);
 }));
 test('all built-in workers receive only their selected credentials; Codex CLI args contain no API key',()=>fixture(({service,save,bind,env,dir})=>{
   for(const runtime of Object.keys(providerProtocols).filter(r=>r!=='apix')){
@@ -61,7 +64,7 @@ test('ApiX binding uses existing model settings and tracks profile edits without
 }));
 test('existing ApiX settings are adopted once and loopback providers work without a key',()=>fixture(({service,deps,save,bind,env})=>{
   deps.saveManager({provider:'apix-custom',model:'legacy-local',baseUrl:'http://127.0.0.1:11434/v1',apiType:'openai-completions',apiKeyEnv:''});
-  const adopted=service.adopt();assert.equal(adopted.providers.length,1);assert.equal(adopted.agents[0].providerId,adopted.providers[0].id);assert.equal(adopted.providers[0].hasKey,false);assert.equal(adopted.agents[0].adoptable,false);
+  const adopted=service.adopt();assert.equal(adopted.providers.length,1);assert.equal(adopted.providers[0].name,'127.0.0.1');assert.equal(adopted.agents[0].providerId,adopted.providers[0].id);assert.equal(adopted.providers[0].hasKey,false);assert.equal(adopted.agents[0].adoptable,false);
   assert.equal(service.adopt().providers.length,1);assert.throws(()=>service.remove(adopted.providers[0]),/正在使用/);
   const local=save('openai-responses',{baseUrl:'http://127.0.0.1:11434/v1',apiKey:''});bind('codex',local);
   const prepared=service.prepare('codex','codex',{PATH:'keep'},service.keyNames());assert.equal(prepared.env.APIX_PROVIDER_KEY,'');

@@ -46,6 +46,9 @@ test('progress detector distinguishes pagination, result changes, bounded polls 
  for(let i=0;i<3;i++)observe('list_files',{}, {updated_at:new Date().toISOString(),entries:['a']});assert.throws(()=>p.check('s','p','list_files',{},0),e=>e.code==='TOOL_PATH_BLOCKED');
  observe('search_files',{query:'different'},{matches:[]});
  for(let i=0;i<3;i++)observe('read_file',{path:'changes'},{sha256:'changed'+i});assert.doesNotThrow(()=>p.check('s','p','read_file',{path:'changes'},0));
+ const checkArgs={checkId:'unit'};
+ for(let i=0;i<3;i++)observe('run_check',checkArgs,{result:{...checkArgs,checkContractVersion:'1',projectFingerprint:'source-a',passed:true,runId:'run-'+i,startedAt:i,finishedAt:i+1}});
+ assert.throws(()=>p.check('s','p','run_check',checkArgs,0),e=>e.code==='TOOL_PATH_BLOCKED');
  s.db.prepare('DELETE FROM tool_observations').run();for(let i=0;i<3;i++){observe('a',{}, {same:1});observe('b',{}, {same:2});}
  assert.throws(()=>p.check('s','p','a',{},0),e=>e.code==='TOOL_PATH_BLOCKED');assert.doesNotThrow(()=>p.check('s','p','alternative',{},0));
  s.db.prepare('DELETE FROM tool_observations').run();for(let i=0;i<6;i++){const permit=observe('inspect_agents',{}, {status:'running'});if(i)assert(permit.delay>=1000);}assert.throws(()=>p.check('s','p','inspect_agents',{},0));

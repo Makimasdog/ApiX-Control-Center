@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import {createApiXAgent} from '../dist/src/coordination/apix-agent.js';
 import {emptyRequirements} from '../dist/src/coordination/requirement-engine.js';
 import {parseJsonObject} from '../dist/src/coordination/contracts.js';
+import {answerWorkerQuestion} from '../dist/src/coordination/worker-question.js';
+
+test('native worker replies require an exact in-scope source and do not convert questions into permissions',async()=>{
+  const evidence=[{source:'request:1',text:'交付报告使用中文。'}];
+  const ctx={projectId:'isolated-project',purpose:'worker_question'};
+  const request={answerFormat:'claude',questions:[{question:'报告用什么语言？',options:[{label:'中文'},{label:'英文'}]}]};
+  let result={action:'answer',items:[{id:request.questions[0].question,source:'request:1',quote:'交付报告使用中文。',answer:'中文'}]},calls=0;
+  const backend={infer:async()=>{calls++;return JSON.stringify(result);}};
+  assert.deepEqual(await answerWorkerQuestion(backend,request,evidence,ctx),{answer:{answers:{'报告用什么语言？':'中文'}},sources:['request:1']});
+  result.items[0].quote='交付报告使用英文。';result.items[0].answer='英文';
+  assert.equal(await answerWorkerQuestion(backend,request,evidence,ctx),null);
+  assert.equal(await answerWorkerQuestion(backend,{...request,questions:[{question:'能否推送到生产？'}]},evidence,ctx),null);
+  assert.equal(calls,2);
+});
 
 test('JSON extraction accepts only one whole object and never selects children or competing actions',()=>{
   const action={action:'tool',tool:'inspect_quota',args:{items:[{text:'braces } [ and "quotes" \\'}]}};

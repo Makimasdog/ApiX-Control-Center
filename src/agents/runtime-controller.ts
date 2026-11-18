@@ -4,7 +4,8 @@ import {digest,redact} from '../assistant/tool-governance.js';
 import {openCliRuntime} from './cli-runtime.js';
 import {openCodexAppServer} from './codex-app-server.js';
 import {openClaudeAgentSdk} from './claude-agent-sdk.js';
-import {createRuntimeInteractions} from './runtime-interactions.js';
+import {createRuntimeInteractions,type QueueCliReply} from './runtime-interactions.js';
+import type {GroundedReply} from '../coordination/worker-question.js';
 import {cliCapabilities,runtimeError,type RuntimeBackend,type RuntimeInput,type RunHandle} from './runtime-contract.js';
 
 interface Settings {backend:RuntimeBackend;version:number}
@@ -16,6 +17,8 @@ interface Hooks {
   record(id:string,name:string,payload:unknown):void;
   settingsChanged?(id:string):void;
   stop?(id:string):void;
+  reviewQuestion?(runId:string,request:unknown,signal:AbortSignal):Promise<GroundedReply|null>;
+  queueCliReply:QueueCliReply;
 }
 const capabilities=(backend:string)=>backend==='cli'?cliCapabilities:{steer:backend==='codex-app-server',queue:true,questions:true,approvals:true,resume:true,usage:true,compatibility:'unverified' as const};
 
@@ -31,7 +34,8 @@ export function createRuntimeController(store:Store){
   const handles=new Map<string,RunHandle>(),secrets=new Map<string,string[]>();let hooks:Hooks;
   db.prepare("UPDATE agent_run_bindings SET phase='unknown',stop_evidence='unknown',updated_at=? WHERE phase IN ('starting','running','executing','waiting_input','waiting_approval','stopping','closing')").run(now());
   db.prepare("UPDATE agent_runtime_deliveries SET state='unknown' WHERE state IN ('saved','accepted','queued') AND run_id IN (SELECT run_id FROM agent_run_bindings WHERE phase='unknown')").run();
-  const interactions=createRuntimeInteractions(store,guard,id=>handles.get(id),id=>hooks.stop?hooks.stop(id):stopped(id));
+  const reviewing=new Set<string>();
+  const interactions=createRuntimeInteractions(store,guard,id=>handles.get(id),id=>hooks.stop?hooks.stop(id):stopped(id),reviewing,(...args)=>hooks.queueCliReply(...args));
   function employee(id:string){const e=row<{id:string;runtime:string}>('SELECT id,runtime FROM employees WHERE id=? AND deleted_at IS NULL',id);if(!e)throw new Error('员工不存在');return e;}
   function settings(id:string){employee(id);return row<Settings>('SELECT backend,version FROM employee_runtime_settings WHERE employee_id=?',id)??{backend:'cli' as const,version:0};}
   function options(id:string){const e=employee(id);return [{backend:'cli',compatibility:'verified',enabled:true,reason:'现有 CLI，保留原运行行为'},...(['codex','claude'].includes(e.runtime)?[{backend:e.runtime==='codex'?'codex-app-server':'claude-agent-sdk',compatibility:'unverified',enabled:true,reason:'试验接入；仅经本地协议验证，真实认证、工具行为和桌面安装包须另行验收；Claude SDK 需显式 API 供应商'}]:[])];}
@@ -73,9 +77,44 @@ export function createRuntimeController(store:Store){
       if(payload.status==='completed'){for(const message of rows<{message_id:string}>("SELECT message_id FROM agent_runtime_deliveries WHERE run_id=? AND state='accepted'",id)){db.prepare("UPDATE agent_runtime_deliveries SET state='processed',updated_at=? WHERE message_id=? AND run_id=?").run(now(),message.message_id,id);hooks.record(id,'message.delivery',{messageId:message.message_id,state:'processed'});}}
     }
     if(name==='usage.updated'){const keys=payload.source==='codex-app-server'?['inputTokens','outputTokens','cachedInputTokens','reasoningOutputTokens','totalTokens']:['input_tokens','output_tokens','cache_read_input_tokens','cache_creation_input_tokens'];payload={...payload,usage:Object.fromEntries(keys.filter(key=>Object.hasOwn(payload.usage??{},key)).map(key=>[key,Number.isSafeInteger(payload.usage[key])&&payload.usage[key]>=0?payload.usage[key]:null]))};db.prepare('UPDATE agent_runtime_turns SET usage_json=? WHERE id=? AND run_id=?').run(JSON.stringify(payload),payload.turnId,id);updateUsage(id);}
-    if(name==='interaction.opened'){interactions.open(id,{...payload,request:sanitize(id,payload.request)});db.prepare('UPDATE agent_run_bindings SET phase=?,updated_at=? WHERE run_id=?').run(payload.kind==='question'?'waiting_input':'waiting_approval',now(),id);payload={interactionId:payload.interactionId,kind:payload.kind};}
+    if(name==='interaction.opened'){
+      const opened=interactions.open(id,{...payload,request:sanitize(id,payload.request)});
+      if(opened){
+        db.prepare('UPDATE agent_run_bindings SET phase=?,updated_at=? WHERE run_id=?').run(payload.kind==='question'?'waiting_input':'waiting_approval',now(),id);
+        if(payload.kind==='question'&&hooks.reviewQuestion)void reviewQuestion(id,opened,hooks.reviewQuestion);
+      }
+      payload={interactionId:payload.interactionId,kind:payload.kind};
+    }
     if(name==='message.delivery')db.prepare('UPDATE agent_runtime_deliveries SET state=?,updated_at=? WHERE run_id=? AND message_id=?').run(payload.state,now(),id,payload.messageId);
     hooks.record(id,name,redact(sanitize(id,payload),false));
+  }
+  async function reviewQuestion(runId:string,item:NonNullable<ReturnType<typeof interactions.open>>,review:NonNullable<Hooks['reviewQuestion']>){
+    const limit=Math.min(15000,Date.parse(item.expiresAt)-Date.parse(now()));
+    if(limit<=0)return;
+    reviewing.add(item.id);
+    const signal=AbortSignal.timeout(limit);
+    const showForUser=()=>{reviewing.delete(item.id);};
+    signal.addEventListener('abort',showForUser,{once:true});
+    try{
+      const reply=await review(runId,item.request,signal);
+      if(!reply||signal.aborted)return;
+      const result=await interactions.answer(runId,item.id,{requestId:'apix:'+item.id,expectedPermissionVersion:item.permissionVersion,answer:reply.answer},'apix');
+      if(result.delivery==='accepted'){
+        if(!interactions.pending(runId))db.prepare("UPDATE agent_run_bindings SET phase='executing',updated_at=? WHERE run_id=? AND phase='waiting_input'").run(now(),runId);
+        hooks.record(runId,'interaction.auto_answered',{interactionId:item.id,sources:reply.sources});
+      }else if(result.delivery==='queued'){
+        hooks.record(runId,'interaction.auto_answer_queued',{interactionId:item.id,sources:reply.sources});
+      }
+    }catch(error){
+      if((error as {code?:string})?.code==='DELIVERY_UNKNOWN'){
+        try{hooks.record(runId,'interaction.delivery_unknown',{interactionId:item.id,source:'apix'});}catch{console.error('员工答复的投递状态未能完整记录。');}
+      }
+    }finally{signal.removeEventListener('abort',showForUser);showForUser();}
+  }
+  function cliReplyReceived(runId:string,id:string){
+    if(!interactions.cliReplyReceived(runId,id))return;
+    if(!interactions.pending(runId)&&!interactions.unfinishedCliQuestion(runId))db.prepare("UPDATE agent_run_bindings SET phase='executing',updated_at=? WHERE run_id=? AND phase='waiting_input'").run(now(),runId);
+    hooks.record(runId,'interaction.cli_reply_received',{interactionId:id});
   }
   function updateUsage(id:string){
     const turns=rows<any>('SELECT usage_json FROM agent_runtime_turns WHERE run_id=?',id);
@@ -113,5 +152,5 @@ export function createRuntimeController(store:Store){
   function continuation(taskId:string,runId:string,employeeId:string){const bound=row<any>('SELECT b.*,t.employee_id,t.id task_id FROM agent_run_bindings b JOIN runs r ON r.id=b.run_id JOIN tasks t ON t.id=r.task_id WHERE b.run_id=?',runId);if(!bound||bound.task_id!==taskId||bound.employee_id!==employeeId||bound.backend==='cli'||bound.backend!==settings(employeeId).backend||!bound.native_session_id||bound.stop_evidence!=='quiescent'||!existsSync(bound.cwd)||bound.config_fingerprint!==digest(hooks.snapshot(runId)))throw runtimeError('RUNTIME_INCOMPATIBLE','原生历史、配置或停止证据不满足延续条件；请明确选择全新运行');db.prepare('INSERT INTO agent_runtime_continuations VALUES (?,?) ON CONFLICT(task_id) DO UPDATE SET resume_run_id=excluded.resume_run_id').run(taskId,runId);}
   function tick(){interactions.tick();for(const id of handles.keys()){if(details(id).backend==='cli')continue;try{guard(id);}catch{if(hooks.stop)hooks.stop(id);else stopped(id);}}}
   async function shutdown(){await Promise.allSettled([...handles.entries()].filter(([id])=>details(id).backend!=='cli').map(async([id,handle])=>{if(hooks.stop)hooks.stop(id);else stopped(id);await handle.close();}));}
-  return {open,observe,tick,shutdown,stopped,finish,details,events,settings,options,saveSettings,sanitize,send,deliverExisting,interactions,continuation,setHooks:(value:Hooks)=>hooks=value,isActive:(id:string)=>handles.get(id)?.isActive()??false,waiting:(id:string)=>interactions.pending(id)};
+  return {open,observe,tick,shutdown,stopped,finish,details,events,settings,options,saveSettings,sanitize,send,deliverExisting,interactions,cliReplyReceived,continuation,setHooks:(value:Hooks)=>hooks=value,isActive:(id:string)=>handles.get(id)?.isActive()??false,waiting:(id:string)=>interactions.pending(id)||interactions.unfinishedCliQuestion(id)};
 }

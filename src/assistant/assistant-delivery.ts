@@ -145,6 +145,16 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
    }
   }
  }
+ function acceptVerified(s:Session,d:Delivery,verification:Verification){
+  if(!d.requiresVerification||!d.finalRef||!d.baselineRef||!d.fingerprint||
+     !d.netChanges.length||d.netChanges.some(change=>change.source!=='agent_file_operations')||
+     verification.verificationStatus!=='verified'||d.verification.verificationStatus!=='verified'||
+     !verification.contract||verification.contract.version!==d.verification.contract?.version||
+     !verification.checks?.length||verification.checks.some(check=>check?.projectFingerprint!==d.fingerprint))return false;
+  try{evidenceCurrent(d);}catch{return false;}
+  event(s,'assistant','delivery_accepted',{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,source:'apix',at:now()});
+  return true;
+ }
  async function view(s:Session,d:Delivery,verification?:Verification){let staleReason:string|null=null;try{deps.admit(s);if(d.finalRef)snapshot(d.finalRef);if(d.baselineRef)snapshot(d.baselineRef);if(d.fingerprint&&(!deps.root||((await deps.fingerprint?.(s))??(await projectIo('projectFingerprint',[deps.root(s.project_id)])))!==d.fingerprint))staleReason='工作区已变化';if(d.requiresVerification){const v=verification??(await deps.verification(s));if(v.contract?.version!==d.verification.contract?.version)staleReason='验收契约已变化';else if(v.verificationStatus!=='verified'&&!entries(s,'delivery_changes_requested').some(e=>e.deliveryId===d.id))staleReason??='当前可信检查尚未通过';evidenceCurrent(d);}}catch(e){staleReason=e instanceof Error?e.message:'交付资料不可用';}
   const accepted=entries(s,'delivery_accepted').find(e=>e.deliveryId===d.id),feedback=entries(s,'delivery_changes_requested').filter(e=>e.deliveryId===d.id);const latest=entries(s,'delivery_record').filter(e=>e.taskId===d.taskId).at(-1);if(latest?.id!==d.id)staleReason??='已有新交付版本';if(current(s.id)?.id!==d.taskId)staleReason??='当前已是其他任务';
   return {...d,status:staleReason?'stale':feedback.length?'changes_requested':accepted?'accepted':'awaiting_review',staleReason,historicalAcceptance:accepted??null,feedback};
@@ -164,5 +174,5 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
   transaction(()=>{if(action==='accept'&&entries(s,'delivery_accepted').some(e=>e.deliveryId===d.id))return;event(s,'user',kind,{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,requestId,comment,at:now()});const changed=db.prepare("UPDATE assistant_sessions SET version=version+1,status=?,steps=0 WHERE id=? AND version=?").run(action==='request_changes'?'idle':s.status,s.id,s.version);if(changed.changes!==1)throw new Error('会话状态写入未确认，未保存验收');});
   return await view(s,d);
  }
- return {current,hasUnreviewedCodeDelivery,start,ensureBaseline,observe,freeze,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
+ return {current,hasUnreviewedCodeDelivery,start,ensureBaseline,observe,freeze,acceptVerified,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
 }

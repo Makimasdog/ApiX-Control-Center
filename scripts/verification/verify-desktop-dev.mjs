@@ -7,7 +7,9 @@ const moduleName=process.env.APIX_PLAYWRIGHT_MODULE??'playwright';
 const {_electron}=await import(isAbsolute(moduleName)?pathToFileURL(moduleName).href:moduleName);
 const root=resolve('.'),data=await mkdtemp(resolve('.tmp-dev-electron-'));
 const env={...process.env,APIX_DEV_ROOT:root,APIX_DEV_NODE:process.execPath,APIX_DESKTOP_DATA_DIR:data};delete env.ELECTRON_RUN_AS_NODE;
-const frontend=join(root,'web','.tmp-dev-verify-'+process.pid+'.css'),typed=join(root,'web','dev-verify-'+process.pid+'.ts'),backend=join(root,'src','.tmp-dev-verify-'+process.pid+'.mjs');
+const fixtureName='dev-verify-'+process.pid;
+const frontend=join(root,'web','.tmp-'+fixtureName+'.css'),typed=join(root,'web',fixtureName+'.ts'),backend=join(root,'src','.tmp-'+fixtureName+'.mjs');
+const emitted=join(root,'dist','web',fixtureName+'.js');
 let app;
 async function until(check){for(let i=0;i<150;i++){try{if(await check())return;}catch{}await delay(200);}throw Error('development verification timeout');}
 try{
@@ -25,4 +27,8 @@ try{
   await app.close();app=null;
   await assert.rejects(fetch(origin,{signal:AbortSignal.timeout(2000)}));
   console.log(JSON.stringify({passed:true,cases:['css-refresh','typescript-build-refresh','compile-failure-recovery','backend-restart','stable-origin','development-title','backend-shutdown'],modelCalls:0,data,output}));
-}finally{await app?.close();for(const path of [frontend,typed,backend])await unlink(path).catch(()=>{});}
+}finally{
+  try{await app?.close();}finally{
+    for(const path of [frontend,typed,backend,emitted,emitted+'.map'])await unlink(path).catch(error=>{if(error.code!=='ENOENT')throw error;});
+  }
+}

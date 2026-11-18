@@ -148,7 +148,10 @@ function refresh() {
       messageStream?.close();
       streamProjectId = selectedProjectId;
       messageStream = selectedProjectId ? new EventSource(`/api/events/stream?projectId=${encodeURIComponent(selectedProjectId)}&agentId=apix-director`) : null;
-      if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => refresh());
+      if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "message.artifact_attached", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => {
+        void refresh();
+        document.dispatchEvent(new Event('apix:collaboration-change'));
+      });
     }
     render();
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));

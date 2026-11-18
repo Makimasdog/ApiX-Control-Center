@@ -31,9 +31,11 @@ process.stdin.on("data", (chunk) => {
         else if(last?.body.result?.exitCode!==0)answer=action('write_file',{path:'a.txt',content:'good'});
         else answer={action:'finish',outcome:'completed',message:'已修复 a.txt，实际断言检查通过。'};
       }else if(message.includes('fixture-loop-delegate')){
-        if(!context.context.workflow.enabled){answer=!results.some(e=>e.body.tool==='read_file')?action('read_file',{path:'verify.mjs'}):action('configure_agents',{runtimes:['codex'],profiles:[{runtime:'codex',model:'fixture-model',reasoningLevel:3,contextTokens:32000}],checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}]});}
+        const repeat=message.includes('preauthorized');
+        if(repeat&&!results.some(e=>e.body.tool==='read_file'))answer={action:'clarify',question:'以哪个约定为验收依据？',candidates:['项目 README','验收脚本','另外补充'],preparation:[{tool:'read_file',args:{path:'README.md'}}]};
+        else if(!context.context.workflow.enabled||repeat&&!results.some(e=>e.body.tool==='configure_agents')){answer=!results.some(e=>e.body.tool==='read_file')?action('read_file',{path:'verify.mjs'}):action('configure_agents',{runtimes:['codex'],profiles:[{runtime:'codex',model:'fixture-model',reasoningLevel:3,contextTokens:32000}],checks:[{id:'tests',args:['verify.mjs'],timeoutMs:message.includes('changed-check')?6000:5000}]});}
         else if(context.context.child)answer={action:'finish',outcome:'completed',message:'已核对当前委派，继续等待验收。'};
-        else if(!history.some(e=>e.kind==='delegation_result'))answer=action('delegate',{goal:'实现 a.txt 内容接口',requirements:{scope:'仅实现 a.txt',constraints:'保留 verify.mjs，不扩大范围',deliverable:'a.txt 内容为 good',acceptance:'实际执行 verify.mjs，通过后对照冻结契约审查'}});
+        else if(!history.some(e=>e.kind==='delegation_result'))answer=action('delegate',{goal:message.includes('提前退出')?'提前退出：实现 a.txt 内容接口':message.includes('未定计费')?'未定计费：实现 a.txt 内容接口':'实现 a.txt 内容接口',requirements:{scope:'仅实现 a.txt',constraints:'保留 verify.mjs，不扩大范围',deliverable:process.env.APIX_FIXTURE_WORKER_QUESTIONS==='real-cli'?'a.txt 内容为 APX-CLI-READY 加一个 LF 行尾':'a.txt 内容为 good',acceptance:'实际执行 verify.mjs，通过后对照冻结契约审查'}});
         else answer={action:'finish',outcome:'completed',message:'员工已完成修复、实际验证和集成验收。'};
       }else if(message.includes('fixture-loop-quota')){
         const inspected=results.some(e=>e.body.tool==='inspect_agents'),queried=results.some(e=>e.body.tool==='inspect_quota');answer=!inspected?action('inspect_agents',{}):!queried?action('inspect_quota',{employeeId:results.find(e=>e.body.tool==='inspect_agents').body.result.employees[0].id}):{action:'finish',outcome:'completed',message:'已读取真实运行时额度，未知信息不作推测。'};
@@ -51,7 +53,8 @@ process.stdin.on("data", (chunk) => {
     }
     if(command.message.startsWith('APIX_ARCHITECTURE_JSON\n') || command.message.startsWith('APIX_QUALITY_JSON\n')){
       if(!process.argv.includes('--no-tools'))throw new Error('Architecture/quality inference must not execute project tools');
-      const answer=command.message.startsWith('APIX_ARCHITECTURE_JSON\n')?{summary:'fixture frozen architecture',modules:[{id:'core',name:'核心',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:500,calls:1},interfaces:[{name:'text',consumer:'external',protocol:'file',request:{type:'null'},response:{type:'string',const:'good'}}],dataStructures:[{name:'content',schema:{type:'string',const:'good'}}],acceptance:['a.txt 内容必须为 good'],checkIds:['tests']}]}:{passed:process.env.APIX_FIXTURE_QUALITY_FAIL!=='1',findings:process.env.APIX_FIXTURE_QUALITY_FAIL==='1'?['实际测试不足以证明交付符合内容接口，补齐实现与证据']:[]};
+      const expected=process.env.APIX_FIXTURE_WORKER_QUESTIONS==='real-cli'?'APX-CLI-READY\n':'good';
+      const answer=command.message.startsWith('APIX_ARCHITECTURE_JSON\n')?{summary:'fixture frozen architecture',modules:[{id:'core',name:'核心',paths:['a.txt'],dependsOn:[],risk:'high',difficulty:2,workload:{inputTokens:1000,outputTokens:500,calls:1},interfaces:[{name:'text',consumer:'external',protocol:'file',request:{type:'null'},response:{type:'string',const:expected}}],dataStructures:[{name:'content',schema:{type:'string',const:expected}}],acceptance:['a.txt 内容必须为 '+JSON.stringify(expected)],checkIds:['tests']}]}:{passed:process.env.APIX_FIXTURE_QUALITY_FAIL!=='1',findings:process.env.APIX_FIXTURE_QUALITY_FAIL==='1'?['实际测试不足以证明交付符合内容接口，补齐实现与证据']:[]};
       const frames=JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n'+JSON.stringify({type:'agent_end'})+'\n';
       if(command.message.startsWith('APIX_ARCHITECTURE_JSON\n')&&process.env.APIX_FIXTURE_ARCH_DELAY_MS)setTimeout(()=>process.stdout.write(frames),Number(process.env.APIX_FIXTURE_ARCH_DELAY_MS));else process.stdout.write(frames);continue;
     }
@@ -77,13 +80,28 @@ process.stdin.on("data", (chunk) => {
       const answer={claims:tasks.map((_,step)=>({step,reason:'fixture: no project tools, isolated identity and cwd',risk:'declared capability only',minutes:5})),decline:''};
       process.stdout.write(JSON.stringify({type:'message_end',message:{role:'assistant',stopReason:'stop',content:[{type:'text',text:JSON.stringify(answer)}]}})+'\n');process.stdout.write(JSON.stringify({type:process.env.APIX_FIXTURE_MODERN_PI === '1' ? 'agent_end' : 'agent_settled',aborted:false})+'\n');continue;
     }
-    if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n') || command.message.startsWith('APIX_GUIDE_JSON\n')) {
+    if (command.message.startsWith('APIX_COORDINATOR_JSON\n') || command.message.startsWith('APIX_PLAN_JSON\n') || command.message.startsWith('APIX_GUIDE_JSON\n') || command.message.startsWith('APIX_WORKER_QUESTION_JSON\n')) {
       let answer;
-      if (command.message.startsWith('APIX_GUIDE_JSON\n')) {
+      if(command.message.startsWith('APIX_WORKER_QUESTION_JSON\n')){
+        const {questions,evidence}=JSON.parse(command.message.split('\n').at(-1));
+        const rule=evidence.find(e=>e.source==='project:README.md'&&e.text.includes('a.txt 统一使用 LF 换行。'));
+        const original=evidence.find(e=>e.source.startsWith('request:')&&e.text.includes('结果用中文。'));
+        const checks=evidence.find(e=>e.source==='policy:checks');
+        answer=questions.length===1&&questions[0].id==='text'&&questions[0].question.includes('换行')&&rule?{action:'answer',items:[{id:'text',source:rule.source,quote:'a.txt 统一使用 LF 换行。',answer:'LF'}]}:
+          questions[0].question.includes('换行')&&rule&&original&&checks?{action:'answer',items:[
+          {id:'choice',source:rule.source,quote:'a.txt 统一使用 LF 换行。',answer:'LF'},
+          {id:'language',source:original.source,quote:'结果用中文。',answer:'中文'},
+          {id:'check',source:checks.source,quote:checks.text,answer:'verify.mjs'},
+        ]}:{action:'escalate'};
+      } else if (command.message.startsWith('APIX_GUIDE_JSON\n')) {
         answer = {action:'guide',focus:'verification'};
       } else if (command.message.startsWith('APIX_PLAN_JSON\n')) {
         const employees = JSON.parse(command.message.split('\n员工：').at(-1).split('\n冻结架构：')[0]);
         answer = {steps:[{...(command.message.includes('冻结架构：')?{moduleId:'core'}:{}),prompt:command.message.includes('冻结架构：')?'fixture-autonomy: 实现 core 模块 a.txt 内容接口':'inspect coordination',employeeId:employees[0].id,dependsOn:[]}]};
+        if(process.env.APIX_FIXTURE_WORKER_QUESTIONS==='1')answer.steps[0].prompt=(command.message.includes('未定计费')?'ask-business':'ask-grounded')+' 实现 a.txt';
+        if(process.env.APIX_FIXTURE_WORKER_QUESTIONS==='cli')answer.steps[0].prompt=(command.message.includes('提前退出')?'ask-cli-early':command.message.includes('未定计费')?'ask-cli-business':'ask-cli-grounded')+' 实现 a.txt';
+        if(process.env.APIX_FIXTURE_WORKER_QUESTIONS==='real-cli')answer.steps[0].prompt='本次是一次任务信箱交接演练。先向 ApiX 提出一个文本问题：“a.txt 规定使用什么换行？” 选项 LF、CRLF。按已批准任务中的通用信箱说明提交问题，保留同一进程等待答复，领取并确认，再用指定换行写 a.txt，内容为 APX-CLI-READY 加一个行尾。不要提前写文件，不要读、改或运行 verify.mjs，宿主会验收。仅操作当前测试目录和本机任务信箱；不要提交、访问其他服务或启动子 Agent。';
+        if(process.env.APIX_FIXTURE_WORKER_QUESTIONS==='terminal-question')answer.steps[0].prompt='terminal-question：先确认换行约定再写 a.txt。';
         if(process.env.APIX_FIXTURE_PLAN_INVALID==='always' || process.env.APIX_FIXTURE_PLAN_INVALID==='once' && !command.message.includes('上次计划未通过宿主校验：'))answer.steps[0].dependsOn=[0];
       } else {
         const latest = command.message.split('用户最新消息：').at(-1).split('\n本次工具阶段的答复')[0];

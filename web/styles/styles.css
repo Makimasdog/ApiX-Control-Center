@@ -2002,8 +2002,9 @@ svg.icon {
 /* Conversation controls and task log viewer share the desktop theme. */
 .conversation-model-picker{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:8px 2px;color:var(--text-primary);font-size:12px}
 .conversation-model-picker label{display:flex;align-items:center;gap:6px}
-.conversation-model-picker input,.conversation-model-picker select{background:#18212e;color:var(--text-primary);border:1px solid #3c495c;border-radius:8px;padding:7px;max-width:230px}
-.conversation-model-picker small{color:var(--text-secondary)}.conversation-model-feedback{color:#fda4af}
+.conversation-model-picker input,.conversation-model-picker select{background:var(--surface);color:var(--text-primary);border:1px solid var(--border-control);border-radius:8px;padding:7px;max-width:230px}
+.conversation-model-picker select:disabled{background:var(--surface-inset);color:var(--text-secondary);-webkit-text-fill-color:var(--text-secondary);opacity:1}
+.conversation-model-picker small,.conversation-model-feedback{color:var(--text-secondary)}
 #task-details-dialog{width:min(1080px,calc(100vw - 32px));height:min(820px,calc(100dvh - 40px));max-height:calc(100dvh - 40px);box-sizing:border-box;padding:0;color:var(--text-primary);overflow:hidden}
 #task-details-dialog[open]{display:flex;flex-direction:column}
 #task-details-dialog .dialog-top{padding:20px 24px;border-bottom:1px solid var(--border);flex-shrink:0}

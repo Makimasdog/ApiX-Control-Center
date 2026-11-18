@@ -55,7 +55,7 @@ test('timeline keeps real citation and evidence controls without turning surroun
   assert(!output.includes('&amp;lt;img'));
   assert(!output.includes('<img'));
   assert.equal(assistantTimeline([{id:1,role:'system',kind:'message',body:{content:'.'}}]),'');
-  assert(assistantTimeline([{id:1,role:'user',kind:'message',body:{content:'.'}}]).includes('<div>.</div>'));
+  assert(assistantTimeline([{id:1,role:'user',kind:'message',body:{content:'.'}}]).includes('<div class="chat-content">.</div>'));
 });
 
 test('delivery, recovery and readiness keep controls, guards and escaped detail branches',()=>{

@@ -59,7 +59,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   const get=id=>{const saved=row('SELECT * FROM agent_providers WHERE id=?',id);if(!saved)throw Error('供应商不存在，请刷新');return {id:saved.id,version:saved.version,...JSON.parse(saved.body)};};
 
   /** publicProfile - 返回不含密钥引用的安全视图 */
-  const publicProfile=p=>{const {keyRef,...safe}=p;return {...safe,hasKey:!!keyRef};};
+  const publicProfile=p=>{const {keyRef,...safe}=p;return {...safe,name:p.name==='ApiX 当前配置'&&p.baseUrl?new URL(p.baseUrl).hostname:p.name,hasKey:!!keyRef};};
 
   /** binding - 获取员工与提供商的绑定关系 */
   const binding=id=>row('SELECT * FROM agent_provider_bindings WHERE employee_id=?',id)??{employee_id:id,provider_id:null,version:0};
@@ -77,7 +77,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   function managerMatch(p,s){return p.apiType!=='codex-login'&&['custom','apix-custom'].includes(s.provider)&&s.model===p.model&&s.baseUrl===p.baseUrl&&s.apiType===p.apiType&&s.apiKeyEnv===(p.keyRef??'')&&(s.contextWindow??null)===(p.contextWindow??null);}
 
   /** list - 列出所有提供商、Agent 绑定状态和应用级配置 */
-  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；已有对话需使用当前应用配置'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
+  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；同一对话内尚未单独选择模型时采用'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
 
   /** transaction - 在 SAVEPOINT 中执行操作，失败时回滚 */
   function transaction(work){db.exec('SAVEPOINT agent_provider');try{const value=work();db.exec('RELEASE agent_provider');return value;}catch(e){db.exec('ROLLBACK TO agent_provider;RELEASE agent_provider');throw e;}}
@@ -92,23 +92,24 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     let baseUrl=String(input.baseUrl??'').trim();
     if(apiType==='codex-login')baseUrl='';else {if(/[{}<>]|%7[bBdD]|%3[cCeE]/i.test(baseUrl))throw Error('供应商地址仍含占位符，请填写控制台提供的实际 Base URL');let url;try{url=new URL(baseUrl);}catch{throw Error('供应商地址无效');}if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search||url.hash)throw Error('地址仅支持 HTTP(S)，不能包含凭据、查询或片段');baseUrl=url.href.replace(/\/$/,'');}
     const bound=previous?rows('SELECT b.employee_id FROM agent_provider_bindings b JOIN employees e ON e.id=b.employee_id WHERE b.provider_id=? AND e.deleted_at IS NULL',previous.id):[];
-    for(const e of bound){idle(e.employee_id);compatible(row('SELECT runtime FROM employees WHERE id=?',e.employee_id).runtime,{apiType,authHeader});}
     const managerBound=previous&&managerMatch(previous,managerSettings());if(managerBound)compatible('apix',{apiType,authHeader});
     if(previous && (previous.baseUrl!==baseUrl || previous.apiType!==apiType) && !input.apiKey && apiType!=='codex-login' && (!!previous.keyRef || !loopback(baseUrl)))throw Error('更换地址或协议必须重新填写密钥，防止旧密钥发往其他服务');
     const contextWindow=input.contextWindow===undefined?previous?.contextWindow??null:input.contextWindow===''||input.contextWindow===null?null:Number(input.contextWindow);
     if(contextWindow!==null&&(!Number.isSafeInteger(contextWindow)||contextWindow<4096||contextWindow>1000000))throw Error('上下文窗口应为 4096–1000000 Token');
-    let keyRef=apiType==='codex-login'?null:previous?.keyRef??null;
     if(input.apiKey!==undefined && typeof input.apiKey!=='string')throw Error('API Key 必须为文本');
+    const routeChanged=!!previous&&(previous.model!==model||previous.baseUrl!==baseUrl||previous.apiType!==apiType||(previous.authHeader??'default')!==authHeader||!!input.apiKey);
+    if(routeChanged)for(const e of bound){idle(e.employee_id);compatible(row('SELECT runtime FROM employees WHERE id=?',e.employee_id).runtime,{apiType,authHeader});}
+    let keyRef=apiType==='codex-login'?null:previous?.keyRef??null;
     if(apiType!=='codex-login' && input.apiKey)keyRef=credentials.save(input.apiKey);
     if(apiType!=='codex-login'&&!keyRef&&!loopback(baseUrl))throw Error('请直接填写 API Key；本地回环服务可留空');
     const p={contextWindow,id:previous?.id??randomUUID(),version:(previous?.version??0)+1,name,model,baseUrl,apiType,authHeader,keyRef};
-    return transaction(()=>{const {id,version,...body}=p;db.prepare('INSERT INTO agent_providers VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,body=excluded.body').run(id,version,JSON.stringify(body));for(const e of bound)updateModel(e.employee_id,p.model);if(managerBound)applyManager(p);return publicProfile(p);});
+    return transaction(()=>{const {id,version,...body}=p;db.prepare('INSERT INTO agent_providers VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET version=excluded.version,body=excluded.body').run(id,version,JSON.stringify(body));if(routeChanged)for(const e of bound)updateModel(e.employee_id,p.model);if(managerBound&&(routeChanged||(previous.contextWindow??null)!==contextWindow))applyManager(p);return publicProfile(p);});
   }
   /** updateModel - 更新员工的模型 ID */
   function updateModel(id,model){const old=profile(id);saveProfile(id,{...old,model,pricing:null,accountId:null});}
 
   /** applyManager - 将提供商配置应用到应用级设置 */
-  function applyManager(p){compatible('apix',p);saveManager({contextWindow:p.contextWindow??null,provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef??''});}
+  function applyManager(p){compatible('apix',p);return saveManager({contextWindow:p.contextWindow??null,provider:'custom',baseUrl:p.baseUrl,model:p.model,apiType:p.apiType,apiKeyEnv:p.keyRef??''});}
 
   /** adopt - 将当前应用级配置导入为一个新的提供商 */
   function adopt(){
@@ -117,7 +118,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
     const providers=rows('SELECT id FROM agent_providers').map(r=>get(r.id));
     if(providers.some(p=>managerMatch(p,current)))return list();
     const apiType=String(current.apiType||'openai-completions');compatible('apix',{apiType,authHeader:'default'});
-    const p={id:randomUUID(),version:1,name:'ApiX 当前配置',contextWindow:current.contextWindow??null,model:current.model,baseUrl:current.baseUrl,apiType,authHeader:'default',keyRef:current.apiKeyEnv||null};
+    const p={id:randomUUID(),version:1,name:new URL(current.baseUrl).hostname,contextWindow:current.contextWindow??null,model:current.model,baseUrl:current.baseUrl,apiType,authHeader:'default',keyRef:current.apiKeyEnv||null};
     db.prepare('INSERT INTO agent_providers VALUES (?,?,?)').run(p.id,p.version,JSON.stringify({contextWindow:p.contextWindow,name:p.name,model:p.model,baseUrl:p.baseUrl,apiType:p.apiType,authHeader:p.authHeader,keyRef:p.keyRef}));
     return list();
   }
@@ -125,8 +126,10 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   function bind(input){
     if(input.agentId==='apix'){if(input.version!==managerVersion())throw Error('ApiX 配置已变化，请刷新');const p=get(input.providerId);if(input.providerVersion!==p.version)throw Error('供应商配置已变化，请刷新');applyManager(p);return list();}
     const employee=row('SELECT * FROM employees WHERE id=? AND deleted_at IS NULL',input.agentId);if(!employee)throw Error('员工不存在');
-    idle(employee.id);const old=binding(employee.id);if(input.version!==old.version)throw Error('员工绑定已变化，请刷新');
+    const old=binding(employee.id);if(input.version!==old.version)throw Error('员工绑定已变化，请刷新');
     const p=input.providerId?get(input.providerId):null;if(p){if(input.providerVersion!==p.version)throw Error('供应商配置已变化，请刷新');compatible(employee.runtime,p);}
+    if(old.provider_id===(p?.id??null))return list();
+    idle(employee.id);
     transaction(()=>{updateModel(employee.id,p?.model??'');db.prepare('INSERT INTO agent_provider_bindings VALUES (?,?,?) ON CONFLICT(employee_id) DO UPDATE SET provider_id=excluded.provider_id,version=excluded.version').run(employee.id,p?.id??null,old.version+1);});return list();
   }
   /** remove - 删除提供商（必须先解除所有绑定） */

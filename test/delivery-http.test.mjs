@@ -1,6 +1,41 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {startDeliveryFixture} from './delivery-fixture.mjs';
-import {appendFile} from 'node:fs/promises';
+import {appendFile,unlink} from 'node:fs/promises';
 import {join} from 'node:path';
+test('project opt-in accepts a verified main chat delivery without an owner click',{timeout:120000,skip:process.platform!=='win32'},async()=>{
+ const h=await startDeliveryFixture({startupMs:30000});
+ try{
+  const project='/api/projects/'+h.projectId;
+  const {id:employeeId}=await h.request('/api/employees',{name:'本地交付员工',role:'开发',runtime:'codex'});
+  await h.request(project+'/workflow',{version:0,enabled:true,approved:true,managerVersion:1,employees:[{id:employeeId,version:0}]});
+  const autonomy={enabled:true,approved:true,maxRepairs:2,maxMinutes:10,maxRunMinutes:5,checkpointMinutes:1,autoReassign:true,taskCapMinor:null};
+  await h.request(project+'/autonomy',{...autonomy,version:0,checks:[{id:'unit',args:['check.cjs'],timeoutMs:5000}]});
+  const {id}=await h.request('/api/assistant/sessions',{projectId:h.projectId}),base='/api/assistant/sessions/'+id;
+  await h.request(base+'/messages',{content:'修复加法并交付'});
+  const pending=await h.idle(id);assert.equal(pending.pending?.tool,'configure_verification');
+  await h.request(base+'/reply',{version:pending.version,requestId:pending.pending.id,approved:true});
+  const done=await h.idle(id);assert.equal(done.status,'completed');assert.equal(done.verificationStatus,'verified');
+  assert.equal(done.acceptanceStatus,'accepted');assert.equal(done.review.latestDelivery.historicalAcceptance.source,'apix');
+  assert(done.events.some(e=>e.role==='assistant'&&e.kind==='delivery_accepted'));
+  assert.deepEqual(await h.request('/api/assistant/sessions?projectId='+h.projectId+'&view=attention'),[]);
+  await h.restart();
+  const restored=await h.request(base);assert.equal(restored.acceptanceStatus,'accepted');
+  assert.equal(restored.events.filter(e=>e.kind==='delivery_accepted').length,1);
+  await h.request(base+'/tasks',{version:restored.version,description:'下一任务：新增说明'});
+  await appendFile(join(h.project,'src/add.cjs'),'\n// 未归属于 ApiX 的外部修改\n','utf8');
+  await h.request(base+'/messages',{content:'完成下一任务'});
+  const mixed=await h.idle(id);assert.equal(mixed.verificationStatus,'verified');
+  assert.equal(mixed.review.latestDelivery.status,'awaiting_review');
+  assert(mixed.review.latestDelivery.netChanges.some(change=>change.source==='unattributed_or_external'));
+  await h.request(project+'/autonomy',{...autonomy,version:1,checks:[{id:'other',args:['check.cjs'],timeoutMs:5000}]});
+  await unlink(join(h.project,'src/note.md'));
+  const next=await h.request('/api/assistant/sessions',{projectId:h.projectId});
+  await h.request('/api/assistant/sessions/'+next.id+'/messages',{content:'下一任务：新增说明'});
+  const differentChecks=await h.idle(next.id);
+  assert.equal(differentChecks.verificationStatus,'verified');
+  assert.equal(differentChecks.review.latestDelivery.status,'awaiting_review');
+  assert(differentChecks.review.latestDelivery.netChanges.every(change=>change.source==='agent_file_operations'));
+ }finally{await h.close();}
+});
 test('project attention follows the current request and frozen delivery',{timeout:120000,skip:process.platform!=='win32'},async()=>{
  const h=await startDeliveryFixture({startupMs:30000});
  try{

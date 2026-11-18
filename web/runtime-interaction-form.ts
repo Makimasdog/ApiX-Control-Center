@@ -2,8 +2,8 @@ import {html} from './html.js';
 
 export type RuntimeInteraction={
   id:string;runId:string;kind:'question'|'approval';permissionVersion:string;expiresAt:string;
-  state:string;answerDelivery:string;employee?:string;
-  request:{operation?:string;summary?:string;answerFormat?:'claude'|'codex';questions?:{
+  state:string;answerDelivery:string;employee?:string;answerSource?:'user'|'apix'|null;reviewing?:boolean;
+  request:{operation?:string;summary?:string;answerFormat?:'claude'|'codex'|'cli';questions?:{
     id?:string;question:string;options?:{label:string;description?:string}[];
   }[]};
 };
@@ -28,7 +28,7 @@ export function interactionForm(item:RuntimeInteraction,send:(path:string,body:u
     const submitter=event.submitter as HTMLButtonElement|null;
     if(sending||submitter?.disabled||item.kind==='approval'&&!submitter)return;
     const answer=item.kind==='approval'?{decision:submitter!.value}:{answers:Object.fromEntries(
-      [...new FormData(form)].map(([key,value])=>[key,item.request.answerFormat==='claude'?String(value):{answers:[String(value)]}])
+      [...new FormData(form)].map(([key,value])=>[key,item.request.answerFormat==='codex'?{answers:[String(value)]}:String(value)])
     )};
     const serialized=JSON.stringify(answer);
     if(previousAnswer!==serialized){previousAnswer=serialized;requestId=crypto.randomUUID();}
@@ -37,7 +37,7 @@ export function interactionForm(item:RuntimeInteraction,send:(path:string,body:u
     for(const button of buttons)button.disabled=true;
     try{
       const result=await send(`/api/runs/${encodeURIComponent(item.runId)}/interactions/${encodeURIComponent(item.id)}/answer`,{requestId,answer,expectedPermissionVersion:item.permissionVersion});
-      if(result.delivery!=='accepted')report(new Error('答案已保存，员工运行时接收情况需核对。'));
+      if(result.delivery!=='accepted'&&result.delivery!=='queued')report(new Error('答案已保存，员工运行时接收情况需核对。'));
     }catch(error){
       report(error);
       sending=false;
