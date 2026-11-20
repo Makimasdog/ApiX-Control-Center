@@ -256,6 +256,34 @@ test('compaction persists a summary while original events remain inspectable',()
   for(let i=0;i<14;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,'now')").run(h.id,JSON.stringify({content:'约束：不扩大范围。'+'x'.repeat(5000)}));
   h.answer({summary:'目标与约束：不扩大范围，保留全部证据引用。'},finish);(await h.service.message(h.id,{content:'继续'}));const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert(s.summary.includes('不扩大范围'));assert(s.compacted_through>0);assert(s.events.length>=16);assert(h.prompts[0].startsWith('APIX_COMPACT_JSON'));
 }));
+test('tool scope reuses a cached changed-file set and only rescans events after the last watermark',()=>fixture(async h=>{
+ const scans=[],rows=h.deps.rows;h.deps.rows=(q,...p)=>{if(q.includes("json_extract(body,'$.result.afterSha256')"))scans.push(p);return rows(q,...p);};
+ let writes=0;h.deps.execute=async(_s,name,args)=>{h.calls.push({name,args});return name==='write_file'?{path:args.path,beforeSha256:'before',afterSha256:'after'+(++writes)}:{observed:true};};
+ const service=createAssistantLoop(h.deps);
+ h.answer(tool('write_file',{path:'a.txt',content:'a'}),tool('write_file',{path:'b.txt',content:'b'}),tool('read_file',{path:'a.txt'}),{...finish,outcome:'blocked'});
+ await service.message(h.id,{content:'分步修改两个文件'});const s=await wait(service,h.id);
+ assert.equal(s.status,'attention');assert.deepEqual(h.calls.map(c=>c.name),['write_file','write_file','read_file']);
+ assert.equal(scans.length,3);assert.equal(scans[0][1],0);
+ for(let i=1;i<scans.length;i++){assert.equal(scans[i][1],scans[i-1][2]);assert(scans[i][2]>scans[i][1]);}
+}));
+test('compaction keeps hard constraints across repeated compressions and merges new ones',()=>fixture(async h=>{
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'历史事实 '+i}),new Date().toISOString());
+ h.answer({summary:'第一轮摘要',constraints:['只能修改 src 目录','不要新增依赖']});
+ let s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.equal(s.summary,'【硬约束】\n- 只能修改 src 目录\n- 不要新增依赖\n\n【工作摘要】\n第一轮摘要');
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'继续事实 '+i}),new Date().toISOString());
+ let carried;h.answer(prompt=>{carried=JSON.parse(prompt.split('\n').at(-1)).constraints;return JSON.stringify({summary:'第二轮摘要',constraints:['只能修改 src 目录','必须保留测试证据']});});
+ s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.deepEqual(carried,['只能修改 src 目录','不要新增依赖']);
+ assert(s.summary.includes('- 不要新增依赖'));assert(s.summary.includes('- 必须保留测试证据'));assert(s.summary.endsWith('【工作摘要】\n第二轮摘要'));
+ assert.equal((s.summary.match(/- 只能修改 src 目录/g)||[]).length,1);
+}));
+test('legacy compaction responses without constraints keep the plain summary format',()=>fixture(async h=>{
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'历史事实 '+i}),new Date().toISOString());
+ h.answer({summary:'旧格式摘要'});
+ const s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.equal(s.summary,'旧格式摘要');assert(!s.summary.includes('【硬约束】'));
+}));
 test('no-progress guard stops a repeated path before the overall step budget',()=>fixture(async h=>{
   for(let i=0;i<24;i++)h.answer(tool('list_files',i%2?{path:'.'}:{}));(await h.service.message(h.id,{content:'检查'}));const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,3);assert(s.events.some(e=>e.kind==='tool_loop_stopped'));
 }));

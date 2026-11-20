@@ -26,7 +26,14 @@ export function prepareModelRequest(saved:ModelSettings,prompt:string){
   const endpoint=modelEndpoint(settings.baseUrl,api);
   // Some Qwen thinking models require streaming even when the caller only needs the final JSON.
   const stream=true;
-  const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:prompt}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
+  // 稳定布局的提示词以 CURRENT_STATE 行为界，缓存断点打在该行之前的字节边界；
+  // 边界从提示词本身推导，诊断描述符只读，绝不改变线上字节。
+  let anthropicContent:unknown=prompt;const marker=api==='anthropic-messages'?prompt.lastIndexOf('\nCURRENT_STATE '):-1;
+  if(marker>0){
+    const bytes=Buffer.from(prompt,'utf8'),end=Buffer.byteLength(prompt.slice(0,marker),'utf8');
+    anthropicContent=[{type:'text',text:bytes.subarray(0,end).toString('utf8'),cache_control:{type:'ephemeral'}},{type:'text',text:bytes.subarray(end).toString('utf8')}];
+  }
+  const body=api==='openai-responses'?{model:settings.model,instructions:system,input:prompt,stream,store:false}:api==='anthropic-messages'?{model:settings.model,system,messages:[{role:'user',content:anthropicContent}],max_tokens:8192,stream}:{model:settings.model,messages:[{role:'system',content:system},{role:'user',content:prompt}],stream};
   // Chat Completions 的流式用量在额外终端块中返回，需要显式请求。
   if(api==='openai-completions')Object.assign(body,{stream_options:{include_usage:true}});
   Object.assign(body,reasoningParameters(settings));

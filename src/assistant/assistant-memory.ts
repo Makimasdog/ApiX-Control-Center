@@ -19,16 +19,19 @@ export interface RecallNote {title:string;content:string;source:string;version:n
  * 设计意图：中文用 bigram 而非分词器，英文用完整单词，简单且足够用于相关度匹配
  */
 function terms(value:string){return new Set((value.toLowerCase().match(/[a-z0-9_]{2,}|[\u3400-\u9fff]{2,}/g)??[]).flatMap(word=>/[\u3400-\u9fff]/.test(word)?Array.from({length:Math.max(0,word.length-1)},(_,i)=>word.slice(i,i+2)):[word]));}
+/** 近因加权：7 天内 +2，30 天内 +1，更早或无法解析不加分。 */
+function recency(updated:string){const age=Date.now()-Date.parse(updated);return age<=7*86400000?2:age<=30*86400000?1:0;}
 /**
  * recallNotes - 基于关键词匹配的笔记召回
  * @param query - 查询文本（通常是用户的最新消息）
  * @param notes - 所有可用的笔记列表
  * @param budget - 召回内容的字符预算（默认 6000）
  * @returns 按相关度排序的笔记列表，最多 5 条，总字符数不超过预算
- * 设计意图：标题匹配权重 4 分，正文匹配 1 分，用户/反馈类型额外加 1 分；
+ * 设计意图：标题匹配权重 4 分，正文匹配 1 分，用户/反馈类型额外加 1 分；已有匹配的笔记按近因最多加 2 分，
+ * 保证无关笔记不会仅因更新较新而被召回；
  * 超过 24 小时未更新的笔记标记为 stale。
  */
 export function recallNotes<T extends RecallNote>(query:string,notes:T[],budget=6000){
   const input=terms(query);let remaining=budget;
-  return notes.filter(n=>n.status==='active').map(n=>{const title=terms(n.title),body=terms(n.content);let score=0;for(const term of input)score+=(title.has(term)?4:0)+(body.has(term)?1:0);if(['user','feedback'].includes(n.kind))score+=1;return {note:n,score};}).filter(n=>n.score>0).sort((a,b)=>b.score-a.score||b.note.updated_at.localeCompare(a.note.updated_at)||a.note.title.localeCompare(b.note.title)).slice(0,5).flatMap(({note:n,score})=>{if(n.content.length>remaining)return [];remaining-=n.content.length;return [{...n,score,stale:Date.now()-Date.parse(n.updated_at)>86400000,authority:'reference_only'}];});
+  return notes.filter(n=>n.status==='active').map(n=>{const title=terms(n.title),body=terms(n.content);let score=0;for(const term of input)score+=(title.has(term)?4:0)+(body.has(term)?1:0);if(['user','feedback'].includes(n.kind))score+=1;if(score>0)score+=recency(n.updated_at);return {note:n,score};}).filter(n=>n.score>0).sort((a,b)=>b.score-a.score||b.note.updated_at.localeCompare(a.note.updated_at)||a.note.title.localeCompare(b.note.title)).slice(0,5).flatMap(({note:n,score})=>{if(n.content.length>remaining)return [];remaining-=n.content.length;return [{...n,score,stale:Date.now()-Date.parse(n.updated_at)>86400000,authority:'reference_only'}];});
 }

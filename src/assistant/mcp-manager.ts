@@ -35,9 +35,12 @@ interface Connection {client:Client;transport:StdioClientTransport|StreamableHTT
  * @returns MCP 管理器，包含 configs / save / catalog / discover / call / close 方法
  */
 export function createMcpManager(store:Store,deps:{project(id:string):{path:string};environment():Record<string,string|undefined>}){
-  const {db,row,rows,now}=store;const connections=new Map<string,Promise<Connection>>();
+  const {db,row,rows,now}=store;const connections=new Map<string,Promise<Connection>>(),discoveryAt=new Map<string,number>();
   ensureModuleSchema(db, "assistant-mcp-manager");
   const key=(projectId:string,id:string)=>projectId+':'+id;
+  // 缓存键含配置版本，配置变更自然失效；TTL 只限制重复发现，不改变手动 discover 语义。
+  const discoveryTtl=()=>{const value=Number(process.env.MCP_DISCOVERY_TTL_MS);return Number.isFinite(value)&&value>=0?value:300000;};
+  const discoveryKey=(projectId:string,c:Config)=>projectId+':'+c.id+':'+c.version;
   const configs=(projectId:string)=>{deps.project(projectId);return rows<{body:string}>('SELECT body FROM apix_mcp_servers WHERE project_id=? ORDER BY id',projectId).map(r=>JSON.parse(r.body) as Config);};
   /** 关闭单个 MCP 连接（Windows 上先 taskkill 确保进程树终止） */
   async function closeConnection(c:Connection){
@@ -61,7 +64,9 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
     else if(c.transport==='http'){const url=new URL(text(input.url,2000));if(url.username||url.password||url.search||url.hash||url.protocol!=='https:'&&!(url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)))throw new Error('MCP 使用 HTTPS 或本机 HTTP，凭据请用 headerEnv 环境变量引用');c.url=url.href;}
     else throw new Error('MCP 传输仅支持 stdio 或 Streamable HTTP');
     const pending=disconnect(projectId,id);
-    db.prepare('INSERT INTO apix_mcp_servers VALUES (?,?,?) ON CONFLICT(project_id,id) DO UPDATE SET body=excluded.body').run(projectId,id,JSON.stringify(c));db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,id);await pending;return c;
+    db.prepare('INSERT INTO apix_mcp_servers VALUES (?,?,?) ON CONFLICT(project_id,id) DO UPDATE SET body=excluded.body').run(projectId,id,JSON.stringify(c));db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,id);
+    for(const k of discoveryAt.keys())if(k.startsWith(projectId+':'+id+':'))discoveryAt.delete(k);
+    await pending;return c;
   }
   const current=(projectId:string,id:string)=>{const c=configs(projectId).find(c=>c.id===id);if(!c?.enabled)throw new Error('MCP 服务已停用或不存在');return c;};
   /** connect - 建立到 MCP 服务的连接（复用已有连接，带超时和取消支持） */
@@ -82,20 +87,39 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
   }
   /** catalog - 返回当前已发现且配置版本匹配的 MCP 工具列表 */
   function catalog(projectId:string):ToolDefinition[]{const active=new Map(configs(projectId).filter(c=>c.enabled).map(c=>[c.id,c.version]));return rows<{server_id:string;body:string}>('SELECT server_id,body FROM apix_mcp_tools WHERE project_id=?',projectId).flatMap(r=>{const d=JSON.parse(r.body) as ToolDefinition;return d.version?.startsWith(active.get(r.server_id)+':')?[d]:[];});}
-  /** discover - 从所有已启用的 MCP 服务发现工具并持久化到数据库 */
+  /** discoverOne - 发现单个服务的工具并持久化；失败保留原有清理与错误收集语义 */
+  async function discoverOne(projectId:string,c:Config,signal?:AbortSignal):Promise<{ok:boolean;errors:string[]}>{
+    if(signal?.aborted)throw new Error('MCP 发现已取消');
+    const errors:string[]=[];
+    try{const {client}=await connect(projectId,c,signal);const response=await client.listTools({},{timeout:10000,signal});if(current(projectId,c.id).version!==c.version)throw new Error('配置已变化');
+      const definitions=response.tools.slice(0,100).flatMap(t=>{
+        const name='mcp_'+c.id.replace(/-/g,'_')+'_'+createHash('sha256').update(t.name).digest('hex').slice(0,16);
+        // 未知注解一律按写操作处理，只读工具才跳过审批与工作区变更标记。
+        const readOnly=t.annotations?.readOnlyHint===true;
+        const definition:ToolDefinition={name,description:`${c.name} / ${t.name}: ${String(t.description??'').slice(0,1000)}`,inputSchema:t.inputSchema,readOnly,changesWorkspace:!readOnly,deferred:true,version:c.version+':'+createHash('sha256').update(JSON.stringify([t.name,t.inputSchema,t.annotations??null])).digest('hex')};
+        try{createToolRegistry([definition]);return [{definition,remote:t.name}];}catch{errors.push(c.name+'：某工具 Schema 无效，已忽略');return [];}
+      });
+      db.exec('SAVEPOINT mcp_discovery');try{db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,c.id);for(const {definition,remote} of definitions)db.prepare('INSERT INTO apix_mcp_tools VALUES (?,?,?,?,?)').run(projectId,c.id,definition.name,remote,JSON.stringify(definition));}catch(error){db.exec('ROLLBACK TO mcp_discovery');throw error;}finally{db.exec('RELEASE mcp_discovery');}
+      return {ok:true,errors};
+    }catch{if(configs(projectId).find(saved=>saved.id===c.id)?.version===c.version){db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,c.id);await disconnect(projectId,c.id);}errors.push(c.name+'：无法发现工具，请检查连接、凭据或超时');return {ok:false,errors};}
+  }
+  /** discover - 从所有已启用的 MCP 服务发现工具并持久化到数据库（手动刷新语义不变：每次都重新发现） */
   async function discover(projectId:string,signal?:AbortSignal){
     const errors:string[]=[];
+    for(const c of configs(projectId).filter(c=>c.enabled)){const result=await discoverOne(projectId,c,signal);errors.push(...result.errors);}
+    return {tools:catalog(projectId),errors};
+  }
+  /** ensure - 助手循环使用的 TTL 发现：命中缓存且工具行仍在时跳过连接与 listTools */
+  async function ensure(projectId:string,signal?:AbortSignal){
+    const errors:string[]=[],ttl=discoveryTtl();
     for(const c of configs(projectId).filter(c=>c.enabled)){
       if(signal?.aborted)throw new Error('MCP 发现已取消');
-      try{const {client}=await connect(projectId,c,signal);const response=await client.listTools({},{timeout:10000,signal});if(current(projectId,c.id).version!==c.version)throw new Error('配置已变化');
-        const definitions=response.tools.slice(0,100).flatMap(t=>{
-          const name='mcp_'+c.id.replace(/-/g,'_')+'_'+createHash('sha256').update(t.name).digest('hex').slice(0,16);
-          const definition:ToolDefinition={name,description:`${c.name} / ${t.name}: ${String(t.description??'').slice(0,1000)}`,inputSchema:t.inputSchema,readOnly:false,changesWorkspace:true,deferred:true,version:c.version+':'+createHash('sha256').update(JSON.stringify([t.name,t.inputSchema])).digest('hex')};
-          try{createToolRegistry([definition]);return [{definition,remote:t.name}];}catch{errors.push(c.name+'：某工具 Schema 无效，已忽略');return [];}
-        });
-        db.exec('SAVEPOINT mcp_discovery');try{db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,c.id);for(const {definition,remote} of definitions)db.prepare('INSERT INTO apix_mcp_tools VALUES (?,?,?,?,?)').run(projectId,c.id,definition.name,remote,JSON.stringify(definition));}catch(error){db.exec('ROLLBACK TO mcp_discovery');throw error;}finally{db.exec('RELEASE mcp_discovery');}
-      }catch{if(configs(projectId).find(saved=>saved.id===c.id)?.version===c.version){db.prepare('DELETE FROM apix_mcp_tools WHERE project_id=? AND server_id=?').run(projectId,c.id);await disconnect(projectId,c.id);}errors.push(c.name+'：无法发现工具，请检查连接、凭据或超时');}
-    }return {tools:catalog(projectId),errors};
+      const k=discoveryKey(projectId,c),at=discoveryAt.get(k);
+      if(at!==undefined&&Date.now()-at<ttl&&rows('SELECT 1 FROM apix_mcp_tools WHERE project_id=? AND server_id=? LIMIT 1',projectId,c.id).length)continue;
+      const result=await discoverOne(projectId,c,signal);errors.push(...result.errors);
+      if(result.ok){discoveryAt.set(k,Date.now());if(discoveryAt.size>200)discoveryAt.delete(discoveryAt.keys().next().value!);}
+    }
+    return {tools:catalog(projectId),errors};
   }
   /** call - 调用 MCP 远程工具（校验版本 → 建立连接 → 执行调用） */
   async function call(projectId:string,name:string,args:Record<string,unknown>,version:string,signal:AbortSignal){
@@ -106,5 +130,5 @@ export function createMcpManager(store:Store,deps:{project(id:string):{path:stri
     try{const result=await connection.client.callTool({name:saved.remote_name,arguments:args},undefined,{timeout:30000,signal});if(JSON.stringify(result).length>2_000_000)throw new Error('MCP 返回内容过大');return {...result,source:{serverId:c.id,tool:saved.remote_name,version},replayed:false};}
     catch{await disconnect(projectId,c.id,connection);throw new Error('MCP 调用失败或已取消；外部副作用可能已发生，不自动重放，请核对实际结果');}
   }
-  return {configs,save,catalog,discover,call,async close(){await Promise.all([...connections.values()].map(p=>p.then(closeConnection,()=>{})));connections.clear();}};
+  return {configs,save,catalog,discover,ensure,call,async close(){await Promise.all([...connections.values()].map(p=>p.then(closeConnection,()=>{})));connections.clear();}};
 }

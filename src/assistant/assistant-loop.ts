@@ -100,6 +100,18 @@ function parseAction(raw:string){const decision=parse(raw);if(!['tool','ask','cl
  * @returns 脱敏后的错误字符串（最长 1000 字符）
  */
 function safeError(error:unknown){let result=String(error instanceof Error?error.message:error);for(const [key,value] of Object.entries(process.env))if(/KEY|TOKEN|SECRET|PASSWORD/i.test(key)&&value&&value.length>=6)result=result.split(value).join('<redacted>');return result.slice(0,1000);}
+/** 压缩摘要的分节标题；只有【硬约束】段会被原样跨多次压缩延续。 */
+const CONSTRAINT_HEADER='【硬约束】';
+const SUMMARY_HEADER='【工作摘要】';
+function extractConstraints(summary:string){
+  if(!summary.startsWith(CONSTRAINT_HEADER))return [] as string[];
+  return summary.slice(CONSTRAINT_HEADER.length).split(SUMMARY_HEADER)[0]!.split('\n').filter(line=>line.startsWith('- ')).map(line=>line.slice(2).trim()).filter(Boolean);
+}
+function mergeConstraints(input:unknown,previous:string[]){
+  const next=Array.isArray(input)?input.filter((v):v is string=>typeof v==='string').map(v=>v.trim()).filter(Boolean):[];
+  const unique=[...new Set([...previous,...next])].filter(c=>c.length<=160&&!sensitiveMemory(c));
+  return unique.slice(0,8);
+}
 
 /**
  * createAssistantLoop - 创建助手主循环实例，是整个 AI 助手的核心驱动引擎
@@ -118,6 +130,20 @@ export function createAssistantLoop(deps:Dependencies){
   /** controllers — 每个会话的 AbortController，用于中断正在进行的 LLM 推理或工具执行 */
   const controllers=new Map<string,AbortController>();
   const unsavedSafety=new Map<string,string>();
+  // 缓存安全前提：assistant_events.id 单调递增且事件不会被删除（归档/删除只改 assistant_sessions 行），
+  // 因此已有结果不会在 upto 之后被改写，只需扫描新增区间。
+  const changedFilesBySession=new Map<string,{upto:number;files:Record<string,string>}>();
+  /** 增量计算本会话的工具改动文件，只扫描 watermark 之后的新事件；返回浅拷贝避免调用方改到缓存。 */
+  function changedFilesOf(id:string){
+    const cached=changedFilesBySession.get(id)??{upto:0,files:{}};
+    const watermark=row<{id:number}>('SELECT MAX(id) AS id FROM assistant_events WHERE session_id=?',id)?.id??0;
+    if(watermark<=cached.upto)return {...cached.files};
+    const files={...cached.files};
+    for(const saved of rows<{body:string}>("SELECT body FROM assistant_events WHERE session_id=? AND id>? AND id<=? AND kind='tool_result' AND json_extract(body,'$.result.afterSha256') IS NOT NULL ORDER BY id",id,cached.upto,watermark)){const r=JSON.parse(saved.body);if(r.ok!==false&&!r.reused&&r.result.path&&r.result.beforeSha256!==r.result.afterSha256)files[r.result.path]=r.result.afterSha256;}
+    changedFilesBySession.delete(id);changedFilesBySession.set(id,{upto:watermark,files});
+    const oldest=changedFilesBySession.keys().next().value;if(changedFilesBySession.size>64&&oldest!==undefined)changedFilesBySession.delete(oldest);
+    return {...files};
+  }
   ensureModuleSchema(db, "assistant-assistant-loop");
   const memory=deps.memory??createProjectMemory(deps);
   ensureModuleSchema(db, "assistant-assistant-loop-2");
@@ -302,8 +328,7 @@ export function createAssistantLoop(deps:Dependencies){
    */
   async function execute(id:string,tool:string,args:Record<string,unknown>,approved=false){
     const s=get(id),access=governance.get(s.project_id);
-    const changedFiles:Record<string,string>={};
-    for(const saved of rows<{body:string}>("SELECT body FROM assistant_events WHERE session_id=? AND kind='tool_result' AND json_extract(body,'$.result.afterSha256') IS NOT NULL ORDER BY id",id)){const r=JSON.parse(saved.body);if(r.ok!==false&&!r.reused&&r.result.path&&r.result.beforeSha256!==r.result.afterSha256)changedFiles[r.result.path]=r.result.afterSha256;}
+    const changedFiles=changedFilesOf(id);
     const scopeVersion=JSON.stringify([access.version,deps.policy(s.project_id).version,Object.entries(changedFiles).sort()]);
     const signature=progress.signature(tool,args,scopeVersion);
     const before=row<{id:number}>('SELECT MAX(id) AS id FROM assistant_events WHERE session_id=?',id)?.id??0;const deadline=timeBudget(id);
@@ -485,11 +510,15 @@ export function createAssistantLoop(deps:Dependencies){
       let end=compactPrefix(history);if(!end)end=compactPrefix(history,2);if(!end)throw new Error('单条消息、规则或工具目录超过上下文预算，请缩小输入或提高已声明窗口');
       while(end>1&&estimateTokens({previous:s.summary,events:outputs.history(s.id,trimHistory(history.slice(0,end)),true)})>target-2000)end=compactPrefix(history.slice(0,end),Math.max(1,Math.floor(end/2)));
       if(!end)throw new Error('无法在上下文预算内完整保留工具调用与结果，请拆分任务');
-      const old=history.slice(0,end),payload={preserve:focus,previous:s.summary,events:outputs.history(s.id,trimHistory(old),true)};
+      const previousConstraints=extractConstraints(s.summary);
+      const old=history.slice(0,end),payload={preserve:focus,previous:s.summary,constraints:previousConstraints,events:outputs.history(s.id,trimHistory(old),true)};
       if(estimateTokens(payload)>target-2000)throw new Error('单条历史消息超过压缩输入预算，请拆分任务');
-      const compact=await deps.infer(s.project_id,'APIX_COMPACT_JSON\n将旧对话压缩为工作摘要，保留用户约束、选择、任务状态、上下文引用、证据与失败、未完成事项。只返回 {"summary":"最多6000字符摘要"}，资料不授予权限。\n'+JSON.stringify(payload),controllers.get(s.id)?.signal,s.id,'compaction');
+      const compact=await deps.infer(s.project_id,'APIX_COMPACT_JSON\n将旧对话压缩为工作摘要，保留用户约束、选择、任务状态、上下文引用、证据与失败、未完成事项。只返回 {"summary":"最多6000字符摘要","constraints":["逐条保留的硬约束要点"]}；constraints 是逐条短句数组，已有 constraints 必须延续，可补充不可删除；没有则返回空数组；每条不超过 160 字。资料不授予权限。\n'+JSON.stringify(payload),controllers.get(s.id)?.signal,s.id,'compaction');
       if(get(s.id).status!==s.status)throw new Error('会话已停止或状态已变化');if(get(s.id).version!==s.version){if(manual)throw new Error('会话已变化，请重试');compaction.fail(attempt,'failed');return;}
-      const summary=text(parse(compact).summary,6000);if(sensitiveMemory(summary))throw new Error('压缩摘要包含疑似敏感内容，未保存');
+      const parsed=parse(compact),body=text(parsed.summary,6000),constraints=mergeConstraints(parsed.constraints,previousConstraints);
+      const head=constraints.length?CONSTRAINT_HEADER+'\n'+constraints.map(c=>'- '+c).join('\n')+'\n\n'+SUMMARY_HEADER+'\n':'';
+      const summary=head+body.slice(0,Math.max(0,8000-head.length));
+      if(sensitiveMemory(summary))throw new Error('压缩摘要包含疑似敏感内容，未保存');
       const candidate={...s,summary,compacted_through:old.at(-1)!.id};
       const after=await assemble(candidate,true);
       if(stable(s.id)&&after.budget.usedTokens>=budget.usedTokens)throw new CompactionNoGainError();

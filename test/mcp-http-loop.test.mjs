@@ -18,12 +18,13 @@ const port=()=>new Promise(r=>{const s=netServer();s.listen(0,'127.0.0.1',()=>{c
 async function wait(check,limit=200){for(let i=0;i<limit;i++){const result=await check();if(result)return result;await new Promise(r=>setTimeout(r,50));}throw new Error('Timed out');}
 test('actual Streamable HTTP MCP respects header environment, supports JSON results and never retries a failed service',async()=>{
   const sdk=new Server({name:'http-fixture',version:'1'},{capabilities:{tools:{}}});
-  sdk.setRequestHandler(ListToolsRequestSchema,()=>({tools:[{name:'echo-http',description:'回显',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']}}]}));
+  let lists=0;sdk.setRequestHandler(ListToolsRequestSchema,()=>{lists++;return {tools:[{name:'echo-http',description:'回显',inputSchema:{type:'object',properties:{text:{type:'string'}},required:['text']}}]};});
   let calls=0; sdk.setRequestHandler(CallToolRequestSchema,request=>{calls++;return {content:[{type:'text',text:String(request.params.arguments.text)}]};});
   const transport=new StreamableHTTPServerTransport({sessionIdGenerator:()=>crypto.randomUUID(),enableJsonResponse:true});await sdk.connect(transport);
   const http=createServer((req,res)=>{if(req.headers.authorization!=='fixture-http-secret'){res.writeHead(401);res.end();return;}void transport.handleRequest(req,res);});await new Promise(r=>http.listen(0,'127.0.0.1',r));
   const db=new DatabaseSync(':memory:');const m=createMcpManager(store(db),{project:()=>({path:process.cwd()}),environment:()=>({HTTP_TEST_TOKEN:'fixture-http-secret'})});
-  try{await m.save('p',{id:'http',name:'HTTP',version:0,transport:'http',url:`http://127.0.0.1:${http.address().port}/mcp`,enabled:true,approved:true,headerEnv:{Authorization:'HTTP_TEST_TOKEN'}});const list=await m.discover('p');assert.equal(list.errors.length,0);const d=list.tools[0];assert.equal((await m.call('p',d.name,{text:'HTTP 中文'},d.version,new AbortController().signal)).content[0].text,'HTTP 中文');assert.equal(calls,1);
+  try{await m.save('p',{id:'http',name:'HTTP',version:0,transport:'http',url:`http://127.0.0.1:${http.address().port}/mcp`,enabled:true,approved:true,headerEnv:{Authorization:'HTTP_TEST_TOKEN'}});const list=await m.discover('p');assert.equal(list.errors.length,0);const d=list.tools[0];assert.equal((await m.call('p',d.name,{text:'HTTP 中文'},d.version,new AbortController().signal)).content[0].text,'HTTP 中文');assert.equal(calls,1);assert.equal(lists,1);
+    const cached=await m.ensure('p');assert.equal(cached.tools.length,1);assert.equal(lists,2);const repeated=await m.ensure('p');assert.equal(repeated.tools.length,1);assert.equal(lists,2,'ensure 命中 TTL 缓存后不得再次 listTools');await m.discover('p');assert.equal(lists,3,'手动 discover 仍须每次重新发现');
     await m.save('p',{id:'bad',name:'坏服务',version:0,transport:'stdio',command:process.execPath,args:['-e','process.exit(1)'],enabled:true,approved:true});const partial=await m.discover('p');assert.equal(partial.tools.length,1);assert.equal(partial.errors.length,1);
     let entered,release;const started=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
     sdk.setRequestHandler(ListToolsRequestSchema,async()=>{entered();await gate;return {tools:[]};});
@@ -44,9 +45,8 @@ test('HTTP assistant discovers and executes a real MCP tool through explicit app
     const config={id:'fixture',name:'回显服务',transport:'stdio',command:process.execPath,args:[resolve('test/fake-mcp.mjs')],env:['MCP_TEST_LOG'],enabled:true,version:0};
     await post(`/api/projects/${projectId}/mcp`,config,400);await post(`/api/projects/${projectId}/mcp`,{...config,approved:true});
     const s=await post('/api/assistant/sessions',{projectId});await post(`/api/assistant/sessions/${s.id}/messages`,{content:'fixture-loop-mcp 调用回显工具并核对证据'});
-    let detail=await wait(async()=>{const d=await get(`/api/assistant/sessions/${s.id}`);return d.status==='waiting_user'?d:null;});assert(detail.pending.tool.startsWith('mcp_'));assert(detail.pending.toolVersion);
-    await post(`/api/assistant/sessions/${s.id}/reply`,{version:detail.version,requestId:detail.pending.id,approved:true});
-    detail=await wait(async()=>{const d=await get(`/api/assistant/sessions/${s.id}`);return d.status==='waiting_user'?d:null;});assert.equal(detail.pending.tool,'verify');
+    // 服务声明 readOnlyHint 的工具不再要求审批：直接执行后只对 verify 请求确认。
+    let detail=await wait(async()=>{const d=await get(`/api/assistant/sessions/${s.id}`);return d.status==='waiting_user'?d:null;});assert.equal(detail.pending.tool,'verify');assert(detail.events.some(e=>e.kind==='tool_result'&&String(e.body.tool).startsWith('mcp_')&&e.body.ok===true));
     await post(`/api/assistant/sessions/${s.id}/reply`,{version:detail.version,requestId:detail.pending.id,approved:true});detail=await wait(async()=>{const d=await get(`/api/assistant/sessions/${s.id}`);return d.status==='attention'?d:null;});assert.equal(detail.verification,null);assert.equal(detail.verificationStatus,'needs_review');assert(detail.events.some(e=>e.kind==='tool_result'&&e.body.tool.startsWith('mcp_')&&e.body.result.content[0].text==='工具回显验收'));
     assert.equal((await readFile(join(project,'mcp-calls.jsonl'),'utf8')).trim().split('\n').length,1);assert(model.calls.every(c=>c.body.model==='qwen3.8-27b'));
     const denied=await fetch(base+`/api/projects/${projectId}/mcp`,{headers:{Origin:'https://attacker.invalid'}});assert.equal(denied.status,403);

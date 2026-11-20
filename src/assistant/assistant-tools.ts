@@ -16,7 +16,7 @@
  */
 import {loadInstructions,type InstructionOptions} from './instruction-memory.js';
 import {createHash} from 'node:crypto';
-import {existsSync,lstatSync,readdirSync,readFileSync,realpathSync,writeFileSync,mkdirSync} from 'node:fs';
+import {existsSync,lstatSync,statSync,readdirSync,readFileSync,realpathSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,relative,isAbsolute,dirname,join} from 'node:path';
 import {homedir} from 'node:os';
 import {managedCommand,type CommandHooks} from '../execution/command-lifecycle.js';
@@ -71,19 +71,34 @@ export function projectInstructions(root:string,options:InstructionOptions={}){r
 /**
  * skillsFor - 发现项目内所有可用的 Skill（技能包）
  * @param root - 项目根目录
- * @returns Skill 列表，每项包含 id/name/path/root
- * 设计意图：扫描多个约定目录（.apix/skills、.claude/skills 等）发现可用技能
+ * @returns Skill 列表，每项包含 id/name/description/when/path/root；id 取目录名（稳定 slug）
+ * 设计意图：扫描多个约定目录（.apix/skills、.claude/skills 等），解析 SKILL.md frontmatter，按 id 去重
  */
 export function skillsFor(root:string){
-  const result:{id:string;name:string;path:string;root:string}[]=[];
+  const result:{id:string;name:string;description:string;when:string;path:string;root:string}[]=[];
   for(const base of [join(root,'.apix','skills'),join(root,'.claude','skills'),join(root,'.agents','skills'),join(homedir(),'.apix','skills')]){
     if(!existsSync(base)||!lstatSync(base).isDirectory()||lstatSync(base).isSymbolicLink())continue;
     if(base!==join(homedir(),'.apix','skills')&&!within(realpathSync.native(root),realpathSync.native(base)))continue;
     for(const name of readdirSync(base).slice(0,50)){
       if(!/^[a-zA-Z0-9_-]{1,64}$/.test(name))continue;const path=join(base,name,'SKILL.md');
-      if(existsSync(path)&&within(realpathSync.native(base),realpathSync.native(path)))result.push({id:createHash('sha256').update(path).digest('hex').slice(0,16),name,path,root:base});
+      if(!existsSync(path)||!within(realpathSync.native(base),realpathSync.native(path))||result.some(skill=>skill.id===name))continue;
+      const stat=statSync(path);if(!stat.isFile()||stat.size>65536)continue;
+      const meta=skillMetadata(path,stat);
+      result.push({id:name,name:meta.name||name,description:meta.description,when:meta.when,path,root:base});
     }
   }return result;
+}
+/** SKILL.md 元数据按 (mtime, size) 失效缓存；describe 每步都会调用，避免反复读取整份技能文件。 */
+const skillMetadataCache=new Map<string,{mtimeMs:number;size:number;name:string;description:string;when:string}>();
+function skillMetadata(path:string,stat:{mtimeMs:number;size:number}){
+  const saved=skillMetadataCache.get(path);if(saved&&saved.mtimeMs===stat.mtimeMs&&saved.size===stat.size)return {name:saved.name,description:saved.description,when:saved.when};
+  const source=readFileSync(path,'utf8'),frontmatter=source.match(/^---\r?\n([\s\S]*?)\r?\n---/),fields:Record<string,string>={};
+  for(const line of frontmatter?.[1]?.split(/\r?\n/)??[]){const match=line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/);if(match)fields[match[1]!]=match[2]!.trim().replace(/^(['"])(.*)\1$/,'$2');}
+  const firstLine=source.replace(/^---\r?\n[\s\S]*?\r?\n---/,'').split(/\r?\n/).map(line=>line.trim()).find(line=>!!line&&!line.startsWith('#'))??'';
+  const clean=(value:string)=>value.replace(/\s+/g,' ').trim().slice(0,200);
+  const value={mtimeMs:stat.mtimeMs,size:stat.size,name:fields.name?.slice(0,120)||'',description:clean(fields.description||firstLine),when:clean(fields.when||fields.when_to_use||'')};
+  if(skillMetadataCache.size>=200)skillMetadataCache.delete(skillMetadataCache.keys().next().value!);skillMetadataCache.set(path,value);
+  return {name:value.name,description:value.description,when:value.when};
 }
 /**
  * fileTool - 文件工具分发器，根据工具名称路由到具体的文件操作
@@ -101,7 +116,7 @@ export function fileTool(root:string,tool:string,input:unknown){
     return {entries:entries.slice(0,200).map(e=>({name:e.name,directory:e.isDirectory(),link:e.isSymbolicLink()})),truncated:entries.length>200};
   }
   if(tool==='load_skill'){
-    const skill=skillsFor(root).find(s=>s.id===args.id);if(!skill)throw new Error('Skill 不存在');
+    const skill=skillsFor(root).find(s=>s.id===args.id||s.name===args.id);if(!skill)throw new Error('Skill 不存在');
     if(lstatSync(realpathSync.native(skill.path)).size>16000)throw new Error('Skill 超过完整加载预算');
     return {name:skill.name,content:readFileSync(skill.path,'utf8'),authority:'context_only'};
   }
