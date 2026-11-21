@@ -1,0 +1,50 @@
+name: Kernel resilience
+
+on:
+  schedule:
+    - cron: '23 20 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/kernel-resilience.yml'
+      - 'package.json'
+      - 'scripts/benchmark/**'
+      - 'scripts/verify/crash-sim.mjs'
+      - 'scripts/verify/crash-*.mjs'
+      - 'src/coordination/**'
+      - 'src/assistant/assistant-effects.ts'
+      - 'control-plane.mjs'
+      - 'server.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+      - run: npm ci
+      - run: npm run build
+      - name: Record benchmark
+        shell: bash
+        run: node scripts/benchmark/run.mjs > kernel-benchmark.md
+      - name: Verify crash recovery
+        shell: bash
+        run: node scripts/verify/crash-sim.mjs | tee kernel-crash.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kernel-resilience-${{ matrix.os }}
+          path: |
+            kernel-benchmark.md
+            kernel-crash.log
+          if-no-files-found: ignore

@@ -149,4 +149,7 @@
 - 2026-11-21 P0 完成：迁移 13（agent_messages 链路字段）+ mailbox 投递前熔断 + 全部调用点沿父续链（指导/复查/自治检查点），熔断转 `worker_attention`。验收 test/message-chain-budget.test.mjs 3/3；受影响套件 messaging/coordinator 81 用例、autonomy/apix-agent/five-fixes 39 用例全绿。
 - 2026-11-21 P1 完成：`scripts/inspect/why.mjs`（`npm run why -- --session|--task|--run [--json]`），只读打开 apix.sqlite 输出带账本序号的单条时间线。验收 test/why-trace.test.mjs 3/3。
 - P2 已在分支实现。覆盖六个协调写入口的故障注入，新增 `npm run verify:ledger -- --db <路径> [--strict] [--json]`。隔离协作库的约定字段零差异，历史缺证据和注入差异分别得到 yellow、red。详见 [P2 自审](../../协作/审查/2026-11/2026-11-21-账本事务与投影自审.md)。
-- P3 待办：性能基准与强杀模拟。
+- P3 已在分支实现：`npm run bench`（真实服务冷启动 / 空闲 RSS / 真实调度器派活 p50·p99 / ledger durable tps / 10 万事件后启动）与 `npm run crash:sim`（默认 200 轮强杀真实服务，按确认集合逐条核对 ID/载荷，started 副作用用真实恢复查询识别）。新增 `.github/workflows/kernel-resilience.yml`（Windows + Linux，nightly + 相关路径 PR 触发）。
+  - 首轮实测（Node 22，commit 1543b46，隔离合成数据）：冷启动中位 2208ms、空闲 RSS 121.3 MiB、派活 p50 1.77 / p99 5.12ms（n=2000）、ledger 698 tps、10 万事件后启动 2231ms。见 [基准报告](../../协作/验收数据/benchmark/2026-11-21.md)。
+  - 200 轮强杀：已确认 1132 会话 + 4000 账本 + 203 副作用，丢失 0、重复 0；452 条在途未确认事务逐条核验无撕裂；integrity_check=ok。见 [崩溃报告](../../协作/验收数据/crash-sim/2026-11-21.md)。
+  - 口径披露：服务无 /ready 路由，readiness 取 GET / 首次 200；派活为进程内模块口径（mock launch，不含 HTTP 与真实 Agent 启动）；强杀为进程级（非断电）。
