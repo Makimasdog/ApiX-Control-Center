@@ -24,6 +24,12 @@ ApiX Control Plane 是消息的唯一记录者。Director 和员工通过项目 
 
 `type` 可为 `request`、`response`、`event`、`artifact_ref`、`cancel`。返回的 `id` 是消息 ID。请求默认以自身 ID 为 `correlation_id`；回复必须设置 `replyTo` 为原请求 ID，Control Plane 继承原请求的 `correlation_id`。`GET /api/messages/thread?projectId=...&correlationId=...&agentId=...` 查询交互链。同项目同 `idempotencyKey` 再次发送时返回原消息，不会重复入队。
 
+## 消息链跳数熔断
+
+消息可选携带 `parentMessageId`（触发本条消息的那条消息 ID）。Control Plane 落库时从父消息继承链路字段：`hop = 父 hop + 1`，`root_task_id` 沿父继承；无父则 `hop = 0`、`root_task_id = 当前 taskId`。链路计数完全存库推导，服务重启不回退。
+
+`hop` 超过 `MAX_MESSAGE_HOP`（8）的消息在投递前熔断：落库为 `rejected`（永不进入 `queued`/`delivered`），事件日志与 `apix_ledger` 记录 `chain.capped` 事件（含 `rootTaskId`、`hop`、末端 agent、被拦 messageId），并在协调会话生成 `worker_attention` 待处理轮次（自主交付检查点则转入 `attention` 状态暂停等待人工处理）。人工指导与定时复查沿既有链续跳，不重置计数。此机制用于防止 Agent 间 A→B→C 环形递归派活失控。
+
 ## Mailbox 与状态
 
 创建项目、注册员工时自动建立 mailbox。`apix-director` 和 `system` 是内置 mailbox；员工 mailbox 随员工启用状态生效。可使用 `GET /api/mailboxes?projectId=...` 查看。
