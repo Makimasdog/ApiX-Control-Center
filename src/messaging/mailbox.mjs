@@ -28,6 +28,8 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
   const MESSAGE_DEFAULT_TIMEOUT_MS = 120000;
   const MESSAGE_MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
   const MESSAGE_MAX_RETRIES = 8;
+  // Agent 消息链跳数上限：与 contracts.ts 的 MAX_MESSAGE_HOP 保持一致（.mjs 不能直接引用 TS 产物，改值须两处同步）
+  const MAX_HOP = 8;
   const MESSAGE_ROLES = new Set(["director", "employee", "reviewer", "system", "user"]);
   // 初始化：为所有项目创建 Director 和 System 邮箱，并为每个员工创建对应角色的邮箱
   for (const project of db.prepare("SELECT id FROM projects").all()) {
@@ -162,9 +164,21 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     const targetRunId = input.targetRunId ?? (targetTaskId ? row("SELECT id FROM runs WHERE task_id=? AND status IN ('starting','running') ORDER BY rowid DESC LIMIT 1",targetTaskId)?.id ?? null : null);
     if (targetRunId && !row("SELECT id FROM runs WHERE id=? AND task_id=? AND status IN ('starting','running')",targetRunId,targetTaskId)) throw new Error('目标运行不属于任务或已结束');
     if (input.sourceRunId && !row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE r.id=? AND r.task_id=? AND t.employee_id=? AND t.project_id=?",input.sourceRunId,input.taskId,from,input.projectId)) throw new Error('来源运行不属于发件任务');
+    // 消息链：从父消息继承 hop 与 root_task_id（存库推导，不依赖内存状态）；无父则 hop=0、root=当前任务
+    const parentMessageId = input.parentMessageId ?? null;
+    let hop = 0;
+    let rootTaskId = input.taskId ?? null;
+    if (parentMessageId) {
+      const parent = row("SELECT hop,root_task_id,task_id FROM agent_messages WHERE id=? AND project_id=?", parentMessageId, input.projectId);
+      if (!parent) throw new Error("父消息不存在或不属于当前项目");
+      hop = Number(parent.hop ?? 0) + 1;
+      rootTaskId = parent.root_task_id ?? parent.task_id ?? input.taskId ?? null;
+    }
+    // 投递前熔断：hop 超上限的消息不投递（落库为 rejected，永不进入 queued/delivered）
+    const capped = hop > MAX_HOP;
     const existing = row("SELECT * FROM agent_messages WHERE project_id=? AND idempotency_key=?", input.projectId, idempotencyKey);
     if (existing) {
-      if (existing.from_agent !== from || existing.to_agent !== to || existing.type !== type || existing.payload !== payload || existing.reply_to !== (input.replyTo ?? null) || existing.task_id !== (input.taskId ?? null) || existing.target_task_id !== targetTaskId || existing.target_run_id !== targetRunId || existing.source_run_id !== (input.sourceRunId ?? null)) throw new Error('幂等键已被不同消息使用');
+      if (existing.from_agent !== from || existing.to_agent !== to || existing.type !== type || existing.payload !== payload || existing.reply_to !== (input.replyTo ?? null) || existing.task_id !== (input.taskId ?? null) || existing.target_task_id !== targetTaskId || existing.target_run_id !== targetRunId || existing.source_run_id !== (input.sourceRunId ?? null) || existing.parent_message_id !== parentMessageId) throw new Error('幂等键已被不同消息使用');
       return { ...publicMessage(existing), duplicate: true };
     }
     const blockedReason = blockedByDirector({ ...input, from, to, type }, fromMailbox.role, payload);
@@ -183,12 +197,14 @@ export function createMailboxService({ db, row, rows, now, recordEvent = () => {
     const id = randomUUID();
     correlationId ||= type === "response" ? replyTo : id;
     const expiresAt = new Date(Date.now() + timeoutMs).toISOString();
-    const status = blockedReason ? "rejected" : "queued";
-    db.prepare(`INSERT INTO agent_messages(id,idempotency_key,correlation_id,reply_to,project_id,task_id,conversation_id,from_agent,to_agent,type,status,priority,payload,payload_bytes,context_tokens,timeout_ms,expires_at,max_retries,error,created_at,target_task_id,target_run_id,source_run_id)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, idempotencyKey, correlationId, replyTo, input.projectId, input.taskId ?? null, input.conversationId ?? null, from, to, type, status, input.priority === "high" ? "high" : "normal", payload, bytes, Number.isFinite(Number(input.contextTokens)) ? Number(input.contextTokens) : null, timeoutMs, expiresAt, maxRetries, blockedReason, createdAt,targetTaskId,targetRunId,input.sourceRunId ?? null);
-    if (blockedReason) db.prepare("UPDATE agent_messages SET completed_at=? WHERE id=?").run(now(), id);
-    appendMessageEvent(input.projectId, id, blockedReason ? "director.intercepted" : "message.created", "apix-director", { reason: blockedReason, from, to, type });
-    return publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
+    const rejectionError = capped ? `消息链已达 ${hop} 跳（上限 ${MAX_HOP}），已拦截投递` : blockedReason;
+    const status = rejectionError ? "rejected" : "queued";
+    db.prepare(`INSERT INTO agent_messages(id,idempotency_key,correlation_id,reply_to,project_id,task_id,conversation_id,from_agent,to_agent,type,status,priority,payload,payload_bytes,context_tokens,timeout_ms,expires_at,max_retries,error,created_at,target_task_id,target_run_id,source_run_id,root_task_id,parent_message_id,hop)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, idempotencyKey, correlationId, replyTo, input.projectId, input.taskId ?? null, input.conversationId ?? null, from, to, type, status, input.priority === "high" ? "high" : "normal", payload, bytes, Number.isFinite(Number(input.contextTokens)) ? Number(input.contextTokens) : null, timeoutMs, expiresAt, maxRetries, rejectionError, createdAt,targetTaskId,targetRunId,input.sourceRunId ?? null,rootTaskId,parentMessageId,hop);
+    if (rejectionError) db.prepare("UPDATE agent_messages SET completed_at=? WHERE id=?").run(now(), id);
+    appendMessageEvent(input.projectId, id, capped ? "chain.capped" : blockedReason ? "director.intercepted" : "message.created", "apix-director", capped ? { rootTaskId, hop, from, to, taskId: input.taskId ?? null, messageId: id, reason: rejectionError } : { reason: blockedReason, from, to, type });
+    const saved = publicMessage(row("SELECT * FROM agent_messages WHERE id=?", id));
+    return capped ? { ...saved, chainCapped: true } : saved;
   }
   /**
    * receiveMessages - 拉取发给指定 Agent 的待处理消息
