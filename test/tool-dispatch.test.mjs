@@ -8,8 +8,8 @@ import {builtinTools} from '../dist/src/assistant/tool-registry.js';
 /**
  * 工具分发覆盖守卫
  *
- * 工具声明在 tool-registry.ts，实际分发分散在两处：assistant-loop 内的
- * 特殊分支，和 control-plane 的 execute。两处都不认识的工具会落到
+ * 工具声明在 tool-registry.ts，实际分发分散在 tool-dispatch 的特殊分支
+ * 和 control-plane 的 execute。两处都不认识的工具会落到
  * `throw new Error('工具不存在')`——这对模型来说是不可恢复的误导：
  * 它明明在目录里看到这个工具，却被告诉不存在。
  *
@@ -18,7 +18,7 @@ import {builtinTools} from '../dist/src/assistant/tool-registry.js';
  */
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const loop = readFileSync(join(root, 'src/assistant/assistant-loop.ts'), 'utf8');
+const dispatch = readFileSync(join(root, 'src/assistant/tool-dispatch.ts'), 'utf8');
 const plane = readFileSync(join(root, 'control-plane.mjs'), 'utf8');
 
 /** control-plane 里成组分发的只读工具白名单：if(['a','b'].includes(tool)) */
@@ -35,9 +35,9 @@ test('每个内置工具都有可达的分发位置', () => {
   const missing = [];
   for (const definition of builtinTools) {
     const name = definition.name;
-    const inLoop = loop.includes(`tool==='${name}'`);
+    const inDispatch = dispatch.includes(`tool==='${name}'`);
     const inPlane = plane.includes(`tool==='${name}'`) || planeArray.has(name);
-    if (!inLoop && !inPlane) missing.push(name);
+    if (!inDispatch && !inPlane) missing.push(name);
   }
   assert.deepEqual(missing, [],
     '以下工具已声明但没有任何分发分支，调用时只会得到「工具不存在」：' + missing.join(', '));

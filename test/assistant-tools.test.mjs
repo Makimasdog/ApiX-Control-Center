@@ -31,3 +31,27 @@ test('timeline escapes user, tool and model data and does not turn text into con
   assert.equal(toolResultSucceeded({ok:true,result:{exitCode:0,passed:false}}),false);for(const facts of [{executionComplete:false},{sideEffectsNeedReview:true},{evidencePersisted:false}])assert.equal(toolResultSucceeded({ok:true,result:{exitCode:0,...facts}}),false);assert.equal(approvalLabel('approval','configure_verification'),'批准此验收契约');
   const evidence=assistantTimeline([{id:3,role:'system',kind:'verification_evidence',body:{checkId:'<script>',verificationStatus:'failed',passed:false,outputRef:'evidence'}}]);assert(evidence.includes('! 可信检查'));assert(!evidence.includes('<script>'));assert(evidence.includes('data-output-reference="evidence"'));
 });
+
+test('timeline folds routine progress and protocol repair while keeping failures, user prompts and answers visible',()=>{
+  let id=0;
+  const event=(kind,role,body,created_at)=>({id:++id,kind,role,body,created_at});
+  const markup=assistantTimeline([
+    event('message','user',{content:'查找入口'}),
+    event('activity','assistant',{content:'检查根目录'}),
+    event('tool_started','assistant',{tool:'list_files',args:{}},'2026-11-20T08:00:00.000Z'),
+    event('tool_result','tool',{tool:'list_files',ok:true,result:{files:['app.py']}}),
+    event('protocol_repair','system',{content:'正在纠正格式'}),
+    event('activity','assistant',{content:'定位入口'}),
+    event('tool_started','assistant',{tool:'read_file',args:{path:'app.py'}}),
+    event('tool_result','tool',{tool:'read_file',ok:true,result:{path:'app.py',outputRef:'source'}},'2026-11-20T08:00:02.100Z'),
+    event('tool_result','tool',{tool:'read_file',ok:false,error:'文件不存在'}),
+    event('request','assistant',{question:'是否继续'}),
+    event('answer','assistant',{content:'完成检查'})
+  ]);
+  assert.equal((markup.match(/data-execution-record=/g)??[]).length,1);
+  assert.equal((markup.match(/class="assistant-message/g)??[]).length,4);
+  assert.equal((markup.match(/class="assistant-turn-head/g)??[]).length,1);
+  assert(markup.indexOf('class="assistant-turn"')<markup.indexOf('data-execution-record='));
+  for(const text of ['2 次工具调用','read_file(app.py)','用时 2.1 秒','1 次格式纠正','定位入口','正在纠正格式','data-output-reference="source"','文件不存在','是否继续','完成检查'])assert(markup.includes(text),text);
+  assert(markup.indexOf('文件不存在')>markup.indexOf('data-output-reference="source"'));
+});

@@ -14,6 +14,7 @@
  *   - 依赖 [→ 见 src/assistant/project-memory.ts] 的 sensitiveMemory 敏感内容检测
  */
 import {existsSync,readFileSync,statSync,realpathSync,readdirSync} from 'node:fs';
+import type {BigIntStats} from 'node:fs';
 import {resolve,relative,dirname,join,isAbsolute} from 'node:path';
 import {createHash} from 'node:crypto';
 import {projectPath} from './assistant-tools.js';
@@ -23,6 +24,39 @@ import {sensitiveMemory} from './project-memory.js';
 export interface InstructionOptions {userFile?:string;managedFile?:string;externalApprovals?:string[];paths?:string[]}
 /** 单个指令文件的加载结果，包含路径、层级、内容、版本等信息 */
 export interface InstructionFile {path:string;layer:string;bytes:number;lines:number;truncated:boolean;content:string;authority:string;approval?:string;blocked?:string;version:string;updatedAt:string}
+interface CachedInstruction {
+  stamp:string;
+  content:string;
+  bytes:number;
+}
+const instructionFileCache=new Map<string,CachedInstruction>();
+const instructionCacheLimits={entries:256,bytes:4*1024*1024};
+let instructionCacheBytes=0;
+
+// 调用方每次先校验路径和文件元数据。缓存不保存授权、敏感检查或规则匹配的结果。
+function cachedInstructionContent(path:string,stat:BigIntStats){
+  const stamp=`${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+  const saved=instructionFileCache.get(path);
+  if(saved){
+    instructionFileCache.delete(path);
+    if(saved.stamp===stamp){
+      instructionFileCache.set(path,saved);
+      return saved;
+    }
+    instructionCacheBytes-=saved.bytes;
+  }
+  const content=readFileSync(path,'utf8');
+  const entry={stamp,content,bytes:Buffer.byteLength(content)};
+  if(entry.bytes>instructionCacheLimits.bytes)return entry;
+  while(instructionFileCache.size>=instructionCacheLimits.entries||instructionCacheBytes+entry.bytes>instructionCacheLimits.bytes){
+    const [oldPath,oldEntry]=instructionFileCache.entries().next().value!;
+    instructionFileCache.delete(oldPath);
+    instructionCacheBytes-=oldEntry.bytes;
+  }
+  instructionFileCache.set(path,entry);
+  instructionCacheBytes+=entry.bytes;
+  return entry;
+}
 /**
  * loadInstructions - 加载项目的所有指令文件
  *
@@ -61,9 +95,9 @@ export function loadInstructions(root:string,options:InstructionOptions={}){
     }else path=projectPath(root,rel||'.');
     path=realpathSync.native(path);
     if(parents.includes(path))throw new Error('指令导入存在循环');if(seen.has(path))return;
-    const stat=statSync(path);if(!stat.isFile()||stat.size>16000)throw new Error('指令文件超过 16000 字节上限或不是普通文件');
-    const content=readFileSync(path,'utf8'),bytes=Buffer.byteLength(content),lines=content.split('\n').length;
-    const meta={version:createHash('sha256').update(content).digest('hex'),updatedAt:stat.mtime.toISOString()};
+    const stat=statSync(path,{bigint:true});if(!stat.isFile()||stat.size>16000n)throw new Error('指令文件超过 16000 字节上限或不是普通文件');
+    const {content,bytes}=cachedInstructionContent(path,stat),lines=content.split('\n').length;
+    const meta={version:createHash('sha256').update(content).digest('hex'),updatedAt:new Date(Number(stat.mtimeMs)).toISOString()};
     // 计算审批哈希：外部文件需要用户确认此哈希后才加载内容
     const approval=createHash('sha256').update(path+'\0'+content).digest('hex');
     // 外部未审批文件：记录为 blocked，不加载内容
@@ -87,7 +121,7 @@ export function loadInstructions(root:string,options:InstructionOptions={}){
     for(const name of ['AGENTS.md','CLAUDE.md','APIX.md','APIX.local.md','CLAUDE.local.md']){const file=join(dir,name);if(existsSync(resolve(root,file)))load(file,name.includes('.local.')?'local-private':dir?'directory':'project');}
     // 扫描 .claude/rules 和 .apix/rules 目录下的规则文件（按 paths frontmatter 过滤）
     for(const base of ['.claude/rules','.apix/rules']){const directory=join(dir,base);if(!existsSync(resolve(root,directory)))continue;const safe=projectPath(root,directory);
-      for(const name of readdirSync(safe).sort()){if(!name.endsWith('.md'))continue;const file=projectPath(root,join(directory,name));if(statSync(file).size>16000)throw new Error('规则文件超过 16000 字节');const header=readFileSync(file,'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      for(const name of readdirSync(safe).sort()){if(!name.endsWith('.md'))continue;const file=realpathSync.native(projectPath(root,join(directory,name)));const stat=statSync(file,{bigint:true});if(!stat.isFile()||stat.size>16000n)throw new Error('规则文件超过 16000 字节或不是普通文件');const header=cachedInstructionContent(file,stat).content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
         // 解析 frontmatter 中的 paths 字段，判断规则是否适用于当前路径集合
         if(header){const rule=header[1]!.match(/paths:\s*(?:\[([^\]]+)\]|\r?\n((?:\s+-[^\n]+\n?)+))/);if(!rule)throw new Error('规则 frontmatter 需要 paths 列表');const patterns=(rule[1]??rule[2]!).split(/,|\r?\n/).map(s=>s.trim().replace(/^-\s*/, '').replace(/^['"]|['"]$/g,'')).filter(Boolean);if(!patterns.some(pattern=>paths.some(p=>glob(pattern,relative(dir||'.',p).replaceAll('\\','/')))))continue;}
         load(join(directory,name),'path-rule');

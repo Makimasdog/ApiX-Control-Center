@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {isAbsolute} from 'node:path';
 import type {Store} from '../coordination/contracts.js';
 import {canonical} from './tool-governance.js';
 import {requestHash,diagnosticHostFields,type PromptDescriptor} from '../models/prompt-diagnostics.js';
@@ -43,14 +44,16 @@ export function createPromptProjection(store:Store,outputs:ReturnType<typeof cre
     const configured=settings(s.id),active=configured.generation?row<Generation>('SELECT * FROM assistant_prompt_generations WHERE id=? AND session_id=?',configured.generation,s.id):undefined;
     if(configured.generation&&!active)throw new Error('prompt_generation_missing: 当前代不存在');
     const header='APIX_AGENT_LOOP_JSON\nAPIX_PROMPT_LAYOUT stable-prefix-v1\n'+input.instruction+'\n项目指令以最新 project_instructions 版本为准，完整替换旧版本；revoked=true 明确撤销旧指令。发现工具以 CHECKPOINT 和新 EVENT 中的完整定义为准，已发现工具以 CURRENT_STATE.availableDiscoveredTools 的当前版本为准，只使用匹配版本的完整定义，缺失时重新 search_tools；执行权限仍由宿主校验决定。\n'+line('STABLE_CONTEXT',{catalog:input.catalog,contextReadPolicy:value.contextReadPolicy??null});
-    const boundary={layout:1,mode:input.mode,route:input.routeRevision,catalog:requestHash(canonical(input.catalog)),permission:requestHash(canonical([value.policy,value.toolAccess])),through:s.compacted_through,summary:requestHash(s.summary),instruction:requestHash(header)};
+    const rules=value.context?.instructions??[];
+    // 已授权外部指令的正文不能在撤权后留在可复用的检查点或帧里。
+    const externalRules=Array.isArray(rules)?rules.flatMap(file=>typeof file?.path==='string'&&isAbsolute(file.path)&&file.content&&!file.blocked?[[file.path,file.content]]:[]):[];
+    const boundary={layout:1,mode:input.mode,route:input.routeRevision,catalog:requestHash(canonical(input.catalog)),permission:requestHash(canonical([value.policy,value.toolAccess])),through:s.compacted_through,summary:requestHash(s.summary),instruction:requestHash(header),externalInstructions:requestHash(canonical(externalRules))};
     let reason:GenerationReason=forceReason??'explicit_strategy_switch';
-    if(active&&!forceReason){const old=JSON.parse(active.boundary);reason=old.through>boundary.through?'history_rewind':old.through!==boundary.through||old.summary!==boundary.summary?'compaction':old.permission!==boundary.permission?'permission_scope_change':old.mode!==boundary.mode?'optimization_mode':old.route!==boundary.route?'model_route':old.catalog!==boundary.catalog?'catalog_contract':old.instruction!==boundary.instruction?'instructions':'layout_version';}
+    if(active&&!forceReason){const old=JSON.parse(active.boundary);reason=old.through>boundary.through?'history_rewind':old.through!==boundary.through||old.summary!==boundary.summary?'compaction':old.permission!==boundary.permission?'permission_scope_change':old.mode!==boundary.mode?'optimization_mode':old.route!==boundary.route?'model_route':old.catalog!==boundary.catalog?'catalog_contract':old.instruction!==boundary.instruction||old.externalInstructions!==boundary.externalInstructions?'instructions':'layout_version';}
     const priorDiscoveries=active?JSON.parse(active.discoveries) as {name:string}[]:[];
     const invalidDiscovery=priorDiscoveries.some(old=>!input.discoveries.some(current=>canonical(current)===canonical(old)));
     const reuse=!!active&&!forceReason&&canonical(boundary)===active.boundary&&!invalidDiscovery;
     if(invalidDiscovery&&!forceReason)reason='catalog_contract';
-    const rules=value.context?.instructions??[];
     const rulesHash=requestHash(canonical(rules));
     const gen:Generation=reuse?{...active!}:{id:randomUUID(),session_id:s.id,boundary:canonical(boundary),header,checkpoint:line('CHECKPOINT',{summary:s.summary,through:s.compacted_through,instructions:rules,discoveredTools:input.discoveries,initialRequest:value.initialRequest,latestUserRequest:value.latestUserRequest,taskFeedback:value.taskFeedback,currentTask:value.currentTask}),scan_watermark:s.compacted_through,instruction_hash:'',instruction_version:0,reason,discoveries:canonical(input.discoveries),integrity:'',manifest:''};
     if(reuse&&gen.integrity!==requestHash(gen.header+gen.checkpoint))throw new Error('prompt_generation_integrity: 固定头或检查点已改写');

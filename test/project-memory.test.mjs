@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,renameSync,symlinkSync,utimesSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createProjectMemory,memoryIndex} from '../dist/src/assistant/project-memory.js';
@@ -51,6 +51,48 @@ test('external imports require content-bound confirmation; credential paths, cyc
   writeFileSync(join(dir,'.env'),'secret');put('APIX.md','@../.env');assert.throws(()=>loadInstructions(root),/凭据/);put('APIX.md','@APIX.md');assert.throws(()=>loadInstructions(root),/循环/);
   put('APIX.md','@0.md');for(let i=0;i<7;i++)put(i+'.md','@'+(i+1)+'.md');assert.throws(()=>loadInstructions(root),/5 层/);put('APIX.md','x'.repeat(16001));assert.throws(()=>loadInstructions(root),/16000/);
   for(const name of ['AGENTS.md','CLAUDE.md','APIX.md','APIX.local.md','CLAUDE.local.md'])put(name,'x'.repeat(14000));assert.throws(()=>loadInstructions(root),/64000/);
+}));
+test('instruction cache invalidates on update, replacement, deletion and recreation',()=>files(({root,put})=>{
+  const file=join(root,'AGENTS.md'),time=new Date('2026-01-01T00:00:00Z');
+  put('AGENTS.md','one');utimesSync(file,time,time);
+  const initial=loadInstructions(root)[0];assert.equal(initial.content,'one');
+  put('AGENTS.md','two');const updated=loadInstructions(root)[0];
+  assert.equal(updated.content,'two');assert.notEqual(updated.version,initial.version);
+  utimesSync(file,time,time);loadInstructions(root);
+  put('replacement.md','new');const replacement=join(root,'replacement.md');utimesSync(replacement,time,time);
+  renameSync(replacement,file);const replaced=loadInstructions(root)[0];
+  assert.equal(replaced.content,'new');assert.equal(replaced.updatedAt,initial.updatedAt);
+  put('CLAUDE.md','new');assert.deepEqual(loadInstructions(root).map(f=>f.path),['AGENTS.md','CLAUDE.md']);
+  rmSync(file);assert.deepEqual(loadInstructions(root).map(f=>f.path),['CLAUDE.md']);
+  put('AGENTS.md','new again');assert.equal(loadInstructions(root)[0].content,'new again');
+}));
+test('instruction cache rechecks path allowlists and discovers rule or import changes',()=>files(({dir,root,put})=>{
+  put('src/a.ts','');put('src/a.js','');put('AGENTS.md','@shared/notes.md');put('shared/notes.md','Old notes');
+  const options={paths:['src/a.ts']};
+  assert.equal(loadInstructions(root,options)[0].content,'Old notes');
+  put('.apix/rules/types.md','---\npaths: [src/*.ts]\n---\nType rule');
+  assert.equal(loadInstructions(root,options).at(-1).layer,'path-rule');
+  assert(!loadInstructions(root,{paths:['src/a.js']}).some(f=>f.layer==='path-rule'));
+  put('.apix/rules/types.md','---\npaths: [src/*.js]\n---\nCode rule');
+  assert(!loadInstructions(root,options).some(f=>f.layer==='path-rule'));
+  assert.equal(loadInstructions(root,{paths:['src/a.js']}).at(-1).layer,'path-rule');
+  rmSync(join(root,'shared/notes.md'));assert.throws(()=>loadInstructions(root,options),/不存在/);
+  renameSync(join(root,'shared'),join(dir,'shared'));writeFileSync(join(dir,'shared/notes.md'),'Outside notes');
+  symlinkSync(join(dir,'shared'),join(root,'shared'),process.platform==='win32'?'junction':'dir');
+  assert.throws(()=>loadInstructions(root,options),/链接越过项目边界/);
+}));
+test('instruction cache rechecks approval and sensitivity after content is cached',()=>files(({dir,root,put})=>{
+  const external=join(dir,'external.md');
+  writeFileSync(external,'Outside');put('APIX.md','@../external.md');
+  const pending=loadInstructions(root)[0];assert.equal(pending.content,'');assert(pending.blocked);
+  assert.equal(loadInstructions(root,{externalApprovals:[pending.approval]})[0].content,'Outside');
+  assert.equal(loadInstructions(root)[0].content,'');
+  writeFileSync(external,'Changed');const changed=loadInstructions(root,{externalApprovals:[pending.approval]})[0];
+  assert(changed.blocked);assert.notEqual(changed.approval,pending.approval);assert.equal(changed.content,'');
+  assert.equal(loadInstructions(root,{externalApprovals:[changed.approval]})[0].content,'Changed');
+  writeFileSync(external,'api_key=secret123456');const sensitive=loadInstructions(root)[0];
+  assert(sensitive.blocked);assert.equal(sensitive.content,'');
+  assert.throws(()=>loadInstructions(root,{externalApprovals:[sensitive.approval]}),/敏感/);
 }));
 test('context stages keep pending tool pairs and output references durable',()=>fixture(store=>{
   store.db.exec('CREATE TABLE assistant_sessions(id TEXT PRIMARY KEY);INSERT INTO assistant_sessions VALUES (\'s\')');const events=[{id:1,role:'assistant',kind:'activity',body:'{}'},{id:2,role:'assistant',kind:'tool_started',body:'{}'},...Array.from({length:9},(_,i)=>({id:i+3,role:'system',kind:'command_progress',body:'{}'}))];assert.equal(compactPrefix(events),1);assert(trimHistory(events).some(e=>e.kind==='tool_started'));
