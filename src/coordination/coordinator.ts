@@ -48,7 +48,7 @@ interface Dependencies extends Store {
   autonomy: Autonomy;       // 自主交付引擎（[→ 见 autonomy.ts]）
   consult(employeeId:string,prompt:string):Promise<string>; // 咨询员工
   reportManagerFailure(projectId:string,sourceId:string,error:string):void; // 报告失败报告
-  sendMessage(input: Record<string, unknown>): { id: string; status: string }; // 发送邮箱消息
+  sendMessage(input: Record<string, unknown>): { id: string; status: string; duplicate?: boolean; chainCapped?: boolean; hop?: number }; // 发送邮箱消息（含消息链熔断结果）
   resolveApproval(id: string, approved: boolean): unknown; // 处理审批
   stopRun(id: string): void; // 停止运行
   reviewTask(id:string,accepted:boolean,fingerprint:string):void|Promise<void>; // 验收任务
@@ -530,7 +530,13 @@ export function createCoordinator(deps: Dependencies) {
   function instructEmployee(sessionId: string, input: Record<string,unknown>) {
     const taskId = text(input.taskId,100); const content = text(input.content,2000);
     const {s,task} = activeTask(sessionId,taskId,input.revision);
-    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+    // 指导沿员工最近一条上报续链：人工介入不重置链路跳数，深链任务再次指导仍会被熔断
+    const parent = row<{id:string}>("SELECT id FROM agent_messages WHERE task_id=? AND to_agent='apix-director' ORDER BY rowid DESC LIMIT 1",task.id)?.id;
+    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,parentMessageId:parent,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+    if (message.chainCapped) {
+      transaction(() => {turn(s,'apix','worker_attention',`消息链跳数已达上限（hop=${message.hop}），本次指导未投递；请核对员工间派活链路，或使用“中途调整”修改目标。`);checkpoint(sessionId);});
+      return details(sessionId);
+    }
     if (message.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
     transaction(() => {turn(s,'user','worker_guidance',`向员工补充：${content}`);memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:message.id,source:'user',content},'user');checkpoint(sessionId);});
     return details(sessionId);
@@ -570,7 +576,8 @@ export function createCoordinator(deps: Dependencies) {
       if (action === 'guide') {
         const focus = decision.focus === 'scope' ? `范围：${requirements.scope}` : decision.focus === 'verification' ? `验收：${requirements.acceptance}` : decision.focus === 'delivery' ? `交付物：${requirements.deliverable}` : `继续核对当前已批准任务及其前置交付物：${task.prompt}`;
         const content = `ApiX 根据你的进度报告提醒：请仅在已批准任务范围内继续。${focus} 若存在新需求或权限问题，请上报阻塞。`;
-        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-guidance:${message.id}`,correlationId:message.id,timeoutMs:3600000,payload:{kind:'guidance',source:'apix',focus:decision.focus,content,requirementRevision:s.revision}});
+        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-guidance:${message.id}`,correlationId:message.id,parentMessageId:message.id,timeoutMs:3600000,payload:{kind:'guidance',source:'apix',focus:decision.focus,content,requirementRevision:s.revision}});
+        if (sent.chainCapped) { turn(current,'apix','worker_attention',`消息链跳数已达上限（hop=${sent.hop}），本次指导未投递；请核对员工间派活链路，或使用“中途调整”修改目标。`); checkpoint(current.id); throw new Error('消息链跳数超上限，指导未投递'); }
         if (sent.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
         outboundId = sent.id;
         turn(current,'apix','worker_guidance',`员工报告：${summary}\nApiX 指导：${content}`);
@@ -599,9 +606,11 @@ export function createCoordinator(deps: Dependencies) {
       const s = session(active.session_id);
       try {
         assertExecution(task);
-        const latestReport = row<{created_at:string}>('SELECT created_at FROM agent_messages WHERE task_id=? AND from_agent=? AND to_agent=\'apix-director\' AND type=\'event\' ORDER BY created_at DESC LIMIT 1',task.id,task.employee_id);
+        const latestReport = row<{id:string;created_at:string}>('SELECT id,created_at FROM agent_messages WHERE task_id=? AND from_agent=? AND to_agent=\'apix-director\' AND type=\'event\' ORDER BY created_at DESC LIMIT 1',task.id,task.employee_id);
         if (latestReport && Date.now() - Date.parse(latestReport.created_at) < staleAfterMs) continue;
-        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-status-request:${active.run_id}`,timeoutMs:3600000,payload:{kind:'progress_request',source:'apix',content:'请报告当前任务的真实进度、已完成的检查和阻塞情况。遇到新需求或权限问题时不要自行扩大任务范围。'}}) as {id:string;status:string;duplicate?:boolean};
+        // 定时复查沿员工最近上报续链，不重置链路跳数
+        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-status-request:${active.run_id}`,timeoutMs:3600000,parentMessageId:latestReport?.id,payload:{kind:'progress_request',source:'apix',content:'请报告当前任务的真实进度、已完成的检查和阻塞情况。遇到新需求或权限问题时不要自行扩大任务范围。'}});
+        if (sent.chainCapped) { turn(s,'apix','worker_attention',`消息链跳数已达上限（hop=${sent.hop}），进度复查请求未投递；请核对员工间派活链路，或使用“中途调整”修改目标。`); checkpoint(s.id); continue; }
         if (sent.status === 'rejected' || sent.duplicate) continue;
         turn(s,'apix','progress_requested',`ApiX 已主动向员工请求进度：${task.prompt.slice(0,120)}`);
         memory.append(s.project_id,s.id,'guidance.progress_requested',{taskId:task.id,runId:active.run_id,messageId:sent.id});

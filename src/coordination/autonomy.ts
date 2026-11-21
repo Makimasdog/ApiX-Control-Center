@@ -48,7 +48,7 @@ interface Dependencies extends Store {
   activatePending?(planId:string):void|Promise<void>; // 激活待处理计划
   delivered?(sessionId:string,planId:string):void; // 交付完成回调
   stop(runId:string):void; // 停止运行
-  sendMessage(input:Record<string,unknown>):{id:string;status:string}; // 发送邮箱消息
+  sendMessage(input:Record<string,unknown>):{id:string;status:string;chainCapped?:boolean;hop?:number}; // 发送邮箱消息（含消息链熔断结果）
   record(taskId:string,kind:string,payload:unknown):void; // 记录事件
 }
 
@@ -290,13 +290,15 @@ export function createAutonomy(deps:Dependencies) {
             // 根据模块风险等级调整检查点间隔（高风险更频繁）
             const architecture=JSON.parse(plan.body) as Architecture;const risk=architecture.modules.find(m=>m.id===binding.module_id)?.risk??'high';const interval=policy.checkpointMinutes*60000*(risk==='high'?0.5:risk==='low'?2:1);
             if(Date.now()-Date.parse(binding.last_checkpoint??run.started_at)>=interval){
-              const latest=row<{payload:string}>('SELECT payload FROM agent_messages WHERE task_id=? AND from_agent=? AND created_at>=? AND type=\'event\' ORDER BY rowid DESC LIMIT 1',task.id,task.employee_id,run.started_at);let blocked=false;if(latest){try{blocked=object(JSON.parse(latest.payload)).blocked===true;}catch{}}
+              const latest=row<{id:string;payload:string}>('SELECT id,payload FROM agent_messages WHERE task_id=? AND from_agent=? AND created_at>=? AND type=\'event\' ORDER BY rowid DESC LIMIT 1',task.id,task.employee_id,run.started_at);let blocked=false;if(latest){try{blocked=object(JSON.parse(latest.payload)).blocked===true;}catch{}}
               if(blocked){if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.blocked_stop',{runId:run.id});deps.stop(run.id);}continue;} // 员工报告阻塞 → 停止
               // 检查 Director 风险消息（连续 2 次未响应则停止）
               const recent=rows<{status:string;created_at:string;payload:string}>('SELECT status,created_at,payload FROM agent_messages WHERE target_task_id=? AND target_run_id=? AND from_agent=\'apix-director\' AND type=\'event\' ORDER BY rowid DESC LIMIT 3',task.id,run.id).filter(m=>{try{return object(JSON.parse(m.payload)).risk!==undefined;}catch{return false;}});
               if(recent.length>=2 && recent.slice(0,2).every(m=>m.status!=='completed' && Date.now()-Date.parse(m.created_at)>=interval)) {if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.unresponsive_stop',{runId:run.id});deps.stop(run.id);}continue;}
               // 发送检查点消息请求进度报告
-              const sent=deps.sendMessage({projectId,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`autonomy-checkpoint:${run.id}:${Math.floor(Date.now()/interval)}`,timeoutMs:Math.ceil(interval),payload:{kind:'progress_request',source:'apix',risk,contractDigest:architecture.digest,content:'请核对冻结模块契约，报告真实进度、已执行检查及阻塞；处理并确认本轮检查点消息。'}});
+              // 检查点沿员工最近一条事件消息续链，不重置链路跳数；被熔断则经 halt 转为 attention 待人工处理
+              const sent=deps.sendMessage({projectId,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`autonomy-checkpoint:${run.id}:${Math.floor(Date.now()/interval)}`,timeoutMs:Math.ceil(interval),parentMessageId:latest?.id,payload:{kind:'progress_request',source:'apix',risk,contractDigest:architecture.digest,content:'请核对冻结模块契约，报告真实进度、已执行检查及阻塞；处理并确认本轮检查点消息。'}});
+              if(sent.chainCapped)throw new Error(`消息链跳数已达上限（hop=${sent.hop}），检查点消息未投递`);
               if(sent.status==='rejected')throw new Error('监督检查点消息被拒绝');db.prepare('UPDATE autonomy_tasks SET last_checkpoint=? WHERE task_id=?').run(now(),task.id);deps.record(task.id,'autonomy.checkpoint',{runId:run.id,messageId:sent.id,risk});
             }
           }
