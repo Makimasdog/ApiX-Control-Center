@@ -117,6 +117,9 @@ export interface DomainEvent {
 }
 /** 权限策略：某个主体（ApiX 或员工）在某个项目中的权限模式与版本号 */
 export interface Policy { mode: PermissionMode; version: number }
+/** Agent 消息链跳数上限：hop 超过该值即熔断（不投递并写 chain.capped 事件），防止 Agent 间环形派活失控。
+ *  邮箱层强制执行 [→ 见 src/messaging/mailbox.mjs]；人工指导与定时复查都不重置已落库的 hop。 */
+export const MAX_MESSAGE_HOP = 8;
 /**
  * object - 校验并断言值为非空 JSON 对象（排除 null、数组、基本类型）
  * @param value - 待校验的未知值

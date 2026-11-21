@@ -373,6 +373,19 @@ if(!db.prepare('SELECT version FROM schema_migrations WHERE version=12').get()) 
     db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error;}
 }
+// Schema 迁移版本 13：为 agent_messages 添加消息链字段 root_task_id、parent_message_id、hop
+// 用途：Agent 消息链跳数熔断——沿父消息继承链路计数，hop 超上限时拦截投递（防环形派活失控）
+if(!db.prepare('SELECT version FROM schema_migrations WHERE version=13').get()) {
+  db.exec('BEGIN');
+  try {
+    db.exec(`ALTER TABLE agent_messages ADD COLUMN root_task_id TEXT;
+      ALTER TABLE agent_messages ADD COLUMN parent_message_id TEXT REFERENCES agent_messages(id);
+      ALTER TABLE agent_messages ADD COLUMN hop INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX agent_messages_chain ON agent_messages(root_task_id,hop);
+      INSERT INTO schema_migrations VALUES (13);`);
+    db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error;}
+}
 // ===== 内存状态与启动恢复 =====
 // now() 返回 ISO 8601 时间戳，用于所有数据库时间字段
 const now = () => new Date().toISOString();
