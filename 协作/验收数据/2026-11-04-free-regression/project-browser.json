@@ -1,0 +1,39 @@
+{
+  "reports": [
+    {
+      "kind": "delivery",
+      "passed": true,
+      "checks": [
+        "real-browser-submit",
+        "verified-delivery",
+        "feedback",
+        "revision-v2",
+        "accept",
+        "reload",
+        "responsive",
+        "second-task-net-diff",
+        "historical-acceptance"
+      ],
+      "paidModelCalls": 0,
+      "localProtocolCalls": 17
+    },
+    {
+      "kind": "npm",
+      "passed": true,
+      "checks": [
+        "real-browser-submit",
+        "verified-delivery",
+        "feedback",
+        "revision-v2",
+        "accept",
+        "reload",
+        "responsive",
+        "offline-npm-approval",
+        "failed-check-log-read",
+        "npm-copy-verification"
+      ],
+      "paidModelCalls": 0,
+      "localProtocolCalls": 12
+    }
+  ]
+}

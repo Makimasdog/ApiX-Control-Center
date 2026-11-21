@@ -15,6 +15,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {hostResultSummary} from './assistant-result.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 上下文事件接口 — 对应 assistant_events 表的一行 */
 export interface ContextEvent {id:number;role:string;kind:string;body:string}
 /**
@@ -38,7 +40,7 @@ export function contextWindow(value:unknown){const n=Number(value??32768);if(!Nu
  */
 export function createContextOutputs(store:Store){
   const {db,row,rows,now}=store;
-  db.exec('CREATE TABLE IF NOT EXISTS assistant_outputs(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),event_id INTEGER NOT NULL,body TEXT NOT NULL,sha256 TEXT NOT NULL,created_at TEXT NOT NULL)');
+  ensureModuleSchema(db, "assistant-assistant-context");
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_output_event ON assistant_outputs(session_id,event_id)');
   function history(sessionId:string,events:ContextEvent[],fold=false,saving=false,persist=true){
     // 文件页不因事件变旧立即折叠；额外保留池按 UTF-8 限制单页 24 KiB、去重后 32 KiB，池外沿用原规则。
@@ -88,7 +90,7 @@ export function contextBreakdown(instruction:string,catalog:unknown,value:Record
   return {schema:1,estimated:true,estimator:'utf8_bytes_divided_by_3',categories:tokens,usedTokens:Object.values(tokens).reduce((a,b)=>a+b,0),windowTokens:value.contextBudget.windowTokens,targetTokens:value.contextBudget.inputTargetTokens};
 }
 /** 展示活动从首次模型投影就排除；其余事实不按事件年龄删除，UI 与原始事件不变。 */
-export function trimHistory(events:ContextEvent[]){return events.filter(e=>!['activity','context_budget','optimization_changed'].includes(e.kind));}
+export function trimHistory(events:ContextEvent[]){return events.filter(e=>!['activity','context_budget','optimization_changed','supervision_waiting'].includes(e.kind));}
 // 摘要边界不能拆开一次工具执行；启动、期间命令事件与最终结果必须作为完整执行组保留。
 /**
  * compactPrefix - 计算安全截断位置，确保不拆开一次完整的工具执行

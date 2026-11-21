@@ -26,6 +26,8 @@ import {autonomyDefaults,parseAutonomyPolicy,parseArchitecture,type AutonomyPoli
 import type {Permissions} from './permissions.js';
 import type {Scheduling} from './scheduling.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 自主交付计划记录（持久化到 autonomy_plans 表） */
 interface PlanRecord {plan_id:string;session_id:string;revision:number;policy_version:number;workflow_version:number;body:string;state:string;started_at:string|null;reason:string|null}
 /** 受管任务（扩展 Task 增加工作区和结果字段） */
@@ -42,11 +44,15 @@ interface Dependencies extends Store {
   inspect(task:ManagedTask):Promise<Inspection>; // 代码检查（生成指纹）
   workspace(task:ManagedTask):string|Promise<string>; // 获取工作区路径
   accept(id:string,fingerprint:string):void|Promise<void>; // 验收通过
+  workerQuestionEvidence?(task:ManagedTask,runId:string|null,includeDependencies:boolean):unknown;
   review(projectId:string,sessionId:string,architecture:Architecture,moduleId:string,evidence:unknown):Promise<{passed:boolean;findings:string[];reviewMode:string}>; // LLM 自审
   retry(task:ManagedTask,employeeId:string,prompt:string):Promise<void>; // 重试任务
   reassignPending(taskId:string,employeeId:string):void; // 重新分配排队任务
   activatePending?(planId:string):void|Promise<void>; // 激活待处理计划
   delivered?(sessionId:string,planId:string):void; // 交付完成回调
+  waiting?(runId:string):boolean;
+  lastActivityAt?(runId:string):string|undefined;
+  answeringTerminalQuestion?(taskId:string):boolean;
   stop(runId:string):void; // 停止运行
   sendMessage(input:Record<string,unknown>):{id:string;status:string}; // 发送邮箱消息
   record(taskId:string,kind:string,payload:unknown):void; // 记录事件
@@ -61,16 +67,13 @@ export function createAutonomy(deps:Dependencies) {
   const {db,row,rows,now}=deps;
   /** 计划级互斥锁：防止同一计划被并发 tick 处理 */
   const busy=new Set<string>();
+  const pendingTicks=new Set<string>();
   /** 正在停止的运行 ID 集合：防止重复发送停止请求 */
   const stopping=new Set<string>();
   /** 已验证的契约摘要缓存：避免重复解析和校验 */
   const validatedContracts=new Map<string,string>();
   // 初始化自主交付相关数据表
-  db.exec(`CREATE TABLE IF NOT EXISTS autonomy_policies(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS autonomy_plans(plan_id TEXT PRIMARY KEY REFERENCES plans(id),session_id TEXT NOT NULL,revision INTEGER NOT NULL,policy_version INTEGER NOT NULL,workflow_version INTEGER NOT NULL,body TEXT NOT NULL,state TEXT NOT NULL,started_at TEXT,reason TEXT);
-    CREATE TABLE IF NOT EXISTS autonomy_tasks(task_id TEXT PRIMARY KEY REFERENCES tasks(id),module_id TEXT NOT NULL,original_prompt TEXT NOT NULL,repairs INTEGER NOT NULL DEFAULT 0,last_checkpoint TEXT);
-    CREATE TABLE IF NOT EXISTS autonomy_checks(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,run_id TEXT,status TEXT NOT NULL,fingerprint TEXT,body TEXT NOT NULL,created_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS autonomy_repairs(id TEXT PRIMARY KEY,task_id TEXT NOT NULL,attempt INTEGER NOT NULL,employee_id TEXT NOT NULL,instruction TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,run_id TEXT);`);
+  ensureModuleSchema(db, "coordination-autonomy");
   // 迁移：为旧表添加 run_id 列
   if(!rows<{name:string}>('PRAGMA table_info(autonomy_repairs)').some(c=>c.name==='run_id'))db.exec('ALTER TABLE autonomy_repairs ADD COLUMN run_id TEXT');
   // 重启恢复：将中断的运行中检查标记为 interrupted
@@ -241,7 +244,7 @@ export function createAutonomy(deps:Dependencies) {
       const paths=module?.paths??architecture.modules.flatMap(m=>m.paths);const normalize=(p:string)=>process.platform==='win32'?p.toLowerCase():p;
       const outside=inspection.files.filter(file=>!paths.some(path=>normalize(file)===normalize(path)||normalize(file).startsWith(normalize(path)+'/')));if(outside.length)findings.push(`交付修改超出冻结模块文件边界：${outside.join('、')}。恢复范围外文件，只保留本模块修改。`);
       let review:{passed:boolean;findings:string[];reviewMode:string}|null=null;
-      if(!findings.length){review=await deps.review(task.project_id,plan.session_id,architecture,binding.module_id,{fingerprint:inspection.fingerprint,files:inspection.files,diff:inspection.preview,currentCode:inspection.context,tests});findings=review.findings;} // LLM 自审
+      if(!findings.length){review=await deps.review(task.project_id,plan.session_id,architecture,binding.module_id,{fingerprint:inspection.fingerprint,files:inspection.files,diff:inspection.preview,currentCode:inspection.context,tests,workerQuestions:deps.workerQuestionEvidence?.(task,latest?.id??null,binding.module_id==='integration')});findings=review.findings;} // LLM 自审
       taskCurrent(plan,task,policy);if((await deps.inspect(task)).fingerprint!==inspection.fingerprint)throw new Error('审查期间交付代码已变化');taskCurrent(plan,task,policy);
       const passed=!findings.length && review?.passed===true;
       db.prepare('UPDATE autonomy_checks SET status=?,body=? WHERE id=?').run(passed?'passed':'failed',JSON.stringify({tests,review,findings}),checkId);completed=true;
@@ -263,8 +266,10 @@ export function createAutonomy(deps:Dependencies) {
    *   - queued + autoReassign → 尝试替代员工
    *   - running → 检查超时、发送检查点消息
    */
-  async function tick() {
-    for(const plan of rows<PlanRecord>("SELECT * FROM autonomy_plans WHERE state IN ('ready','running')")){
+  async function tick(planId?:string) {
+    if(planId&&busy.has(planId)){pendingTicks.add(planId);return;}
+    const plans=planId?rows<PlanRecord>("SELECT * FROM autonomy_plans WHERE plan_id=? AND state IN ('ready','running')",planId):rows<PlanRecord>("SELECT * FROM autonomy_plans WHERE state IN ('ready','running')");
+    for(const plan of plans){
       if(busy.has(plan.plan_id))continue;const tasks=rows<ManagedTask>('SELECT * FROM tasks WHERE plan_id=? ORDER BY rowid',plan.plan_id);const projectId=tasks[0]?.project_id;if(!projectId)continue;
       const session=row<{status:string}>('SELECT status FROM coordination_sessions WHERE id=?',plan.session_id);if(session?.status==='plan_review')continue; // 计划待审时跳过
       busy.add(plan.plan_id);
@@ -276,6 +281,7 @@ export function createAutonomy(deps:Dependencies) {
           const task=row<ManagedTask>('SELECT * FROM tasks WHERE id=?',snapshot.id)!;
           const binding=row<{module_id:string;last_checkpoint:string|null}>('SELECT * FROM autonomy_tasks WHERE task_id=?',task.id);if(!binding)throw new Error('计划包含未绑定架构契约的任务');
           if(task.status==='completed'){taskCurrent(plan,task,policy);await verify(plan,task,policy);} // 已完成 → 验收检查
+          else if(task.status==='failed' && deps.answeringTerminalQuestion?.(task.id))continue;
           else if(task.status==='failed' || task.status==='cancelled')await repair(plan,task,[`员工运行 ${task.status}：${redact(task.result??'无输出，请检查错误并补齐证据')}`],policy); // 失败 → 自动修复
           else if(task.status==='needs_revision' && waitingRepair(task.id))await repair(plan,task,[],policy); // 待修改且有修复指令 → 执行修复
           else if(task.status==='blocked' && waitingDependency(task))continue; // 被阻塞但可恢复 → 跳过
@@ -287,16 +293,18 @@ export function createAutonomy(deps:Dependencies) {
           else if(task.status==='running'){ // 运行中 → 检查超时和检查点
             taskCurrent(plan,task,policy);const run=row<{id:string;started_at:string}>('SELECT id,started_at FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id)!;
             if(Date.now()-Date.parse(run.started_at)>policy.maxRunMinutes*60000){if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.timeout',{runId:run.id});deps.stop(run.id);}continue;} // 单次运行超时
+            if(deps.waiting?.(run.id))continue;
             // 根据模块风险等级调整检查点间隔（高风险更频繁）
             const architecture=JSON.parse(plan.body) as Architecture;const risk=architecture.modules.find(m=>m.id===binding.module_id)?.risk??'high';const interval=policy.checkpointMinutes*60000*(risk==='high'?0.5:risk==='low'?2:1);
             if(Date.now()-Date.parse(binding.last_checkpoint??run.started_at)>=interval){
               const latest=row<{payload:string}>('SELECT payload FROM agent_messages WHERE task_id=? AND from_agent=? AND created_at>=? AND type=\'event\' ORDER BY rowid DESC LIMIT 1',task.id,task.employee_id,run.started_at);let blocked=false;if(latest){try{blocked=object(JSON.parse(latest.payload)).blocked===true;}catch{}}
               if(blocked){if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.blocked_stop',{runId:run.id});deps.stop(run.id);}continue;} // 员工报告阻塞 → 停止
-              // 检查 Director 风险消息（连续 2 次未响应则停止）
+              // 漏回执期间仍有输出或信箱活动时，不能据此判定员工失联。
               const recent=rows<{status:string;created_at:string;payload:string}>('SELECT status,created_at,payload FROM agent_messages WHERE target_task_id=? AND target_run_id=? AND from_agent=\'apix-director\' AND type=\'event\' ORDER BY rowid DESC LIMIT 3',task.id,run.id).filter(m=>{try{return object(JSON.parse(m.payload)).risk!==undefined;}catch{return false;}});
-              if(recent.length>=2 && recent.slice(0,2).every(m=>m.status!=='completed' && Date.now()-Date.parse(m.created_at)>=interval)) {if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.unresponsive_stop',{runId:run.id});deps.stop(run.id);}continue;}
+              const lastActivity=deps.lastActivityAt?.(run.id)??run.started_at;
+              if(recent.length>=2 && recent.slice(0,2).every(m=>m.status!=='completed' && lastActivity<=m.created_at && Date.now()-Date.parse(m.created_at)>=interval)) {if(!stopping.has(run.id)){stopping.add(run.id);deps.record(task.id,'autonomy.unresponsive_stop',{runId:run.id});deps.stop(run.id);}continue;}
               // 发送检查点消息请求进度报告
-              const sent=deps.sendMessage({projectId,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`autonomy-checkpoint:${run.id}:${Math.floor(Date.now()/interval)}`,timeoutMs:Math.ceil(interval),payload:{kind:'progress_request',source:'apix',risk,contractDigest:architecture.digest,content:'请核对冻结模块契约，报告真实进度、已执行检查及阻塞；处理并确认本轮检查点消息。'}});
+              const sent=deps.sendMessage({projectId,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`autonomy-checkpoint:${run.id}:${Math.floor(Date.now()/interval)}`,timeoutMs:Math.ceil(interval),payload:{kind:'progress_request',source:'apix',risk,contractDigest:architecture.digest,content:'请按冻结模块契约汇报真实进度、已有检查结果和阻塞，并确认本轮检查点。相关文件未变化时无需重跑检查，未阻塞就继续执行，无需等待回复。'}});
               if(sent.status==='rejected')throw new Error('监督检查点消息被拒绝');db.prepare('UPDATE autonomy_tasks SET last_checkpoint=? WHERE task_id=?').run(now(),task.id);deps.record(task.id,'autonomy.checkpoint',{runId:run.id,messageId:sent.id,risk});
             }
           }
@@ -304,6 +312,7 @@ export function createAutonomy(deps:Dependencies) {
         // 所有任务已验收 → 计划完成
         if(rows<{status:string}>('SELECT status FROM tasks WHERE plan_id=?',plan.plan_id).every(t=>t.status==='accepted')){db.prepare("UPDATE autonomy_plans SET state='completed',reason=NULL WHERE plan_id=?").run(plan.plan_id);validatedContracts.delete(plan.plan_id);deps.delivered?.(plan.session_id,plan.plan_id);}
       }catch(error){halt(plan,redact(String(error instanceof Error?error.message:error)));}finally{busy.delete(plan.plan_id);}
+      if(pendingTicks.delete(plan.plan_id))await tick(plan.plan_id);
     }
   }
   return {settings,save,bindPlan,details,resumeFingerprint,resume,assertPlan,context,tick,waiting:(planId:string)=>rows<{id:string}>("SELECT id FROM tasks WHERE plan_id=? AND status='needs_revision'",planId).some(t=>waitingRepair(t.id))};

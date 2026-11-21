@@ -1,0 +1,36 @@
+{
+  "observedAt": "2026-11-03T04:28:42.695Z",
+  "platform": "win32",
+  "node": "22.23.3",
+  "paidTurns": 0,
+  "output": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-native-compatibility-23sitM",
+  "codex": {
+    "version": "codex-cli 0.145.0",
+    "methods": {
+      "thread/start": true,
+      "thread/resume": true,
+      "turn/start": true,
+      "turn/steer": true,
+      "turn/interrupt": true
+    },
+    "questionSchema": true,
+    "initialize": true,
+    "initializeMs": 815,
+    "stopEvidence": "quiescent",
+    "stopMs": 355,
+    "probeElapsedMs": 8140
+  },
+  "claude": {
+    "version": "2.1.114 (Claude Code)",
+    "initialize": true,
+    "commandCount": 16,
+    "sdkVersion": "0.3.314",
+    "rootExitedBeforeClose": false,
+    "initializeMs": 2122,
+    "stopEvidence": "unknown",
+    "stopMs": 470,
+    "exitCode": 1,
+    "signal": null,
+    "probeElapsedMs": 2986
+  }
+}

@@ -9,12 +9,19 @@ import {execFileSync} from 'node:child_process';
 import {projectBaseline,projectSourceVersion} from '../src/projects/project-baseline.mjs';
 import {createTaskDelivery} from '../src/projects/task-delivery.mjs';
 const git=(cwd,args)=>execFileSync('git',['-c','core.autocrlf=false',...args],{cwd,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
-async function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{await work({dir,source,data:join(dir,'data')});}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}}
+async function fixture(work){const dir=mkdtempSync(join(tmpdir(),'apix-baseline-'));const source=join(dir,'source');mkdirSync(source);try{
+  let repository;
+  try{repository=git(source,['rev-parse','--show-toplevel']);}catch(error){if(error.status!==128)throw error;}
+  assert(!repository,'项目基线夹具需要 Git 工作树以外的临时目录，请检查 TEMP/TMP 设置');
+  await work({dir,source,data:join(dir,'data')});
+}finally{assert(resolve(dir).startsWith(resolve(tmpdir())+sep));rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}}
 test('ApiX data root cannot be snapshotted as a project',()=>fixture(({source})=>{
   writeFileSync(join(source,'apix.sqlite'),'private state');assert.throws(()=>projectBaseline(source,'plan',source),/数据目录不能/);
   assert(!existsSync(join(source,'project-baselines')));
 }));
-test('non-Git and empty projects get stable plan baselines without touching source, secrets or ignored inputs',()=>fixture(({source,data})=>{
+test('non-Git and empty projects get stable plan baselines without touching source, secrets or ignored inputs',()=>fixture(({source,data:baseData})=>{
+  // Force Git object paths past MAX_PATH even if the test runner uses a short TEMP.
+  const data=process.platform==='win32'?join(baseData,'d'.repeat(Math.max(1,104-baseData.length))):baseData;
   writeFileSync(join(source,'README.md'),'initial');writeFileSync(join(source,'.env'),'secret');writeFileSync(join(source,'private.pem'),'secret');
   writeFileSync(join(source,'.gitignore'),'cache/\n');mkdirSync(join(source,'cache'));writeFileSync(join(source,'cache','huge'),Buffer.alloc(101*1024*1024));
   const repo=projectBaseline(source,'plan',data);assert(!existsSync(join(source,'.git')));
@@ -26,7 +33,8 @@ test('non-Git and empty projects get stable plan baselines without touching sour
   git(source,['init']);assert.notEqual(projectBaseline(source,'empty-git',data),source);
 }));
 test('existing Git stays in its repository and managed baseline tampering is rejected',()=>fixture(({source,data})=>{
-  const repo=projectBaseline(source,'plan',data);writeFileSync(join(repo,'a'),'tamper');git(repo,['add','a']);git(repo,['-c','user.name=Test','-c','user.email=test@local.invalid','commit','-m','tamper']);
+  const repo=projectBaseline(source,'plan',data);assert(repo.startsWith(realpathSync.native(data)+sep),'篡改操作只能在夹具的托管基线上执行');
+  writeFileSync(join(repo,'a'),'tamper');git(repo,['add','a']);git(repo,['-c','user.name=Test','-c','user.email=test@local.invalid','commit','-m','tamper']);
   assert.throws(()=>projectBaseline(source,'plan',data),/基线已变化/);
   git(source,['init']);writeFileSync(join(source,'a'),'source');git(source,['add','a']);git(source,['-c','user.name=Test','-c','user.email=test@local.invalid','commit','-m','initial']);
   assert.equal(projectBaseline(source,'other',data),realpathSync.native(source));

@@ -73,7 +73,18 @@ export function createAssistantCoding(store:Store,rootFor:(project:string)=>stri
   try{path=projectPath(root,args.path,true);
   // All conflicts are determined before recording an intent or touching the file.
   if(tool==='edit_file'){prepared=prepareEdit(path,args);before=prepared.before;}
-  else{if(typeof args.content!=='string'||args.content.includes('\0')||args.content.length>20000)throw new Error('写入内容无效或过大');if(existsSync(path))before=sourceBuffer(path,20000);}
+  else{
+    if(typeof args.content!=='string'||args.content.includes('\0')||args.content.length>20000)throw new Error('写入内容无效或过大');
+    if(existsSync(path))before=sourceBuffer(path,20000);
+    // write_file 覆盖已有文件时的冲突检查：传了 expectedSha256 就必须对得上。
+    // 此前只有 edit_file 有这道检查，write_file 会直接覆盖用户改动。
+    const expected=args.expectedSha256;
+    if(expected!==undefined){
+      const actual=before?fileSha(before):null;
+      if(actual===null)throw new Error('写入冲突：预期的文件不存在，无法校验 SHA256');
+      if(expected!==actual)throw new Error('写入冲突：文件版本变化，请重新读取');
+    }
+  }
   }catch(error){throw new PreflightError(error);}
   const operationId=randomUUID(),beforeSha256=before?fileSha(before):null,afterSha256=prepared?.afterSha256??fileSha(String(args.content));
   event(s,'file_edit_intent',{operationId,path:args.path,beforeSha256,plannedAfterSha256:afterSha256,tool});

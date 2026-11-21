@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {ToolError} from '../assistant/tool-governance.js';
 import {object, type Store} from '../coordination/contracts.js';
 import {bad, fileCheckpoint, nextOccurrence, readEvent, readTrigger, requiredText, type GatewayTrigger} from './gateway-triggers.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
 
 interface RuleInput {name: string; enabled: boolean; trigger: GatewayTrigger}
 interface RuleRow {
@@ -48,25 +49,8 @@ function view(rule: RuleRow) {
 }
 
 export function createAssistantGateway({db, row, rows, now}: Store, projectRoot: (projectId: string) => string) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS assistant_gateway_rules (
-      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id),
-      revision INTEGER NOT NULL, definition TEXT NOT NULL CHECK(json_valid(definition)),
-      next_at INTEGER, last_checked_at INTEGER, deleted_at INTEGER, checkpoint TEXT, last_error TEXT
-    );
-    CREATE INDEX IF NOT EXISTS assistant_gateway_due ON assistant_gateway_rules(next_at) WHERE deleted_at IS NULL;
-    CREATE INDEX IF NOT EXISTS assistant_gateway_project ON assistant_gateway_rules(project_id) WHERE deleted_at IS NULL;
-    CREATE TABLE IF NOT EXISTS assistant_gateway_runs (
-      id TEXT PRIMARY KEY, rule_id TEXT NOT NULL REFERENCES assistant_gateway_rules(id),
-      rule_name TEXT NOT NULL, trigger_key TEXT NOT NULL, status TEXT NOT NULL, message TEXT NOT NULL,
-      scheduled_at INTEGER NOT NULL, created_at INTEGER NOT NULL, read_at INTEGER,
-      UNIQUE(rule_id, trigger_key)
-    );
-    CREATE TABLE IF NOT EXISTS assistant_gateway_events (
-      project_id TEXT NOT NULL REFERENCES projects(id), kind TEXT NOT NULL, source TEXT NOT NULL,
-      event_id TEXT NOT NULL, PRIMARY KEY(project_id, kind, source, event_id)
-    );
-  `);
+  ensureModuleSchema(db, "assistant-core-gateway");
+
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt: number | null = null;
   let lastTickAt: number | null = null;

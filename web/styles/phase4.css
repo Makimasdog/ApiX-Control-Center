@@ -31,7 +31,7 @@
   gap: 6px;
   max-width: 230px;
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: var(--r-mark);
   background: var(--surface);
   padding: 3px 8px;
   transition: all 0.2s;
@@ -43,7 +43,7 @@
 
 .conversation-pill.selected {
   border-color: var(--accent);
-  background: rgba(56, 189, 248, 0.1);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .conversation-pill > button:first-child {
@@ -100,7 +100,7 @@
   flex: 1;
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--r-sm);
   padding: 8px 11px;
   background: var(--surface);
   font-size: 11px;
@@ -110,7 +110,7 @@
 
 .memory-search input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .memory-search input::placeholder {
@@ -126,7 +126,7 @@
   padding: 17px 19px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-card);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   transition: all 0.2s;
 }

@@ -1,0 +1,108 @@
+{
+  "caseId": "collaboration-diamond",
+  "status": "fail",
+  "error": "user-content-preserved: \"user-owned fixture bytes\\r\\n\"",
+  "checks": [
+    {
+      "id": "dispatch-no-failure",
+      "actual": 0,
+      "expected": 0,
+      "passed": true,
+      "refs": [
+        "3ca6f47a-2365-4457-bfda-86a506a8443e"
+      ]
+    },
+    {
+      "id": "dependencies-wait-for-acceptance",
+      "actual": [
+        "queued",
+        "queued",
+        "queued"
+      ],
+      "expected": [
+        "queued",
+        "queued",
+        "queued"
+      ],
+      "passed": true,
+      "refs": [
+        "74877961-3340-468a-882c-7698498223bb",
+        "8a451ba3-b1e9-44c9-b1b5-f2d5ae43a617",
+        "d0b72ab0-f506-4983-ad3c-dce69e653d11",
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    },
+    {
+      "id": "two-distinct-workers-running",
+      "actual": 2,
+      "expected": 2,
+      "passed": true,
+      "refs": [
+        "8a451ba3-b1e9-44c9-b1b5-f2d5ae43a617",
+        "d0b72ab0-f506-4983-ad3c-dce69e653d11"
+      ]
+    },
+    {
+      "id": "integration-waits",
+      "actual": "queued",
+      "expected": "queued",
+      "passed": true,
+      "refs": [
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    },
+    {
+      "id": "guidance-completed",
+      "actual": [
+        "completed",
+        "completed"
+      ],
+      "expected": [
+        "completed",
+        "completed"
+      ],
+      "passed": true,
+      "refs": [
+        "6ab2cca2-304e-44cc-8855-15d8c947982b",
+        "ceb3593a-01c7-473c-9ca9-8fd6a3fc8daa"
+      ]
+    },
+    {
+      "id": "one-branch-insufficient",
+      "actual": "queued",
+      "expected": "queued",
+      "passed": true,
+      "refs": [
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    },
+    {
+      "id": "host-verifies-integrated-code",
+      "actual": "APIX_EVAL_VERIFIED",
+      "expected": "APIX_EVAL_VERIFIED",
+      "passed": true,
+      "refs": [
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    },
+    {
+      "id": "both-branches-transferred",
+      "actual": true,
+      "expected": true,
+      "passed": true,
+      "refs": [
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    },
+    {
+      "id": "user-content-preserved",
+      "actual": "user-owned fixture bytes\r\n",
+      "expected": "user-owned fixture bytes\n",
+      "passed": false,
+      "refs": [
+        "0aaf667c-1e11-4583-b108-dc65808d109d"
+      ]
+    }
+  ],
+  "localEvidenceDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-B4qPBx"
+}

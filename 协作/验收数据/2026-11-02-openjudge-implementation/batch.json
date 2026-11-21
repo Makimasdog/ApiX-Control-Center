@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "pass",
+  "suite": "all",
+  "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\batch-4lhoqA",
+  "node": "v22.23.3",
+  "records": 8,
+  "caseDigest": "d1213d033aade81aafc06e147c927d8e4dc58b08c7906a7ad031b0908a416f25",
+  "failures": [],
+  "semanticStatus": "scored",
+  "paidRequests": 8
+}

@@ -2,17 +2,12 @@ import {randomUUID} from 'node:crypto';
 import {ToolError} from '../../assistant/tool-governance.js';
 import type {Store} from '../../coordination/contracts.js';
 import type {MediaPart} from './message-format.js';
+import {ensureModuleSchema} from '../../infrastructure/schema.js';
 
 export const inlineMedia = new Set(['image/png','image/jpeg','image/gif','image/webp','audio/ogg','audio/mpeg','audio/mp4','audio/wav','audio/webm']);
 
 export function createMessageMedia({db, row, now}: Store) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS assistant_message_media (
-      id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES assistant_sessions(id),
-      kind TEXT NOT NULL, name TEXT NOT NULL, mime TEXT NOT NULL, body BLOB NOT NULL, created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS assistant_message_media_session ON assistant_message_media(session_id);
-  `);
+  ensureModuleSchema(db, "assistant-core-message-media");
   return {
     save(sessionId: string, parts: MediaPart[]) {
       return parts.map(part => {

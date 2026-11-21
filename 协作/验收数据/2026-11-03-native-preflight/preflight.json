@@ -1,0 +1,40 @@
+{
+  "status": "awaiting_worker_billing_information",
+  "observedAt": "2026-11-03T04:37:19.244Z",
+  "inspection": {
+    "commands": {
+      "codex": {
+        "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+        "prefix": []
+      },
+      "claude": {
+        "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+        "prefix": []
+      }
+    },
+    "claude": {
+      "baseUrl": "http://127.0.0.1:15721",
+      "model": "claude-sonnet-5",
+      "hasCredential": true
+    },
+    "versions": {
+      "codex": "codex-cli 0.166.0-alpha.5.1",
+      "claude": "2.1.114 (Claude Code)"
+    }
+  },
+  "cumulativeBudget": {
+    "baselineReservedCny": 1.972464,
+    "later": [],
+    "reservedCny": 1.972464
+  },
+  "newModelRequests": 0,
+  "paidTurns": 0,
+  "fullNativeToolWorkflow": "not_run",
+  "codexEffectiveConfigObservation": {
+    "model": "gpt-6.1-sol",
+    "modelProvider": null,
+    "openAIBaseUrl": null,
+    "customProviderDeclared": true,
+    "customProviderSelected": "not_established"
+  }
+}

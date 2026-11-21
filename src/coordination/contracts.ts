@@ -77,7 +77,8 @@ export interface ManagerToolEvent { toolName:string; phase:'start'|'end'; isErro
 export interface InferenceContext {
   sessionId?: string;   // 发起会话 ID
   projectId: string;    // 所属项目
-  purpose: 'discussion' | 'planning' | 'formatting' | 'connection_test' | 'architecture' | 'quality' | 'assistant_loop'; // 调用目的
+  purpose: 'discussion' | 'planning' | 'formatting' | 'connection_test' | 'architecture' | 'quality' | 'assistant_loop' | 'worker_question'; // 调用目的
+  signal?: AbortSignal;
   onTool?: (event: ManagerToolEvent) => void; // 工具调用回调（可选，用于记录事件）
 }
 /** 模型后端抽象：封装 LLM 推理调用，支持流式增量输出 */

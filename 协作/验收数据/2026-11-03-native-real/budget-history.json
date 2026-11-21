@@ -1,0 +1,16 @@
+{
+  "currency": "CNY",
+  "originalTotalLimit": 50,
+  "workerOperatorDeclaredUpperBoundCny": 20,
+  "workerActualBilledCny": null,
+  "actualBilledCny": null,
+  "priorReservedCny": 1.972464,
+  "managerReservedCny": 0.489664,
+  "managerEstimatedCny": 0.03379,
+  "cumulativeReservedCny": 22.462128,
+  "limitation": "20 CNY is the operator-declared aggregate worker bound, not a metered provider hard cap; actual worker invoice unavailable. No further paid calls after these attempts.",
+  "latestTotalLimitCny": 20,
+  "reservationExceedsLatestLimit": true,
+  "executionBudgetInterpretationError": true,
+  "subsequentPaidCallsBlocked": true
+}

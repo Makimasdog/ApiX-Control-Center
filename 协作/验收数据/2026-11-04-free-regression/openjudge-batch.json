@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "status": "pass",
+  "suite": "all",
+  "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\batch-nbAJkr",
+  "node": "v22.23.3",
+  "records": 8,
+  "caseDigest": "2c6ff731900e53b437c9251bceef5ef7848620dba7de376f3c3f2bf9b71245f4",
+  "failures": [],
+  "semanticStatus": "not_run",
+  "paidRequests": 0
+}

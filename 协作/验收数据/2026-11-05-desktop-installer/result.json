@@ -1,0 +1,64 @@
+{
+  "date": "2026-11-05",
+  "isolation": "windows-x64 / current-user / silent / unique app identity, install directory and application data",
+  "identity": "apix-installer-test-5c3e7f81-03b",
+  "guid": "5c3e7f81-03b8-4203-a16b-c004095015af",
+  "paidModelCalls": 0,
+  "passed": true,
+  "artifacts": [
+    {
+      "version": "0.3.2",
+      "revision": "8b754efeffd363535da60beca36b5eb2685f133c",
+      "sha256": "048840d32e8f9c2481cb15477d25f15d0d2c18f7258e76794518e0f464a61ca7"
+    },
+    {
+      "version": "0.3.3",
+      "revision": "3716ec5c4d7b8780f863db1b58d56822e0be5541",
+      "sha256": "c3f90348cf8453cf026505b0ce76c03b9769e59f952987d5132614eb7fc08d96"
+    },
+    {
+      "version": "0.3.4",
+      "revision": "3716ec5c4d7b8780f863db1b58d56822e0be5541",
+      "sha256": "2794eeb8eabb3e02baa764a9c0dc575b6afb0e75372aed99ee59110332783216",
+      "includeSha256": "795e3540906a945ff5745091a52d28afe09f102fc3fbee1e6a230c9e70bbda3d",
+      "configSha256": "557fb3261661106d428f68d13cb4a906ea8ce3b77cd6d93b7b4be18145119d1e"
+    }
+  ],
+  "initialAttempts": [
+    {
+      "result": "installer-spawn-ETIMEDOUT-before-registration",
+      "existingStateUnchanged": true
+    },
+    {
+      "result": "fixture-npm-proposal-http-400",
+      "existingStateUnchanged": true
+    }
+  ],
+  "lifecycle": {
+    "checks": [
+      "clean-install-registered-shortcuts-and-app-start",
+      "upgrade-replaces-app-and-retains-project-session-and-config"
+    ],
+    "uninstallerEventuallyRemovedInstallDirectoryAndRegistration": true,
+    "reportedTimeout": "卸载后安装目录仍存在",
+    "retainedInstallerCacheBytes": 354320282,
+    "existingStateUnchanged": true
+  },
+  "patchedReinstallAndUninstall": {
+    "checks": [
+      "unpatched-uninstall-left-exact-cached-installer",
+      "patched-install-launches-with-preserved-data",
+      "patched-uninstall-removes-app-registration-shortcuts-and-cache-only",
+      "patched-uninstall-preserves-project-session-config-and-roaming-marker",
+      "existing-install-registration-shortcuts-and-data-unchanged"
+    ],
+    "existingStateUnchanged": true,
+    "roamingMarkerSha256": "b3faf9152fb5cfd2e2327b1824665de740315f81df2ed62938ce8b414585738d",
+    "testProfileMarkersAndEmptyCacheDirectoryRemovedAfterVerification": true
+  },
+  "staticCheck": "passed",
+  "desktopProcessTests": {
+    "passed": 7,
+    "failed": 0
+  }
+}

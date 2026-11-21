@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-31T11:33:58.418Z",
+  "finishedAt": "2026-10-31T11:35:55.617Z",
+  "passed": true,
+  "source": "真实本机 Codex 通道；隔离 HTTP 服务及临时 Git 项目；非模型/CLI 协议夹具",
+  "directory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-real-codex-vL8KP5",
+  "first": {
+    "taskId": "662acfd2-c98f-4e95-bfc5-f8bf257587a7",
+    "runId": "6730b518-2155-4056-892e-cbe7cf6955fe",
+    "status": "completed",
+    "backend": "codex-app-server",
+    "executorVersion": "0.166.0",
+    "stopEvidence": "quiescent",
+    "guidance": {
+      "messageId": "193ff6de-472c-424c-87c7-cbb5d31709ab",
+      "runId": "6730b518-2155-4056-892e-cbe7cf6955fe",
+      "delivery": "accepted"
+    },
+    "expected": "GUIDED_c03149fe22",
+    "actual": "GUIDED_c03149fe22",
+    "report": "我会仅在当前临时项目中读取 sample.txt，按要求等待 25 秒，再根据最新指导写入 result.txt，不提交 Git。\n已采纳最新指导：等待结束后，result.txt 将写入 `GUIDED_c03149fe22`。\n已读取 sample.txt，并执行 `Start-Sleep -Seconds 25`。随后以 UTF-8 写入并核验 result.txt：`GUIDED_c03149fe22`。未联网、安装、读取配置或凭据，也未提交 Git。\n"
+  },
+  "second": {
+    "taskId": "ad6d4973-3bf8-47ac-ab65-4ffbe574153c",
+    "runId": "340fcb72-f6a2-49b1-b93e-b549862cd177",
+    "status": "cancelled",
+    "backend": "codex-app-server",
+    "stopRequestedAt": "2026-10-31T11:35:50.730Z",
+    "stopEvidence": "quiescent",
+    "sentinelExists": false
+  },
+  "billing": "使用实际 Codex 通道，账单未知，不作零费用声明"
+}

@@ -1,7 +1,13 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createContextOutputs} from '../dist/src/assistant/assistant-context.js';
+import {loadInstructions} from '../dist/src/assistant/instruction-memory.js';
+import {legacyAssistantPrompt} from '../dist/src/assistant/prompt-descriptor.js';
+import {instruction} from '../dist/src/assistant/prompt-spec.js';
 import {createPromptProjection} from '../dist/src/assistant/prompt-projection.js';
 import {createPromptDiagnostics,requestHash} from '../dist/src/models/prompt-diagnostics.js';
 import {inferModel} from '../dist/src/models/model-backend.js';
@@ -45,6 +51,37 @@ test('rules add/edit/delete append versioned blocks without replacing previous c
  h.value.context.instructions=[];const c=h.render();assert(c.coreText.startsWith(b.coreText));assert.equal(eventLines(c.prompt).at(-1).revoked,true);
  h.value.context.instructions=[{path:'AGENTS.md',content:'当前有效约束'}];h.session.compacted_through=1;h.session.summary='摘要';const d=h.render();assert(d.prompt.includes('CHECKPOINT '));assert(d.prompt.includes('当前有效约束'));
  h.session.compacted_through=0;assert.equal(h.render().descriptor.generationReason,'history_rewind');
+}));
+
+test('system instruction preserves the ca10f38 UTF-8 bytes',()=>{
+ assert.equal(Buffer.byteLength(instruction),6523);
+ assert.equal(requestHash(instruction),'9ce77496534b09cee42cf35a291a2217131ddfa9cdbb5934bc6b040d08ebd7b8');
+});
+
+test('unapproved external instruction bodies stay out of legacy and persisted stable prompts',()=>fixture(h=>{
+ const dir=mkdtempSync(join(tmpdir(),'apix-prompt-rules-'));
+ try{
+  const root=join(dir,'project'),external=join(dir,'outside.md');mkdirSync(root);
+  const prior='Previously approved external guidance',next='Unapproved replacement guidance';
+  writeFileSync(join(root,'AGENTS.md'),'@../outside.md\nProject rules');writeFileSync(external,prior);
+  const render=(externalApprovals=[])=>{
+   h.value.context.instructions=loadInstructions(root,{externalApprovals});
+   return {legacy:legacyAssistantPrompt(instruction,[],h.value).prompt,stable:h.render()};
+  };
+  h.projection.configure('s','stable-prefix-v1',0);
+  const pending=render(),approval=h.value.context.instructions[0].approval;
+  assert(!pending.legacy.includes(prior));assert(!pending.stable.prompt.includes(prior));
+  const approved=render([approval]);assert(approved.legacy.includes(prior));assert(approved.stable.prompt.includes(prior));
+  assert.equal(render([approval]).stable.descriptor.generation,approved.stable.descriptor.generation);
+  h.restart();const revoked=render();
+  assert.equal(revoked.stable.descriptor.generationReason,'instructions');
+  assert.notEqual(revoked.stable.descriptor.generation,approved.stable.descriptor.generation);
+  assert(!revoked.legacy.includes(prior));assert(!revoked.stable.prompt.includes(prior));
+  render([approval]);writeFileSync(external,next);
+  const replaced=render([approval]);
+  for(const body of [prior,next]){assert(!replaced.legacy.includes(body));assert(!replaced.stable.prompt.includes(body));}
+  assert(replaced.stable.prompt.includes('Project rules'));
+ }finally{rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}
 }));
 
 test('discovery appends complete schema; mode, route, permissions and catalog changes declare new generations',()=>fixture(h=>{
@@ -119,3 +156,9 @@ test('stable retry freezes core and body; partial-stream cancellation retains tr
  cancel=true;const controller=new AbortController(),attempts=[];await assert.rejects(inferModel(settings,rendered.prompt,()=>controller.abort(),{signal:controller.signal,promptDescriptor:rendered.descriptor,diagnostics:{scope,usageId:()=> 'cancel',tracker:createPromptDiagnostics()},onAttempt:a=>attempts.push(a)}));assert.equal(requests.length,3);assert.equal(attempts.length,1);assert.equal(attempts[0].status,'failed');assert.equal(attempts[0].transportObservation.responseHeaders,true);assert.equal(attempts[0].transportObservation.terminal,false);
  }finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
+
+test('supervision waiting is display-only while terminal delegation failure stays in stable facts',()=>fixture(h=>{
+ h.projection.configure('s','stable-prefix-v1',0);
+ h.add('supervision_waiting',{content:'waiting display'});h.add('delegation_blocked',{content:'terminal failure',child:{tasks:[{id:'t',failure:'test failed'}]}});
+ const result=h.render();assert(!result.coreText.includes('waiting display'));assert(result.coreText.includes('terminal failure'));assert(result.coreText.includes('test failed'));
+}));

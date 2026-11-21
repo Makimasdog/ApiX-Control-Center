@@ -6,6 +6,7 @@ import {telegramAdapter} from './telegram-adapter.js';
 import {wechatAdapter} from './wechat-adapter.js';
 import {ProviderFailure, type RemoteAdapter, type RemoteConfig, type RemoteMessage} from './remote-adapter.js';
 import type {ExternalChannel, MessageEnvelope} from './message-format.js';
+import {ensureModuleSchema} from '../../infrastructure/schema.js';
 
 interface ChannelAssistant {
   createChannelSession(projectId: string, channel: ExternalChannel): string;
@@ -56,15 +57,7 @@ export function createChannelRelay(
   assistant: ChannelAssistant,
   fetcher: typeof fetch = fetch,
 ) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS assistant_channel_routes (
-      route_key TEXT PRIMARY KEY, session_id TEXT REFERENCES assistant_sessions(id), cursor TEXT NOT NULL DEFAULT ''
-    );
-    CREATE TABLE IF NOT EXISTS assistant_channel_deliveries (
-      route_key TEXT NOT NULL REFERENCES assistant_channel_routes(route_key),
-      message_id TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(route_key,message_id)
-    );
-  `);
+  ensureModuleSchema(db, "assistant-core-channels");
   let lifecycle: AbortController | undefined;
   let configError = false;
   const states = new Map<string, {config: RemoteConfig; state: ChannelState}>();

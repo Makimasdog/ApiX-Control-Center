@@ -45,4 +45,6 @@ npm 10 的 `ignore-scripts` 会关闭安装脚本，但显式 `npm run` 仍执�
 
 `npm run test:npm:browser` 启动独立生产服务和回环协议夹具，在 `.tmp-p0-p2/npm-browser.json` 输出 URL 与临时目录。用实际浏览器完成以上流程后，向报告的 `result` 路径写入观测结果 `{passed:true}`；未完成则 15 分钟 watchdog 失败。该命令本身不能代替浏览器核验。
 
+自动浏览器入口为 `npm run test:ui:projects`，也纳入 `test:ui:all`。实际点击只读诊断、关闭网络的方案生成和批准，经过真实 npm 副本失败检查、尾部日志读取与修复、v2、验收和刷新；断言公开宿主验证结果及页面状态，使用本地协议响应，付费模型调用为零。
+
 真实付费模型必须取得独立预算批准；项目下载或脚本批准不能授权模型收费。没有预算时标记 `not_run`。

@@ -42,6 +42,24 @@ test('high risk checkpoints repeat and two unanswered checkpoints stop the known
   await service.tick();assert.equal(counts().retries,1);assert.equal(service.details('plan').repairs[0].employee_id,'b');assert.equal(service.details('plan').repairs[0].status,'dispatched');
 }));
 
+test('observed worker activity prevents a stop for two missed checkpoints without extending the run deadline',()=>fixture(async({db,service,deps,events,counts})=>{
+  await service.tick();
+  const stale=new Date(Date.now()-35000).toISOString();
+  db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);
+  db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
+  await service.tick();
+  db.prepare('UPDATE autonomy_tasks SET last_checkpoint=?').run(stale);
+  db.prepare('UPDATE agent_messages SET created_at=?').run(stale);
+  deps.lastActivityAt=()=>new Date().toISOString();
+  await service.tick();
+  assert.equal(events.filter(event=>event.kind==='autonomy.checkpoint').length,3);
+  assert(!events.some(event=>event.kind==='autonomy.unresponsive_stop'));
+  assert.equal(counts().retries,0);
+  db.prepare('UPDATE runs SET started_at=?').run(new Date(Date.now()-660000).toISOString());
+  await service.tick();
+  assert(events.some(event=>event.kind==='autonomy.timeout'));
+}));
+
 test('credential configuration blockers pause autonomy without code repair attempts',()=>fixture(async({db,service,counts})=>{
   db.prepare("UPDATE tasks SET status='blocked',result=?").run('员工认证与管理者凭据共用，请分离密钥');
   db.exec("UPDATE runs SET status='cancelled'");await service.tick();

@@ -85,6 +85,18 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
  const event=(s:Session,role:string,kind:string,body:unknown)=>db.prepare('INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,?,?,?,?)').run(s.id,role,kind,JSON.stringify(body),now());
  const entries=(s:Session,kind:string)=>rows<{id:number;body:string}>('SELECT id,body FROM assistant_events WHERE session_id=? AND kind=? ORDER BY id',s.id,kind).map(e=>({...JSON.parse(e.body),eventId:e.id}));
  function current(id:string):Task|null{const e=row<{id:number;body:string}>("SELECT id,body FROM assistant_events WHERE session_id=? AND kind='task_started' ORDER BY id DESC LIMIT 1",id);return e?{...JSON.parse(e.body),startedEventId:e.id}:null;}
+ function hasUnreviewedCodeDelivery(sessionId:string){
+  const task=current(sessionId);
+  if(!task)return false;
+  const delivery=row<{deliveryId:string;requiresVerification:number}>(`
+   SELECT json_extract(body,'$.id') AS deliveryId,json_extract(body,'$.requiresVerification') AS requiresVerification
+   FROM assistant_events WHERE session_id=? AND kind='delivery_record' AND id>?
+     AND json_extract(body,'$.taskId')=? ORDER BY id DESC LIMIT 1`,sessionId,task.startedEventId,task.id);
+  return !!delivery?.requiresVerification&&!row(`
+   SELECT id FROM assistant_events WHERE session_id=? AND id>?
+     AND kind IN ('delivery_accepted','delivery_changes_requested')
+     AND json_extract(body,'$.deliveryId')=? LIMIT 1`,sessionId,task.startedEventId,delivery.deliveryId);
+ }
  function transaction<T>(fn:()=>T):T{db.exec('SAVEPOINT assistant_delivery');try{const value=fn();db.exec('RELEASE assistant_delivery');return value;}catch(e){db.exec('ROLLBACK TO assistant_delivery');db.exec('RELEASE assistant_delivery');throw e;}}
  function snapshot(ref:string|null){if(!ref)throw new Error('此交付没有代码基线');const saved=row<{body:string;sha256:string;created_at:string}>('SELECT body,sha256,created_at FROM assistant_outputs WHERE id=?',ref);if(!saved||Date.parse(saved.created_at)<Date.parse(now())-reviewLimits.days*86400000)throw new Error('审阅资料已过期或不可用');if(sha(saved.body)!==saved.sha256)throw new Error('审阅资料完整性错误');return JSON.parse(saved.body).snapshot as Snapshot;}
  function save(s:Session,task:Task,value:Snapshot){
@@ -113,9 +125,16 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
    const source=known&&chain===(b?.sha256??null)?'agent_file_operations':'unattributed_or_external',detail=(a&&!a.content&&a.detail!=='text')||(b&&!b.content&&b.detail!=='text')?{diff:'仅有元数据：二进制或超出文本预算',diffComplete:false}:reviewDiff(a?.content??'',b?.content??'');
    if(detail.diff.length>remaining){detail.diff=detail.diff.slice(0,remaining);detail.diffComplete=false;}remaining-=detail.diff.length;return [{path,kind:!a?'added':!b?'deleted':'modified',beforeSha256:a?.sha256??null,afterSha256:b?.sha256??null,beforeBytes:a?.size??null,afterBytes:b?.size??null,source,...detail}];});
  }
- async function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {changes:[],baseline:null,final:null};const root=deps.root(s.project_id),initial=snapshot(b.ref),final=(await projectIo('reviewSnapshot',[root,deps.artifacts?.(s)]));if(deps.root(s.project_id)!==root)throw new Error('扫描期间项目路径已变化');return {changes:net(s,task,initial,final),baseline:b,final};}
+ /**
+  * observe - 对比任务基线与当前工作区
+  *
+  * observed=false 表示**根本没有观察**（没有任务、没有项目根、没有基线），
+  * 与「观察了，但没有变化」是两件事。此前两者都返回 changes:[]，
+  * 调用方无法区分，于是"无法核对"会被当成"确认没有改动"静默放过。
+  */
+ async function observe(s:Session){const b=baseline(s),task=current(s.id);if(!b||!task||!deps.root)return {observed:false,changes:[] as never[],baseline:null,final:null};const root=deps.root(s.project_id),initial=snapshot(b.ref),final=(await projectIo('reviewSnapshot',[root,deps.artifacts?.(s)]));if(deps.root(s.project_id)!==root)throw new Error('扫描期间项目路径已变化');return {observed:true,changes:net(s,task,initial,final),baseline:b,final};}
  async function freeze(s:Session,modelSummary:string){
-  const sourceRoot=deps.root?.(s.project_id),task=current(s.id);if(!task)return null;let observed:Awaited<ReturnType<typeof observe>>;try{observed=(await observe(s));}catch(e){if(s.needs_verification)throw e;observed={changes:[],baseline:null,final:null};}
+  const sourceRoot=deps.root?.(s.project_id),task=current(s.id);if(!task)return null;let observed:Awaited<ReturnType<typeof observe>>;try{observed=(await observe(s));}catch(e){if(s.needs_verification)throw e;observed={observed:false,changes:[],baseline:null,final:null};}
   if(s.needs_verification&&(!observed.baseline||!observed.final))throw new Error('没有可核对的任务基线，不能创建代码交付；请明确开始新任务');
   const previous=entries(s,'delivery_record').filter(e=>e.taskId===task.id).at(-1),verification=(await deps.verification(s));
   assertCurrent(s);if(current(s.id)?.id!==task.id||deps.root?.(s.project_id)!==sourceRoot)throw new Error('扫描期间任务或路径已变化');
@@ -132,6 +151,16 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
     if(c.log?.complete!==true)throw new Error('检查日志不完整，不能正式验收');
    }
   }
+ }
+ function acceptVerified(s:Session,d:Delivery,verification:Verification){
+  if(!d.requiresVerification||!d.finalRef||!d.baselineRef||!d.fingerprint||
+     !d.netChanges.length||d.netChanges.some(change=>change.source!=='agent_file_operations')||
+     verification.verificationStatus!=='verified'||d.verification.verificationStatus!=='verified'||
+     !verification.contract||verification.contract.version!==d.verification.contract?.version||
+     !verification.checks?.length||verification.checks.some(check=>check?.projectFingerprint!==d.fingerprint))return false;
+  try{evidenceCurrent(d);}catch{return false;}
+  event(s,'assistant','delivery_accepted',{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,source:'apix',at:now()});
+  return true;
  }
  async function view(s:Session,d:Delivery,verification?:Verification){let staleReason:string|null=null;try{deps.admit(s);if(d.finalRef)snapshot(d.finalRef);if(d.baselineRef)snapshot(d.baselineRef);if(d.fingerprint&&(!deps.root||((await deps.fingerprint?.(s))??(await projectIo('projectFingerprint',[deps.root(s.project_id)])))!==d.fingerprint))staleReason='工作区已变化';if(d.requiresVerification){const v=verification??(await deps.verification(s));if(v.contract?.version!==d.verification.contract?.version)staleReason='验收契约已变化';else if(v.verificationStatus!=='verified'&&!entries(s,'delivery_changes_requested').some(e=>e.deliveryId===d.id))staleReason??='当前可信检查尚未通过';evidenceCurrent(d);}}catch(e){staleReason=e instanceof Error?e.message:'交付资料不可用';}
   const accepted=entries(s,'delivery_accepted').find(e=>e.deliveryId===d.id),feedback=entries(s,'delivery_changes_requested').filter(e=>e.deliveryId===d.id);const latest=entries(s,'delivery_record').filter(e=>e.taskId===d.taskId).at(-1);if(latest?.id!==d.id)staleReason??='已有新交付版本';if(current(s.id)?.id!==d.taskId)staleReason??='当前已是其他任务';
@@ -152,5 +181,5 @@ export function createAssistantDelivery(store:Store,deps:{root?:(projectId:strin
   transaction(()=>{if(action==='accept'&&entries(s,'delivery_accepted').some(e=>e.deliveryId===d.id))return;event(s,'user',kind,{deliveryId:d.id,deliveryVersion:d.version,taskId:d.taskId,requestId,comment,at:now()});const changed=db.prepare("UPDATE assistant_sessions SET version=version+1,status=?,steps=0 WHERE id=? AND version=?").run(action==='request_changes'?'idle':s.status,s.id,s.version);if(changed.changes!==1)throw new Error('会话状态写入未确认，未保存验收');});
   return await view(s,d);
  }
- return {current,start,ensureBaseline,observe,freeze,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
+ return {current,hasUnreviewedCodeDelivery,start,ensureBaseline,observe,freeze,acceptVerified,state,get:async (s:Session,id:string)=>(await view(s,get(s,id))),readFile,decide};
 }

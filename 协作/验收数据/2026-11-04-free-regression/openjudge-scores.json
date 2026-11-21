@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "engine": "py-openjudge",
+  "version": "0.2.0",
+  "python": "3.11.9",
+  "results": [
+    {
+      "caseId": "coding-logic",
+      "attemptId": "ce46ecfdad95a102",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-multi",
+      "attemptId": "f4ca8a091f4293f3",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-large",
+      "attemptId": "5a523ac83d48dda8",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-logs",
+      "attemptId": "b7b21a11c4d5a844",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "coding-conflict",
+      "attemptId": "011bf003bcc46822",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "runtime-verified:pass; frozen-task-correct:pass; required-trace:pass; processes-ended:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-diamond",
+      "attemptId": "e028c3a9856e22a3",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "dispatch-no-failure:pass; dependencies-wait-for-acceptance:pass; two-distinct-workers-running:pass; integration-waits:pass; guidance-completed:pass; one-branch-insufficient:pass; host-verifies-integrated-code:pass; host-hidden-inputs:pass; both-branches-transferred:pass; user-content-preserved:pass; all-deliveries-accepted:pass; session-completed:pass; accepted-state-survives-restart:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-recovery",
+      "attemptId": "80f2028b55fb2a6f",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "dispatch-no-failure:pass; reassigned-to-alternate:pass; partial-work-preserved:pass; recovery-does-not-bypass-acceptance:pass; one-failed-one-recovered-run:pass; recovered-session-completed:pass",
+      "semanticStatus": "not_run"
+    },
+    {
+      "caseId": "collaboration-stop",
+      "attemptId": "62a428a0593bec83",
+      "hardStatus": "pass",
+      "score": 1.0,
+      "reason": "dispatch-no-failure:pass; dependent-never-launched:pass; stopped-run-not-completed:pass; stop-evidence-known:pass",
+      "semanticStatus": "not_run"
+    }
+  ],
+  "distribution": {
+    "name": "Distribution Analysis",
+    "metadata": {
+      "explanation": "Analyzed 8 scores with mean=1.000, median=1.000, stdev=0.000",
+      "total_samples": 8,
+      "valid_results": 8,
+      "error_results": 0,
+      "skipped_results": 0,
+      "coverage_rate": 1.0
+    },
+    "mean": 1.0,
+    "median": 1.0,
+    "stdev": 0.0,
+    "min_score": 1.0,
+    "max_score": 1.0
+  },
+  "semanticStatus": "not_run"
+}

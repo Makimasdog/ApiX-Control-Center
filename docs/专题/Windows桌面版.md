@@ -36,13 +36,15 @@ $env:NPM_CONFIG_CACHE = Join-Path $PWD '.tmp-desktop/npm-cache'
 npm run desktop:pack
 ```
 
+2026-11-08 的通知验收构建遇到 Claude Windows 原生依赖经代理下载缓慢。直连官方 npm 地址取得锁定版本后，按锁文件校验 SHA-512，并填充该轮独立 npm 缓存，随后依赖安装和桌面打包完成。需要复现同一网络绕行时，在本次构建终端设置 `NPM_CONFIG_NOPROXY=registry.npmjs.org` 和 `NPM_CONFIG_PREFER_OFFLINE=true`，使用独立缓存预取锁文件中的原生依赖地址。具体版本、完整性值和产物哈希见[本轮证据](../../协作/验收数据/2026-11-08-native-notifications/verification.json)。
+
 ## 数据与模型配置
 
 默认目录：`%APPDATA%\ApiX-Control-Center`。数据库 `apix.sqlite`、日志 `desktop.log` 和 `.env` 均位于此处。菜单“应用”提供打开目录和编辑配置入口。
 
 首次启动仅从 `.env.example` 创建空白配置；**不会复制仓库的 `.env`、模型密钥或网页版数据库**。在“应用与协作设置 → Agent 供应商中心”新建供应商并填写 Base URL、模型 ID、协议和 API Key，再应用到 ApiX；Codex 与 Claude Code 员工也在同一页面绑定。桌面版 `.env` 仍可用于员工 CLI 或既有环境变量引用。不要向他人分发个人数据目录。日志每次启动覆盖，排错时先保存当前日志。
 
-桌面版默认与网页版数据分开，不自动迁移。请勿让两个服务同时使用同一个数据库。需要自定义目录时，可在启动前设置 `APIX_DESKTOP_DATA_DIR`；这也用于隔离验收。卸载不会主动删除上述数据目录，重装仍可继续使用；备份时先退出应用，再复制整个数据目录。
+桌面版默认与网页版数据分开，不自动迁移。请勿让两个服务同时使用同一个数据库。需要自定义目录时，可在启动前设置 `APIX_DESKTOP_DATA_DIR`；这也用于隔离验收。卸载会移除程序和当前用户的安装器缓存，保留应用数据目录供重装继续使用。备份时先退出应用，再复制整个数据目录。
 
 ## 启停和员工工具
 
@@ -53,6 +55,33 @@ Windows PowerShell 必须可用。Git、Codex、Claude 等员工工具仍需单�
 命令与桌面后端共用 `src/execution/windows-command.ps1`。该脚本必须以 **UTF-8 with BOM** 保存，供 Windows PowerShell 5.1 正确识别中文脚本；它显式按 UTF-8 读取同目录 C# 源码，stdin/stdout 也使用 UTF-8。单行 JSON 配置中的参数、目录和环境变量可包含中文、emoji、引号及转义换行。
 
 入口只接受 JSON 对象及对象形式的 `env`。空输入、畸形 JSON、顶层数组或无效 `env` 会在启动 Job/worker 前返回固定 `error|<Base64 错误>|no_worker`，退出码 1；不会回显配置原文或环境变量。已打包的旧程序需要重新构建才能包含修复；本轮不追溯清理旧版本留下的错误日志。
+
+## 员工请求通知
+
+Windows 桌面端运行时，员工原生提问和单次审批会触发系统通知。窗口最小化时也会检查所有项目。通知只展示员工名称和请求类型，点击会唤回窗口、切换到对应项目，并聚焦原对话的请求卡片。通知内容不包含命令、问题、回答、项目名或对话标题。
+
+桌面主进程每 1.5 秒读取一次本机所有者接口 `GET /api/assistant/worker-notifications`。该接口返回有效员工请求的项目、会话、请求标识、类型和员工显示名，与[总览待办](总览待办.md)使用相同的有效性查询。同一个请求 ID 在一次桌面运行中最多展示一次。请求处理或失效后，下一次成功同步会撤回通知。横幅超时后仍保留通知句柄，用于移除 Windows 通知中心的对应条目。退出应用时清理本轮通知；后端重新启动时旧的待处理原生请求失效。 [Electron 通知 API](https://www.electronjs.org/docs/latest/api/notification)
+
+Grok Bot 的公开更新记录提供了通知随等待状态关闭、委派问题送回发起对话的参考。Windows 是否显示横幅取决于系统通知设置和应用标识注册。安装版使用开始菜单快捷方式的应用标识；开发版需按 Electron 文档注册快捷方式。 [Grok Bot 官方更新](https://x.ai/changelog/bot) · [Electron Windows 通知说明](https://www.electronjs.org/docs/latest/tutorial/notifications#platform-considerations)
+
+验证入口为 `npm run test:desktop`、`node scripts/verification/verify-assistant-workbench.mjs` 和打包后的 `npm run test:desktop:app`。已安装 Windows 版可手动验证最小化时的横幅、点击后的定位，以及未点击的通知在请求处理后从通知中心移除。
+
+### 原生通知验收夹具
+
+运行 `node scripts/verification/serve-desktop-notification-fixture.mjs "<打包后的 exe 完整路径>"`。脚本启动可见的打包应用，在系统临时目录建立独立数据和 Git 项目，使用本地规划 HTTP 对端和原生运行时协议夹具。控制台输出的 `output` 是本轮夹具目录，`state.json` 的 `phase=ready` 表示准备完成。主子会话关联在派发前预置，后续派发、请求、回答及失效处理使用真实服务。
+
+将夹具目录赋给 `$fixtureOutput`，通过 `control.json` 发出以下指令。每个指令 ID 只执行一次，读取下一份快照时使用新 ID。
+
+```powershell
+@{ id='dispatch-1'; action='dispatch' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $fixtureOutput 'control.json')
+@{ id='history-initial'; action='history' } | ConvertTo-Json | Set-Content -Encoding utf8 (Join-Path $fixtureOutput 'control.json')
+```
+
+派发会产生“点击核查员”的提问、“审批核查员”的审批和“失效核查员”的提问。等待通知出现后，用 `history` 指令两次读取 Windows 原生通知历史，对照数量及 Tag 验证去重。用 `@{ id='invalidate-1'; action='invalidate' }` 写入控制文件，会向第三条请求提交错误权限版本，使宿主返回 409 并将该请求标为失效。后续原生历史应移除该条通知。
+
+由操作者实际点击提问和审批通知，核对原对话与对应请求卡片，再提交回答和批准。保持通知条目由应用自动清除，随后用新的 `history` 指令记录结果。历史快照按指令 ID 保存为 JSON，内容来自 Windows `ToastNotificationManager.History`。脚本提供验收环境和状态快照，点击操作及验收结论需另行记录。
+
+2026-11-08 实测中，两次原生历史读取均为三条且 Tag 一致。请求失效后为两条，两项提交后为零条。用户完成并确认两类通知的实际点击与卡片提交，Codex 核对恢复后的原项目、对话、员工状态和接收记录。失效通知的自动清除有独立历史快照，处理后归零的样本包含系统点击，未单独区分点击时的系统移除与提交后的应用撤回。原生窗口退出清理因桌面输入中断而未核实。 [本轮自审](../../协作/审查/2026-11/2026-11-08-桌面通知实测与验收脚本自审.md)
 
 ## 验证
 
@@ -70,6 +99,12 @@ npm run test:desktop:app
 应用验收还会创建隔离项目，核对项目 Worker 完整扫描、项目指令和上下文读取、npm 方案使用包内 Node/npm，以及渲染错误为零。宿主安装了 Git 时同时检查 Git 诊断与仓库登记；未安装时跳过这两项。验收不调用模型、不安装项目依赖，也不运行项目检查脚本。超时失败时等待 Electron 关闭后清理临时程序副本，数据与日志保留用于排错。
 
 指定其他输出目录的应用可运行 `npm run test:desktop:app -- "完整 exe 路径"`。旧包缺少新增探针证据时会明确报错，需要重新构建。最近实际运行记录见[2026-10-26 Electron 实际运行验证与自审](../../协作/归档/2026-10/2026-10-26-Electron实际运行验证与自审.md)。
+
+运行 `npm run test:desktop:installer` 可在 Windows x64 上构建并执行两份 NSIS 验收包。脚本从 Git 导出基线 `8b754ef` 与当前 `HEAD`，使用测试版本号 `0.3.2` 和 `0.3.3`。两份包共用每次随机生成的应用标识和快捷方式，按当前用户静默安装到 `.tmp/installer-verification/run-*`。测试用独立数据目录创建项目和会话，核对升级后的启动、数据库及配置，再验证卸载移除程序、登记、快捷方式和安装器缓存并保留数据。包、日志与 `report.json` 留在该次验收目录。仅使用本机后端，不调用模型。
+
+该验收覆盖同一 Windows 主机上隔离标识的静默安装、升级和卸载。发布包的正式应用标识、交互向导、全用户安装和签名验证需分别验收。
+
+构建使用两个 Git 版本各自锁定的生产依赖。首次运行需要访问 npm 注册表，或通过 `npm_config_cache` 指向已覆盖两份锁文件的缓存；启用 npm 离线模式前须先填充缓存。若 npm 报缺少 tarball，失败发生在打包准备阶段，尚未开始验证安装器。
 
 2026-10-28 的编码修复、40 项命令/桌面回归与真实 Electron 开发版冒烟见 [Windows 命令入口 UTF-8 修复自审](../../协作/审查/2026-10/2026-10-28-Windows命令入口UTF8修复自审.md)。该轮没有重建安装包。
 

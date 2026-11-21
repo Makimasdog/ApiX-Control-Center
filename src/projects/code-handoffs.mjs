@@ -198,10 +198,12 @@ export function createCodeHandoffs({db,row,rows,now,dataDir,recordTask,persistWo
         // 跨仓库的代码依赖不能直接应用，需要先集成对应仓库
         if(sw.common!==w.common && diff)throw new Error('跨仓库代码依赖需在对应仓库集成后重新安排，不能向当前仓库应用');
         if(sw.common===w.common && sw.base!==w.base)throw new Error('前置工作区基线不一致，请重新审查');
-        report.sources.push({taskId:source.id,commit:source.delivery_commit,inputCommit:sw.input});
+        const sourceReport={taskId:source.id,commit:source.delivery_commit,inputCommit:sw.input,files:[]};
+        report.sources.push(sourceReport);
         if(!diff)continue;
         assertCurrent();assertAllowed();(await git(w.path,['apply','--3way','--index','-'],{input:diff}));
-        report.files.push(...parts((await git(w.path,['diff','--name-only','-z',sw.input,source.delivery_commit]))));
+        sourceReport.files=parts((await git(w.path,['diff','--name-only','-z',sw.input,source.delivery_commit])));
+        report.files.push(...sourceReport.files);
       }
       const tree=(await git(w.path,['write-tree'])).trim();
       const input=sources.length ? (await commitTree(w.path,tree,w.input,`ApiX accepted inputs ${task.id}`)) : w.input;

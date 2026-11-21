@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-11-02T03:43:04.978Z",
+  "repositoryHead": "e9554327c3558d3b4f9cffea5ee469c0219ff793",
+  "sourceHashes": {
+    "src/evaluation/evidence.mjs": "9cc9e38fab8eeee39e45a86323db0a8790e3b24037ff427572418cc50e1e9533",
+    "src/evaluation/model-gateway.mjs": "d1ea5593196e3fbaf98898325dad601b36136c87debb7e9ca340248286b8bdf0",
+    "scripts/evaluation/evaluate-agents.mjs": "c39e3aae929778a53a434491d0e5040b00deb0c9c6f9166f4ac03a2fde46daed",
+    "scripts/evaluation/collaboration-scenarios.mjs": "6fecb68fb71655492b3a947fefba84d9e7aa24cccecf3b913368fbca83388109",
+    "scripts/evaluation/openjudge/evaluate.py": "ec307fb4d699ce32028bbb03f89a5bf4e25f4be1b9206b2aab1fb1e5c695a0d0",
+    "scripts/evaluation/openjudge/requirements.lock": "60ea0d892e92c17fc9b1aba9f068e5b62635d87cde6be329398ac97c0dc94486",
+    "test/evaluation-worker.mjs": "e1b73ddf67759cb5b015315c133def16d9ac13da9b6df44958b45e1a7deb0ba6",
+    "test/evaluation-model.mjs": "bd3a318542a8b59e338378fa7c39ce20aa5e120f9b46323a77f1146c16e9aaff"
+  },
+  "upstreamCommit": "070f7b8f2a3144f50788a9161c509c24130fb502",
+  "mode": "mixed-real-provider-and-local-protocol",
+  "model": "deepseek-v4.1-flash-1017"
+}

@@ -26,7 +26,11 @@ function token(value:unknown){if(typeof value!=='string'||value.length>2000)thro
 /** cursor - 将状态对象编码为 base64url 格式的翻页游标 */
 const cursor=(value:unknown)=>Buffer.from(JSON.stringify(value)).toString('base64url');
 /** stable - 比对两次 fstat 结果，确认文件在读取期间未被修改 */
-function stable(a:ReturnType<typeof fstatSync>,b:ReturnType<typeof fstatSync>){return a.ino===b.ino&&a.dev===b.dev&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;}
+function stable(a:ReturnType<typeof fstatSync>,b:ReturnType<typeof fstatSync>,compareDevice=true){return a.ino===b.ino&&(!compareDevice||a.dev===b.dev)&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;}
+function stillAtPath(opened:ReturnType<typeof fstatSync>,path:string){
+ const current=lstatSync(path);
+ return current.isFile()&&stable(opened,current,process.platform!=='win32'||current.dev!==0);
+}
 
 // Hash the bounded source using fixed-size buffers; a range never loads the whole file into context or memory.
 /**
@@ -61,7 +65,7 @@ export function readSource(path:string,args:Record<string,unknown>){
     if(chunk[i]===10)line++;
    }offset+=n;
   }decoder.decode();
-  const sha256=hash.digest('hex');if(!stable(before,fstatSync(fd))||!stable(before,lstatSync(path)))throw new Error('读取期间文件发生变化，请重新读取');
+  const sha256=hash.digest('hex');if(!stable(before,fstatSync(fd))||!stillAtPath(before,path))throw new Error('读取期间文件发生变化，请重新读取');
   // 校验文件版本：游标中的哈希或期望哈希必须与当前一致
   if(page&&page.sha256!==sha256||args.expectedSha256!==undefined&&args.expectedSha256!==sha256)throw new Error('文件版本变化，游标过期，请重新读取');
   // 确保返回的内容在 UTF-8 边界上完整（不会截断多字节字符）
@@ -81,7 +85,7 @@ export function readSource(path:string,args:Record<string,unknown>){
  */
 export function sourceBuffer(path:string,limit=codingLimits.editFileBytes){
  const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>limit)throw new Error('文件不在有界文本编辑范围（最大 2 MiB）');
- const fd=openSync(path,'r');try{const start=fstatSync(fd),buffer=Buffer.alloc(limit+1);let n=0,read;while(n<=limit&&(read=readSync(fd,buffer,n,buffer.length-n,null))>0)n+=read;if(n>limit||!stable(start,fstatSync(fd))||!stable(start,lstatSync(path)))throw new Error('文件版本变化或超出读取预算');const data=buffer.subarray(0,n);if(data.includes(0))throw new Error('不能编辑二进制文件');new TextDecoder('utf-8',{fatal:true}).decode(data);return data;}finally{closeSync(fd);}
+ const fd=openSync(path,'r');try{const start=fstatSync(fd),buffer=Buffer.alloc(limit+1);let n=0,read;while(n<=limit&&(read=readSync(fd,buffer,n,buffer.length-n,null))>0)n+=read;if(n>limit||!stable(start,fstatSync(fd))||!stillAtPath(start,path))throw new Error('文件版本变化或超出读取预算');const data=buffer.subarray(0,n);if(data.includes(0))throw new Error('不能编辑二进制文件');new TextDecoder('utf-8',{fatal:true}).decode(data);return data;}finally{closeSync(fd);}
 }
 /** PreparedEdit - 编辑预处理结果，包含编辑前后的内容、哈希、diff 和统计信息 */
 export interface PreparedEdit {before:Buffer;after:Buffer;beforeSha256:string;afterSha256:string;diff:string;diffTruncated:boolean;added:number;removed:number}

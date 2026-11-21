@@ -8,6 +8,7 @@ import {PreflightError} from '../../recovery/fault-policy.js';
 import {invalid,operations,required,unavailable,type AgentSkill} from './manifest.js';
 import {readBounded} from '../channels/remote-adapter.js';
 import {sandboxJavaScript} from './sandbox.js';
+import {ensureModuleSchema} from '../../infrastructure/schema.js';
 
 const string=(maxLength:number)=>({type:'string',minLength:1,maxLength});
 const schema=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object',properties,required,additionalProperties:false});
@@ -48,13 +49,8 @@ function iso(value:unknown){
 export type SkillFileRunner=(tool:'write_file'|'read_file',args:Record<string,unknown>,signal:AbortSignal)=>unknown;
 
 export function createSkillOperations({db,rows,now}:Store,projectRoot:(id:string)=>string,fetcher:typeof fetch=fetch){
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS assistant_skill_calendar (
-      id TEXT PRIMARY KEY,project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,
-      starts_at TEXT NOT NULL,ends_at TEXT NOT NULL,created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS assistant_skill_calendar_time ON assistant_skill_calendar(project_id,starts_at);
-  `);
+  ensureModuleSchema(db, "assistant-core-skill-operations");
+
 
   async function search(query:string,signal:AbortSignal){
     const key=process.env.APIX_SKILL_BRAVE_KEY;

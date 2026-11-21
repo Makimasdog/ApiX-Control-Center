@@ -12,6 +12,8 @@
  */
 import type { Store } from '../coordination/contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 // Usage - 单次推理运行的 Token 用量结构
 type Usage = { input: number | null; output: number | null; cached: number | null; source: string };
 // cache - 合并缓存读取量和写入量，任一缺失则返回 null（表示该运行时未上报缓存数据）
@@ -28,7 +30,7 @@ function object(value: unknown): Record<string,unknown> { return value && typeof
 export function createEmployeeInsights(store: Store) {
   const { db, row, rows } = store;
   // 初始化用量表：每个 run_id 对应一条记录，记录输入/输出/缓存 Token 及数据来源
-  db.exec('CREATE TABLE IF NOT EXISTS apix_run_usage(run_id TEXT PRIMARY KEY REFERENCES runs(id),input_tokens INTEGER,output_tokens INTEGER,cached_tokens INTEGER,source TEXT NOT NULL,updated_at TEXT NOT NULL)');
+  ensureModuleSchema(db, "agents-employee-insights");
   /**
    * observe - 从员工输出事件中提取 Token 用量并写入数据库
    * @param runId - 本次推理运行的唯一标识

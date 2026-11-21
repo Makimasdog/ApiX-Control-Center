@@ -7,8 +7,10 @@ import { PassThrough } from 'node:stream';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer } from 'node:net';
+import { EventEmitter } from 'node:events';
 
 const { startBackend } = createRequire(import.meta.url)('../desktop/backend.cjs');
+const { createWorkerNotifications } = createRequire(import.meta.url)('../desktop/worker-notifications.cjs');
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 async function ended(pid) {
   for (let n = 0; n < 100 && alive(pid); n++) await delay(100);
@@ -31,6 +33,48 @@ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{windowsHid
 writeFileSync(join(process.env.APIX_DATA_DIR,'pids.json'),JSON.stringify({parent:process.pid,child:child.pid}));
 createServer((req,res)=>res.end(JSON.stringify({data:process.env.APIX_DATA_DIR,fixture:process.env.DESKTOP_FIXTURE,node:process.execPath})))
 .listen(Number(process.env.PORT),'127.0.0.1',()=>console.log('ApiX Web: http://127.0.0.1:'+process.env.PORT));`;
+
+test('worker desktop notifications deduplicate, open the exact request and close when it leaves the pending set', async () => {
+  const displayed=[],closed=[],opened=[],errors=[];
+  class Notification extends EventEmitter {
+    constructor(options){super();this.options=options;}
+    show(){displayed.push(this);}
+    close(){closed.push(this);}
+  }
+  const question={projectId:'p1',sessionId:'s1',interactionId:'i1',kind:'question',employee:'核查员'};
+  const approval={projectId:'p2',sessionId:'s2',interactionId:'i2',kind:'approval',employee:'审阅员'};
+  let pending=[question,approval],failure=false;
+  const service=createWorkerNotifications({Notification,readPending:async()=>{
+    if(failure)throw new Error('service unavailable');
+    return pending;
+  },openRequest:target=>opened.push(target),report:error=>errors.push(error)});
+  await service.refresh();
+  await service.refresh();
+  assert.equal(displayed.length,2);
+  assert.match(displayed[0].options.title,/等待回答/);
+  assert.match(displayed[1].options.title,/等待审批/);
+  displayed[0].emit('close'); // Windows may retain the toast in Action Center after this event.
+  displayed[0].emit('click');
+  displayed[0].emit('click');
+  assert.deepEqual(opened,[{projectId:'p1',sessionId:'s1',interactionId:'i1'}]);
+  failure=true;
+  await service.refresh();
+  await service.refresh();
+  assert.equal(errors.length,1);
+  assert.deepEqual(closed,[]);
+  failure=false;
+  pending=[approval];
+  await service.refresh();
+  assert.deepEqual(closed,[displayed[0]]);
+  pending=[question,approval];
+  await service.refresh();
+  assert.equal(displayed.length,2);
+  service.stop();
+  displayed[1].emit('click');
+  await service.refresh();
+  assert.equal(opened.length,1);
+  assert.deepEqual(closed,displayed);
+});
 
 test('desktop owns its backend, loads external configuration, and stops the entire process tree', { skip: process.platform !== 'win32', timeout: 25000 }, () => fixture(async context => {
   writeFileSync(join(context.root, 'server.mjs'), server);

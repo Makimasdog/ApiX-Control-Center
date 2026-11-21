@@ -15,6 +15,8 @@
 import { createHash } from 'node:crypto';
 import { type Store, type Employee, type PlanStep, object, text } from './contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 员工能力档案：描述一个员工的模型、技能、工具和费用信息 */
 export interface CapabilityProfile {
   model: string;              // 模型版本（如 'gpt-4o'、'claude-sonnet-4-20250514'）
@@ -143,13 +145,8 @@ export function createScheduling(store: Store, dependencies: {
   const {db,row,rows,now}=store;
   /** 当前活跃的 ApiX 推理预留 ID 集合（用于结算时判断进程是否仍在运行） */
   const activeManagers=new Set<string>();
-  db.exec(`CREATE TABLE IF NOT EXISTS scheduling_profiles(employee_id TEXT PRIMARY KEY REFERENCES employees(id),body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS scheduling_accounts(id TEXT PRIMARY KEY,body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS scheduling_policies(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS scheduling_tasks(task_id TEXT PRIMARY KEY REFERENCES tasks(id),body TEXT NOT NULL,decision TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS scheduling_attempts(run_id TEXT PRIMARY KEY REFERENCES runs(id),employee_id TEXT NOT NULL,model TEXT NOT NULL,kind TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS scheduling_reservations(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,account_id TEXT,amount INTEGER,currency TEXT,state TEXT NOT NULL,actual INTEGER,created_at TEXT NOT NULL);`);
-  db.exec('CREATE TABLE IF NOT EXISTS scheduling_account_pauses(account_id TEXT PRIMARY KEY,reason TEXT NOT NULL,source_id TEXT NOT NULL,created_at TEXT NOT NULL)');
+  ensureModuleSchema(db, "coordination-scheduling");
+  ensureModuleSchema(db, "coordination-scheduling-2");
   if(!rows<{name:string}>('PRAGMA table_info(scheduling_attempts)').some(c=>c.name==='observed_model'))db.exec('ALTER TABLE scheduling_attempts ADD COLUMN observed_model TEXT');
   /** 获取员工能力档案（未注册则返回空白默认值） */
   function profile(id: string): CapabilityProfile { const saved=row<{body:string}>('SELECT body FROM scheduling_profiles WHERE employee_id=?',id);return saved?JSON.parse(saved.body) as CapabilityProfile:{...blankProfile}; }
@@ -304,9 +301,9 @@ export function createScheduling(store: Store, dependencies: {
    * @returns 分配完成的步骤列表（含调度决策记录）
    * 设计意图：校验并行任务的文件范围不重叠，审查步骤尽量分配独立员工。
    */
-  function assign(projectId: string, steps: PlanStep[], reselect: boolean) {
+  function assign(projectId: string, steps: PlanStep[], reselect: boolean, allowedEmployees?: ReadonlySet<string>) {
     if(steps.some((s,i)=>s.dependsOn.some(n=>!Number.isInteger(n) || n<0 || n>=i)))throw new Error('依赖只能引用前序步骤');
-    const selected=steps.map(step=>{const spec=taskProfile(step.scheduling);const options=candidates(projectId,spec,step.employeeId);const chosen=reselect?options.find(e=>e.eligible):options.find(e=>e.employeeId===step.employeeId && e.eligible);
+    const selected=steps.map(step=>{const spec=taskProfile(step.scheduling);const options=candidates(projectId,spec,step.employeeId).filter(e=>!allowedEmployees||allowedEmployees.has(e.employeeId));const chosen=reselect?options.find(e=>e.eligible):options.find(e=>e.employeeId===step.employeeId && e.eligible);
       if(!chosen)throw new Error('没有满足任务能力、权限及预算约束的员工，请检查候选原因');
       return {...step,employeeId:chosen.employeeId,scheduling:spec,decision:{strategy:'balanced',selectedEmployeeId:chosen.employeeId,candidates:options,estimateSource:'user_approved_upper_bound'}};
     });

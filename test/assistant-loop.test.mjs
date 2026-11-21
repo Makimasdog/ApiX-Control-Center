@@ -1,6 +1,6 @@
 import {createToolProgress} from '../dist/src/assistant/tool-progress.js';
 import {createKnowledgeBase} from '../dist/src/assistant/knowledge-base.js';
-import {PreflightError} from '../dist/src/recovery/fault-policy.js';
+import {FaultError,PreflightError} from '../dist/src/recovery/fault-policy.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -26,7 +26,9 @@ async function fixture(work){
 test('saving mode keeps permission guards and rejects changes while a user decision is pending',()=>fixture(async h=>{
  let s=await h.service.details(h.id);await h.service.setOptimization(h.id,{version:s.version,mode:'saving'});
  h.policy({mode:'read_only',version:1});h.answer(tool('write_file'));await h.service.message(h.id,{content:'尝试修改'});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);assert.equal((await h.service.contextInfo(h.id)).optimization.mode,'saving');
+ assert.deepEqual(h.service.list('p',true),[{id:h.id,title:s.title,action:'inspect'}]);
  h.answer({action:'ask',question:'需要信息',options:['a','b'],multiple:false});await h.service.message(h.id,{content:'先询问信息'});s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');await assert.rejects(h.service.setOptimization(h.id,{version:s.version,mode:'standard'}),/仍在执行|安全状态/);
+ assert.deepEqual(h.service.list('p',true),[{id:h.id,title:s.title,action:'answer'}]);
 }));
 
 for(const mode of ['standard','saving'])test(`${mode} production loop keeps facts across more than eight raw events and excludes display activity immediately`,()=>fixture(async h=>{
@@ -254,8 +256,36 @@ test('compaction persists a summary while original events remain inspectable',()
   for(let i=0;i<14;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,'now')").run(h.id,JSON.stringify({content:'约束：不扩大范围。'+'x'.repeat(5000)}));
   h.answer({summary:'目标与约束：不扩大范围，保留全部证据引用。'},finish);(await h.service.message(h.id,{content:'继续'}));const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert(s.summary.includes('不扩大范围'));assert(s.compacted_through>0);assert(s.events.length>=16);assert(h.prompts[0].startsWith('APIX_COMPACT_JSON'));
 }));
+test('tool scope reuses a cached changed-file set and only rescans events after the last watermark',()=>fixture(async h=>{
+ const scans=[],rows=h.deps.rows;h.deps.rows=(q,...p)=>{if(q.includes("json_extract(body,'$.result.afterSha256')"))scans.push(p);return rows(q,...p);};
+ let writes=0;h.deps.execute=async(_s,name,args)=>{h.calls.push({name,args});return name==='write_file'?{path:args.path,beforeSha256:'before',afterSha256:'after'+(++writes)}:{observed:true};};
+ const service=createAssistantLoop(h.deps);
+ h.answer(tool('write_file',{path:'a.txt',content:'a'}),tool('write_file',{path:'b.txt',content:'b'}),tool('read_file',{path:'a.txt'}),{...finish,outcome:'blocked'});
+ await service.message(h.id,{content:'分步修改两个文件'});const s=await wait(service,h.id);
+ assert.equal(s.status,'attention');assert.deepEqual(h.calls.map(c=>c.name),['write_file','write_file','read_file']);
+ assert.equal(scans.length,3);assert.equal(scans[0][1],0);
+ for(let i=1;i<scans.length;i++){assert.equal(scans[i][1],scans[i-1][2]);assert(scans[i][2]>scans[i][1]);}
+}));
+test('compaction keeps hard constraints across repeated compressions and merges new ones',()=>fixture(async h=>{
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'历史事实 '+i}),new Date().toISOString());
+ h.answer({summary:'第一轮摘要',constraints:['只能修改 src 目录','不要新增依赖']});
+ let s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.equal(s.summary,'【硬约束】\n- 只能修改 src 目录\n- 不要新增依赖\n\n【工作摘要】\n第一轮摘要');
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'继续事实 '+i}),new Date().toISOString());
+ let carried;h.answer(prompt=>{carried=JSON.parse(prompt.split('\n').at(-1)).constraints;return JSON.stringify({summary:'第二轮摘要',constraints:['只能修改 src 目录','必须保留测试证据']});});
+ s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.deepEqual(carried,['只能修改 src 目录','不要新增依赖']);
+ assert(s.summary.includes('- 不要新增依赖'));assert(s.summary.includes('- 必须保留测试证据'));assert(s.summary.endsWith('【工作摘要】\n第二轮摘要'));
+ assert.equal((s.summary.match(/- 只能修改 src 目录/g)||[]).length,1);
+}));
+test('legacy compaction responses without constraints keep the plain summary format',()=>fixture(async h=>{
+ for(let i=0;i<18;i++)h.db.prepare("INSERT INTO assistant_events(session_id,role,kind,body,created_at) VALUES (?,'user','message',?,?)").run(h.id,JSON.stringify({content:'历史事实 '+i}),new Date().toISOString());
+ h.answer({summary:'旧格式摘要'});
+ const s=await h.service.compact(h.id,{version:(await h.service.details(h.id)).version});
+ assert.equal(s.summary,'旧格式摘要');assert(!s.summary.includes('【硬约束】'));
+}));
 test('no-progress guard stops a repeated path before the overall step budget',()=>fixture(async h=>{
-  for(let i=0;i<24;i++)h.answer(tool('list_files'));(await h.service.message(h.id,{content:'检查'}));const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,3);assert(s.events.some(e=>e.kind==='tool_loop_stopped'));
+  for(let i=0;i<24;i++)h.answer(tool('list_files',i%2?{path:'.'}:{}));(await h.service.message(h.id,{content:'检查'}));const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,3);assert(s.events.some(e=>e.kind==='tool_loop_stopped'));
 }));
 
 test('persistent Agent setup always needs explicit approval, including with full project access',()=>fixture(async h=>{
@@ -333,7 +363,20 @@ test('supervision wake limits persist across restart and block runaway reasoning
   let n=0,blocked=false;h.deps.supervisionDebounceMs=0;h.deps.child=()=>({status:blocked?'attention':'running',complete:false,details:{n}});
   h.answer(tool('delegate',{goal:'长任务'}),...Array.from({length:6},()=>finish));(await h.service.message(h.id,{content:'开发并监督'}));await wait(h.service,h.id);
   for(let i=1;i<=6;i++){n=i;await h.service.tick();assert.equal((await wait(h.service,h.id)).status,'waiting_agents');}
-  assert.equal(h.prompts.length,7);const restored=createAssistantLoop(h.deps);n=7;await restored.tick();assert.equal(h.prompts.length,7);assert.equal((await restored.details(h.id)).status,'waiting_agents');blocked=true;await restored.tick();assert.equal((await restored.details(h.id)).status,'attention');
+  assert.equal(h.prompts.length,7);const restored=createAssistantLoop(h.deps);n=7;await restored.tick();assert.equal(h.prompts.length,7);assert.equal((await restored.details(h.id)).status,'waiting_agents');blocked=true;await restored.tick();const blockedState=await restored.details(h.id);assert.equal(blockedState.status,'attention');assert.equal(blockedState.childAttention.childSessionId,'child');assert.match(blockedState.childAttention.reason,/员工流程需要处理/);
+}));
+
+test('child attention is surfaced as a deletable ApiX decision',()=>fixture(async h=>{
+  h.deps.child=()=>({status:'attention',complete:false,details:{id:'child-decision',tasks:[{id:'task-1',status:'blocked',failure:'验收脚本失败'}],autonomy:{reason:'模块检查未通过'},autonomyRecoveryFingerprint:'fp'}});
+  h.answer(tool('delegate',{goal:'长任务'}));(await h.service.message(h.id,{content:'监督'}));await wait(h.service,h.id);h.answer(tool('delegate',{goal:'另一任务'}));
+  h.answer({action:'finish',outcome:'completed',message:'等待监督'});await h.service.tick();await wait(h.service,h.id);
+  const state=await h.service.details(h.id);assert.equal(state.childAttention.childSessionId,'child-decision');assert.equal(state.childAttention.taskId,'task-1');assert.match(state.childAttention.reason,/模块检查未通过/);
+}));
+
+test('unlinked project coordination attention is surfaced in the ApiX conversation',()=>fixture(async h=>{
+  h.deps.attentionSession=(projectId,excludeId)=>{assert.equal(projectId,'p');assert.equal(excludeId,null);return {childSessionId:'coord-1',reason:'计划任务要求 Git 项目以创建独立 worktree',taskId:'task-9',fingerprint:null,title:'分析项目不足之处',unlinked:true,canResume:false};};h.deps.taskRepair=(projectId,id)=>{assert.equal(projectId,'p');assert.equal(id,'task-9');return 'approved-employee';};
+  h.answer(finish);(await h.service.message(h.id,{content:'继续项目'}));await wait(h.service,h.id);
+  const state=await h.service.details(h.id);assert.equal(state.childAttention.childSessionId,'coord-1');assert.equal(state.childAttention.taskId,'task-9');assert.equal(state.childAttention.unlinked,true);assert.equal(state.childAttention.canResume,false);assert.equal(state.childAttention.autoRepair,true);assert.match(state.childAttention.reason,/Git 项目/);
 }));
 
 test('Markdown or prose around the action object is parsed without a protocol repair',()=>fixture(async h=>{
@@ -430,13 +473,36 @@ test('a stopped session with an unfinished effect receipt blocks writers in a ne
 
 
 test('intent clarification persists exactly four options and blocks writes until confirmation',()=>fixture(async h=>{
- const execute=h.deps.execute;h.deps.execute=(session,...rest)=>{assert.equal(session.status,'waiting_user');return execute(session,...rest);};
- h.answer({action:'clarify',question:'希望优化哪一部分？',candidates:['优化现有页面布局','减少页面加载时间','完善键盘操作'],preparation:[{tool:'list_files',args:{}}]});
+ const execute=h.deps.execute;h.deps.execute=(session,...rest)=>{assert.equal(session.status,'running');return execute(session,...rest);};
+ const decision={action:'clarify',question:'希望优化哪一部分？',candidates:['优化现有页面布局','减少页面加载时间','完善键盘操作'],preparation:[{tool:'list_files',args:{}}]};
+ h.answer(decision,decision);
  (await h.service.message(h.id,{content:'优化一下这个项目'}));let s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');assert.equal(s.pending.kind,'intent');assert.equal(s.pending.options.length,4);assert.equal(s.pending.options[3],'以上都不是，我来补充');assert.deepEqual(h.calls.map(c=>c.name),['list_files']);
  await assert.rejects(async ()=>(await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,selected:[s.pending.options[3]],content:''})),/补充/);
  const restarted=createAssistantLoop(h.deps);assert.equal((await restarted.details(h.id)).pending.id,s.pending.id);
  h.answer(finish);await restarted.reply(h.id,{version:s.version,requestId:s.pending.id,selected:[s.pending.options[0]],content:'仅调整设置页间距'});s=await wait(restarted,h.id);assert.equal(s.status,'completed');assert(s.events.some(e=>e.kind==='intent_confirmed'));assert.match(h.prompts.at(-1),/确认本次意图：优化现有页面布局/);assert.match(h.prompts.at(-1),/仅调整设置页间距/);assert.equal(h.calls.length,1);
  await assert.rejects(async ()=>(await restarted.reply(h.id,{version:s.version-1,requestId:'old',selected:[],content:'stale'})));
+}));
+test('local preparation can resolve intent in the same turn without a user request',()=>fixture(async h=>{
+ await enableStable(h);
+ h.answer({action:'clarify',question:'哪个 README 是入口？',candidates:['项目根目录','文档目录','示例目录'],preparation:[{tool:'list_files',args:{}}]},prompt=>{
+  const history=assistantPromptContext(prompt).history;
+  assert(history.some(e=>e.kind==='clarification_prepared'));
+  assert(history.some(e=>e.kind==='tool_result'&&e.body.tool==='list_files'&&e.body.result.observed));
+  return JSON.stringify(finish);
+ });
+ await h.service.message(h.id,{content:'概括项目入口文档'});
+ const s=await wait(h.service,h.id);assert.equal(s.status,'completed');assert(!s.pending);
+ assert.deepEqual(h.service.list('p',true),[]);assert.deepEqual(h.calls.map(c=>c.name),['list_files']);
+}));
+test('model authentication is a configuration action, not an unknown process',()=>fixture(async h=>{
+ h.answer(()=>{throw new FaultError('模型服务返回 HTTP 401',{schema:1,category:'authentication',strategy:'stop',retryable:false});});
+ await h.service.message(h.id,{content:'概括项目入口文档'});
+ const s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(s.modelConfigurationBlocked,true);
+ assert.deepEqual(h.service.list('p',true),[{id:h.id,title:s.title,action:'model_config'}]);assert.equal(h.calls.length,0);
+ h.answer(finish);await h.service.resume(h.id,{version:s.version,retryModel:true});
+ const done=await wait(h.service,h.id);assert.equal(done.status,'completed');assert.equal(done.modelConfigurationBlocked,false);
+ assert.equal(done.events.filter(e=>e.kind==='message').length,1);
+ assert.deepEqual(h.service.list('p',true),[]);
 }));
 test('malformed intent candidates or unsafe preparation never execute a write',()=>fixture(async h=>{
  h.answer({action:'clarify',question:'选什么',candidates:['a','b','b']});(await h.service.message(h.id,{content:'不清楚'}));let s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,0);
@@ -481,4 +547,19 @@ test('revoked or replaced knowledge prevents model context reuse and stale appro
  h.answer(tool('write_file',{path:'a.txt',content:'proposed change'}));(await h.service.message(h.id,{content:'依据资料工作'}));let s=await wait(h.service,h.id);assert.equal(s.status,'waiting_user');const calls=h.calls.length;
  kb.saveSpace('p',{id:space.id,version:1,name:space.name,grants:[]});await h.service.reply(h.id,{version:s.version,requestId:s.pending.id,approved:true});s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.calls.length,calls);assert(s.events.some(e=>e.kind==='knowledge_scope_changed'));
  const prompts=h.prompts.length;(await h.service.message(h.id,{content:'继续读取以前保存的结果'}));s=await wait(h.service,h.id);assert.equal(s.status,'attention');assert.equal(h.prompts.length,prompts);assert(s.events.some(e=>e.kind==='error'&&e.body.error.includes('请新建对话')));
+}));
+
+test('a blocked model conclusion keeps supervising a recovering child and finishes after acceptance across restart',()=>fixture(async h=>{
+  await enableStable(h);
+  let revision=0,accepted=false;
+  h.deps.supervisionDebounceMs=0;
+  h.deps.child=()=>({status:accepted?'completed':'queued',complete:accepted,details:{revision,tasks:[{id:'t',status:accepted?'accepted':'failed',failure:'unit check failed',recovery:{automatic:true,attempts:1,maxAttempts:2}}]}});
+  h.answer(tool('delegate',{goal:'修复失败员工'}),{...finish,outcome:'blocked',message:'员工暂时失败，等待修复'},finish);
+  await h.service.message(h.id,{content:'实现并自动修复失败'});await wait(h.service,h.id);
+  revision++;await h.service.tick();let s=await wait(h.service,h.id);
+  assert.equal(s.status,'waiting_agents');assert(s.events.some(e=>e.kind==='supervision_waiting'));
+  assert.deepEqual(h.service.list('p',true),[]);
+  assert.equal(s.child_session_id,'child');assert.equal(h.calls.filter(c=>c.name==='delegate').length,1);
+  const restored=createAssistantLoop(h.deps);accepted=true;revision++;await restored.tick();s=await wait(restored,h.id);
+  assert.equal(s.status,'completed');assert.equal(s.child_session_id,null);
 }));

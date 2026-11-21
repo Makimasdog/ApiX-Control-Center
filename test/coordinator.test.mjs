@@ -1,4 +1,4 @@
-import {fetch} from './local-fetch.mjs';
+import {fetch,authorizePage} from './local-fetch.mjs';
 import { test } from 'node:test';
 import {serviceDiagnostics,waitServiceReady,stopService} from './service-diagnostics.mjs';
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import { mkdtemp, rm, writeFile, readFile, mkdir, symlink } from 'node:fs/promis
 import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath,pathToFileURL } from 'node:url';
 import { createServer } from 'node:net';
 import { createServer as createHttpServer } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
@@ -18,6 +18,141 @@ import { createCodeHandoffs } from '../src/projects/code-handoffs.mjs';
 import {startModelFixture} from './fake-model-http.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+test('real Codex CLI actively asks through the task mailbox and passes automated acceptance',{
+  skip:process.env.APIX_REAL_CODEX_QUESTION!=='1',timeout:380000,
+},async()=>{
+  const cli=process.env.APIX_CODEX_ENTRY;
+  assert(cli&&/codex(?:\.exe)?$/i.test(cli),'Select the installed Codex executable with APIX_CODEX_ENTRY');
+  const version=execFileSync(cli,['--version'],{encoding:'utf8',timeout:15000}).trim();
+  assert.match(version,/^codex-cli /);
+  await harness(async h=>{
+    await writeFile(join(h.project,'README.md'),'a.txt 统一使用 LF 换行。\n');
+    await writeFile(join(h.project,'.gitattributes'),'a.txt text eol=lf\n');
+    await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.deepEqual(readFileSync('a.txt'),Buffer.from('APX-CLI-READY\\n'));console.log('REAL_CODEX_MAILBOX_CHECK_OK');");
+    execFileSync('git',['add','--','README.md','.gitattributes','verify.mjs'],{cwd:h.project});
+    execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','approve isolated mailbox check'],{cwd:h.project,stdio:'ignore'});
+    const projectId=(await h.request('/api/projects',{name:'真实 Codex CLI 信箱验收',path:h.project})).id;
+    const {id:employeeId}=await h.request('/api/employees',{name:'真实 Codex CLI',role:'实现',runtime:'codex'});
+    await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'',reasoningEffort:'low',reasoningLevel:3,contextTokens:32000});
+    await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+    await h.request(`/api/projects/${projectId}/autonomy`,{version:0,enabled:true,approved:true,maxRepairs:0,maxMinutes:6,maxRunMinutes:4,checkpointMinutes:4,autoReassign:false,taskCapMinor:null,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}]});
+    const screenshots=process.env.APIX_REAL_CODEX_SCREENSHOTS;
+    const parent=await h.request('/api/assistant/sessions',{projectId});
+    const parentPath='/api/assistant/sessions/'+parent.id;
+    const browser=screenshots?await (await import(process.env.APIX_PLAYWRIGHT_MODULE?pathToFileURL(process.env.APIX_PLAYWRIGHT_MODULE).href:'playwright')).chromium.launch({headless:true,executablePath:process.env.APIX_BROWSER_EXECUTABLE}):null;
+    try{
+    const page=await browser?.newPage({viewport:{width:1440,height:1150}});
+    if(page){
+      await mkdir(screenshots,{recursive:true});
+      await authorizePage(page,h.origin);
+      await page.addInitScript(({projectId,parentId})=>{
+        localStorage.setItem('apix.selectedProject',projectId);
+        localStorage.setItem('apix.assistant.'+projectId,parentId);
+        const animate=Element.prototype.animate;
+        Element.prototype.animate=function(...args){
+          const animation=animate.apply(this,args);
+          if(this.matches('.collaboration-wire[data-kind="delivery"] i')&&!window.deliveryAnimationCaptured){
+            window.deliveryAnimationCaptured=true;
+            animation.pause();
+            animation.currentTime=425;
+          }
+          return animation;
+        };
+      },{projectId,parentId:parent.id});
+      await page.goto(h.origin);
+      await page.locator('#assistant-input').waitFor();
+    }
+    await h.request(parentPath+'/messages',{content:'fixture-loop-delegate：让 Codex 核对项目换行约定，交付 a.txt 并自动验收。'});
+    const childId=await waitFor(async()=>{
+      const state=await h.request(parentPath);
+      assert.equal(state.pending,null);
+      assert.notEqual(state.status,'attention',JSON.stringify(state.events.slice(-3)));
+      return state.child_session_id??state.events.find(event=>event.kind==='delegation_result')?.body.id;
+    });
+    const base='/api/coordination/sessions/'+childId;
+    let s=await waitFor(async()=>{
+      const child=await h.request(base);
+      return child.tasks.length?child:null;
+    });
+    console.log('REAL_CODEX_CLI_DISPATCHED');
+    const deliveryShot=page?.waitForFunction(()=>window.deliveryAnimationCaptured,{},{timeout:300000}).then(async()=>{
+      await page.locator('.collaboration-scene').screenshot({path:join(screenshots,'02-real-delivery.png')});
+    }).then(()=>null,error=>error);
+    let report;const deadline=Date.now()+300000;
+    while(Date.now()<deadline){
+      s=await h.request(base);
+      const task=await h.request('/api/tasks/'+s.tasks[0].id+'/details');
+      const run=task.runs[0];
+      if(run){
+        const runPath='/api/runs/'+run.id;
+        const items=await h.request(runPath+'/interactions');
+        const page=await h.request(runPath+'/runtime-events?limit=200');
+        report={version,backend:run.runtimeInfo.backend,run:run.status,phase:run.runtimeInfo.phase,
+          questions:items.map(i=>({id:i.id,state:i.state,source:i.answerSource,delivery:i.answerDelivery,format:i.request.answerFormat})),
+          events:page.items.filter(e=>e.kind.startsWith('interaction.')).map(e=>({kind:e.kind,sources:e.payload.sources})),
+          ...(s.autonomy.state==='attention'?{reason:s.autonomy.reason,excerpt:String(task.task.result??'').replace(/https?:\/\/\S+/g,'<address>').replace(/\b[A-Za-z0-9_-]{24,}\b/g,'<id>').slice(-650)}:{})};
+        if(s.autonomy.state==='attention'||s.autonomy.state==='completed')break;
+        if(items.some(item=>item.state==='pending'&&!item.reviewing)&&await page?.locator('#assistant-worker-interactions [data-interaction]').count())break;
+      }
+      await delay(350);
+    }
+    console.log('REAL_CODEX_CLI_QUESTION '+JSON.stringify({...report,state:s.autonomy.state,checks:s.autonomy.checks.map(c=>c.status)}));
+    assert.equal(report?.backend,'cli');
+    assert.equal(s.autonomy.state,'completed');
+    assert.equal(s.workerQuestions.length,0);
+    assert.equal(report.questions.length,1);assert.equal(report.questions[0].format,'cli');assert.equal(report.questions[0].source,'apix');assert.equal(report.questions[0].delivery,'accepted');
+    assert(report.events.some(e=>e.kind==='interaction.auto_answer_queued'&&e.sources.includes('project:README.md')));
+    assert.equal(report.events.filter(e=>e.kind==='interaction.cli_reply_received').length,1);
+    assert(s.tasks.every(t=>t.status==='accepted'&&t.delivery_commit));
+    assert(s.autonomy.checks.some(c=>c.status==='passed'&&c.body.tests.some(t=>t.output.includes('REAL_CODEX_MAILBOX_CHECK_OK'))));
+    const activity=await h.request(base+'/activity');
+    const question=activity.events.find(event=>event.from===employeeId&&event.kind==='message'&&event.preview.includes('换行'));
+    const answer=activity.events.find(event=>event.to===employeeId&&event.kind==='message'&&event.preview.includes('LF'));
+    assert(question&&answer&&question.time<=answer.time);
+    if(page){
+      const transcript=page.locator('#assistant-transcript');
+      await transcript.getByText(question.preview,{exact:true}).waitFor();
+      await transcript.getByText(answer.preview,{exact:true}).waitFor();
+      const order=await transcript.locator('.chat-bubble').allTextContents();
+      assert(order.findIndex(text=>text.includes(question.preview))<order.findIndex(text=>text.includes(answer.preview)));
+      await transcript.getByText(question.preview,{exact:true}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(screenshots,'01-real-question-answer.png')});
+      const failure=await deliveryShot;
+      if(failure)throw failure;
+    }
+    } finally {await browser?.close();}
+  },{APIX_CODEX_ENTRY:cli,APIX_FIXTURE_WORKER_QUESTIONS:'real-cli',APIX_SUPERVISION_TICK_MS:'1000'});
+});
+
+test('terminal CLI question is answered from project evidence, retried, and accepted',{timeout:120000},async()=>{
+  await harness(async h=>{
+    await writeFile(join(h.project,'README.md'),'a.txt 统一使用 LF 换行。\n');
+    await writeFile(join(h.project,'.gitattributes'),'a.txt -text\n');
+    await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import{readFileSync}from'node:fs';assert.equal(readFileSync('a.txt','utf8').replace(/\\r\\n/g,'\\n'),'good\\n');console.log('TERMINAL_TAKEOVER_CHECK_OK');");
+    execFileSync('git',['add','--','README.md','.gitattributes','verify.mjs'],{cwd:h.project});
+    execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','terminal question check'],{cwd:h.project,stdio:'ignore'});
+    const projectId=(await h.request('/api/projects',{name:'终端问句接管',path:h.project})).id;
+    const {id:employeeId}=await h.request('/api/employees',{name:'终端问答员工',role:'实现',runtime:'codex'});
+    await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'fixture-model',reasoningLevel:3,contextTokens:32000});
+    await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+    await h.request(`/api/projects/${projectId}/autonomy`,{version:0,enabled:true,approved:true,maxRepairs:1,maxMinutes:2,maxRunMinutes:1,checkpointMinutes:1,autoReassign:false,taskCapMinor:null,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}]});
+    let s=await h.request('/api/coordination/sessions',{projectId,goal:'完成终端问句的自动接管'}),base='/api/coordination/sessions/'+s.id;
+    for(const [field,value] of Object.entries({scope:'仅 a.txt',constraints:'answer from conventions',deliverable:'a.txt content',acceptance:'verify.mjs passes'}))s=await h.request(base+'/answers',{revision:s.revision,field,value});
+    s=await h.request(base+'/confirm',{revision:s.revision});assert.equal(s.status,'running');
+    let report;
+    for(let i=0;i<1800;i++){
+      s=await h.request(base);const task=s.tasks[0];const details=await h.request('/api/tasks/'+task.id+'/details');
+      report={state:s.autonomy.state,status:task.status,repairs:s.autonomy.repairs,checks:s.autonomy.checks,events:s.turns};
+      if(s.autonomy.state==='completed'||s.autonomy.state==='attention')break;
+      await new Promise(r=>setTimeout(r,100));
+    }
+    const events=(await h.request('/api/tasks/'+s.tasks[0].id+'/details')).artifacts;
+    assert.equal(report.state,'completed',JSON.stringify({tasks:s.tasks,autonomy:s.autonomy,artifacts:events}));
+    assert(s.tasks.every(t=>t.status==='accepted'&&t.delivery_commit));
+    assert(report.checks.some(c=>c.status==='passed'&&c.body.tests.some(t=>t.output.includes('TERMINAL_TAKEOVER_CHECK_OK'))));
+  },{APIX_CODEX_ENTRY:join(root,'test/fake-codex.mjs'),APIX_FIXTURE_WORKER_QUESTIONS:'terminal-question'});
+});
 
 test('adapter registration distinguishes invalid IDs from builtins without replacing their commands',()=>{
   const db=new DatabaseSync(':memory:');
@@ -102,11 +237,122 @@ test('Assistant loop approves setup, delegates through frozen contracts and resu
   }
   assert(final,'delegated loop timed out');assert(final.events.some(e=>e.kind==='delegation_result'));assert.equal(final.child_session_id,null);
   const delegated=final.events.find(e=>e.kind==='delegation_result').body;
+  const activity=await h.request(`/api/coordination/sessions/${delegated.id}/activity`);
+  assert(activity.events.some(event=>event.kind==='review'&&event.from==='apix-director'&&event.status==='completed'));
   assert(h.model.calls.every(c=>c.body.model==='fixture-parent-model'),'discussion, architecture, repairs and quality review inherit the parent model');
   assert.equal((await h.request(`/api/conversation-models/coordination/${delegated.id}`)).settings.model,'fixture-parent-model');
   assert(delegated.tasks.every(t=>t.status==='accepted'));assert.equal(delegated.autonomy.repairs.length,1);assert(delegated.autonomy.checks.some(c=>c.status==='failed'));assert(delegated.autonomy.checks.some(c=>c.status==='passed'));
   assert.equal((await h.request('/api/snapshot')).employees.length,1);
-},{APIX_SUPERVISION_TICK_MS:'100'}));
+},{APIX_SUPERVISION_TICK_MS:'600000'}));
+
+test('preauthorized work resumes after local clarification, reuses setup and delivers without manual actions',async()=>harness(async h=>{
+  const check={id:'tests',args:['verify.mjs'],timeoutMs:5000};
+  await writeFile(join(h.project,'README.md'),'依照现有测试补齐内容接口，验收运行 verify.mjs。\n');
+  await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('actual delegated check passed');");
+  execFileSync('git',['-c','core.autocrlf=false','add','README.md','verify.mjs'],{cwd:h.project});
+  execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','verified project conventions'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'existing-authority workflow',path:h.project})).id;
+  const {id:employeeId}=await h.request('/api/employees',{name:'实现员工',runtime:'codex',role:'实现'});
+  await h.request(`/api/employees/${employeeId}/capabilities`,{version:0,model:'fixture-model',reasoningLevel:3,contextTokens:32000});
+  const workflowPath=`/api/projects/${projectId}/workflow`,autonomyPath=`/api/projects/${projectId}/autonomy`;
+  const policy=await h.request(workflowPath,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  const autonomy=await h.request(autonomyPath,{enabled:true,version:0,approved:true,maxRepairs:2,maxMinutes:10,maxRunMinutes:5,checkpointMinutes:1,autoReassign:false,taskCapMinor:null,checks:[check]});
+  await h.restart();
+  const parent=await h.request('/api/assistant/sessions',{projectId}),base=`/api/assistant/sessions/${parent.id}`;
+  await h.request(base+'/messages',{content:'fixture-loop-delegate preauthorized：按项目现有约定补齐内容接口并交付'});
+  let final;
+  for(let i=0;i<1800;i++){
+    const s=await h.request(base);
+    assert(!s.pending,'unexpected manual action: '+s.pending?.tool);
+    assert.notEqual(s.status,'attention',JSON.stringify(s.events.filter(e=>['error','delegation_blocked','process_unknown','answer'].includes(e.kind))));
+    if(s.status==='completed'&&!s.busy){final=s;break;}await delay(100);
+  }
+  assert(final,'expected an accepted delivery');
+  assert(final.events.some(e=>e.kind==='clarification_prepared'));
+  assert(final.events.some(e=>e.kind==='tool_result'&&e.body.tool==='read_file'&&e.body.result.content.includes('依照现有测试')));
+  assert(!final.events.some(e=>e.kind==='request'),'the session never opened a manual request');
+  assert(final.events.some(e=>e.kind==='tool_result'&&e.body.tool==='configure_agents'&&e.body.reused===true));
+  const child=final.events.find(e=>e.kind==='delegation_result').body;
+  assert.equal(child.autonomy.state,'completed');assert(child.tasks.every(t=>t.status==='accepted'&&t.delivery_commit));
+  assert(child.autonomy.checks.some(c=>c.status==='passed'));assert(child.autonomy.repairs.some(r=>r.status==='dispatched'));
+  assert.equal((await h.request(workflowPath)).version,policy.version);
+  assert.deepEqual(await h.request(autonomyPath),autonomy);
+  assert.deepEqual(await h.request(`/api/assistant/sessions?projectId=${projectId}&view=attention`),[]);
+  const changed=await h.request('/api/assistant/sessions',{projectId}),changedBase=`/api/assistant/sessions/${changed.id}`;
+  await h.request(changedBase+'/messages',{content:'fixture-loop-delegate preauthorized changed-check'});
+  const waiting=await waitFor(async()=>{const s=await h.request(changedBase);return s.pending?s:null;});
+  assert.equal(waiting.pending.tool,'configure_agents');assert.equal(waiting.pending.args.checks[0].timeoutMs,6000);
+  assert.equal(waiting.child_session_id,null);assert.deepEqual(await h.request(autonomyPath),autonomy);
+},{APIX_SUPERVISION_TICK_MS:'600000'}));
+
+for(const backend of ['native','cli'])test(`ApiX answers grounded ${backend} worker questions and escalates unresolved business choices before real acceptance`,{timeout:150000},async()=>harness(async h=>{
+  await writeFile(join(h.project,'README.md'),'a.txt 统一使用 LF 换行。\n');
+  await writeFile(join(h.project,'verify.mjs'),"import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';assert.equal(readFileSync('a.txt','utf8'),'good');console.log('verified after worker reply');");
+  execFileSync('git',['add','README.md','verify.mjs'],{cwd:h.project});
+  execFileSync('git',['-c','user.name=ApiX Test','-c','user.email=test@example.invalid','commit','-m','worker question evidence'],{cwd:h.project,stdio:'ignore'});
+  const projectId=(await h.request('/api/projects',{name:'员工代答测试',path:h.project})).id;
+  const {id:employeeId}=await h.request('/api/employees',{name:'原生实现员工',role:'实现',runtime:'codex'});
+  if(backend==='native')await h.request(`/api/employees/${employeeId}/runtime-settings`,{expectedVersion:0,backend:'codex-app-server',acknowledgeExperimental:true});
+  const profile=await h.request(`/api/employees/${employeeId}/capabilities`);
+  await h.request(`/api/employees/${employeeId}/capabilities`,{...profile,model:'fixture-model',reasoningLevel:3,contextTokens:32000});
+  await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,approved:true,managerVersion:0,employees:[{id:employeeId,version:0}]});
+  await h.request(`/api/projects/${projectId}/autonomy`,{version:0,enabled:true,approved:true,maxRepairs:0,maxMinutes:10,maxRunMinutes:5,checkpointMinutes:1,autoReassign:false,taskCapMinor:null,checks:[{id:'tests',args:['verify.mjs'],timeoutMs:5000}]});
+  const attention=`/api/assistant/sessions?projectId=${projectId}&view=attention`;
+  const begin=async goal=>{
+    const parent=await h.request('/api/assistant/sessions',{projectId}),base=`/api/assistant/sessions/${parent.id}`;
+    await h.request(base+'/messages',{content:'fixture-loop-delegate：'+goal});
+    const assignment=await waitFor(async()=>{const s=await h.request(base);assert.equal(s.pending,null);return s.child_session_id;});
+    return await waitFor(async()=>{
+      const s=await h.request('/api/coordination/sessions/'+assignment);
+      if(!s.tasks.length)return null;
+      const d=await h.request('/api/tasks/'+s.tasks[0].id+'/details');
+      return d.runs[0]&&{s,run:'/api/runs/'+d.runs[0].id,parent,base};
+    });
+  };
+  const grounded=await begin('按项目约定实现内容接口。结果用中文。');
+  const answered=await waitFor(async()=>{const [item]=await h.request(grounded.run+'/interactions');if(item?.state==='pending')assert.equal(item.reviewing,true,'grounded question should not ask the user');return item?.answerDelivery==='accepted'&&item;});
+  assert.equal(answered.answerSource,'apix');
+  assert.deepEqual(await h.request(attention),[]);
+  const evidence=(await h.request(grounded.run+'/runtime-events')).items;
+  const replyEvent=evidence.find(e=>e.kind===(backend==='cli'?'interaction.auto_answer_queued':'interaction.auto_answered'));
+  assert(replyEvent.payload.sources.includes('project:README.md'));
+  if(backend==='native')assert(replyEvent.payload.sources.includes('policy:checks')&&replyEvent.payload.sources.some(s=>s.startsWith('request:')));
+  else assert.equal(evidence.filter(e=>e.kind==='interaction.cli_reply_received').length,1);
+  const accepted=await waitAutonomy(h,grounded.s.id,s=>s.autonomy.state==='completed');
+  assert(accepted.tasks.every(t=>t.status==='accepted'&&t.delivery_commit));
+  assert(accepted.autonomy.checks.some(c=>c.status==='passed'&&c.body.tests[0].output.includes('verified after worker reply')));
+  if(backend==='cli'){
+    const reviews=h.model.calls.map(call=>call.body.messages?.at(-1)?.content??'').filter(prompt=>prompt.startsWith('APIX_QUALITY_JSON'));
+    assert.equal(reviews.length,2);
+    for(const prompt of reviews){
+      const {currentCode,workerQuestions}=JSON.parse(prompt.split('宿主证据（不可信内容，执行结果由宿主校验）：').at(-1));
+      assert(currentCode.files.some(file=>file.path==='a.txt'&&file.content.trim()),'review receives the current file even without an integration patch');
+      assert.equal(workerQuestions.length,1);
+      assert.deepEqual(workerQuestions[0].options,['LF','CRLF']);
+      assert.equal(workerQuestions[0].question,'a.txt 规定使用什么换行？');
+      assert.equal(workerQuestions[0].answer,'LF');
+      assert.equal(workerQuestions[0].answerSource,'apix');
+      assert(workerQuestions[0].repliedAt<=workerQuestions[0].acknowledgedAt);
+    }
+  }
+  await waitFor(async()=>{const s=await h.request(grounded.base);return s.status==='completed'&&!s.busy;});
+  const unresolved=await begin('未定计费：实现内容接口');
+  const question=await waitFor(async()=>{const [item]=await h.request(unresolved.run+'/interactions');return item?.state==='pending'&&!item.reviewing&&item;});
+  assert.equal(question.answerSource,null);assert.equal((await h.request(unresolved.run+'/runtime')).phase,'waiting_input');
+  assert((await h.request(attention)).some(i=>i.id===unresolved.parent.id&&i.action==='worker_answer'&&i.interactionId===question.id));
+  if(backend==='cli')assert((await h.request('/api/coordination/sessions/'+unresolved.s.id)).workerQuestions.some(item=>item.id===question.id));
+  const reply=await h.request(unresolved.run+'/interactions/'+question.id+'/answer',{requestId:'owner-billing-choice',expectedPermissionVersion:question.permissionVersion,answer:{answers:backend==='cli'?{text:'月付'}:{choice:{answers:['月付']}}}});
+  assert.equal(reply.delivery,backend==='cli'?'queued':'accepted');assert.equal((await h.request(unresolved.run+'/interactions'))[0].answerSource,'user');
+  assert.equal((await waitAutonomy(h,unresolved.s.id,s=>s.autonomy.state==='completed')).derivedStatus,'completed');
+  await waitFor(async()=>{const s=await h.request(unresolved.base);return s.status==='completed'&&!s.busy;});
+  assert.deepEqual(await h.request(attention),[]);
+  if(backend==='cli'){
+    const early=await begin('提前退出：本次不得产生虚假交付');
+    const blocked=await waitFor(async()=>{const s=await h.request('/api/coordination/sessions/'+early.s.id);return s.autonomy.state==='attention'&&s;});
+    assert.equal(blocked.tasks[0].status,'blocked');assert(!blocked.tasks[0].delivery_commit);
+    assert.notEqual((await h.request(early.run+'/interactions'))[0].answerDelivery,'accepted');
+  }
+},{APIX_FIXTURE_WORKER_QUESTIONS:backend==='cli'?'cli':'1',...(backend==='native'?{APIX_CODEX_ENTRY:join(root,'test/fake-native-runtime.mjs')}:{})}));
 
 test('Assistant project setup cannot overwrite an existing global employee profile',async()=>harness(async h=>{
   await writeFile(join(h.project,'verify.mjs'),"console.log('actual fixture script');");
@@ -230,6 +476,13 @@ test('ApiX operates without Pi and missing model configuration does not start a 
   assert(h.model.calls.length>=5);assert.equal((await h.request('/api/snapshot')).runs.length,0);
   await h.request('/api/manager/settings',{});const empty=await h.request('/api/assistant/sessions',{projectId});await h.request(`/api/assistant/sessions/${empty.id}/messages`,{content:'hello'});
   const blocked=await waitFor(async()=>{const x=await h.request(`/api/assistant/sessions/${empty.id}`);return x.status==='attention'?x:null;});assert.match(blocked.events.find(e=>e.kind==='error').body.error,/配置 ApiX/);
+  assert.equal(blocked.modelConfigurationBlocked,true);
+  const draft=await h.request('/api/coordination/sessions',{projectId,goal:'修复加法结果错误'});
+  const discussion=await h.request(`/api/coordination/sessions/${draft.id}/messages`,{revision:draft.revision,content:'只修改现有加法实现'});
+  assert.equal(discussion.revision,draft.revision);assert.deepEqual(discussion.requirements,draft.requirements);
+  assert.equal(discussion.discussionIssue,'model_blocked');assert.equal(discussion.turns.at(-1).kind,'discussion_blocked');
+  assert.match(discussion.turns.at(-1).content,/模型连接需要配置/);
+  assert.equal((await h.request('/api/coordination/sessions?projectId='+projectId+'&summary=1'))[0].discussionIssue,'model_blocked');
 },{APIX_MANAGER_PI_ENTRY:'pi.cmd',APIX_PI_ENTRY:'not-installed'}));
 
 async function waitFor(predicate) {
@@ -466,6 +719,8 @@ test('API planning dispatches without invoking native CLI tools',async()=>harnes
 test('project workflow turns one work message into an approved run and keeps questions and acceptance separate',async()=>harness(async h=>{
   const projectId=(await h.request('/api/projects',{name:'自动工作区',path:h.project})).id;
   const employeeId=(await h.request('/api/employees',{name:'工作员工',runtime:'pi',role:'开发'})).id;
+  const other=(await h.request('/api/employees',{name:'未授权的熟悉员工',runtime:'pi',role:'开发'})).id;
+  await h.request(`/api/employees/${other}/capabilities`,{version:0,projectIds:[projectId]});
   let w=await h.request(`/api/projects/${projectId}/workflow`);
   await h.request(`/api/projects/${projectId}/workflow`,{version:0,enabled:true,employees:[{id:employeeId,version:0}],managerVersion:0},400);
   assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).manager.mode,'ask_approval');
@@ -477,6 +732,7 @@ test('project workflow turns one work message into an approved run and keeps que
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'开始工作：检查项目'});
   s=await h.request(`/api/coordination/sessions/${s.id}/messages`,{revision:s.revision,content:'开始工作：检查项目'});
   assert.equal(s.status,'running');assert.equal(s.assessment.ready,true);assert.match(s.requirements.scope,/自动工作区/);
+  assert.equal(s.tasks[0].employee_id,employeeId);
   s=await waitFor(async()=>{const d=await h.request(`/api/coordination/sessions/${s.id}`);return d.tasks[0].status==='completed'&&d;});
   assert.equal(s.derivedStatus,'awaiting_acceptance');assert.notEqual(s.tasks[0].status,'accepted');
   await h.restart();assert.equal((await h.request(`/api/projects/${projectId}/workflow`)).enabled,true);
@@ -688,7 +944,9 @@ test('conversation acceptance cannot bypass a bound autonomous quality contract'
 }));
 
 test('non-Git projects run isolated tasks, freeze delivery, hand off code and prepare integration across restart',async()=>harness(async h=>{
-  const project=join(h.dir,'non-git');await mkdir(project);await writeFile(join(project,'README.md'),'original');await writeFile(join(project,'.env'),'never copy');
+  const project=join(h.dir,'non-git');await mkdir(project);
+  assert.throws(()=>execFileSync('git',['rev-parse','--show-toplevel'],{cwd:project,stdio:'ignore'}),{status:128},'非 Git 夹具需要 Git 工作树以外的临时目录，请检查 TEMP/TMP 设置');
+  await writeFile(join(project,'README.md'),'original');await writeFile(join(project,'.env'),'never copy');
   const projectId=(await h.request('/api/projects',{name:'non Git',path:project})).id;
   const employeeId=(await h.request('/api/employees',{name:'worker',runtime:'pi',role:'开发'})).id;
   let s=await h.request('/api/coordination/sessions',{projectId,goal:'检查项目'});
@@ -904,10 +1162,15 @@ test('structured quota error with only a message pauses new launches even on exi
 test('custom worker exchanges project-scoped mailbox messages using its run credential',async()=>harness(async h=>{
   const worker=join(h.dir,'mailbox-worker.mjs');
   await writeFile(worker,`let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',async()=>{
+    if(!input.includes('没有相关变更时沿用已有检查结果')||!input.includes('无需在信箱中提交验收或等待验收回复'))throw new Error('员工启动提示缺少汇报与交付约定');
     const base=process.env.APIX_MAILBOX_URL;
     const headers={Authorization:'Bearer '+process.env.APIX_AGENT_TOKEN,'Content-Type':'application/json'};
     const res=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({from:'system',projectId:'fake',to:'apix-director',type:'event',idempotencyKey:'worker-progress',payload:{kind:'progress_update',summary:'正在检查验收依据',blocked:false,progress:'worker contacted mailbox'}})});
     if(!res.ok)throw new Error(await res.text());
+    for (const [key,summary,blocked] of [['worker-verified','检查已通过，工作区未变化',false],['worker-text-blocked','字符串不代表明确阻塞','true'],['worker-blocked','下一步因验收规则不明确而阻塞',true]]) {
+      const report=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({to:'apix-director',type:'event',idempotencyKey:key,payload:{kind:'progress_update',summary,blocked}})});
+      if(!report.ok)throw new Error(await report.text());
+    }
     const self=await fetch(base+'/messages',{method:'POST',headers,body:JSON.stringify({to:process.env.APIX_AGENT_ID,type:'event',idempotencyKey:'self-checkpoint',payload:{checkpoint:true}})});
     if(!self.ok)throw new Error(await self.text());
     const guidance=new Set();
@@ -934,11 +1197,14 @@ test('custom worker exchanges project-scoped mailbox messages using its run cred
   await waitFor(async()=>{const state=await h.request(`/api/coordination/sessions/${s.id}`);assert.notEqual(state.derivedStatus,'attention',JSON.stringify(state.tasks));return state.derivedStatus==='awaiting_acceptance';});
   const messages=(await h.request('/api/snapshot')).messages;
   assert(messages.some(m=>m.idempotency_key.endsWith(':worker-progress')&&m.from_agent===employeeId&&m.payload.progress==='worker contacted mailbox'&&m.source_run_id));
-  assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='apix'));
+  const blocked=messages.find(m=>m.idempotency_key.endsWith(':worker-blocked'));
+  const autoGuided=messages.filter(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='apix');
+  assert.deepEqual(autoGuided.map(m=>m.idempotency_key),['apix-guidance:'+blocked.id]);
   assert(messages.some(m=>m.to_agent===employeeId&&m.payload.kind==='guidance'&&m.payload.source==='user'));
   const session=await h.request(`/api/coordination/sessions/${s.id}`);
   assert(session.turns.some(t=>t.kind==='worker_guidance'&&t.role==='apix'));
   assert(session.guidance.some(g=>g.status==='sent'&&g.action==='guide'));
+  assert.equal(session.guidance.filter(g=>g.status==='recorded'&&g.action==='observe').length,3);
   await h.request(`/api/coordination/sessions/${s.id}/instructions`,{revision:s.revision,taskId:p.tasks[0].id,content:'late instruction'},400);
   await h.request('/api/agent/messages',undefined,400,{Authorization:'Bearer invalid'});
 }));
@@ -1203,8 +1469,9 @@ test('accepted code including new files reaches chained workers from frozen Git 
   await writeFile(worker,`import {writeFileSync,readFileSync} from 'node:fs';import {execFileSync} from 'node:child_process';let prompt='';process.stdin.on('data',c=>prompt+=c);process.stdin.on('end',()=>{if(prompt.startsWith('produce')){writeFileSync('shared.txt','accepted input');execFileSync('git',['-c','core.autocrlf=false','add','--','shared.txt']);writeFileSync('unstaged.txt','new untracked input');process.stdout.write('produced');}else if(prompt.startsWith('consume')){const value=readFileSync('shared.txt','utf8');writeFileSync('report.txt',value);process.stdout.write('consumed '+value);}else{process.stdout.write(readFileSync('shared.txt','utf8')+' / '+readFileSync('report.txt','utf8'));}});`);
   await h.request('/api/adapters',{id:'code-worker',name:'Code worker',executable:process.execPath,args:[worker],format:'plain'});
   const {s,employeeId}=await setup(h,'code-worker');
+  const recipient=(await h.request('/api/employees',{name:'前置交付接收者',runtime:'code-worker',role:'核验'})).id;
   let p=await h.request(`/api/coordination/sessions/${s.id}/confirm`,{revision:s.revision});
-  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'produce input',employeeId,dependsOn:[]},{prompt:'consume input',employeeId,dependsOn:[0]},{prompt:'verify chained inputs',employeeId,dependsOn:[1]}]});
+  p=await h.request(`/api/coordination/sessions/${s.id}/plan`,{revision:p.revision,planVersion:p.planVersion,steps:[{prompt:'produce input',employeeId,dependsOn:[]},{prompt:'consume input',employeeId:recipient,dependsOn:[0]},{prompt:'verify chained inputs',employeeId,dependsOn:[1]}]});
   await h.request(`/api/coordination/sessions/${s.id}/dispatch`,{planVersion:p.planVersion});
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[0].status==='completed');
   const initial=await h.request(`/api/tasks/${p.tasks[0].id}/delivery`);
@@ -1224,6 +1491,10 @@ test('accepted code including new files reaches chained workers from frozen Git 
   let state=await h.request(`/api/coordination/sessions/${s.id}`);
   assert.match(state.tasks[1].result,/consumed accepted input/);
   assert(!state.tasks[1].result.includes('unreviewed mutation'));
+  const activity=await h.request(`/api/coordination/sessions/${s.id}/activity`);
+  assert.equal(activity.planId,state.plan_id);
+  assert(activity.events.some(event=>event.kind==='dispatch'&&event.to===recipient));
+  assert(activity.events.some(event=>event.kind==='delivery'&&event.from===employeeId&&event.to===recipient&&event.preview.includes(frozen.delivery_commit.slice(0,8))&&event.preview.includes('shared.txt')));
   await h.request(`/api/tasks/${p.tasks[1].id}/review`,{accepted:true});
   await waitFor(async()=>(await h.request(`/api/coordination/sessions/${s.id}`)).tasks[2].status==='completed');
   state=await h.request(`/api/coordination/sessions/${s.id}`);

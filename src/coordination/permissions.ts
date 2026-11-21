@@ -18,6 +18,8 @@
 import type { Store, PermissionMode, Policy } from './contracts.js';
 import type { Memory } from './memory.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * createPermissions - 创建权限管理实例
  * @param store - 数据库存储层
@@ -27,13 +29,7 @@ import type { Memory } from './memory.js';
 export function createPermissions(store: Store, memory: Memory) {
   const { db, row, now } = store;
   // 初始化权限策略表和授权令牌表
-  db.exec(`CREATE TABLE IF NOT EXISTS apix_policies (
-    project_id TEXT NOT NULL REFERENCES projects(id), subject TEXT NOT NULL,
-    mode TEXT NOT NULL CHECK(mode IN ('full_access','ask_approval','read_only')),
-    version INTEGER NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(project_id,subject));
-    CREATE TABLE IF NOT EXISTS apix_grants (
-    task_id TEXT PRIMARY KEY REFERENCES tasks(id), project_id TEXT NOT NULL, employee_id TEXT NOT NULL,
-    manager_version INTEGER NOT NULL, employee_version INTEGER NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL);`);
+  ensureModuleSchema(db, "coordination-permissions");
 
   /**
    * get - 获取权限策略

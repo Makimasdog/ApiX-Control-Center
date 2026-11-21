@@ -33,14 +33,16 @@ try {
       await fixture.authorize(page);await page.goto(fixture.origin, {waitUntil:'load'});
       await page.waitForSelector('#assistant-input');
       await page.waitForSelector('.sidebar-project', {state:'attached'});
-      await page.waitForSelector('.provider-center [data-provider-form]', {state:'attached'});
+      // 供应商编辑表单改为按需抽屉（data-provider-drawer），页面就绪以工具栏为准。
+      await page.waitForSelector('.provider-center [data-provider-refresh]', {state:'attached'});
       await page.waitForFunction(() => document.querySelector('[aria-current="page"]')?.dataset.pageTarget === 'assistant');
       if (width === 1440) {
         const tokens = await page.evaluate(()=>Object.fromEntries(['text-primary','text-secondary','text-muted','surface','app-bg','on-accent','accent','success','success-subtle','warning','warning-subtle','danger','danger-subtle'].map(name=>[name,getComputedStyle(document.documentElement).getPropertyValue('--'+name)])));
         report.contrasts[theme] = Object.fromEntries([['text-primary','surface'],['text-secondary','surface'],['text-muted','app-bg'],['on-accent','accent'],['success','success-subtle'],['warning','warning-subtle'],['danger','danger-subtle']].map(([a,b])=>[a,Math.round(contrast(tokens[a],tokens[b])*100)/100]));
       }
       for (const route of routes) {
-        if (width <= 760) await page.locator('#navigation-toggle').click();
+        // 对话页合并顶栏后，移动端菜单按钮是会话内 #assistant-menu；其余页面仍是 #navigation-toggle。
+        if (width <= 760) await page.evaluate(() => (document.querySelector('#assistant-menu') && getComputedStyle(document.querySelector('#assistant-menu')).display !== 'none' ? document.querySelector('#assistant-menu') : document.querySelector('#navigation-toggle')).click());
         const target = page.locator(`.nav-item[data-page-target="${route}"]`);
         if (await target.evaluate(el=>el.closest('details') && !el.closest('details').open)) await page.locator('.assistant-more > summary').click();
         await target.click();
@@ -94,7 +96,7 @@ try {
       await page.locator('#assistant-details').click();
       assert(!await page.locator('#assistant-inspector').isVisible(), '工作详情应可收起');
       if (width <= 760) {
-        await page.locator('#navigation-toggle').click();
+        await page.evaluate(() => (document.querySelector('#assistant-menu') && getComputedStyle(document.querySelector('#assistant-menu')).display !== 'none' ? document.querySelector('#assistant-menu') : document.querySelector('#navigation-toggle')).click());
         await page.screenshot({path:join(output,`${theme}-${width}-navigation.png`)});
         await page.keyboard.press('Shift+Tab');
         const focus = await page.evaluate(()=>({inside:document.querySelector('#main-navigation').contains(document.activeElement),id:document.activeElement?.id,dialogs:[...document.querySelectorAll('dialog[open]')].map(el=>el.id)}));
@@ -102,7 +104,11 @@ try {
         await page.keyboard.press('Escape');
         assert.equal(await page.locator('#navigation-toggle').getAttribute('aria-expanded'),'false');
         assert(await page.locator('#main-navigation').evaluate(el=>el.inert));
-        assert(await page.locator('#navigation-toggle').evaluate(el=>el===document.activeElement));
+        assert(await page.evaluate(() => {
+          const menu=document.querySelector('#assistant-menu');
+          const expected=menu && getComputedStyle(menu).display !== 'none' ? menu : document.querySelector('#navigation-toggle');
+          return expected===document.activeElement;
+        }));
       }
     }
   }

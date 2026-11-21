@@ -17,18 +17,24 @@ import https from 'node:https';
 import {syncBuiltinESMExports} from 'node:module';
 const defaults={provider:'apix-custom',model:'deepseek-flash',baseUrl:'https://api.deepseek.com/v1',apiType:'openai-completions',apiKeyEnv:'DEEPSEEK_API_KEY'};
 
-test('declared windows are frozen per conversation and reset when a different model is selected',()=>{
+test('selected application configuration follows ApiX provider changes while explicit conversation choices stay frozen',()=>{
+ const db=new DatabaseSync(':memory:'),store={db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};let current={...defaults};
+ try{const models=createConversationModels(store,()=>current);models.initialize('assistant','linked');models.initialize('assistant','custom');const v=models.get('assistant','custom').version;models.save('assistant','custom',{version:v,model:'deepseek-v4-pro',reasoningEffort:''});
+ const global=models.save('assistant','linked',{version:models.get('assistant','linked').version,useGlobal:true});assert.equal(global.followsManager,true);current={...defaults,model:'new-manager-model',baseUrl:'https://new.example.invalid/v1'};
+ assert.equal(models.get('assistant','linked').settings.model,'new-manager-model');assert.equal(models.get('assistant','custom').settings.model,'deepseek-v4-pro');}finally{db.close();}
+});
+test('default windows follow the application and reset when a different model is selected',()=>{
  const db=new DatabaseSync(':memory:'),store={db,row:(q,...p)=>db.prepare(q).get(...p),now:()=>new Date().toISOString()};let current={...defaults,contextWindow:64000};
- try{const models=createConversationModels(store,()=>current);models.initialize('assistant','a');current={...current,contextWindow:128000};assert.equal(models.get('assistant','a').settings.contextWindow,64000);const changed=models.save('assistant','a',{version:1,model:'deepseek-v4-pro',reasoningEffort:''});assert.equal(changed.settings.contextWindow,null);assert.equal(models.save('assistant','a',{version:2,useGlobal:true}).settings.contextWindow,128000);}finally{db.close();}
+ try{const models=createConversationModels(store,()=>current);models.initialize('assistant','a');current={...current,contextWindow:128000};assert.equal(models.get('assistant','a').settings.contextWindow,128000);const changed=models.save('assistant','a',{version:2,model:'deepseek-v4-pro',reasoningEffort:''});assert.equal(changed.settings.contextWindow,null);assert.equal(models.save('assistant','a',{version:3,useGlobal:true}).settings.contextWindow,128000);}finally{db.close();}
 });
 test('conversation models isolate sessions, freeze provider settings, survive reopen and reject stale updates',()=>{
- const db=new DatabaseSync(':memory:');const deps={db,row:(q,...p)=>db.prepare(q).get(...p),now:()=>new Date().toISOString()};let current={...defaults};let models=createConversationModels(deps,()=>current);
+ const db=new DatabaseSync(':memory:');const deps={db,row:(q,...p)=>db.prepare(q).get(...p),rows:(q,...p)=>db.prepare(q).all(...p),now:()=>new Date().toISOString()};let current={...defaults};let models=createConversationModels(deps,()=>current);
  try{models.initialize('assistant','a');models.initialize('assistant','b');models.initialize('coordination','a');
  const a=models.save('assistant','a',{version:1,model:'deepseek-v4-pro',reasoningEffort:'max'});assert.equal(a.settings.reasoningEffort,'max');assert.equal(models.get('assistant','b').settings.model,'deepseek-flash');assert.equal(models.get('coordination','a').settings.model,'deepseek-flash');
  assert.throws(()=>models.save('assistant','a',{version:1,model:'deepseek-flash'}),/已变化/);assert.throws(()=>models.save('assistant','a',{version:2,model:'unknown',reasoningEffort:'max'}),/不支持/);
  current={...defaults,baseUrl:'http://localhost:9000',model:'other'};models=createConversationModels(deps,()=>current);assert.equal(models.get('assistant','a').settings.baseUrl,defaults.baseUrl);assert.equal(models.get('assistant','a').settings.model,'deepseek-v4-pro');assert.equal(models.get('assistant','new').settings.model,'other');
  const v=models.get('assistant','a').version;assert.throws(()=>models.save('assistant','a',{version:v,model:'-invalid'}),/无效/);assert.equal(models.get('assistant','a').version,v);
- const adopted=models.save('assistant','a',{version:v,useGlobal:true});assert.equal(adopted.settings.baseUrl,current.baseUrl);assert.equal(adopted.settings.model,current.model);assert.equal(models.get('assistant','b').settings.baseUrl,defaults.baseUrl);assert.throws(()=>models.save('assistant','a',{version:v,useGlobal:true}),/已变化/);
+ const adopted=models.save('assistant','a',{version:v,useGlobal:true});assert.equal(adopted.settings.baseUrl,current.baseUrl);assert.equal(adopted.settings.model,current.model);assert.equal(models.get('assistant','b').settings.baseUrl,current.baseUrl);assert.throws(()=>models.save('assistant','a',{version:v,useGlobal:true}),/已变化/);
  }finally{db.close();}
 });
 test('only documented provider capabilities are offered, and no reasoning parameter is sent by default',()=>{
@@ -67,7 +73,7 @@ test('HTTP conversations route their own models, reject active changes, persist 
  await request(path,{version:1,model:'stale'},400);await request(path,{version:config.version,model:'invalid-effort',reasoningEffort:'high'},400);assert.equal((await request('/api/conversation-models/assistant/'+b.id)).settings.model,'qwen3.8-27b');
  await request('/api/assistant/sessions/'+a.id+'/messages',{content:'解释如何工作'});await wait(async()=>(await request('/api/assistant/sessions/'+a.id)).status==='completed');assert.equal(model.calls.at(-1).body.model,'selected-model');
  await request('/api/conversation-models/coordination/'+c.id,{version:1,model:'coord-model'});await request('/api/coordination/sessions/'+c.id+'/messages',{revision:c.revision,content:'解释如何工作'});assert.equal(model.calls.at(-1).body.model,'coord-model');
- await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'new-default',apiType:'openai-completions',apiKeyEnv:''});await stop();await start();assert.equal((await request(path)).settings.model,'selected-model');assert.equal((await request('/api/conversation-models/assistant/'+b.id)).settings.model,'qwen3.8-27b');
+ await request('/api/manager/settings',{baseUrl:model.baseUrl,model:'new-default',apiType:'openai-completions',apiKeyEnv:''});await stop();await start();assert.equal((await request(path)).settings.model,'selected-model');assert.equal((await request('/api/conversation-models/assistant/'+b.id)).settings.model,'new-default');
  await request('/api/assistant/sessions/'+a.id+'/messages',{content:'fixture-http-hold'});await wait(async()=>model.calls.at(-1).body.messages?.at(-1)?.content.includes('fixture-http-hold'));await request(path,{version:config.version,model:'blocked'},400);await request('/api/assistant/sessions/'+a.id+'/stop',{});
  await request('/api/conversation-models/assistant/missing',undefined,400);await request('/api/conversation-models/coordination/'+a.id,undefined,400);
  }finally{await stop();await model.close();assert(resolve(dir).startsWith(resolve(tmpdir())+sep));await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:100});}

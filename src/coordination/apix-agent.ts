@@ -15,9 +15,11 @@
  *   - 提示词从零拼装，无会话缓存；模型只输出 JSON，宿主只认 JSON
  */
 import { type ModelBackend, type InferenceContext, type Requirements, type Employee, type PlanStep, type CoordinatorDecision, type InteractionMode, object, text, parseJsonObject } from './contracts.js';
-import { nextQuestion, requirementFields, requirementBrief } from './requirement-engine.js';
+import { requirementFields, requirementBrief } from './requirement-engine.js';
 import { taskProfile } from './scheduling.js';
 import {parseArchitecture,type Architecture,type CheckCommand} from './architecture.js';
+import {classifyFault} from '../recovery/fault-policy.js';
+import {answerWorkerQuestion,type WorkerQuestionReview} from './worker-question.js';
 
 /**
  * parse - 解析模型 JSON 回复，失败时提供友好错误提示
@@ -154,8 +156,9 @@ export function createApiXAgent(backend: ModelBackend) {
       const conflicts = (Array.isArray(parsed.conflicts) ? parsed.conflicts : []).filter((v): v is string => typeof v === 'string').slice(0, 8).map(v => v.slice(0, 500));
       return { kind: parsed.kind as CoordinatorDecision['kind'], question: text(parsed.question, 10000), updates, conflicts, mode: 'api' };
     } catch (error) {
-      // 降级路径：LLM 失败时退回规则引擎，用 nextQuestion 找下一个缺失字段追问
-      return { kind: 'clarification', question: nextQuestion(requirements)?.question ?? '请检查需求摘要并确认；也可以补充需要调整的内容。', updates: {}, conflicts: [], mode: 'rules', error: String(error instanceof Error ? error.message : error).slice(0, 300) };
+      const category=classifyFault(error,{kind:'model'}).category;
+      const configuration=['authentication','configuration'].includes(category);
+      return {kind:'clarification',question:configuration?'当前对话的模型连接需要配置。需求已保留；请检查供应商配置，再继续。':'ApiX 暂时无法分析这条消息。需求已保留，请稍后重试。',updates:{},conflicts:[],mode:'rules',error:String(error instanceof Error?error.message:error).slice(0,300)};
     }
   }
   /**
@@ -256,6 +259,7 @@ export function createApiXAgent(backend: ModelBackend) {
     try { answer=JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g,'')); } catch { throw new Error('模型未返回有效连接测试结果'); }
     if(object(answer).nonce!==nonce)throw new Error('模型未返回有效连接测试结果');
   }
-  return { discuss, architect, review, plan, guide, testConnection };
+  const reviewWorkerQuestion:WorkerQuestionReview=(request,evidence,context)=>answerWorkerQuestion(backend,request,evidence,context);
+  return { discuss, architect, review, plan, guide, testConnection, reviewWorkerQuestion };
 }
 export type ApiXAgent = ReturnType<typeof createApiXAgent>;

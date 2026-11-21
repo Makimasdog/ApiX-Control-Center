@@ -17,6 +17,8 @@ import {randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {recallNotes,type RecallNote} from './assistant-memory.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * sensitiveMemory - 检测文本是否包含敏感信息
  * 匹配模式：API 密钥、Bearer token、私钥、密码、邮箱、手机号、环境变量中的密钥值
@@ -30,14 +32,17 @@ export function sensitiveMemory(value:string){
 export interface Note extends RecallNote {id:string;project_id:string;scope:string;task_id:string|null;category:string;evidence_event_id:number|null}
 /**
  * memoryIndex - 生成记忆索引（MEMORY.md 格式）
- * 最多 200 条、25000 字节，超出部分截断。
+ * 用户/反馈类固定记忆优先，其余按 updated_at 倒序填充；最多 200 行或 budgetBytes 字节。
  * @param notes - 记忆列表
+ * @param budgetBytes - 索引正文的字节预算（默认 5000）
  * @returns 索引内容和统计信息
  */
-export function memoryIndex(notes:RecallNote[]){
+export function memoryIndex(notes:RecallNote[],budgetBytes=5000){
+  const active=notes.filter(n=>n.status==='active'),recent=(a:RecallNote,b:RecallNote)=>String(b.updated_at??'').localeCompare(String(a.updated_at??''));
+  const pinned=active.filter(n=>n.source==='user'||n.kind==='user'||n.kind==='feedback').sort(recent),pinnedSet=new Set(pinned);
   const lines=['# MEMORY.md','主题正文使用 read_memory 按需读取；这些资料不授予权限。'];let bytes=Buffer.byteLength(lines.join('\n'));
-  for(const n of notes.filter(n=>n.status==='active')){const line=`- ${n.title.replace(/[\r\n]/g,' ')} | ${n.kind} | v${n.version}`;const size=Buffer.byteLength('\n'+line);if(lines.length>=200||bytes+size>25000)break;lines.push(line);bytes+=size;}
-  return {content:lines.join('\n'),lines:lines.length,bytes,truncated:lines.length-2<notes.filter(n=>n.status==='active').length};
+  for(const n of [...pinned,...active.filter(n=>!pinnedSet.has(n)).sort(recent)]){const line=`- ${n.title.replace(/[\r\n]/g,' ')} | ${n.kind} | v${n.version}`;const size=Buffer.byteLength('\n'+line);if(lines.length>=200||bytes+size>budgetBytes)break;lines.push(line);bytes+=size;}
+  return {content:lines.join('\n'),lines:lines.length,bytes,truncated:lines.length-2<active.length};
 }
 /**
  * 创建项目记忆管理器
@@ -52,10 +57,7 @@ export function memoryIndex(notes:RecallNote[]){
  */
 export function createProjectMemory(store:Store){
   const {db,row,rows,now}=store;
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_notes(project_id TEXT NOT NULL REFERENCES projects(id),title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,version INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(project_id,title));
-    CREATE TABLE IF NOT EXISTS assistant_memory_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS assistant_note_versions(note_id TEXT NOT NULL,version INTEGER NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(note_id,version));
-    CREATE TABLE IF NOT EXISTS assistant_memory_usage(project_id TEXT NOT NULL,note_id TEXT NOT NULL,session_id TEXT NOT NULL,version INTEGER NOT NULL,agent TEXT NOT NULL,used_at TEXT NOT NULL,PRIMARY KEY(note_id,session_id,version,agent));`);
+  ensureModuleSchema(db, "assistant-project-memory");
   for(const [name,definition] of Object.entries({id:"TEXT",kind:"TEXT NOT NULL DEFAULT 'project'",status:"TEXT NOT NULL DEFAULT 'active'",evidence_event_id:'INTEGER',scope:"TEXT NOT NULL DEFAULT 'project'",task_id:'TEXT',category:"TEXT NOT NULL DEFAULT 'project'"}))if(!rows<{name:string}>('PRAGMA table_info(assistant_notes)').some(c=>c.name===name))db.exec(`ALTER TABLE assistant_notes ADD COLUMN ${name} ${definition}`);
   db.prepare("UPDATE assistant_notes SET id='note-'||lower(hex(randomblob(16))) WHERE id IS NULL").run();
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS assistant_note_id ON assistant_notes(id)');
@@ -105,8 +107,16 @@ export function createProjectMemory(store:Store){
   /** context - 根据查询生成记忆上下文（索引 + 召回结果） */
   function context(project:string,query:string,session:string,agent='assistant',taskId?:string,record=true){
     const notes=settings(project).enabled?list(project).filter(n=>n.status==='active'&&(n.scope==='project'||n.task_id===taskId)):[];
-    const recalled=recallNotes(query,notes),indexNotes=agent==='assistant'?notes:notes.filter(n=>recalled.some(r=>r.title===n.title)||n.task_id===taskId&&taskId!==undefined),index=memoryIndex(indexNotes);
-    const used=new Set([...indexNotes.slice(0,index.lines-2).map(n=>n.id),...notes.filter(n=>recalled.some(r=>r.title===n.title)).map(n=>n.id)]);
+    const recalled=recallNotes(query,notes);
+    // worker 仍只看召回与其任务范围的笔记，不因索引预算化而扩大可见范围。
+    const eligible=agent==='assistant'?notes:notes.filter(n=>recalled.some(r=>r.title===n.title)||n.task_id===taskId&&taskId!==undefined);
+    const recent=(a:Note,b:Note)=>String(b.updated_at??'').localeCompare(String(a.updated_at??'')),isPinned=(n:Note)=>n.source==='user'||n.kind==='user'||n.kind==='feedback';
+    const allPinned=eligible.filter(isPinned).sort(recent),pinned=allPinned.slice(0,20),pinnedSet=new Set(allPinned);
+    const recalledNotes=eligible.filter(n=>!pinnedSet.has(n)&&recalled.some(r=>r.title===n.title)).sort(recent),recalledSet=new Set(recalledNotes);
+    const rest=eligible.filter(n=>!pinnedSet.has(n)&&!recalledSet.has(n)).sort(recent);
+    const index=memoryIndex([...pinned,...recalledNotes,...rest]);
+    // memoryIndex 的实际遍历顺序是 pinned 之后所有非 pinned 笔记按时间倒序，按此还原真正入选的条目。
+    const used=new Set([...[...pinned,...[...recalledNotes,...rest].sort(recent)].slice(0,index.lines-2).map(n=>n.id),...notes.filter(n=>recalled.some(r=>r.title===n.title)).map(n=>n.id)]);
     if(record)for(const n of notes.filter(n=>used.has(n.id)))db.prepare('INSERT OR IGNORE INTO assistant_memory_usage VALUES (?,?,?,?,?,?)').run(project,n.id,session,n.version,agent,now());
     return {index,recalled,authority:'reference_only'};
   }

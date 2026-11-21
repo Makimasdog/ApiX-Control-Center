@@ -34,6 +34,11 @@ import {bindArchitecture,type Architecture} from './architecture.js';
 import type {Autonomy} from './autonomy.js';
 import {taskAcceptanceRequest} from './task-review.js';
 import {historyColumns} from '../assistant/chat-history.js';
+import {redact} from '../assistant/tool-governance.js';
+import type {QuestionEvidence} from './worker-question.js';
+import type {createRuntimeInteractions} from '../agents/runtime-interactions.js';
+
+import {ensureModuleSchema} from '../infrastructure/schema.js';
 
 /** 外部依赖接口：扩展 Store 并注入所有协作模块 */
 interface Dependencies extends Store {
@@ -46,8 +51,11 @@ interface Dependencies extends Store {
   capabilities(): AgentCapabilities[]; // 获取 Agent 能力列表
   scheduling: Scheduling;   // 调度引擎（[→ 见 scheduling.ts]）
   autonomy: Autonomy;       // 自主交付引擎（[→ 见 autonomy.ts]）
+  taskRecovery?(task:Task):{state:string;automatic:boolean;attempts:number;maxAttempts:number;reason:string|null}|null;
   consult(employeeId:string,prompt:string):Promise<string>; // 咨询员工
   reportManagerFailure(projectId:string,sourceId:string,error:string):void; // 报告失败报告
+  nativeDelivery?(messageId:string,runId:string):string|undefined;
+  workerInteractions?:ReturnType<typeof createRuntimeInteractions>['forCoordination'];
   sendMessage(input: Record<string, unknown>): { id: string; status: string }; // 发送邮箱消息
   resolveApproval(id: string, approved: boolean): unknown; // 处理审批
   stopRun(id: string): void; // 停止运行
@@ -82,10 +90,7 @@ export function createCoordinator(deps: Dependencies) {
     finally{if(reserved)deps.scheduling.settle(id,null);}
   }
   // 初始化数据库表结构（含迁移逻辑）
-  db.exec(`CREATE TABLE IF NOT EXISTS coordination_checks(session_id TEXT PRIMARY KEY REFERENCES coordination_sessions(id), conflicts TEXT NOT NULL DEFAULT '[]', model_mode TEXT NOT NULL DEFAULT 'rules', model_error TEXT);
-    CREATE TABLE IF NOT EXISTS apix_manager_settings(id INTEGER PRIMARY KEY CHECK(id=1), provider TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', base_url TEXT NOT NULL DEFAULT '', api_type TEXT NOT NULL DEFAULT 'openai-completions', api_key_env TEXT NOT NULL DEFAULT '');
-    CREATE TABLE IF NOT EXISTS apix_guidance(message_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), status TEXT NOT NULL, action TEXT, focus TEXT, outbound_id TEXT, summary TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS apix_guidance_task ON apix_guidance(task_id,updated_at);`);
+  ensureModuleSchema(db, "coordination-coordinator");
   // 迁移：为旧表添加缺失的列（兼容历史数据库）
   const sessionColumns = rows<{name:string}>('PRAGMA table_info(coordination_sessions)');
   if (!sessionColumns.some(column => column.name === 'interaction_mode')) db.exec("ALTER TABLE coordination_sessions ADD COLUMN interaction_mode TEXT NOT NULL DEFAULT 'conversational'");
@@ -107,7 +112,20 @@ export function createCoordinator(deps: Dependencies) {
    * derivedStatus - 计算派生状态（不写库，每次现算）
    * 状态优先级：attention > queued > running > coordinationStatus
    */
-  const derivedStatus=(s:Session,tasks:Task[])=>{const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;if(state==='attention')return 'attention';if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';return coordinationStatus(s.status,tasks);};
+  const derivedStatus=(s:Session,tasks:Task[])=>{
+    const state=s.plan_id?row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',s.plan_id)?.state:null;
+    if(state==='attention')return 'attention';
+    if(state==='running'&&s.plan_id&&deps.autonomy.waiting(s.plan_id))return 'queued';
+    if(state==='running'&&tasks.some(t=>t.status==='completed'))return 'running';
+    const failed=tasks.filter(t=>['failed','blocked','cancelled','unknown','rejected','needs_revision','awaiting_approval'].includes(t.status));
+    if(s.status==='running'&&!state&&failed.length&&failed.every(t=>t.status==='failed'&&deps.taskRecovery?.(t)?.automatic))return 'queued';
+    return coordinationStatus(s.status,tasks);
+  };
+  function discussionIssue(s:Session){
+    if(!['clarifying','ready'].includes(s.status))return null;
+    const last=row<{kind:string}>("SELECT kind FROM coordination_turns WHERE session_id=? ORDER BY rowid DESC LIMIT 1",s.id);
+    return last?.kind==='discussion_blocked'?'model_blocked':null;
+  }
   /**
    * details - 聚合会话的所有状态信息（CQRS 读模型）
    * @param id - 会话 ID
@@ -119,9 +137,10 @@ export function createCoordinator(deps: Dependencies) {
     const check = row<{conflicts: string; model_mode: string; model_error: string | null}>('SELECT * FROM coordination_checks WHERE session_id=?', id);
     const plan = s.plan_id ? row<{updated_at: string}>('SELECT updated_at FROM plans WHERE id=?', s.plan_id) : null;
     const dependencies = s.plan_id ? rows<{task_id:string;depends_on_id:string}>('SELECT d.* FROM task_dependencies d JOIN tasks t ON t.id=d.task_id WHERE t.plan_id=?', s.plan_id) : [];
-    return { ...s, requirements, requirements_json: undefined, assessment: assess(requirements, JSON.parse(check?.conflicts ?? '[]') as string[]), nextQuestion: nextQuestion(requirements),
-      derivedStatus: derivedStatus(s, tasks), tasks, planVersion: plan ? s.plan_id : null,
+    return { ...s, requirements, requirements_json: undefined, assessment: assess(requirements, JSON.parse(check?.conflicts ?? '[]') as string[]), nextQuestion: nextQuestion(requirements), discussionIssue:discussionIssue(s),
+      derivedStatus: derivedStatus(s, tasks), tasks:tasks.map(task=>({...task,recovery:deps.taskRecovery?.(task)??null})), planVersion: plan ? s.plan_id : null,
       dependencies, progress: progressSummary(tasks, dependencies),
+      workerQuestions:deps.workerInteractions?.(s.project_id,s.id).filter(item=>item.request.answerFormat==='cli')??[],
       turns: rows('SELECT * FROM coordination_turns WHERE session_id=? ORDER BY rowid', id),
       managerTools:rows<{payload:string}>('SELECT payload FROM apix_ledger WHERE aggregate_id=? AND project_id=? AND kind=\'manager.tool\' ORDER BY sequence DESC LIMIT 20',id,s.project_id).reverse().map(e=>JSON.parse(e.payload) as ManagerToolEvent),
       policy: permissions.get(s.project_id), workerPolicies: Object.fromEntries(deps.employees().map(e => [e.id, permissions.get(s.project_id, e.id)])),
@@ -131,17 +150,106 @@ export function createCoordinator(deps: Dependencies) {
       planningMeetings:planningMeetings.details(id),consultationRuntimes:['pi','claude'],
       handoffs: s.plan_id ? rows<Record<string,unknown>>('SELECT h.* FROM code_handoffs h JOIN tasks t ON t.id=h.task_id WHERE t.plan_id=?',s.plan_id).map(h=>({...h,report:JSON.parse(String(h.report))})) : [],
       guidance: s.plan_id ? rows('SELECT g.* FROM apix_guidance g JOIN tasks t ON t.id=g.task_id WHERE t.plan_id=? ORDER BY g.updated_at',s.plan_id) : [],
-      instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
+      instructions: s.plan_id ? rows<Record<string,unknown>>("SELECT m.id,m.target_task_id AS taskId,m.target_run_id AS runId,m.status,m.payload,m.created_at,m.acknowledged_at,m.completed_at,r.mailbox_seen_at FROM agent_messages m JOIN tasks t ON t.id=m.target_task_id LEFT JOIN runs r ON r.id=m.target_run_id WHERE t.plan_id=? AND m.from_agent='apix-director' AND m.type='event' ORDER BY m.rowid DESC LIMIT 100",s.plan_id).map(m => {const payload:unknown=JSON.parse(String(m.payload));return {...m,nativeDelivery:deps.nativeDelivery?.(String(m.id),String(m.runId)),payload:payload && typeof payload==='object' && !Array.isArray(payload) ? payload : {content:String(payload ?? '')}};}) : [],
       agent: { id: 'apix', name: 'ApiX', role: 'manager', foundation: 'ApiX', mode: check?.model_mode ?? 'rules', error: check?.model_error }, busy: busy.has(id) };
   }
+
+  function collaborationActivity(id: string) {
+    const s=session(id);
+    if(!s.plan_id)return {planId:null,events:[]};
+    const preview=(value:unknown)=>typeof value==='string'?String(redact(value,false)).trim().replace(/\s+/g,' ').replace(/^(.{120}).+$/u,'$1…'):'';
+    const events=rows<{id:string;from_agent:string;to_agent:string;type:string;status:string;payload:string;created_at:string;dispatch:number;attached:number}>(`
+      SELECT m.id,m.from_agent,m.to_agent,m.type,m.status,m.payload,m.created_at,m.idempotency_key LIKE 'task-dispatch:%' AS dispatch,
+        EXISTS(SELECT 1 FROM agent_message_artifacts a WHERE a.message_id=m.id) AS attached
+      FROM agent_messages m JOIN tasks t ON t.id=m.task_id
+      WHERE t.plan_id=? AND m.project_id=? AND m.type IN ('request','response','event','artifact_ref')
+        AND (m.target_task_id IS NULL OR EXISTS(SELECT 1 FROM tasks target WHERE target.id=m.target_task_id AND target.plan_id=t.plan_id))
+      ORDER BY m.rowid DESC LIMIT 24`,s.plan_id,s.project_id).map(message=>{
+      const body=JSON.parse(message.payload) as Record<string,unknown>|string|null;
+      const data=typeof body==='object'&&body!==null?body:{content:body};
+      const failed=['rejected','failed','expired'].includes(message.status);
+      const kind=message.dispatch?'dispatch':message.type==='artifact_ref'||message.attached?'delivery':'message';
+      const content=preview(data.content??data.question??data.summary??data.instructionExcerpt??data.excerpt??data.error);
+      return {id:message.id,from:message.from_agent,to:message.to_agent,kind:String(kind),status:message.status,
+        time:message.created_at,preview:failed?'消息未送达':content||({dispatch:'任务已派发',delivery:'交付物引用',message:'发送了一条消息'})[kind]};
+    });
+    const handoffs=rows<{task_id:string;employee_id:string;report:string;updated_at:string;input_commit:string}>(`
+      SELECT h.task_id,t.employee_id,h.report,h.updated_at,h.input_commit FROM code_handoffs h JOIN tasks t ON t.id=h.task_id
+      WHERE t.plan_id=? AND h.status='ready' ORDER BY h.updated_at DESC LIMIT 12`,s.plan_id);
+    const employees=new Map(tasksOf(s).map(task=>[task.id,task.employee_id]));
+    for(const handoff of handoffs){
+      const report=JSON.parse(handoff.report) as {sources?:{taskId:string;commit:string;files?:string[]}[]};
+      for(const source of report.sources??[]){
+        const from=employees.get(source.taskId);
+        if(from)events.push({id:`handoff:${handoff.task_id}:${handoff.input_commit}:${source.taskId}`,from,to:handoff.employee_id,
+          kind:'delivery',status:'completed',time:handoff.updated_at,
+          preview:preview(`已导入验收交付 ${source.commit.slice(0,8)}`+(source.files?.length?' · '+source.files.join('、'):''))});
+      }
+    }
+    const reviews=rows<{id:number;employee_id:string;created_at:string}>(`
+      SELECT e.id,t.employee_id,e.created_at FROM events e JOIN runs r ON r.id=e.run_id JOIN tasks t ON t.id=r.task_id
+      WHERE t.plan_id=? AND e.kind='task_reviewed' AND e.source='apix' AND json_extract(e.payload,'$.accepted')=1
+      ORDER BY e.id DESC LIMIT 12`,s.plan_id);
+    events.push(...reviews.map(review=>({id:`review:${review.id}`,from:'apix-director',to:review.employee_id,kind:'review',
+      status:'completed',time:review.created_at,preview:'宿主检查和 ApiX 自审通过，交付已冻结'})));
+    events.sort((left,right)=>right.time.localeCompare(left.time));
+    return {planId:s.plan_id,events:events.slice(0,24)};
+  }
+  // 上一次写入的快照签名（用于去重），上限防止长期运行无限增长
+  const snapshotSignatures = new Map<string, string>();
+  const SNAPSHOT_SIGNATURE_LIMIT = 500;
+  // 快照里每个任务的 result 只保留这么多字符；完整内容在 tasks.result 与 artifacts
+  const SNAPSHOT_RESULT_PREVIEW = 2000;
+
+  /**
+   * boundedTask - 快照里的任务投影，限制大字段体积
+   *
+   * 快照用于时光机回放会话**状态**，不是用来看完整报告的。
+   * 完整内容在 tasks.result 与 artifacts 里，这里只保留有界预览，
+   * 避免每次快照都把每个任务的完整输出复制一遍。
+   */
+  function boundedTask(task: Task) {
+    // tasksOf 用的是 SELECT *，运行期带 result / queue_reason 等列，Task 类型只声明了核心字段
+    const row = task as Task & { result?: string };
+    const result = String(row.result ?? '');
+    if (result.length <= SNAPSHOT_RESULT_PREVIEW) return task;
+    return {...row, result: result.slice(0, SNAPSHOT_RESULT_PREVIEW), resultTruncated: true, resultBytes: result.length};
+  }
+
   /**
    * checkpoint - 创建会话快照（写入事件溯源账本）
    * @param id - 会话 ID
+   * @returns 是否真的写入了新快照
+   *
    * 设计意图：快照用于审计和时光机回放（[→ 见 memory.ts stateAt()]）
+   *
+   * 去重原因：recordTask 对每个运行时事件都会调用 checkpoint。
+   * 一次运行会产生几十条 turn/usage/message 事件，而它们并不改变
+   * 会话投影。此前每条事件都写一份「整份会话 + 全部任务」的快照，
+   * 实测 50 条事件写出 4MB。现在按投影签名去重：
+   *   - 签名只覆盖真正影响回放的字段（状态、归属、队列原因、结果长度）
+   *   - 时间戳变化不算状态变化
+   *   - 状态确实变化时仍会写快照，回放精度不受影响
    */
   function checkpoint(id: string) {
     const s = session(id);
-    memory.append(s.project_id, id, 'coordination.snapshot', { ...s, requirements: requirementsOf(s), tasks: tasksOf(s) });
+    const tasks = tasksOf(s);
+    const projection = { ...s, requirements: requirementsOf(s), tasks: tasks.map(boundedTask) };
+    const signature = createHash('sha256').update(JSON.stringify({
+      ...s, updated_at: undefined, created_at: undefined,
+      requirements: projection.requirements,
+      tasks: projection.tasks.map(task => {
+        const row = task as Task & { queue_reason?: string | null; verification_status?: string | null; delivery_commit?: string | null; result?: string };
+        return {id: row.id, status: row.status, employee_id: row.employee_id,
+          queue_reason: row.queue_reason, verification_status: row.verification_status,
+          delivery_commit: row.delivery_commit, result: row.result};
+      }),
+    })).digest('hex');
+    if (snapshotSignatures.get(id) === signature) return false;
+    if (snapshotSignatures.size >= SNAPSHOT_SIGNATURE_LIMIT) snapshotSignatures.clear();
+    snapshotSignatures.set(id, signature);
+    memory.append(s.project_id, id, 'coordination.snapshot', projection);
+    return true;
   }
   /**
    * turn - 记录一轮交互（写入 turns 表和事件账本）
@@ -281,7 +389,7 @@ export function createCoordinator(deps: Dependencies) {
       const history = rows('SELECT role,kind,content FROM coordination_turns WHERE session_id=? ORDER BY rowid DESC LIMIT 12', id).reverse();
       const priorBriefs = rows<{id:string;title:string;requirements_json:string}>('SELECT id,title,requirements_json FROM coordination_sessions WHERE project_id=? AND id<>? AND confirmed_revision IS NOT NULL ORDER BY updated_at DESC LIMIT 3',s.project_id,id);
       const projectMemories = deps.projectContext?.(s.project_id,content,s.id);
-      history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '历史资料仅供追问参考，不代表用户已经确认当前需求；不得据此填充缺失字段。' });
+      history.push({ retrievedContext: { priorBriefs, projectMemories }, instruction: '先用项目约定和历史资料判断可安全沿用的低风险默认值，再决定是否需要追问。历史资料不代表用户已确认当前目标或授予权限；不要据此填入用户未指定的功能。' });
       const progress = details(id);
       const decision = await metered(s.project_id,()=>agent.discuss(requirementsOf(s), content, history, {automaticWork:automation.enabled,managerPermission:permissions.get(s.project_id).mode,availableEmployees:deps.employees().map(e=>({id:e.id,name:e.name,runtime:e.runtime})),status:progress.derivedStatus,tasks:progress.tasks,dependencies:progress.dependencies,guidance:progress.guidance,progress:progress.progress}, s.interaction_mode, onQuestion,{sessionId:s.id,projectId:s.project_id,purpose:'discussion',onTool:event=>{memory.append(s.project_id,id,'manager.tool',event);onTool?.(event);}}));
       // TOCTOU 复查：LLM 推理后重新检查版本号
@@ -291,16 +399,16 @@ export function createCoordinator(deps: Dependencies) {
       // 判断是否自动触发计划生成（用户明确要求工作且无冲突）
       continueWork=mutable && decision.mode==='api' && decision.kind==='work' && !decision.conflicts.length;
       if(continueWork){if(workflow.get(s.project_id).version!==automation.version)throw new Error('自动协作授权已变化，请重新发送');const defaults=workflow.defaults(s.project_id);if(deps.autonomy.settings(s.project_id).enabled)defaults.acceptance='宿主运行已授权的实际检查，ApiX 对照冻结模块契约自审；检查与审查均通过后冻结验收，失败在已授权次数、时间和费用边界内返工，最终执行系统集成验收。';for(const [key,value] of Object.entries(defaults))if(!requirements[key as keyof Requirements])requirements[key as keyof Requirements]=value;}
-      const conflicts = decision.mode === 'rules' ? details(id).assessment.conflicts : decision.conflicts;
+      const conflicts = decision.mode === 'rules' ? progress.assessment.conflicts : decision.conflicts;
       transaction(() => {
         db.prepare('INSERT INTO coordination_checks(session_id,conflicts,model_mode,model_error) VALUES (?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET conflicts=excluded.conflicts,model_mode=excluded.model_mode,model_error=excluded.model_error').run(id, JSON.stringify(conflicts), decision.mode, decision.error ?? null);
-        if (mutable && decision.kind !== 'progress') db.prepare('UPDATE coordination_sessions SET title=?,requirements_json=?,revision=revision+1,status=?,updated_at=? WHERE id=?').run(requirements.goal.slice(0,100), JSON.stringify(requirements), assess(requirements, conflicts).ready ? 'ready' : 'clarifying', now(), id);
-        const output = s.interaction_mode === 'conversational' && decision.mode === 'api'
+        if (mutable && decision.mode==='api' && decision.kind !== 'progress') db.prepare('UPDATE coordination_sessions SET title=?,requirements_json=?,revision=revision+1,status=?,updated_at=? WHERE id=?').run(requirements.goal.slice(0,100), JSON.stringify(requirements), assess(requirements, conflicts).ready ? 'ready' : 'clarifying', now(), id);
+        const output = decision.mode==='rules'||s.interaction_mode==='conversational'
           ? decision.question
           : decision.kind === 'progress' || !mutable
-          ? `当前有 ${tasksOf(s).length} 个任务：${tasksOf(s).filter(t => t.status === 'running').length} 个执行中，${tasksOf(s).filter(t => t.status === 'completed').length} 个待验收，${tasksOf(s).filter(t => t.status === 'accepted').length} 个已验收，${tasksOf(s).filter(t => ['failed','blocked','unknown','needs_revision','rejected','cancelled'].includes(t.status)).length} 个需要处理。前置任务验收后才会推进后续步骤。需要调整时，请使用“调整需求”。`
+          ? `当前有 ${tasksOf(s).length} 个任务：${tasksOf(s).filter(t => t.status === 'running').length} 个执行中，${tasksOf(s).filter(t => t.status === 'completed').length} 个待验收，${tasksOf(s).filter(t => t.status === 'accepted').length} 个已验收，${tasksOf(s).filter(t => ['failed','blocked','unknown','needs_revision','rejected','cancelled'].includes(t.status)).length} 个待确认。前置任务验收后才会推进后续步骤。需要调整时，请使用“调整需求”。`
           : decision.question;
-        turn(session(id), 'apix', mutable ? decision.kind : 'progress', output); checkpoint(id);
+        turn(session(id), 'apix', decision.mode==='rules'?'discussion_blocked':mutable?decision.kind:'progress', output); checkpoint(id);
       });
     } finally { busy.delete(id); }
     // 自动触发计划生成（如果用户明确要求工作且需求已完整）
@@ -368,7 +476,8 @@ export function createCoordinator(deps: Dependencies) {
       const autonomyPolicy=deps.autonomy.settings(s.project_id);
       const architecture=autonomyPolicy.enabled?await metered(s.project_id,()=>agent.architect(requirementsOf(s),autonomyPolicy.checks,{sessionId:s.id,projectId:s.project_id,purpose:'architecture'})):undefined;
       if(!shouldContinue())throw new Error('上层 Agent 已停止，未派发任务');
-      const candidates=deps.employees().filter(e=>!authorized.enabled || authorized.employeeIds.includes(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)}));
+      const allowedEmployees=authorized.enabled?new Set(authorized.employeeIds.filter(employeeId=>!autonomyPolicy.enabled||permissions.decision(s.project_id,employeeId)==='allow')):undefined;
+      const candidates=deps.employees().filter(e=>!allowedEmployees || allowedEmployees.has(e.id)).map(e=>({...e,capabilityProfile:deps.scheduling.profile(e.id)}));
       let generated = await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{sessionId:s.id,projectId:s.project_id,purpose:'planning'},architecture));
       // 响应格式错误时允许重试一次（独立计费），推理失败则直接降级
       if(generated.failureKind==='response')generated=await metered(s.project_id,()=>agent.plan(requirementsOf(s),candidates,{sessionId:s.id,projectId:s.project_id,purpose:'planning'},architecture,generated.error));
@@ -378,7 +487,7 @@ export function createCoordinator(deps: Dependencies) {
       if(architecture && (deps.autonomy.settings(s.project_id).version!==autonomyPolicy.version || workflow.get(s.project_id).version!==authorized.version || session(id).revision!==s.revision))throw new Error('架构规划失败或授权/需求已变化，未派发任务');
       if(input.workflowVersion!==undefined){const currentWorkflow=workflow.get(s.project_id);if(currentWorkflow.version!==input.workflowVersion)throw new Error('自动协作授权已变化，未派发任务');}
       const proposed=architecture?bindArchitecture(architecture,generated.steps,autonomyPolicy.taskCapMinor):generated.steps.map(step=>({...step,scheduling:{...taskProfile(step.scheduling),estimateMinor:null,fixedEmployeeId:null,estimates:[]}}));
-      const steps = deps.scheduling.assign(s.project_id,validateSteps(proposed),true);
+      const steps = deps.scheduling.assign(s.project_id,validateSteps(proposed),true,allowedEmployees);
       transaction(() => {
         writePlan(s,steps,architecture);
         turn(session(id),'apix','plan_review',mode === 'api' ? '需求已确认，执行计划已生成。请查看任务安排和依赖。' : `${generated.failureKind==='response'?'模型已响应，但执行计划的格式或内容校验未通过。':'模型推理请求失败。'}已保留规则草案，尚未派发；请检查模型配置和错误详情，或审查草案后批准。`);
@@ -390,7 +499,7 @@ export function createCoordinator(deps: Dependencies) {
     const automation=workflow.get(s.project_id);
     // 满足条件时自动派发（无需用户手动批准）
     const autonomousDispatch=!!ready.autonomy && automation.enabled && ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id) && permissions.decision(s.project_id,t.employee_id)==='allow');
-    if (mode === 'api' && (autonomousDispatch || (input.workflowVersion===undefined || automation.enabled) && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null))) return dispatchSession(id,{ planVersion: ready.planVersion },'policy');
+    if (mode === 'api' && (autonomousDispatch || (input.workflowVersion===undefined || automation.enabled) && (!automation.enabled || ready.tasks.every(t=>automation.employeeIds.includes(t.employee_id))) && ready.scheduling.policy.limitMinor===null && !ready.scheduling.policy.requireFreshQuota && ready.tasks.every(t => permissions.decision(s.project_id,t.employee_id) === 'allow' && deps.scheduling.profile(t.employee_id).accountId===null))) return dispatchSession(id,{ planVersion: ready.planVersion },'policy',shouldContinue);
     return details(id);
   }
   /**
@@ -400,13 +509,15 @@ export function createCoordinator(deps: Dependencies) {
    * @param source - 派发来源（user=用户批准 / policy=自动策略）
    * 设计意图：授予版本绑定授权令牌，启动员工进程。
    */
-  async function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user') {
+  async function dispatchSession(id: string, input: Record<string, unknown>, source: 'user' | 'policy' = 'user', shouldContinue:()=>boolean=()=>true) {
     const s = session(id); if (busy.has(id)) throw new Error('ApiX 正在处理此目标');
     if (s.status !== 'plan_review' || s.confirmed_revision !== s.revision || !s.plan_id) throw new Error('请先确认最新需求并检查计划');
     deps.autonomy.assertPlan(s.plan_id,s.project_id);
     const d = details(id); if (input.planVersion !== d.planVersion) throw new Error('计划已变化，请重新审查');
     const tasks = rows<Task & {approval_id: string}>('SELECT t.*,a.id AS approval_id FROM tasks t JOIN approvals a ON a.task_id=t.id WHERE t.plan_id=? AND a.status=\'pending\' ORDER BY t.rowid',s.plan_id);
     if (!tasks.length || tasks.length !== d.tasks.length || tasks.some(t => t.status !== 'awaiting_approval')) throw new Error('计划已派发或部分任务已变化');
+    if (!shouldContinue()) throw new Error('上层 Agent 已停止，未派发任务');
+    if (source==='policy'&&d.workflow.enabled&&tasks.some(t=>!d.workflow.employeeIds.includes(t.employee_id))) throw new Error('计划包含未授权的员工');
     if (tasks.some(t => permissions.decision(s.project_id,t.employee_id) === 'deny')) throw new Error('只读权限不允许启动员工');
     for(const task of tasks){const reason=deps.scheduling.admission(task);if(reason)throw new Error(reason);}
     transaction(() => {
@@ -414,8 +525,8 @@ export function createCoordinator(deps: Dependencies) {
       db.prepare("UPDATE coordination_sessions SET status='running',updated_at=? WHERE id=?").run(now(),id);
       memory.append(s.project_id,id,'plan.dispatched',{ planId:s.plan_id,source }); checkpoint(id);
     });
-    const failures: {taskId: string; error: string}[] = [];
-    for (const task of tasks) { try { (await deps.resolveApproval(task.approval_id,true)); } catch (e) { failures.push({taskId:task.id,error:String(e instanceof Error ? e.message : e)}); } }
+    const results=await Promise.allSettled(tasks.map(async task=>deps.resolveApproval(task.approval_id,true)));
+    const failures=results.flatMap((result,index)=>result.status==='rejected'?[{taskId:tasks[index]!.id,error:String(result.reason instanceof Error?result.reason.message:result.reason)}]:[]);
     checkpoint(id);
     return { ...details(id), failures };
   }
@@ -427,6 +538,9 @@ export function createCoordinator(deps: Dependencies) {
     const s = editable(id,input.revision); const reason = text(input.reason);
     if (!['plan_review','running','attention','awaiting_acceptance','completed'].includes(s.status) && s.status !== 'running') throw new Error('当前需求已经可编辑');
     const active = s.plan_id ? rows<{id: string}>('SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.plan_id=? AND r.status IN (\'running\',\'starting\',\'stopping\')',s.plan_id) : [];
+    // 先请求停止仍在运行的旧 Run，再让需求版本失效：否则员工问答会在计划失效后失败并等到超时。
+    const stopErrors: string[] = [];
+    for (const run of active) try { deps.stopRun(run.id); } catch(e) { stopErrors.push(String(e)); }
     transaction(() => {
       if (s.plan_id) {
         db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id IN (SELECT id FROM tasks WHERE plan_id=? AND status IN ('awaiting_approval','queued','blocked')) AND status IN ('pending','approved')").run(now(),s.plan_id);
@@ -435,8 +549,6 @@ export function createCoordinator(deps: Dependencies) {
       db.prepare("UPDATE coordination_sessions SET status='clarifying',confirmed_revision=NULL,revision=revision+1,updated_at=? WHERE id=?").run(now(),id);
       turn(session(id),'user','change_requested',reason); checkpoint(id);
     });
-    const stopErrors: string[] = [];
-    for (const run of active) try { deps.stopRun(run.id); } catch(e) { stopErrors.push(String(e)); }
     turn(session(id),'apix','clarification','已取消未启动任务并请求停止运行中的任务。请修改需求；停止结果以任务状态为准。');
     return {...details(id),stopErrors};
   }
@@ -518,6 +630,21 @@ export function createCoordinator(deps: Dependencies) {
     if(task.plan_id)deps.autonomy.assertPlan(task.plan_id,task.project_id);
     if (!allowUnavailableEmployee && !deps.employees().some(e => e.id === task.employee_id)) throw new Error('员工已停用或运行时不可用');
   }
+  function workerQuestionScope(task:Task){
+    if(!task.plan_id||task.status!=='running')return null;
+    const policy=workflow.get(task.project_id);
+    if(!policy.enabled||!policy.employeeIds.includes(task.employee_id)||permissions.decision(task.project_id,task.employee_id)!=='allow')return null;
+    const bound=row<{session_id:string;requirements_json:string}>(`SELECT b.session_id,b.requirements_json FROM coordination_plan_briefs b
+      JOIN coordination_sessions s ON s.id=b.session_id WHERE b.plan_id=? AND s.archived_at IS NULL AND s.deleted_at IS NULL`,task.plan_id);
+    if(!bound)return null;
+    assertExecution(task);
+    const autonomy=deps.autonomy.settings(task.project_id);
+    return {sessionId:bound.session_id,requirements:JSON.parse(bound.requirements_json) as Requirements,workflowVersion:policy.version,
+      autonomyVersion:autonomy.version,checks:autonomy.enabled?autonomy.checks:[]};
+  }
+  async function resolveWorkerQuestion(task:Task,request:unknown,scope:NonNullable<ReturnType<typeof workerQuestionScope>>,evidence:QuestionEvidence[],signal:AbortSignal){
+    return await metered(task.project_id,()=>agent.reviewWorkerQuestion(request,evidence,{sessionId:scope.sessionId,projectId:task.project_id,purpose:'worker_question',signal}));
+  }
   /** 获取当前正在运行的任务（用于监督指导） */
   function activeTask(sessionId: string, taskId: string, revision: unknown): {s: Session; task: Task} {
     const s = editable(sessionId, revision);
@@ -528,9 +655,10 @@ export function createCoordinator(deps: Dependencies) {
   }
   /** 用户向员工发送指导消息 */
   function instructEmployee(sessionId: string, input: Record<string,unknown>) {
+    if(input.requestId!==undefined&&!/^[a-zA-Z0-9:_-]{8,100}$/.test(String(input.requestId)))throw new Error('指导请求 ID 无效');
     const taskId = text(input.taskId,100); const content = text(input.content,2000);
     const {s,task} = activeTask(sessionId,taskId,input.revision);
-    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${input.requestId===undefined?randomUUID():text(input.requestId,100)}`,timeoutMs:3600000,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
     if (message.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
     transaction(() => {turn(s,'user','worker_guidance',`向员工补充：${content}`);memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:message.id,source:'user',content},'user');checkpoint(sessionId);});
     return details(sessionId);
@@ -557,9 +685,11 @@ export function createCoordinator(deps: Dependencies) {
     const claimed = db.prepare("INSERT OR IGNORE INTO apix_guidance(message_id,task_id,status,summary,updated_at) VALUES (?,?,'processing',?,?)").run(messageId,task.id,summary,now());
     if (!claimed.changes) return;
     try {
-      // 3 次指导后自动 escalate（熔断止损）
-      const count = row<{n:number}>("SELECT COUNT(*) AS n FROM apix_guidance WHERE task_id=? AND action='guide' AND status='sent'",task.id)?.n ?? 0;
-      const decision = count >= 3 ? {action:'escalate' as const,focus:'verification' as const,mode:'rules' as const} : await metered(s.project_id,()=>agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked},{sessionId:s.id,projectId:s.project_id,purpose:'discussion'}));
+      let decision:Awaited<ReturnType<typeof agent.guide>> = {action:'observe',focus:'verification',mode:'rules'};
+      if (blocked) {
+        const count = row<{n:number}>("SELECT COUNT(*) AS n FROM apix_guidance WHERE task_id=? AND action='guide' AND status='sent'",task.id)?.n ?? 0;
+        decision = count >= 3 ? {action:'escalate',focus:'verification',mode:'rules'} : await metered(s.project_id,()=>agent.guide(JSON.parse(bound.requirements_json) as Requirements,task.prompt,{summary,blocked},{sessionId:s.id,projectId:s.project_id,purpose:'discussion'}));
+      }
       const current = session(bound.session_id);
       const liveTask = row<Task>('SELECT * FROM tasks WHERE id=?',task.id);
       if (!liveTask || current.plan_id !== task.plan_id || current.revision !== bound.revision || current.status !== 'running' || liveTask.status !== 'running') throw new Error('任务状态或用户需求已变化');
@@ -592,8 +722,9 @@ export function createCoordinator(deps: Dependencies) {
    * @param staleAfterMs - 超时阈值（默认 60 秒）
    * 设计意图：对运行中但长时间无报告的员工主动发送进度请求。
    */
-  function superviseActiveRuns(staleAfterMs = 60000) {
+  function superviseActiveRuns(staleAfterMs = 60000,waiting:(runId:string)=>boolean=()=>false) {
     for (const active of rows<{run_id:string;task_id:string;started_at:string;session_id:string}>('SELECT r.id AS run_id,r.task_id,r.started_at,b.session_id FROM runs r JOIN tasks t ON t.id=r.task_id JOIN coordination_plan_briefs b ON b.plan_id=t.plan_id WHERE r.status=\'running\' AND t.status=\'running\'')) {
+      if(waiting(active.run_id))continue;
       if (Date.now() - Date.parse(active.started_at) < staleAfterMs) continue;
       const task = row<Task>('SELECT * FROM tasks WHERE id=?',active.task_id)!;
       const s = session(active.session_id);
@@ -601,7 +732,7 @@ export function createCoordinator(deps: Dependencies) {
         assertExecution(task);
         const latestReport = row<{created_at:string}>('SELECT created_at FROM agent_messages WHERE task_id=? AND from_agent=? AND to_agent=\'apix-director\' AND type=\'event\' ORDER BY created_at DESC LIMIT 1',task.id,task.employee_id);
         if (latestReport && Date.now() - Date.parse(latestReport.created_at) < staleAfterMs) continue;
-        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-status-request:${active.run_id}`,timeoutMs:3600000,payload:{kind:'progress_request',source:'apix',content:'请报告当前任务的真实进度、已完成的检查和阻塞情况。遇到新需求或权限问题时不要自行扩大任务范围。'}}) as {id:string;status:string;duplicate?:boolean};
+        const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`apix-status-request:${active.run_id}`,timeoutMs:3600000,payload:{kind:'progress_request',source:'apix',content:'请报告当前任务的真实进度、已有检查结果和阻塞情况。仅汇报已有结果；没有相关变更时无需重跑检查。未阻塞就继续执行或提交结果，无需等待回复。'}}) as {id:string;status:string;duplicate?:boolean};
         if (sent.status === 'rejected' || sent.duplicate) continue;
         turn(s,'apix','progress_requested',`ApiX 已主动向员工请求进度：${task.prompt.slice(0,120)}`);
         memory.append(s.project_id,s.id,'guidance.progress_requested',{taskId:task.id,runId:active.run_id,messageId:sent.id});
@@ -697,7 +828,7 @@ export function createCoordinator(deps: Dependencies) {
    * 前置条件：所有任务已 accepted，自主交付计划已 completed
    */
   function delivered(sessionId:string,planId:string){const s=session(sessionId);if(s.plan_id!==planId || !tasksOf(s).every(t=>t.status==='accepted') || row<{state:string}>('SELECT state FROM autonomy_plans WHERE plan_id=?',planId)?.state!=='completed')throw new Error('当前目标尚未完成系统验收');transaction(()=>{db.prepare("UPDATE coordination_sessions SET status='completed',updated_at=? WHERE id=?").run(now(),sessionId);turn(session(sessionId),'apix','delivery_completed','全部模块和系统集成已通过实际检查与 ApiX 自审，交付版本已冻结。成果保存在托管工作区，代码差异、验收证据和修复记录见工作详情。');checkpoint(sessionId);});}
-  return {delivered,reassignPending,qualityReview,testModelConnection, workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
-    listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:derivedStatus(s,tasksOf(s))} : details(s.id)),
+  return {collaborationActivity,delivered,reassignPending,qualityReview,testModelConnection,workerQuestionScope,resolveWorkerQuestion, workflowSettings:workflow.get,saveWorkflow:workflow.save,stopSession,createSession, answerSession, discuss, setInteractionMode, confirmSession, dispatchSession, reviseSession, editPlan, runPlanningMeeting,applyPlanningMeeting,changePolicy, assertExecution, recordTask, instructEmployee, superviseWorkerMessage, superviseActiveRuns,assertRetry,authorizeRetry,
+    listSessions: (projectId: string, summary = false) => rows<Session>('SELECT * FROM coordination_sessions WHERE project_id=? AND archived_at IS NULL AND deleted_at IS NULL ORDER BY updated_at DESC,rowid DESC',projectId).map(s=>summary ? {id:s.id,title:s.title,project_id:s.project_id,plan_id:s.plan_id,status:s.status,derivedStatus:derivedStatus(s,tasksOf(s)),discussionIssue:discussionIssue(s)} : details(s.id)),
     sessionDetails: details, timeline, getSettings, saveSettings };
 }

@@ -14,19 +14,32 @@
  */
 import {type Store} from '../coordination/contracts.js';
 import {digest,ToolError} from './tool-governance.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 默认工具调用预算参数 */
 const defaults={maxCalls:24,maxFailures:3,maxNoProgress:3,maxPolls:6,maxMs:1800000,maxBytes:2000000,pollMs:1000};
 type Limits=typeof defaults;
 /** semantic - 移除结果中的时间戳等易变字段，用于稳定的结果哈希比较 */
-function semantic(value:unknown):unknown {if(Array.isArray(value))return value.map(semantic);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([k])=>!['created_at','updated_at','createdAt','updatedAt','timestamp','operationId','elapsedMs','durationMs','reused','observedAt','observed_at','checkedAt','fetchedAt','outputRef'].includes(k)).map(([k,v])=>[k,semantic(v)]));return value;}
+function semantic(value:unknown):unknown {
+  if(Array.isArray(value))return value.map(semantic);
+  if(!value||typeof value!=='object')return value;
+  const verification='checkId' in value&&'checkContractVersion' in value;
+  return Object.fromEntries(Object.entries(value).filter(([k])=>
+    !['created_at','updated_at','createdAt','updatedAt','timestamp','operationId','elapsedMs','durationMs','reused','observedAt','observed_at','checkedAt','fetchedAt','outputRef'].includes(k)
+    &&!(verification&&['runId','startedAt','finishedAt'].includes(k))).map(([k,v])=>[k,semantic(v)]));
+}
+function toolSignature(tool:string,args:unknown,accessVersion:string|number){
+  // The list tool resolves both omitted path and "." to the project root.
+  const normalized=tool==='list_files'&&args&&typeof args==='object'&&!('path' in args)?{...args,path:'.'}:args;
+  return digest({tool,args:normalized,accessVersion});
+}
 /**
  * 创建工具进度追踪器
  * @param store - 数据库 Store
  * @returns 包含 settings / save / check / observe / signature 方法的追踪器
  */
 export function createToolProgress({db,row,rows,now}:Store){
-  db.exec(`CREATE TABLE IF NOT EXISTS tool_limits(project_id TEXT PRIMARY KEY REFERENCES projects(id),body TEXT NOT NULL,version INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS tool_observations(id INTEGER PRIMARY KEY,session_id TEXT NOT NULL,turn_id INTEGER NOT NULL,signature TEXT NOT NULL,result_hash TEXT NOT NULL,code TEXT,bytes INTEGER NOT NULL,blocked INTEGER NOT NULL,created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS tool_progress_turn ON tool_observations(session_id,turn_id,id);`);
+  ensureModuleSchema(db, "assistant-tool-progress");
   /** settings - 获取项目的工具调用预算设置（与默认值合并） */
   function settings(projectId:string){if(!row('SELECT id FROM projects WHERE id=?',projectId))throw new ToolError('NOT_FOUND','项目不存在','correct_input',{},404);const p=row<{body:string;version:number}>('SELECT * FROM tool_limits WHERE project_id=?',projectId);return {...defaults,...p?JSON.parse(p.body):{},version:p?.version??0} as Limits&{version:number};}
   /** save - 保存项目的工具调用预算设置（带上限校验） */
@@ -38,7 +51,7 @@ export function createToolProgress({db,row,rows,now}:Store){
    * check - 工具调用前的预算和循环检查
    * 检测：总预算超限、确定性错误重复、轮询无进展、相同结果重复、连续失败、多工具循环
    */
-  function check(id:string,projectId:string,tool:string,args:unknown,accessVersion:string|number){const limits=settings(projectId),h=history(id),signature=digest({tool,args,accessVersion});
+  function check(id:string,projectId:string,tool:string,args:unknown,accessVersion:string|number){const limits=settings(projectId),h=history(id),signature=toolSignature(tool,args,accessVersion);
     const fatal=(code:string,message:string):never=>{throw new ToolError(code,message,'stop_and_review');};
     if(h.length>=limits.maxCalls||h.reduce((n,x)=>n+x.bytes,0)>=limits.maxBytes||h.length&&Date.now()-Date.parse(h[0]!.created_at)>limits.maxMs)fatal('TOOL_BUDGET_EXCEEDED','达到工具调用、时间或结果字节预算');
     const matching=h.filter(x=>x.signature===signature&&!x.blocked),last=matching.at(-1),poll=['inspect_agents','inspect_quota'].includes(tool);
@@ -52,5 +65,5 @@ export function createToolProgress({db,row,rows,now}:Store){
   }
   /** observe - 记录一次工具调用的结果观察（签名、哈希、字节数） */
   function observe(id:string,signature:string,result:unknown,code?:string,blocked=false){db.prepare('INSERT INTO tool_observations(session_id,turn_id,signature,result_hash,code,bytes,blocked,created_at) VALUES (?,?,?,?,?,?,?,?)').run(id,turn(id),signature,digest(semantic(result)),code??null,Buffer.byteLength(JSON.stringify(result)??''),blocked?1:0,now());}
-  return {settings,save,check,observe,signature:(tool:string,args:unknown,accessVersion:string|number)=>digest({tool,args,accessVersion})};
+  return {settings,save,check,observe,signature:toolSignature};
 }

@@ -1,4 +1,5 @@
 import {html} from './dist/web/html.js';
+import './dist/web/agent-run-view.js';
 import {showTaskEvents} from './dist/web/task-events.js';
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -96,7 +97,15 @@ function setNavigation(open, restoreFocus = false) {
   navigationToggle.setAttribute("aria-expanded", String(expanded));
   navigationToggle.setAttribute("aria-label", expanded ? "关闭导航" : "打开导航");
   $("#navigation-backdrop").hidden = !expanded;
-  if (restoreFocus) navigationToggle.focus();
+  // 对话页合并顶栏后全局顶栏被隐藏，焦点还原改落在可见的会话内菜单按钮上。
+  if (restoreFocus) visibleNavigationToggle().focus();
+}
+function visibleNavigationToggle() {
+  const assistantMenu = document.querySelector("#assistant-menu");
+  // 对话页隐藏全局顶栏后，按钮自身的 display 仍是 grid，需用 checkVisibility 连祖先一起判定，
+  // 否则会把焦点还原到不可见的 #navigation-toggle 上造成焦点丢失。
+  if (assistantMenu && !navigationToggle.checkVisibility() && assistantMenu.checkVisibility()) return assistantMenu;
+  return navigationToggle;
 }
 navigationToggle.addEventListener("click", () => {
   const open = !document.body.hasAttribute("data-navigation-open");
@@ -125,6 +134,9 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
+  // 设置页有自己的分区导航，收起侧栏的对话历史，聚焦当前分区。
+  const sidebarHistory = $("#sidebar-history");
+  if (sidebarHistory) sidebarHistory.hidden = page === "settings";
   const pageTitle = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", knowledge:"知识库与工具安全", projects: "项目管理", resources: "Skills 与 MCP" }[page] ?? "工作区";
   $("#breadcrumb-page").textContent = pageTitle;
   document.title = `${pageTitle} · ApiX`;
@@ -147,10 +159,14 @@ function refresh() {
       messageStream?.close();
       streamProjectId = selectedProjectId;
       messageStream = selectedProjectId ? new EventSource(`/api/events/stream?projectId=${encodeURIComponent(selectedProjectId)}&agentId=apix-director`) : null;
-      if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => refresh());
+      if (messageStream) for (const eventName of ["message.created", "message.delivered", "message.acknowledged", "message.completed", "message.failed", "message.expired", "message.retry_scheduled", "message.artifact_attached", "director.intercepted", "lock.acquired", "lock.released", "agent.status"]) messageStream.addEventListener(eventName, () => {
+        void refresh();
+        document.dispatchEvent(new Event('apix:collaboration-change'));
+      });
     }
     render();
     document.dispatchEvent(new CustomEvent("apix:snapshot", { detail: { data, projectId: selectedProjectId ?? "" } }));
+    return true;
   } catch (error) { toast(`本地服务不可用：${error.message}`); }
   finally{refreshing=false;}
   })();return refreshPending;
@@ -348,7 +364,7 @@ document.addEventListener("click", async (event) => {
     const selected = data.tasks.find((item) => item.id === (d.openTask ?? d.viewTask));
     if (selected?.conversation_id) { selectedProjectId = selected.project_id; selectedConversationId = selected.conversation_id; localStorage.setItem("apix.selectedProject", selectedProjectId); selectedTaskId = selected.id; await refresh(); go("workspace"); }
     else if (selected) {
-      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
+      try { const details = await api(`/api/tasks/${selected.id}/details`); showTaskEvents($('#task-details-content'),selected,details.events,labels[selected.status]??selected.status,details.runs); $("#task-details-dialog").showModal(); } catch (error) { toast(error.message); }
     }
   }
   else if (d.resumeTask) openEditor("resume", d.resumeTask);
@@ -551,7 +567,18 @@ go("assistant");
 refresh();
 setInterval(refresh, 1500);
 
-document.addEventListener("apix:select-project", async (event) => { selectedProjectId = event.detail; localStorage.setItem("apix.selectedProject", selectedProjectId); await refresh(); });
+async function selectProject(id) {
+  selectedProjectId = id;
+  localStorage.setItem("apix.selectedProject", id);
+  return refresh();
+}
+document.addEventListener("apix:select-project", (event) => void selectProject(event.detail));
+window.apixDesktop?.onWorkerRequest(async ({projectId, sessionId, interactionId}) => {
+  if (!await selectProject(projectId)) return;
+  if (selectedProjectId !== projectId) { toast("该请求的项目已不可用。"); return; }
+  go("assistant");
+  document.dispatchEvent(new CustomEvent("apix:open-assistant", {detail:{id:sessionId,interactionId}}));
+});
 
 $('#memory-updated-filter').addEventListener('change',renderMemory);
 for(const key of ['status','source','scope'])$('#memory-'+key+'-filter').addEventListener('change',renderMemory);
@@ -563,3 +590,5 @@ $('#page-memory').addEventListener('click',async event=>{const button=event.targ
 document.addEventListener('apix:snapshot',()=>{if(memoryStateProject!==selectedProjectId){$('#memory-controls').textContent='';$('#memory-feedback').textContent='';memoryState=null;memoryStateProject='';}});
 
 $('#memory-controls').addEventListener('change',event=>{if(event.target.id==='memory-layer-filter')for(const node of $$('#memory-controls [data-instruction-layer]'))node.hidden=!!event.target.value&&node.dataset.instructionLayer!==event.target.value;});
+
+document.addEventListener('apix:open-task',event=>{const button=document.querySelector('[data-open-task="'+CSS.escape(event.detail)+'"],[data-view-task="'+CSS.escape(event.detail)+'"]');button?.click();});

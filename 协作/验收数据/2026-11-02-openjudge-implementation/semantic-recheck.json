@@ -1,0 +1,13 @@
+{
+  "purpose": "Re-evaluation of retained evidence, not a new task execution",
+  "results": [
+    {
+      "caseId": "coding-logs",
+      "dimension": "tool_selection",
+      "status": "scored",
+      "score": 4,
+      "reason": "The agent's tool selection is largely well-aligned with the query's multi-step intent: run the check, read the saved log tail to locate LATE_ASSERTION, fix, and re-verify. Strengths: it used configure_verification to establish the approved check contract (matching the host execution contract for check.cjs), run_check to execute the unit check, read_output with mode=tail on stdout to inspect the log tail, read_file to inspect src/add.cjs, edit_file with expectedSha256 for a precise fix, get_diff to confirm changes, and a second run_check to re-verify. This covers the core workflow efficiently without redundant calls. Weaknesses: the search_files call used query 'a-b' scoped to src, which is a somewhat arbitrary/possibly irrelevant search rather than a targeted search for LATE_ASSERTION or the assertion logic; it may be unnecessary or a weak substitute for locating the failure. Also, the query explicitly says to first execute node check.cjs and read the saved log tail to locate LATE_ASSERTION; the agent did run the check and read the tail, but the search_files step is not clearly justified and could be considered a minor inefficiency. Overall the selection is highly relevant and capable, with only a minor questionable/extra tool call, so a score of 4 is appropriate.",
+      "calibration": "uncalibrated_diagnostic_only"
+    }
+  ]
+}

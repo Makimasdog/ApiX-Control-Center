@@ -9,13 +9,16 @@ import { schedulingView } from './scheduling-view.js';
 import {autonomyView,type AutonomyState} from './autonomy-view.js';
 import type {AutonomyPolicy} from '../src/coordination/architecture.js';
 import type { TaskProfile } from '../src/coordination/scheduling.js';
-import {applicationModelSettings} from './application-settings.js';
+import {applicationModelSettings,trackSettingsSave} from './application-settings.js';
+import {interactionForm,type RuntimeInteraction} from './runtime-interaction-form.js';
 type Mode = 'full_access' | 'ask_approval' | 'read_only';
 type InteractionMode = 'structured' | 'conversational';
 type Policy = { mode: Mode; version: number };
 type Step = { prompt: string; employeeId: string; dependsOn: number[]; moduleId?:string;scheduling?:TaskProfile };
 interface Session {
+  workerQuestions?:RuntimeInteraction[];
   reviewTaskId?:string;
+  discussionIssue?:'model_blocked'|null;
   autonomy?:AutonomyState|null;autonomyPolicy?:AutonomyPolicy;autonomyRecoveryFingerprint?:string|null;
   workflow?:{enabled:boolean;version:number;employeeIds:string[]};
   id: string; title: string; project_id: string; revision: number; status: string; derivedStatus: string; plan_id: string | null; planVersion?: string; interaction_mode: InteractionMode; busy?: boolean;
@@ -23,14 +26,14 @@ interface Session {
   tasks: {id:string;prompt:string;employee_id:string;status:string;result?:string;queue_reason?:string}[]; dependencies: {task_id:string;depends_on_id:string}[];
   turns: {role:string;kind:string;content:string}[]; agent: {mode:string;error?:string};
   managerTools?:{toolName:string;phase:'start'|'end';isError?:boolean}[];
-  instructions?: {id:string;taskId:string;runId:string;status:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
+  instructions?: {id:string;taskId:string;runId:string;status:string;nativeDelivery?:string;payload:{content?:string;kind?:string};mailbox_seen_at?:string}[];
   capabilities?: {id:string;mailbox?:boolean}[];
   handoffs?: {task_id:string;status:string;input_commit:string;report:{files:string[];sources:{taskId:string;commit:string}[];error?:string}}[];
   scheduling?:Parameters<ReturnType<typeof schedulingView>['render']>[1];
   schedulingTasks?:{taskId:string;profile:TaskProfile;decision:{reviewMode?:string;candidates:{name:string;eligible:boolean;reasons:string[];warnings:string[];waiting:string|null;forecastMinor?:number|null;forecastCurrency?:string|null;forecastSource?:string;estimateMinor:number|null;currency:string|null;minutes:number|null;history:{samples:number;accepted:number}}[]}}[];
   planningMeetings?:{id:string;plan_id:string;round:number;status:string;body:{minutes:string;disagreements:string[];proposals:{employeeId:string;status:string;claims:unknown[];decline?:string;error?:string}[]}}[];
 }
-interface Delivery {taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null;sourceHead?:string|null}
+interface Delivery {nativeRecovery?:boolean;taskId:string;status:string;workspacePath?:string;inputCommit?:string;deliveryCommit?:string;error?:string;inspection?:{fingerprint:string|null;files:string[];conflicts:string[];preview:string;previewTruncated?:boolean};handoff?:{status:string;report:{error?:string}};latestRun?:{id:string;status:string;pid:number|null};processMayExist:boolean|null;managedActive:boolean;recoveryFingerprint:string|null;sourceHead?:string|null}
 interface ExecutionPolicy {projectLimit:number;employeeLimit:number;paused:boolean;version:number;runtimePauses:{runtime:string;reason:string}[]}
 interface Snapshot { projects:{id:string;name:string}[]; employees:{id:string;name:string;runtime:string}[]; artifacts:{id:string;run_id:string;content:string}[]; runs:{id:string;task_id:string}[] }
 const root = document.querySelector<HTMLElement>('#page-coordinator')!;
@@ -49,7 +52,7 @@ let executionPolicy:ExecutionPolicy|null=null;
 let inspectedDelivery:Delivery|null=null;
 let deliveryRequest=0;
 const fields = [['goal','目标'],['scope','范围与边界'],['constraints','约束'],['deliverable','交付物'],['acceptance','验收标准']];
-const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'需要处理',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
+const statuses: Record<string,string> = {clarifying:'澄清中',ready:'待确认需求',plan_review:'待审查计划',running:'执行中',awaiting_acceptance:'待验收',completed:'已验收',attention:'等待你确认',cancelled:'已取消',awaiting_approval:'待批准',queued:'排队中',failed:'失败',blocked:'已阻塞',accepted:'已验收',stopping:'正在停止',unknown:'状态未知',needs_revision:'需要修改'};
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(path,body === undefined ? undefined : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await r.json(); if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`); return data as T;
@@ -60,7 +63,7 @@ async function action(work:()=>Promise<void>,success='已保存') {
   const originProject=projectId; const originSession=sessionId;
   const originFocus=document.activeElement;
   notice('ApiX 正在处理…');
-  try { await work(); if(document.activeElement===originFocus && originFocus instanceof HTMLButtonElement)originFocus.blur();if(projectId===originProject && sessionId===originSession)notice(success); await reload(); }
+  try { await work(); if(document.activeElement===originFocus && originFocus instanceof HTMLButtonElement)originFocus.blur();if(projectId===originProject && sessionId===originSession)notice(success); await reload(); return true; }
   catch(e) { if(projectId===originProject && sessionId===originSession)notice(e instanceof Error ? e.message : String(e),true); }
   finally { loading=false; root.classList.remove('is-busy'); if(projectId!==originProject || sessionId!==originSession)notice('');updateStreamingControls(); }
 }
@@ -141,7 +144,7 @@ root.innerHTML = html`<div class="coord-header"><div><div class="eyebrow">APIX �
 <div class="coord-layout"><aside class="coord-rail"><div id="coord-sessions"></div>
 </aside>
 <section id="coord-empty" class="surface-card coord-empty"><h2>从一个目标开始</h2><p>先选择项目，再告诉 ApiX 你想完成什么。需求、计划、员工记录和交付物都会保存在这里。</p><button class="outline-button" data-page-target="projects">管理项目</button></section>
-<section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><label class="coord-mode">交互方式<select id="coord-interaction-mode">` + (interactionOptions('conversational')) + html`</select></label></div></div>
+<section id="coord-body" hidden><div class="coord-title coord-goal-head"><h2 id="coord-title"></h2><div class="coord-head-controls"><span id="coord-status" class="coord-pill"></span><button id="coord-hand-to-apix" type="button" class="outline-button" hidden>交给 ApiX 处理</button><label class="coord-mode">交互方式<select id="coord-interaction-mode">` + (interactionOptions('conversational')) + html`</select></label></div></div>
 <div class="coord-columns"><section id="coord-conversation" class="surface-card"><div class="coord-title"><h3 id="coord-chat-title">任务对话</h3></div><div id="coord-backend" class="coord-muted"></div><div id="coord-turns" class="coord-turns" aria-live="polite"><article id="coord-stream" class="coord-turn coord-stream" hidden><strong>ApiX</strong><p id="coord-stream-text"></p></article></div><button id="coord-scroll-bottom" aria-label="回到底部" title="回到底部">↓</button><div id="coord-conversation-model"></div><form id="coord-message" class="coord-composer"><label><span id="coord-message-label">给 ApiX 发消息</span><textarea name="content" rows="3" required maxlength="10000" placeholder="补充所选流程的要求或处理意见…" aria-label="补充当前协作流程"></textarea></label><button class="primary-button" type="submit">发送给 ApiX</button></form></section>
 <section id="coord-requirements" class="surface-card"><div class="coord-title"><h3>需求摘要</h3><span id="coord-score" class="coord-pill"></span></div><div id="coord-conflicts"></div><form id="coord-brief">` + (fields.map(([key,label])=>html`<label>${label}<textarea name="${key}" maxlength="4000" rows="2"></textarea></label>`).join('')) + html`<button class="outline-button" type="submit">保存修改</button></form><button id="coord-confirm" class="primary-button">确认需求，让 ApiX 安排任务</button><p class="coord-muted">完整度达到 100% 且无待处理冲突后可确认。完整访问模式下，可用员工也须获得完整访问授权，ApiX 才会自动派发。</p></section></div>
 <section class="surface-card coord-section"><h3>权限由你决定</h3><p class="coord-muted">ApiX 与员工分别授权。请求批准会等待你审查计划；只读规划不会启动员工。更改权限将使已有执行授权失效。</p><div id="coord-permissions"></div></section>
@@ -153,15 +156,16 @@ root.innerHTML = html`<div class="coord-header"><div><div class="eyebrow">APIX �
 const executionSection=document.createElement('section');executionSection.className='surface-card coord-section';executionSection.id='coord-execution';
 $('#coord-tasks').parentElement!.before(executionSection);
 function renderExecutionPolicy() {
-  const p=executionPolicy;if(!p || executionSection.contains(document.activeElement))return;
-  executionSection.innerHTML=html`<h3>执行限额与暂停</h3><p>暂停或降低并发只影响新启动的任务。状态未知的任务占用名额，请检查后恢复。</p><form id="coord-execution-form"><label>项目并发<input name="projectLimit" type="number" min="1" max="8" required value="${p.projectLimit}"></label><label>每位员工在本项目的并发<input name="employeeLimit" type="number" min="1" max="4" required value="${p.employeeLimit}"></label><label><input name="paused" type="checkbox" ${p.paused?'checked':''}>暂停本项目的新任务</label><button class="outline-button">保存执行设置</button></form>` + (p.runtimePauses.map(r=>html`<p>${r.runtime} · ${r.reason} <button class="outline-button" data-resume-runtime="${r.runtime}">已检查额度，恢复新启动</button></p>`).join(''));
+  const p=executionPolicy;if(!p || executionSection.dataset.renderedProject===projectId&&(executionSection.contains(document.activeElement) || executionSection.closest('[data-settings-panel][data-unsaved="true"]')))return;
+  executionSection.dataset.renderedProject=projectId;
+  executionSection.innerHTML=html`<h3>执行限额与暂停</h3><p>暂停或降低并发只影响新启动的任务。状态未知的任务占用名额，请检查后恢复。</p><form id="coord-execution-form" data-settings-managed><div class="settings-field-grid"><label>项目并发<input name="projectLimit" type="number" min="1" max="8" required value="${p.projectLimit}"></label><label>每位员工在本项目的并发<input name="employeeLimit" type="number" min="1" max="4" required value="${p.employeeLimit}"></label></div><label class="settings-toggle"><input name="paused" type="checkbox" role="switch" ${p.paused?'checked':''}>暂停本项目的新任务</label><button class="outline-button">保存执行设置</button></form>` + (p.runtimePauses.map(r=>html`<p>${r.runtime} · ${r.reason} <button class="outline-button" data-resume-runtime="${r.runtime}">已检查额度，恢复新启动</button></p>`).join(''));
 }
-executionSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const project=projectId;const form=event.target as HTMLFormElement;const values=new FormData(form);await api(`/api/projects/${project}/execution`,{version:executionPolicy!.version,projectLimit:Number(values.get('projectLimit')),employeeLimit:Number(values.get('employeeLimit')),paused:values.has('paused')});});});
+executionSection.addEventListener('submit',event=>{event.preventDefault();const form=event.target as HTMLFormElement;trackSettingsSave(form,action(async()=>{const project=projectId;const values=new FormData(form);await api(`/api/projects/${project}/execution`,{version:executionPolicy!.version,projectLimit:Number(values.get('projectLimit')),employeeLimit:Number(values.get('employeeLimit')),paused:values.has('paused')});document.dispatchEvent(new CustomEvent('apix:settings-saved',{detail:{section:'execution',form}}));}));});
 executionSection.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-resume-runtime]');if(button)void action(async()=>{await api(`/api/projects/${projectId}/execution/runtime`,{version:executionPolicy!.version,runtime:button.dataset.resumeRuntime,paused:false});});});
 const schedulingSection=document.createElement('section');schedulingSection.className='surface-card coord-section';executionSection.after(schedulingSection);
-const schedulingUI=schedulingView(schedulingSection,(path,body)=>void action(async()=>{const originalProject=projectId;const originalSession=sessionId;const focus=document.activeElement;await api(path,body);if(originalProject===projectId && originalSession===sessionId && document.activeElement===focus)(focus as HTMLElement)?.blur();}));
+const schedulingUI=schedulingView(schedulingSection,(path,body,form)=>trackSettingsSave(form,action(async()=>{const originalProject=projectId;const originalSession=sessionId;const focus=document.activeElement;await api(path,body);if(originalProject===projectId && originalSession===sessionId && document.activeElement===focus)(focus as HTMLElement)?.blur();if(form)document.dispatchEvent(new CustomEvent('apix:settings-saved',{detail:{section:'scheduling',form}}));})));
 const autonomySection=document.createElement('section');autonomySection.className='surface-card coord-section';autonomySection.id='coord-autonomy';autonomySection.innerHTML='<h3>自主交付</h3>';executionSection.after(autonomySection);
-const autonomyUI=autonomyView(autonomySection,(path,body)=>void action(async()=>{await api(path,body);}));
+const autonomyUI=autonomyView(autonomySection,(path,body,form)=>trackSettingsSave(form,action(async()=>{await api(path,body);if(form)document.dispatchEvent(new CustomEvent('apix:settings-saved',{detail:{section:'execution',form}}));})));
 const meetingSection=document.createElement('section');meetingSection.className='surface-card coord-section';schedulingSection.after(meetingSection);
 // Keep existing workflow controls while making progress the primary content.
 const layout=$('.coord-layout');const body=$('#coord-body');const empty=$('#coord-empty');const rail=$('.coord-rail');
@@ -184,13 +188,13 @@ const interactionDetails=document.createElement('details');interactionDetails.cl
 layout.replaceChildren(main,inspector);
 // Settings have their own route; the advanced conversation retains only task details.
 const settings=document.querySelector<HTMLElement>('#application-settings')!;
-applicationModelSettings(settings,()=>projectId);
-settings.append($('#desktop-workflow'),executionSection,schedulingSection,autonomySection);
+applicationModelSettings(settings,()=>projectId,{workflow:$('#desktop-workflow'),execution:executionSection,scheduling:schedulingSection,autonomy:autonomySection});
 rail.hidden=true;root.append(rail);
 layout.classList.add('inspector-closed');
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-back-assistant" class="outline-button">返回与 ApiX 对话</button><button id="desktop-project-settings" class="outline-button">项目设置</button>');
 $('.coord-header h1').textContent='协作进度';
 $('#desktop-back-assistant').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="assistant"]')?.click());
+$('#coord-hand-to-apix').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('.nav-item[data-page-target="assistant"]')?.click());
 $('.coord-header').insertAdjacentHTML('afterend','<p id="desktop-model-state" role="status" hidden></p>');
 $('.coord-header').insertAdjacentHTML('afterend','<section id="desktop-readiness" aria-label="首次使用与配置检查"></section>');
 let setupUpdated=0;let setupRequest=0;
@@ -208,19 +212,19 @@ $('#desktop-readiness').addEventListener('click',event=>{
   if(el.hasAttribute('data-setup-refresh')){void refreshReadiness(true);return;}
   const target=el.dataset.setupAction;
   if(target==='model'){toggleInspector(true);document.dispatchEvent(new Event('apix:manager-settings'));}
-  else if(target==='budget' || target==='permissions'){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();const section=target==='budget'?schedulingSection:$('#desktop-workflow');section.closest('details')?.setAttribute('open','');section.scrollIntoView({block:'nearest'});}
+  else if(target==='budget' || target==='permissions'){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();document.dispatchEvent(new CustomEvent('apix:settings-section',{detail:target==='budget'?'scheduling':'execution'}));}
   else document.querySelector<HTMLButtonElement>(`[data-page-target="${target}"]`)?.click();
 });
 function toggleInspector(open:boolean){layout.classList.toggle('inspector-closed',!open);$('#desktop-details').setAttribute('aria-expanded',String(open));$('#desktop-project-settings').setAttribute('aria-expanded',String(open));}
 $('#desktop-project-settings').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click());
-$('#desktop-close-details').addEventListener('click',()=>toggleInspector(false));
-document.addEventListener('keydown',event=>{if(root.classList.contains('active-page') && event.key==='Escape' && !layout.classList.contains('inspector-closed')){toggleInspector(false);$('#desktop-project-settings').focus();}});
+$('#desktop-close-details').addEventListener('click',()=>toggleInspector(false));document.addEventListener('keydown',event=>{if(root.classList.contains('active-page') && event.key==='Escape' && !layout.classList.contains('inspector-closed')){toggleInspector(false);$('#desktop-project-settings').focus();}});
 for(const details of inspector.querySelectorAll<HTMLDetailsElement>('.desktop-detail')){const section=details.querySelector('section');if(section===executionSection)details.querySelector('summary')!.textContent='执行与暂停';if(section===schedulingSection)details.querySelector('summary')!.textContent='能力与预算';if(section===meetingSection)details.querySelector('summary')!.textContent='规划会议';}
 empty.innerHTML='<div class="coord-progress-empty"><h2>暂无协作流程</h2><p>在“与 ApiX 对话”中描述目标，ApiX 需要多 Agent 协作时会建立流程。这里用于查看执行、处理计划与验收。</p><button type="button" class="primary-button" data-page-target="assistant">前往与 ApiX 对话</button></div>';
 const records=document.createElement('details');records.className='coord-records surface-card';records.innerHTML='<summary>协作记录与当前流程补充</summary><p>仅补充或处理所选流程；新任务请在“与 ApiX 对话”中提出。</p>';const conversation=$('#coord-conversation');conversation.before(records);records.append(conversation);
 document.addEventListener('apix:new-chat',()=>{document.querySelector<HTMLButtonElement>('[data-page-target="assistant"]')?.click();document.querySelector<HTMLButtonElement>('#assistant-new')?.click();});
 $('#coord-message button').textContent='↑';$('#coord-message button').setAttribute('aria-label','补充当前协作流程');
 $('#coord-message').insertAdjacentHTML('beforebegin','<div id="desktop-activity" class="desktop-activity" hidden></div>');
+$('#coord-message').insertAdjacentHTML('beforebegin','<section id="coord-worker-questions" aria-label="员工等待你的决定" hidden></section>');
 root.addEventListener('click',event=>{if((event.target as Element).closest('[data-review-plan]')){toggleInspector(true);$<HTMLDetailsElement>('.desktop-plan').open=true;}});
 $('.coord-goal-head').insertAdjacentHTML('beforeend','<div class="desktop-work-actions"><button id="desktop-stop" class="outline-button">停止工作</button><button id="desktop-details" class="outline-button" aria-expanded="true">工作详情</button></div>');
 $('#desktop-stop').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/stop`,{revision:current!.revision});}));
@@ -229,11 +233,14 @@ $('#desktop-details').addEventListener('click',()=>toggleInspector(layout.classL
 $('.coord-header').insertAdjacentHTML('beforeend','<button id="desktop-capabilities" class="desktop-capabilities" title="查看工具权限和自动协作设置"></button>');
 $('#desktop-capabilities').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click());
 function renderWorkflow(){
-  if(!workflow || $('#desktop-workflow').contains(document.activeElement))return;
+  if(!workflow)return;
+  const section=$('#desktop-workflow');
+  if(section.dataset.renderedProject===projectId&&(section.contains(document.activeElement)||section.closest('[data-settings-panel][data-unsaved="true"]')))return;
+  section.dataset.renderedProject=projectId;
   $('#desktop-capabilities').textContent=`${workflow.manager.mode==='full_access'?'工具已开启':workflow.manager.mode==='read_only'?'只读工具':'工具待授权'} · ${workflow.enabled?'自动协作':'计划待审'}`;
-  $('#desktop-workflow').innerHTML=html`<h3>项目执行方式</h3><p>普通任务和测试直接在“与 ApiX 对话”中运行，无需先配置员工或开启多 Agent 协作。自动执行允许当前项目文件修改、命令和测试；现有预算继续生效。更改方式会使旧执行授权失效。</p><form id="project-execution"><label>执行方式<select name="mode">` + (modeOptions(workflow.manager.mode)) + html`</select></label><button class="outline-button">保存执行方式</button></form><details><summary>多 Agent 自动协作（高级，可选）</summary><h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发；自主交付开启时按授权实测、自审及返工，其他目标完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">` + (workflow.enabled?'':html`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>` + (workflow.employees.map(e=>html`<label><input type="checkbox" name="employee" value="${e.id}" checked>${e.name} · ${e.runtime}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>')) + html`<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form></details>`;
+  $('#desktop-workflow').innerHTML=html`<h3>项目执行方式</h3><p>普通任务和测试直接在“与 ApiX 对话”中运行，无需先配置员工或开启多 Agent 协作。自动执行允许当前项目文件修改、命令和测试；现有预算继续生效。更改方式会使旧执行授权失效。</p><form id="project-execution" data-settings-managed><label>执行方式<select name="mode">` + (modeOptions(workflow.manager.mode)) + html`</select></label><button class="outline-button">保存执行方式</button></form><details><summary>多 Agent 自动协作（高级，可选）</summary><h3>${workflow.enabled?'自动协作已开启':'按计划审查'}</h3><p>${workflow.enabled?'明确任务会自动规划和派发；自主交付开启时按授权实测、自审及返工，其他目标完成后等待你验收。':'明确工作请求会生成待审计划；开启自动协作后按授权派发。'}</p><form id="desktop-automation">` + (workflow.enabled?'':html`<p>授权 ApiX 使用文件读写和命令工具，并与所选员工在当前项目执行，可能产生模型费用。默认只处理目标相关内容，遵守预算与项目规则，成果须审查。</p>` + (workflow.employees.map(e=>html`<label><input type="checkbox" name="employee" value="${e.id}" checked>${e.name} · ${e.runtime}</label>`).join('')||'<button type="button" data-page-target="missions" class="text-action">先配置可用 Agent</button>')) + html`<button class="outline-button" ${!workflow.enabled&&!workflow.employees.length?'disabled':''}>${workflow.enabled?'暂停自动安排':'授权并开启自动协作'}</button></form></details>`;
 }
-$('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;if(form.id==='project-execution'){await api('/api/permissions',{projectId,subject:'apix',mode:new FormData(form).get('mode'),version:workflow!.manager.version});return;}const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});});});
+$('#desktop-workflow').addEventListener('submit',event=>{event.preventDefault();const form=event.target as HTMLFormElement;trackSettingsSave(form,action(async()=>{if(form.id==='project-execution'){await api('/api/permissions',{projectId,subject:'apix',mode:new FormData(form).get('mode'),version:workflow!.manager.version});document.dispatchEvent(new CustomEvent('apix:settings-saved',{detail:{section:'execution',form}}));return;}const selected=new FormData(form).getAll('employee');await api(`/api/projects/${projectId}/workflow`,{version:workflow!.version,enabled:!workflow!.enabled,approved:!workflow!.enabled,managerVersion:workflow!.manager.version,employees:workflow!.employees.filter(e=>selected.includes(e.id)).map(e=>({id:e.id,version:e.version}))});document.dispatchEvent(new CustomEvent('apix:settings-saved',{detail:{section:'execution',form}}));}));});
 meetingSection.addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const v=new FormData(form);const participants=[...form.querySelectorAll<HTMLInputElement>('[data-participant]:checked')].map(e=>({employeeId:e.value,estimateMinor:v.get('cap:'+e.value)===''?null:Number(v.get('cap:'+e.value))}));await api(`/api/coordination/sessions/${sessionId}/planning-meetings`,{revision:current!.revision,planVersion:current!.planVersion,approved:v.has('approved'),participants,previousId:v.get('previousId')||undefined});});});
 meetingSection.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('[data-apply-meeting]');if(el)void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/planning-meetings/apply`,{revision:current!.revision,planVersion:current!.planVersion,meetingId:el.dataset.applyMeeting});planKey='';});});
 const updateModel=conversationModelPicker(root.querySelector<HTMLElement>('#coord-conversation-model')!);
@@ -246,6 +253,15 @@ function render(s: Session) {
   updateModel('coordination',s.id,s.busy||s.tasks.some(t=>['running','queued','stopping'].includes(t.status)));
   if(inspectedDelivery&&s.tasks.find(t=>t.id===inspectedDelivery!.taskId)?.status!==inspectedDelivery.status){root.querySelector('#coord-delivery-panel')?.remove();inspectedDelivery=null;}
   current=s; $('#coord-empty').hidden=true; $('#coord-body').hidden=false;
+  const questions=$('#coord-worker-questions'),items=s.workerQuestions??[];
+  questions.hidden=!items.length;
+  const signature=JSON.stringify(items);
+  if(questions.dataset.signature!==signature){
+    questions.dataset.signature=signature;
+    questions.replaceChildren(...items.map(item=>interactionForm(item,api,()=>void reload(),error=>{
+      if(current?.id===s.id)notice(error instanceof Error?error.message:String(error),true);
+    })));
+  }
   const tools=$('#desktop-tools');const toolKey=JSON.stringify(s.managerTools??[]);if(tools.dataset.key!==toolKey){tools.dataset.key=toolKey;tools.innerHTML=(s.managerTools??[]).map(e=>html`<p>${e.toolName} · ${e.phase==='start'?'开始':e.isError?'失败':'完成'}</p>`).join('')||'<p>本次对话尚无工具调用。</p>';}
   $('#desktop-model-state').hidden=!s.agent.error;$('#desktop-model-state').textContent=s.agent.error?`模型规划或连接需要处理：${s.agent.error}`:'';
   const planPanel=$<HTMLDetailsElement>('.desktop-plan');if(planPanel.dataset.status!==s.status){planPanel.open=s.status==='plan_review';planPanel.dataset.status=s.status;}
@@ -253,7 +269,8 @@ function render(s: Session) {
   const automaticQuality=s.autonomy?.state==='running'&&s.autonomyPolicy?.enabled===true;
   const finished=automaticQuality?undefined:s.tasks.find(t=>t.status==='completed');
   const queued=s.tasks.filter(t=>t.status==='queued');const queueReasons=[...new Set(queued.map(t=>t.queue_reason||'等待调度复核'))];
-  activity.innerHTML=html`<div><strong>${statuses[s.derivedStatus]??s.derivedStatus}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${queued.length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span>` + (queueReasons.map(r=>html`<p>${r}</p>`).join('')) + (queued.length?'<button class="outline-button" data-queue-settings>查看执行暂停与账户阻塞</button>':'') + html`</div>` + (s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?html`<button class="outline-button" data-delivery="${finished.id}">查看变更并验收</button>`:'');
+  const attentionReason=s.autonomy?.state==='attention'?s.autonomy.reason:s.tasks.find(t=>['failed','blocked','unknown','needs_revision','rejected'].includes(t.status))?.result;
+  activity.innerHTML=html`<div><strong>${statuses[s.derivedStatus]??s.derivedStatus}</strong><span>${s.tasks.filter(t=>t.status==='running').length} 个执行中 · ${queued.length} 个排队 · ${s.tasks.filter(t=>t.status==='completed').length} 个${automaticQuality?'等待自动检查':'待验收'}</span>` + (attentionReason?html`<p>${String(attentionReason).slice(0,500)}</p>`:'') + (queueReasons.map(r=>html`<p>${r}</p>`).join('')) + (queued.length?'<button class="outline-button" data-queue-settings>查看执行暂停与账户阻塞</button>':'') + html`</div>` + (s.status==='plan_review'?'<button class="outline-button" data-review-plan>检查计划与阻塞原因</button>':finished?html`<button class="outline-button" data-delivery="${finished.id}">查看变更并验收</button>`:'');
   $('#desktop-stop').hidden=!s.tasks.some(t=>['running','queued','awaiting_approval','stopping'].includes(t.status));
   if(s.scheduling)schedulingUI.render(projectId,s.scheduling,snapshot.employees);
   if(!meetingSection.contains(document.activeElement)){
@@ -263,13 +280,14 @@ function render(s: Session) {
     for(const detail of meetingSection.querySelectorAll<HTMLDetailsElement>('details'))if(expanded.includes(detail.querySelector('summary')?.textContent))detail.open=true;
   }
   root.dataset.interactionMode=s.interaction_mode;
-  $('#coord-title').textContent=s.title; $('#coord-status').textContent=statuses[s.derivedStatus] ?? s.derivedStatus;
+  $('#coord-title').textContent=s.title; $('#coord-status').textContent=s.discussionIssue?'模型暂不可用':statuses[s.derivedStatus]??s.derivedStatus;
+  $('#coord-hand-to-apix').hidden=s.derivedStatus!=='attention';
   $('#coord-chat-title').textContent=s.interaction_mode==='conversational'?'任务对话':'需求澄清记录';
   $('#coord-message-label').textContent='补充当前协作流程';
   $<HTMLSelectElement>('#coord-interaction-mode').value=s.interaction_mode;
   $<HTMLSelectElement>('#coord-interaction-mode').disabled=!['clarifying','ready'].includes(s.status);
   $('#coord-score').textContent=`${Math.round(s.assessment.score*100)}% · v${s.revision}`;
-  $('#coord-backend').textContent=s.agent.mode==='api' ? 'ApiX 正在直接调用模型 API' : s.agent.mode==='pi' ? '历史记录 · 旧 Pi 后端；后续请求使用 ApiX 模型 API' : `规则引导${s.agent.error ? ` · ${s.agent.error}` : ' · 配置模型 API 后继续澄清'}`;
+  $('#coord-backend').textContent=s.discussionIssue?'本轮分析未完成，已有需求和消息已保留。':s.agent.mode==='api'?'ApiX 正在直接调用模型 API':s.agent.mode==='pi'?'历史记录 · 旧 Pi 后端；后续请求使用 ApiX 模型 API':s.agent.error?`规则引导 · ${s.agent.error}`:'等待 ApiX 分析项目需求';
   const hasMessages=s.turns.some(t=>t.kind==='message');
   const turns=s.turns.filter((t,i)=>!(hasMessages && (t.kind==='goal'||i===1&&t.kind==='clarification'))).map(t=>html`<article class="coord-turn ${t.role==='user'?'from-user':''}"><strong>${t.role==='user'?'你':'ApiX'}</strong><p>${t.content}</p></article>`).join('');
   const history=$('#coord-turns');
@@ -306,7 +324,7 @@ function render(s: Session) {
   $('#coord-instruction').hidden=!active.length;
   let instructionList=root.querySelector<HTMLElement>('#coord-instructions');
   if(!instructionList){instructionList=document.createElement('div');instructionList.id='coord-instructions';$('#coord-guidance-section').append(instructionList);}
-  instructionList.innerHTML=(s.instructions ?? []).map(m=>html`<article class="coord-task"><div><strong>${instructionState(m.status)}</strong><p>${m.payload.content ?? (m.payload.kind==='progress_request'?'ApiX 请求真实进度':'协作消息')}</p><small>${s.tasks.findIndex(t=>t.id===m.taskId)+1} 号任务 · ${m.runId?.slice(0,8)} · ${m.mailbox_seen_at?'已检测到消息领取':'尚未检测到此运行领取消息'}</small></div></article>`).join('');
+  instructionList.innerHTML=(s.instructions ?? []).map(m=>html`<article class="coord-task"><div><strong>${instructionState(m.status,m.nativeDelivery)}</strong><p>${m.payload.content ?? (m.payload.kind==='progress_request'?'ApiX 请求真实进度':'协作消息')}</p><small>${s.tasks.findIndex(t=>t.id===m.taskId)+1} 号任务 · ${m.runId?.slice(0,8)} · ${m.mailbox_seen_at?'已检测到消息领取':'尚未检测到此运行领取消息'}</small></div></article>`).join('');
   const taskSelect=$<HTMLSelectElement>('#coord-instruction [name="taskId"]');
   const previousTask=taskSelect.value;
   taskSelect.innerHTML=active.map(t=>html`<option value="${t.id}">${snapshot.employees.find(e=>e.id===t.employee_id)?.name ?? t.employee_id} · ${t.prompt.slice(0,60)} · ${s.capabilities?.find(c=>c.id===snapshot.employees.find(e=>e.id===t.employee_id)?.runtime)?.mailbox?'声明支持实时消息':'需员工主动读取，未保证实时指导'}</option>`).join('');
@@ -352,7 +370,7 @@ document.addEventListener('apix:snapshot', ((event: CustomEvent<{data:Snapshot;p
 document.addEventListener('apix:page',((event:CustomEvent<string>)=>{if(['coordinator','settings'].includes(event.detail) && !loading && !reloading)void reload().catch(e=>notice(String(e),true));}) as EventListener);
 document.addEventListener('apix:open-goal',((event:CustomEvent<string>)=>{selectSession(event.detail);void reload().catch(e=>notice(String(e),true));document.querySelector<HTMLElement>('[data-page-target="coordinator"]')?.click();}) as EventListener);
 document.addEventListener('apix:history-changed',((event:CustomEvent<{id:string;kind:string;action:string}>)=>{if(event.detail.kind==='coordination'&&event.detail.id===sessionId&&event.detail.action!=='restore'){selectSession('');localStorage.removeItem('apix.chat.'+projectId);}if(root.classList.contains('active-page'))void reload();}) as EventListener);
-root.addEventListener('click',event=>{if((event.target as Element).closest('[data-queue-settings]')){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();executionSection.closest('details')?.setAttribute('open','');schedulingSection.closest('details')?.setAttribute('open','');executionSection.scrollIntoView({block:'nearest'});}});
+root.addEventListener('click',event=>{if((event.target as Element).closest('[data-queue-settings]')){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();document.dispatchEvent(new CustomEvent('apix:settings-section',{detail:'scheduling'}));}});
 $('#settings-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#settings-project').value})));
 $('#coord-project').addEventListener('change',()=>document.dispatchEvent(new CustomEvent('apix:select-project',{detail:$<HTMLSelectElement>('#coord-project').value})));
 
@@ -394,7 +412,7 @@ $('#coord-dispatch').addEventListener('click',()=>void action(async()=>{await ap
 $('#coord-save-plan').addEventListener('click',()=>void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/plan`,{revision:current!.revision,planVersion:current!.planVersion,steps:readDraft()});planKey='';}));
 $('#coord-add-step').addEventListener('click',()=>{draft=readDraft();draft.push({prompt:'',employeeId:snapshot.employees[0]?.id ?? '',dependsOn:[]});renderPlan();});
 $('#coord-revise').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{await api(`/api/coordination/sessions/${sessionId}/revise`,{revision:current!.revision,reason:new FormData(event.target as HTMLFormElement).get('reason')});editingBrief=false;planKey='';});});
-$('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const originSession=sessionId;const originProject=projectId;const input=form.querySelector<HTMLTextAreaElement>('textarea')!;const content=input.value;await api(`/api/coordination/sessions/${originSession}/instructions`,{revision:current!.revision,...Object.fromEntries(new FormData(form))});if(originSession===sessionId && originProject===projectId && input.value===content)input.value='';});});
+$('#coord-instruction').addEventListener('submit',event=>{event.preventDefault();void action(async()=>{const form=event.target as HTMLFormElement;const originSession=sessionId;const originProject=projectId;const input=form.querySelector<HTMLTextAreaElement>('textarea')!;const content=input.value;const fingerprint=JSON.stringify([originSession,...new FormData(form)]);await api(`/api/coordination/sessions/${originSession}/instructions`,{revision:current!.revision,requestId:(form.dataset.guidanceContent===fingerprint?form.dataset.guidanceRequest:(form.dataset.guidanceContent=fingerprint,form.dataset.guidanceRequest=crypto.randomUUID())),...Object.fromEntries(new FormData(form))});if(originSession===sessionId && originProject===projectId && input.value===content){input.value='';delete form.dataset.guidanceContent;delete form.dataset.guidanceRequest;}});});
 $('#coord-permissions').addEventListener('change',event=>{const select=event.target as HTMLSelectElement;const subject=select.dataset.permission!;void action(async()=>{const policy=subject==='apix'?current!.policy:current!.workerPolicies[subject] ?? {version:0};await api('/api/permissions',{projectId,subject,mode:select.value,version:policy.version});});});
 function renderDelivery(d:Delivery) {
   const inspectionHost=workflowGraph.inspectionHost(d.taskId);inspectedDelivery=d;
@@ -413,7 +431,7 @@ function renderDelivery(d:Delivery) {
   panel.tabIndex=-1;panel.scrollIntoView({block:'start',behavior:'smooth'});panel.focus({preventScroll:true});
 }
 async function inspectDelivery(id:string){const originProject=projectId,originSession=sessionId,request=++deliveryRequest;const d=await api<Delivery>(`/api/tasks/${id}/delivery`);if(request===deliveryRequest&&projectId===originProject&&sessionId===originSession&&current?.tasks.some(t=>t.id===id)){if(current.tasks.find(t=>t.id===id)!.status!==d.status)throw new Error('任务状态已变化，请重新检查当前节点');renderDelivery(d);}}
-root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId')});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
+root.addEventListener('submit',event=>{const form=event.target as HTMLFormElement;if(form.id!=='coord-recovery')return;event.preventDefault();void action(async()=>{const d=inspectedDelivery!;const original=current!;const project=projectId;const values=new FormData(form);const result=await api<{failure:string|null}>(`/api/tasks/${d.taskId}/recovery`,{revision:original.revision,runId:d.latestRun?.id ?? null,fingerprint:d.recoveryFingerprint,reviewed:values.has('reviewed'),confirmedStopped:values.has('confirmedStopped'),employeeId:values.get('employeeId'),continuation:values.get('continuation')??'fresh',resumeFromRunId:d.latestRun?.id});if(project===projectId && original.id===sessionId)root.querySelector('#coord-delivery-panel')?.remove();if(result.failure)throw new Error(result.failure);});});
 root.addEventListener('click',event=>{const el=(event.target as Element).closest<HTMLElement>('button[data-remove],button[data-coord-accept],button[data-coord-reject],button[data-delivery],button[data-freeze-delivery]');if(!el || !root.contains(el))return;
   if(el.dataset.remove!==undefined){draft=readDraft();const n=Number(el.dataset.remove);draft.splice(n,1);draft=draft.map(s=>({...s,dependsOn:s.dependsOn.filter(d=>d!==n).map(d=>d>n?d-1:d)}));renderPlan();}
   if(el.dataset.delivery)void action(()=>inspectDelivery(el.dataset.delivery!));

@@ -1,13 +1,16 @@
 const {pathToFileURL}=require('node:url');
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, Notification, dialog, shell } = require('electron');
 const { join, resolve } = require('node:path');
 const { mkdirSync, existsSync, copyFileSync, createWriteStream, writeFileSync } = require('node:fs');
 const { startBackend } = require('./backend.cjs');
+const { createWorkerNotifications } = require('./worker-notifications.cjs');
 const { spawn } = require('node:child_process');
 
 let window;
 let backend;
 let development;
+let workerNotifications;
+let notificationTimer;
 const dev = !app.isPackaged && !!process.env.APIX_DEV_ROOT;
 let quitting = false;
 let exitReady = false;
@@ -25,6 +28,8 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     if (quitting) return;
     quitting = true;
+    clearInterval(notificationTimer);
+    workerNotifications?.stop();
     void (async () => { await development?.stop(); await backend?.stop(); exitReady = true; app.quit(); })();
   });
   app.on('window-all-closed', () => app.quit());
@@ -37,6 +42,7 @@ if (!app.requestSingleInstanceLock()) {
 
 async function start() {
   if (process.platform !== 'win32') throw new Error('本桌面版本仅支持 Windows。');
+  app.setAppUserModelId(app.isPackaged ? 'local.apix.controlcenter' : process.execPath);
   mkdirSync(dataDir, { recursive: true });
   const root = dev ? resolve(process.env.APIX_DEV_ROOT) : app.isPackaged ? join(process.resourcesPath, 'backend') : join(app.getAppPath(), '../backend');
   const envFile = join(dataDir, '.env');
@@ -52,7 +58,7 @@ async function start() {
   if (quitting) { await backend.stop(); return; }
   window = new BrowserWindow({
     title: 'ApiX Control Center', width: 1440, height: 960, minWidth: 960, minHeight: 640, show: false,
-    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, preload:join(__dirname,'preload.cjs') },
   });
   const rendererErrors=[];
   if(smoke)window.webContents.on('console-message',details=>{if(details.level==='error'&&rendererErrors.length<20)rendererErrors.push(details.message);});
@@ -99,7 +105,34 @@ async function start() {
       restart:async()=>{await backend.stop();if(quitting)return;backend=await startBackend(backendOptions);if(quitting){await backend.stop();return;}secureResponses();await window.loadURL(backend.url,{extraHeaders:`Authorization: Bearer ${ownerToken}\r\n`});},
       reload:async()=>{if(!quitting)window.webContents.reloadIgnoringCache();}});
   }
-  if (!smoke) window.show();
+  if (!smoke) {
+    window.show();
+    if (Notification.isSupported()) {
+      workerNotifications=createWorkerNotifications({
+        Notification,
+        readPending:async()=>{
+          const response=await fetch(backend.url+'/api/assistant/worker-notifications',{
+            headers:{Authorization:`Bearer ${ownerToken}`},signal:AbortSignal.timeout(3000),redirect:'error',
+          });
+          if(!response.ok)throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        },
+        openRequest:target=>{
+          if(quitting||window.isDestroyed())return;
+          if(window.isMinimized())window.restore();
+          window.show();
+          window.focus();
+          const contents=window.webContents;
+          const send=()=>{if(!contents.isDestroyed()&&allowed(contents.getURL()))contents.send('apix:worker-request',target);};
+          if(contents.isLoadingMainFrame())contents.once('did-finish-load',send);
+          else send();
+        },
+        report:message=>log.write('[notification] '+message+'\n'),
+      });
+      void workerNotifications.refresh();
+      notificationTimer=setInterval(()=>void workerNotifications.refresh(),1500);
+    }
+  }
   else {
     const report = await window.webContents.executeJavaScript(`(async () => {
       const fixture=${JSON.stringify(process.env.APIX_DESKTOP_SMOKE_PROJECT??'')};
@@ -121,6 +154,7 @@ async function start() {
         apiStatus: response.status, snapshot: typeof await response.json(),
         projectChecks,
         nodeExposed: typeof window.require !== 'undefined' || typeof window.process !== 'undefined',
+        desktopWorkerBridge:typeof window.apixDesktop?.onWorkerRequest==='function',
         assets: await Promise.all([...document.querySelectorAll('script[src],link[rel="stylesheet"]')].map(async el => {
           const asset = await fetch(el.src || el.href); return { url: new URL(asset.url).pathname, status: asset.status };
         })) };

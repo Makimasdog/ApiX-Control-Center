@@ -1,4 +1,5 @@
 import {fetch} from './local-fetch.mjs';
+import {serviceDiagnostics,stopService,waitServiceReady} from './service-diagnostics.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -19,13 +20,13 @@ async function freePort() {
     });
   });
 }
-async function waitFor(predicate, timeoutMs = 5000) {
+async function waitForTask(predicate, timeoutMs = 5000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    try { if (await predicate()) return; } catch { /* server is starting */ }
+    if (await predicate()) return;
     await new Promise((done) => setTimeout(done, 40));
   }
-  throw new Error("Timed out waiting for ApiX server");
+  throw new Error("Timed out waiting for the messaging task to complete");
 }
 async function post(port, path, body, expected = 200) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -43,9 +44,11 @@ async function get(port, path, expected = 200) {
 test("message protocol persists mailbox, correlation, idempotency, retry, timeout, locks, and Director interception", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "apix-message-"));
   const port = await freePort();
-  const server = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env: { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs") }, stdio: "ignore" });
+  const env = { ...process.env, APIX_LEGACY_API: "1", APIX_CLAUDE_ENTRY: join(root, "test", "fake-claude.mjs"), PORT: String(port), APIX_DATA_DIR: dataDir, APIX_PI_ENTRY: join(root, "test", "fake-pi.mjs") };
+  const server = spawn(process.execPath, [join(root, "server.mjs")], { cwd: root, env, stdio: ["ignore", "pipe", "pipe"] });
+  const diagnostic = serviceDiagnostics(server, env);
   try {
-    await waitFor(async () => (await fetch(`http://127.0.0.1:${port}/api/snapshot`)).ok);
+    await waitServiceReady(diagnostic, `http://127.0.0.1:${port}/api/snapshot`, { timeoutMs: 30000 });
     const projectId = (await post(port, "/api/projects", { name: "Protocol test", path: root })).id;
     const alice = (await post(port, "/api/employees", { name: "Alice", runtime: "pi", role: "Developer" })).id;
     const bob = (await post(port, "/api/employees", { name: "Bob", runtime: "pi", role: "Reviewer" })).id;
@@ -74,7 +77,7 @@ test("message protocol persists mailbox, correlation, idempotency, retry, timeou
     await post(port,`/api/messages/${batchTwo.id}/complete`,{agentId:bob});
     const task = await post(port, "/api/tasks", { projectId, employeeId: alice, prompt: "inspect messaging" });
     await post(port, `/api/approvals/${task.approvalId}`, { approved: true });
-    await waitFor(async () => (await get(port, "/api/snapshot")).tasks.find((item) => item.id === task.taskId)?.status === "completed");
+    await waitForTask(async () => (await get(port, "/api/snapshot")).tasks.find((item) => item.id === task.taskId)?.status === "completed");
     const taskMessages = (await get(port, "/api/snapshot")).messages.filter((item) => item.task_id === task.taskId);
     const dispatch = taskMessages.find((item) => item.type === "request" && item.from_agent === "apix-director");
     const deliverable = taskMessages.find((item) => item.reply_to === dispatch?.id);
@@ -120,7 +123,7 @@ test("message protocol persists mailbox, correlation, idempotency, retry, timeou
     assert.ok(ids(replay).length > 0 && ids(replay).every(id => id > newest), "重连不得重放游标之前的旧事件");
     await resumedReader.cancel();
   } finally {
-    if (server.exitCode === null) { server.kill(); await new Promise((done) => server.once("exit", done)); }
+    await stopService(server);
     await rm(dataDir, { recursive: true, force: true });
   }
 });

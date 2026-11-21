@@ -58,7 +58,7 @@
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   padding: 10px 12px;
   background: var(--surface);
   color: var(--text-primary);
@@ -72,7 +72,7 @@
 .coord-layout input:focus,
 .coord-layout select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .coord-layout textarea {
@@ -91,7 +91,7 @@
   gap: 7px;
   border: 0;
   background: transparent;
-  border-radius: 12px;
+  border-radius: var(--r-card);
   text-align: left;
   padding: 14px;
   width: 100%;
@@ -106,9 +106,9 @@
 }
 
 .coord-session.selected {
-  background: rgba(56, 189, 248, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .coord-session strong {
@@ -129,7 +129,7 @@
 
 .coord-layout .surface-card {
   padding: 22px;
-  border-radius: 18px;
+  border-radius: var(--r-dialog);
 }
 
 .coord-layout h3 {
@@ -160,10 +160,10 @@
 .coord-pill {
   display: inline-block;
   white-space: nowrap;
-  background: rgba(56, 189, 248, 0.15);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
   color: var(--accent);
   padding: 6px 9px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   font-size: 11px;
   font-weight: 700;
 }
@@ -210,7 +210,7 @@
 .coord-plan-step {
   padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--r-card);
   display: grid;
   gap: 10px;
   margin-bottom: 12px;
@@ -270,7 +270,7 @@
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-control);
   padding: 14px;
   font-size: 12px;
   line-height: 1.65;
@@ -367,8 +367,8 @@
 .coord-stream {
   white-space: pre-wrap;
   border-left: 3px solid var(--accent);
-  background: rgba(56, 189, 248, 0.05);
-  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  border-radius: var(--r-sm);
   padding: 12px 14px;
   margin: 12px 0;
   font-size: 13px;
@@ -539,7 +539,7 @@
 
 #coord-conversation .coord-composer textarea {
   min-height: 84px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 
 #coord-conversation .coord-composer button {
@@ -547,10 +547,10 @@
 }
 
 #coord-conversation .coord-stream {
-  background: rgba(56, 189, 248, 0.05);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
   border: 0;
   border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--r-xs);
   padding: 12px 14px;
   margin: 8px 0;
 }
@@ -633,7 +633,7 @@
   position: absolute;
   bottom: 80px;
   right: 20px;
-  background: rgba(56, 189, 248, 0.9);
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
   color: var(--text-secondary);
   border: 0;
   border-radius: 50%;

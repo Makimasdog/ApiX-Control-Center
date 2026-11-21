@@ -16,6 +16,8 @@ import type {Store} from '../coordination/contracts.js';
 import {BUILTIN_PROVIDERS,getProviderConfig,validateModelConfig} from './model-providers.js';
 import type {ModelSettings} from './model-backend.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * modelCatalog - 根据当前模型设置匹配提供商，返回可用模型列表
  * @param settings - 当前模型配置
@@ -24,11 +26,11 @@ import type {ModelSettings} from './model-backend.js';
 export function modelCatalog(settings:ModelSettings){
   const preset=getProviderConfig(settings.provider);
   const base=settings.baseUrl||preset?.baseUrl||'';
-  let deepseek=false;try{deepseek=new URL(base).hostname==='api.deepseek.com';}catch{}
-  const provider=BUILTIN_PROVIDERS.find(p=>p.id===settings.provider||deepseek&&p.id==='deepseek'||p.baseUrl.replace(/\/+$/,'')===base.replace(/\/+$/,''));
+  let host='';try{host=new URL(base).hostname;}catch{}
+  const provider=BUILTIN_PROVIDERS.find(p=>p.id===settings.provider||host==='api.deepseek.com'&&p.id==='deepseek'||p.baseUrl.replace(/\/+$/,'')===base.replace(/\/+$/,''));
   const models=(provider?.models??[]).map(m=>({id:m.id,name:m.name}));
   if(settings.model&&!models.some(m=>m.id===settings.model))models.unshift({id:settings.model,name:settings.model});
-  return {providerName:provider?.name??'自定义供应商',models};
+  return {providerName:provider?.name??(host||'自定义供应商'),models};
 }
 /**
  * supportedEfforts - 返回当前模型支持的思考强度级别列表
@@ -64,7 +66,8 @@ export function reasoningParameters(settings:ModelSettings):Record<string,unknow
 export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
   const {db,row,now}=deps;
   // 创建对话模型配置表，复合主键为 (kind, session_id)
-  db.exec('CREATE TABLE IF NOT EXISTS conversation_models(kind TEXT NOT NULL,session_id TEXT NOT NULL,settings TEXT NOT NULL,version INTEGER NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(kind,session_id))');
+  ensureModuleSchema(db, "models-conversation-models");
+  ensureModuleSchema(db, "models-conversation-models-2");
 
   /**
    * get - 获取指定对话的模型配置，不存在则自动初始化
@@ -72,7 +75,21 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
    * @param id - 会话 ID
    * @returns 模型设置、版本号、提供商名称和可用模型列表
    */
-  function get(kind:string,id:string){let saved=row<{settings:string;version:number}>('SELECT settings,version FROM conversation_models WHERE kind=? AND session_id=?',kind,id);if(!saved){initialize(kind,id);saved=row<{settings:string;version:number}>('SELECT settings,version FROM conversation_models WHERE kind=? AND session_id=?',kind,id);}const settings=saved?JSON.parse(saved.settings) as ModelSettings:defaults();return {settings,version:saved?.version??0,...modelCatalog(settings),efforts:supportedEfforts(settings)};}
+  function get(kind:string,id:string){
+    const read=()=>row<{settings:string;version:number}>('SELECT settings,version FROM conversation_models WHERE kind=? AND session_id=?',kind,id);
+    let saved=read();
+    if(!saved){initialize(kind,id);saved=read();}
+    const followsManager=(kind==='assistant'&&(!saved||saved.version===1))||!!row('SELECT 1 FROM conversation_model_links WHERE kind=? AND session_id=?',kind,id);
+    const current=followsManager?defaults():null;
+    const currentJson=current?JSON.stringify(current):null;
+    if(saved&&currentJson!==null&&saved.settings!==currentJson){
+      const version=saved.version+1;
+      write(kind,id,currentJson,version,true);
+      saved={settings:currentJson,version};
+    }
+    const settings=saved?JSON.parse(saved.settings) as ModelSettings:current??defaults();
+    return {settings,version:saved?.version??0,...modelCatalog(settings),efforts:supportedEfforts(settings),followsManager};
+  }
 
   /**
    * initialize - 为对话初始化默认模型配置（已存在则跳过）
@@ -81,6 +98,15 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
    * @param settings - 初始设置，默认使用全局配置
    */
   function initialize(kind:string,id:string,settings=defaults()){if(!settings.model)return;db.prepare('INSERT OR IGNORE INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,1,?)').run(kind,id,JSON.stringify(settings),now());}
+  function write(kind:string,id:string,settings:string,version:number,following:boolean){
+    db.exec('SAVEPOINT conversation_model_follow');
+    try{
+      db.prepare('INSERT INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(kind,session_id) DO UPDATE SET settings=excluded.settings,version=excluded.version,updated_at=excluded.updated_at').run(kind,id,settings,version,now());
+      if(following)db.prepare('INSERT OR IGNORE INTO conversation_model_links(kind,session_id) VALUES (?,?)').run(kind,id);
+      else db.prepare('DELETE FROM conversation_model_links WHERE kind=? AND session_id=?').run(kind,id);
+      db.exec('RELEASE conversation_model_follow');
+    }catch(error){db.exec('ROLLBACK TO conversation_model_follow;RELEASE conversation_model_follow');throw error;}
+  }
 
   /**
    * save - 保存对话的模型配置，支持“沿用全局”和“自定义”两种模式
@@ -90,12 +116,14 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
    * @returns 更新后的完整配置
    */
   function save(kind:string,id:string,input:Record<string,unknown>){
-    const previous=get(kind,id);if(input.version!==previous.version)throw new Error('对话模型配置已变化，请刷新后重试');
+    const storedVersion=row<{version:number}>('SELECT version FROM conversation_models WHERE kind=? AND session_id=?',kind,id)?.version??0;
+    const previous=get(kind,id);
+    if(input.version!==previous.version&&!(input.useGlobal===true&&previous.followsManager&&input.version===storedVersion))throw new Error('对话模型配置已变化，请刷新后重试');
     // 模式一：沿用全局配置
     if(input.useGlobal===true){
       const settings=defaults(),validation=validateModelConfig(settings);
       if(!settings.model||(!settings.baseUrl&&!getProviderConfig(settings.provider)?.baseUrl)||!validation.valid)throw new Error('请先保存有效的应用模型配置');
-      db.prepare('INSERT INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(kind,session_id) DO UPDATE SET settings=excluded.settings,version=excluded.version,updated_at=excluded.updated_at').run(kind,id,JSON.stringify(settings),previous.version+1,now());
+      write(kind,id,JSON.stringify(settings),previous.version+1,true);
       return get(kind,id);
     }
     // 模式二：自定义模型设置
@@ -105,7 +133,7 @@ export function createConversationModels(deps:Store,defaults:()=>ModelSettings){
     if(!model||model.length>200||/[\x00-\x1f]/.test(model))throw new Error('模型 ID 无效');
     const settings={...previous.settings,model,reasoningEffort,contextWindow:model===previous.settings.model?previous.settings.contextWindow:null};const validation=validateModelConfig(settings);if(!validation.valid)throw new Error(validation.error);
     reasoningParameters(settings);
-    db.prepare('INSERT INTO conversation_models(kind,session_id,settings,version,updated_at) VALUES (?,?,?,?,?) ON CONFLICT(kind,session_id) DO UPDATE SET settings=excluded.settings,version=excluded.version,updated_at=excluded.updated_at').run(kind,id,JSON.stringify(settings),previous.version+1,now());
+    write(kind,id,JSON.stringify(settings),previous.version+1,false);
     return get(kind,id);
   }
   return {get,save,initialize};

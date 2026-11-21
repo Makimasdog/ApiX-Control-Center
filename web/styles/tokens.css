@@ -1,0 +1,214 @@
+/* ApiX 设计令牌 · 唯一色值来源
+ *
+ * 配色与密度参照本机 Alma 桌面端（shadcn 语义命名 + One Dark 深色值），
+ * 目的是让 ApiX 看起来像一台"本机工具"，而不是一块 SaaS 仪表盘：
+ * 深色下画布比卡片亮（#282c34 / #21252b），浅色下画布纯白、侧栏用 --sidebar-bg 区分，
+ * 卡片只有 1px 描边、不用投影；主色是 Alma 的蓝（深）/ 青（浅）。
+ *
+ * 命名沿用项目既有 21 个语义令牌，其余文件不应再出现十六进制色值。 */
+:root {
+  color-scheme: light;
+
+  --font-sans: "Segoe UI Variable Text", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "IoskeleyMono", Consolas, "Microsoft YaHei UI", ui-monospace, monospace;
+
+  /* 字号：13px 基准，贴近 Alma 的桌面密度 */
+  --fs-display: 26px;
+  --lh-display: 32px;
+  --fs-h1: 21px;
+  --lh-h1: 28px;
+  --fs-h2: 16px;
+  --lh-h2: 24px;
+  --fs-h3: 14px;
+  --lh-h3: 22px;
+  --fs-lead: 14px;
+  --lh-lead: 22px;
+  --fs-body: 13px;
+  --lh-body: 20px;
+  --fs-form: 13px;
+  --lh-form: 20px;
+  --fs-caption: 12px;
+  --lh-caption: 18px;
+  --fs-micro: 11px;
+  --lh-micro: 16px;
+  --measure: 44em;
+
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  --w-narrow: 640px;
+  --w-default: 880px;
+  --w-wide: 1120px;
+  --gutter: 32px;
+  --gap-grid: 16px;
+  --sidebar-width: 236px;
+  --topbar-height: 56px;
+
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-control: 8px;
+  --r-mark: 10px;
+  --r-card: 12px;
+  --r-dialog: 16px;
+  --r-pill: 999px;
+
+  --h-control-sm: 28px;
+  --h-control: 34px;
+  --h-control-lg: 36px;
+  --h-row: 32px;
+  --h-list-row: 36px;
+  --h-attention: 48px;
+  --h-bottombar: 56px;
+  --icon-sm: 14px;
+  --icon: 16px;
+  --icon-lg: 24px;
+
+  /* ---- 表面 ---- */
+  --app-bg: #ffffff;
+  --sidebar-bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  --surface-inset: #f8fafc;
+  --surface-raised: #ffffff;
+  --control-bg: #ffffff;
+  --nav-active: #f1f5f9;
+
+  /* ---- 文本 ---- */
+  --text-primary: #1a1a1a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  /* ---- 描边 ---- */
+  --border: #e2e8f0;
+  --border-control: #808fa4;
+
+  /* ---- 主色（Alma 浅色主色 #7299a0 压深到可用作正文） ---- */
+  --accent: #2a7780;
+  --accent-hover: #236871;
+  --accent-subtle: #e8f1f2;
+  --accent-alt: #0d9488;
+  --accent-alt-text: #0b7f76;
+  --on-accent: #f8fafc;
+  --gradient-brand: var(--accent);
+  --gradient-accent: var(--accent);
+
+  /* ---- 状态 ---- */
+  --success: #3d7a4f;
+  --success-subtle: #eaf4ee;
+  --warning: #8a5a0a;
+  --warning-subtle: #fdf3e2;
+  --danger: #b2453f;
+  --danger-subtle: #fceceb;
+
+  /* ---- 对话气泡 ---- */
+  --chat-user-bg: var(--accent);
+  --chat-user-fg: var(--on-accent);
+  --chat-agent-bg: var(--surface);
+  --code-bg: #f8fafc;
+  --code-fg: #334155;
+
+  --focus-ring: #2a7780;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --overlay-backdrop: rgba(15, 23, 42, 0.32);
+
+  --shadow-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-2: 0 4px 16px -4px rgba(15, 23, 42, 0.14), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-3: 0 24px 64px -12px rgba(15, 23, 42, 0.28);
+
+  --dur-1: 120ms;
+  --dur-2: 160ms;
+  --dur-3: 200ms;
+  --dur-4: 260ms;
+  --ease-in: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-thead: 20;
+  --z-drawer-backdrop: 39;
+  --z-drawer: 40;
+  --z-dialog-backdrop: 50;
+  --z-dialog: 51;
+  --z-command: 60;
+  --z-toast: 70;
+  --z-tooltip: 80;
+  --z-skip: 100;
+}
+
+/* 深色：One Dark（Alma 深色主题原值） */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --app-bg: #282c34;
+    --sidebar-bg: #21252b;
+    --surface: #21252b;
+    --surface-hover: #2c313c;
+    --surface-inset: #1d2026;
+    --surface-raised: #21252b;
+    --control-bg: #282c34;
+    --nav-active: #2c313c;
+
+    --text-primary: #dcdfe4;
+    --text-secondary: #aab3c0;
+    --text-muted: #949cab;
+
+    --border: #3e4451;
+    --border-control: #6b768f;
+
+    --accent: #61afef;
+    --accent-hover: #7cbcff;
+    --accent-subtle: #24313f;
+    --accent-alt: #98c379;
+    --accent-alt-text: #98c379;
+    --on-accent: #0c111a;
+
+    --success: #98c379;
+    --success-subtle: #2a3524;
+    --warning: #e5c07b;
+    --warning-subtle: #38321f;
+    --danger: #e8838b;
+    --danger-subtle: #3a2729;
+
+    --chat-user-bg: #2f3643;
+    --chat-user-fg: #f6f8fb;
+    --chat-agent-bg: #21252b;
+    --code-bg: #1a1d22;
+    --code-fg: #c8d0da;
+
+    --focus-ring: #61afef;
+    --overlay-backdrop: rgba(0, 0, 0, 0.55);
+
+    --shadow-1: none;
+    --shadow-2: 0 6px 20px -6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-3: 0 28px 70px -16px rgba(0, 0, 0, 0.7);
+  }
+}
+
+@media (max-width: 1359px) {
+  :root { --gutter: 24px; }
+}
+
+@media (max-width: 1023px) {
+  :root { --gutter: 16px; --gap-grid: 12px; }
+}
+
+@media (max-width: 767px) {
+  :root { --gutter: 12px; --gap-grid: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-1: 0ms;
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-4: 0ms;
+  }
+}

@@ -1,0 +1,914 @@
+[
+  {
+    "name": "native-p9y890",
+    "result": {
+      "status": "fail",
+      "stage": "manager-plan",
+      "failure": {
+        "stage": "manager-plan",
+        "message": "{\"error\":\"只能编辑当前待审计划\"}\n\n400 !== 200\n"
+      },
+      "inspection": {
+        "commands": {
+          "codex": {
+            "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+            "prefix": []
+          },
+          "claude": {
+            "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+            "prefix": []
+          }
+        },
+        "claude": {
+          "baseUrl": "http://127.0.0.1:15721",
+          "model": "claude-sonnet-5",
+          "hasCredential": true
+        },
+        "versions": {
+          "codex": "codex-cli 0.166.0-alpha.5.1",
+          "claude": "2.1.114 (Claude Code)"
+        }
+      },
+      "checks": [
+        {
+          "id": "deepseek-manager-real",
+          "actual": "api",
+          "expected": "api",
+          "status": "pass",
+          "refs": [
+            "2cbba9d4-b63a-49c3-9fb6-5d3db992aff9"
+          ]
+        },
+        {
+          "id": "execution-complete",
+          "actual": "manager-plan",
+          "expected": "complete",
+          "status": "fail",
+          "refs": []
+        }
+      ],
+      "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\native-p9y890",
+      "fixtureDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-DWpiyN"
+    },
+    "budget": {
+      "currency": "CNY",
+      "maxCny": 28.027535999999998,
+      "maxRequests": 6,
+      "reservedCny": 20.122416,
+      "requests": 1,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 14220,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.122416,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1478,
+            "outputTokens": 675
+          },
+          "estimatedCny": 0.008356,
+          "structuredOutput": null,
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      },
+      "managerReservedCny": 0.122416,
+      "workerUpperBoundCny": 20,
+      "workerReservationCny": 20,
+      "previousReservedCny": 1.972464,
+      "cumulativeReservedCny": 22.09488,
+      "workerBilling": "operator_declared_upper_bound_not_a_metered_bill",
+      "workerActualBilledCny": null
+    },
+    "scores": {
+      "schemaVersion": 1,
+      "engine": "py-openjudge",
+      "version": "0.2.0",
+      "python": "3.11.9",
+      "results": [
+        {
+          "caseId": "native-codex-claude",
+          "attemptId": "9e5b07ef03fb06c7",
+          "hardStatus": "fail",
+          "score": 0,
+          "reason": "deepseek-manager-real:pass; execution-complete:fail",
+          "semanticStatus": "not_run"
+        }
+      ],
+      "distribution": {
+        "name": "Distribution Analysis",
+        "metadata": {
+          "explanation": "Analyzed 1 scores with mean=0.000, median=0.000, stdev=0.000",
+          "total_samples": 1,
+          "valid_results": 1,
+          "error_results": 0,
+          "skipped_results": 0,
+          "coverage_rate": 1
+        },
+        "mean": 0,
+        "median": 0,
+        "stdev": 0,
+        "min_score": 0,
+        "max_score": 0
+      },
+      "semanticStatus": "not_run"
+    }
+  },
+  {
+    "name": "native-Czmxee",
+    "result": {
+      "status": "fail",
+      "stage": "codex-native-resume",
+      "failure": {
+        "stage": "codex-native-resume",
+        "message": "task failed: {\"timestamp\":\"2026-11-03T05:30:36.934755Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"ignoring interface.icon_small: icon path with '..' must resolve under plugin assets/\"},\"target\":\"codex_skills::interface\"}\n{\"timestamp\":\"2026-11-03T05:30:36.934844Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"ignoring interface.icon_large: icon path with '..' must resolve under plugin assets/\"},\"target\":\"codex_skills::interface\"}\n{\"timestamp\":\"2026-11-03T05:30:36.984065Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"Failed to create shell snapshot for powershell: Shell snapshot not supported yet for PowerShell\"},\"target\":\"codex_core::shell_snapshot\"}\n{\"timestamp\":\"2026-11-03T05:30:49.392374Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"ignoring interface.icon_small: icon path with '..' must resolve under plugin assets/\"},\"target\":\"codex_skills::interface\"}\n{\"timestamp\":\"2026-11-03T05:30:49.392444Z\",\"level\":\"WARN\",\"fields\":{\"message\":\"ignoring interface.icon_large: icon path with '..' must resolve under plugin assets/\"},\"target\":\"codex_skills::interface\"}"
+      },
+      "inspection": {
+        "commands": {
+          "codex": {
+            "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+            "prefix": []
+          },
+          "claude": {
+            "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+            "prefix": []
+          }
+        },
+        "claude": {
+          "baseUrl": "http://127.0.0.1:15721",
+          "model": "claude-sonnet-5",
+          "hasCredential": true
+        },
+        "versions": {
+          "codex": "codex-cli 0.166.0-alpha.5.1",
+          "claude": "2.1.114 (Claude Code)"
+        }
+      },
+      "checks": [
+        {
+          "id": "deepseek-manager-real",
+          "actual": "api",
+          "expected": "api",
+          "status": "pass",
+          "refs": [
+            "57d913fc-e1db-461f-82f5-f4a0e730d288"
+          ]
+        },
+        {
+          "id": "dispatch",
+          "actual": 0,
+          "expected": 0,
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "codex-real-command-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "20f12e5a-7e44-4f29-be67-9f123852bf4d"
+          ]
+        },
+        {
+          "id": "codex-real-file-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "20f12e5a-7e44-4f29-be67-9f123852bf4d"
+          ]
+        },
+        {
+          "id": "codex-steer-processed",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "20f12e5a-7e44-4f29-be67-9f123852bf4d"
+          ]
+        },
+        {
+          "id": "claude-waits-for-codex-acceptance",
+          "actual": "queued",
+          "expected": "queued",
+          "status": "pass",
+          "refs": [
+            "619df9f2-1764-4697-8444-6dfe703ab66e"
+          ]
+        },
+        {
+          "id": "execution-complete",
+          "actual": "codex-native-resume",
+          "expected": "complete",
+          "status": "fail",
+          "refs": []
+        }
+      ],
+      "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\native-Czmxee",
+      "fixtureDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-wTBaV6"
+    },
+    "budget": {
+      "currency": "CNY",
+      "maxCny": 27.90512,
+      "maxRequests": 6,
+      "reservedCny": 0.122416,
+      "requests": 1,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 14220,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.122416,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1468,
+            "outputTokens": 685
+          },
+          "estimatedCny": 0.008416,
+          "structuredOutput": null,
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      },
+      "managerReservedCny": 0.122416,
+      "workerUpperBoundCny": 20,
+      "workerReservationCny": 0,
+      "previousReservedCny": 22.09488,
+      "cumulativeReservedCny": 22.217296,
+      "workerBilling": "operator_declared_upper_bound_not_a_metered_bill",
+      "workerActualBilledCny": null
+    },
+    "scores": {
+      "schemaVersion": 1,
+      "engine": "py-openjudge",
+      "version": "0.2.0",
+      "python": "3.11.9",
+      "results": [
+        {
+          "caseId": "native-codex-claude",
+          "attemptId": "c6e606ff34c4c15d",
+          "hardStatus": "fail",
+          "score": 0,
+          "reason": "deepseek-manager-real:pass; dispatch:pass; codex-real-command-tool:pass; codex-real-file-tool:pass; codex-steer-processed:pass; claude-waits-for-codex-acceptance:pass; execution-complete:fail",
+          "semanticStatus": "not_run"
+        }
+      ],
+      "distribution": {
+        "name": "Distribution Analysis",
+        "metadata": {
+          "explanation": "Analyzed 1 scores with mean=0.000, median=0.000, stdev=0.000",
+          "total_samples": 1,
+          "valid_results": 1,
+          "error_results": 0,
+          "skipped_results": 0,
+          "coverage_rate": 1
+        },
+        "mean": 0,
+        "median": 0,
+        "stdev": 0,
+        "min_score": 0,
+        "max_score": 0
+      },
+      "semanticStatus": "not_run"
+    }
+  },
+  {
+    "name": "native-T2JUPu",
+    "result": {
+      "status": "fail",
+      "stage": "codex-native-resume",
+      "failure": {
+        "stage": "codex-native-resume",
+        "message": "codex-steer-effect: \"GUIDED_9989426f-9\\nChanged sum.mjs to add its arguments.\\nNode node:assert/strict validation: 6 cases PASS; exit code 0.\\nCovered positive, negative, mixed-sign, zero, and decimal inputs.\"\n\n'fail' !== 'pass'\n"
+      },
+      "inspection": {
+        "commands": {
+          "codex": {
+            "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+            "prefix": []
+          },
+          "claude": {
+            "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+            "prefix": []
+          }
+        },
+        "claude": {
+          "baseUrl": "http://127.0.0.1:15721",
+          "model": "claude-sonnet-5",
+          "hasCredential": true
+        },
+        "versions": {
+          "codex": "codex-cli 0.166.0-alpha.5.1",
+          "claude": "2.1.114 (Claude Code)"
+        }
+      },
+      "checks": [
+        {
+          "id": "deepseek-manager-real",
+          "actual": "api",
+          "expected": "api",
+          "status": "pass",
+          "refs": [
+            "3182a07e-cd7f-4878-b8a0-20e50f207ee1"
+          ]
+        },
+        {
+          "id": "dispatch",
+          "actual": 0,
+          "expected": 0,
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "codex-real-command-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "74c60176-0039-4a9b-8ccb-080751eb364a"
+          ]
+        },
+        {
+          "id": "codex-real-file-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "74c60176-0039-4a9b-8ccb-080751eb364a"
+          ]
+        },
+        {
+          "id": "codex-steer-processed",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "74c60176-0039-4a9b-8ccb-080751eb364a"
+          ]
+        },
+        {
+          "id": "claude-waits-for-codex-acceptance",
+          "actual": "queued",
+          "expected": "queued",
+          "status": "pass",
+          "refs": [
+            "2b9bdbb0-aee9-4fce-9a78-731f6b1f42c9"
+          ]
+        },
+        {
+          "id": "native-resume-new-run-codex",
+          "actual": 2,
+          "expected": 2,
+          "status": "pass",
+          "refs": [
+            "d42c4258-e9c1-4606-a1dd-2b1f7d434da3"
+          ]
+        },
+        {
+          "id": "codex-steer-effect",
+          "actual": "GUIDED_9989426f-9\nChanged sum.mjs to add its arguments.\nNode node:assert/strict validation: 6 cases PASS; exit code 0.\nCovered positive, negative, mixed-sign, zero, and decimal inputs.",
+          "expected": "GUIDED_9989426f-9",
+          "status": "fail",
+          "refs": [
+            "d42c4258-e9c1-4606-a1dd-2b1f7d434da3"
+          ]
+        },
+        {
+          "id": "execution-complete",
+          "actual": "codex-native-resume",
+          "expected": "complete",
+          "status": "fail",
+          "refs": []
+        }
+      ],
+      "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\native-T2JUPu",
+      "fixtureDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-wSmCbk"
+    },
+    "budget": {
+      "currency": "CNY",
+      "maxCny": 27.782704,
+      "maxRequests": 6,
+      "reservedCny": 0.122416,
+      "requests": 1,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 14220,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.122416,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1469,
+            "outputTokens": 697
+          },
+          "estimatedCny": 0.008514,
+          "structuredOutput": null,
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      },
+      "managerReservedCny": 0.122416,
+      "workerUpperBoundCny": 20,
+      "workerReservationCny": 0,
+      "previousReservedCny": 22.217296,
+      "cumulativeReservedCny": 22.339712000000002,
+      "workerBilling": "operator_declared_upper_bound_not_a_metered_bill",
+      "workerActualBilledCny": null
+    },
+    "scores": {
+      "schemaVersion": 1,
+      "engine": "py-openjudge",
+      "version": "0.2.0",
+      "python": "3.11.9",
+      "results": [
+        {
+          "caseId": "native-codex-claude",
+          "attemptId": "a60e05903233f938",
+          "hardStatus": "fail",
+          "score": 0,
+          "reason": "deepseek-manager-real:pass; dispatch:pass; codex-real-command-tool:pass; codex-real-file-tool:pass; codex-steer-processed:pass; claude-waits-for-codex-acceptance:pass; native-resume-new-run-codex:pass; codex-steer-effect:fail; execution-complete:fail",
+          "semanticStatus": "not_run"
+        }
+      ],
+      "distribution": {
+        "name": "Distribution Analysis",
+        "metadata": {
+          "explanation": "Analyzed 1 scores with mean=0.000, median=0.000, stdev=0.000",
+          "total_samples": 1,
+          "valid_results": 1,
+          "error_results": 0,
+          "skipped_results": 0,
+          "coverage_rate": 1
+        },
+        "mean": 0,
+        "median": 0,
+        "stdev": 0,
+        "min_score": 0,
+        "max_score": 0
+      },
+      "semanticStatus": "not_run"
+    }
+  },
+  {
+    "name": "native-LUELqV",
+    "result": {
+      "status": "fail",
+      "stage": "stop-codex",
+      "failure": {
+        "stage": "stop-codex",
+        "message": "deadline: stop command started"
+      },
+      "inspection": {
+        "commands": {
+          "codex": {
+            "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+            "prefix": []
+          },
+          "claude": {
+            "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+            "prefix": []
+          }
+        },
+        "claude": {
+          "baseUrl": "http://127.0.0.1:15721",
+          "model": "claude-sonnet-5",
+          "hasCredential": true
+        },
+        "versions": {
+          "codex": "codex-cli 0.166.0-alpha.5.1",
+          "claude": "2.1.114 (Claude Code)"
+        }
+      },
+      "checks": [
+        {
+          "id": "deepseek-manager-real",
+          "actual": "api",
+          "expected": "api",
+          "status": "pass",
+          "refs": [
+            "5bea5704-2fa6-4d2b-b62b-09cb16cf2274"
+          ]
+        },
+        {
+          "id": "dispatch",
+          "actual": 0,
+          "expected": 0,
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "codex-real-command-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "ea1a7bdf-0ca6-4f62-b822-2a78d4edd5c7"
+          ]
+        },
+        {
+          "id": "codex-real-file-tool",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "ea1a7bdf-0ca6-4f62-b822-2a78d4edd5c7"
+          ]
+        },
+        {
+          "id": "codex-steer-processed",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "ea1a7bdf-0ca6-4f62-b822-2a78d4edd5c7"
+          ]
+        },
+        {
+          "id": "claude-waits-for-codex-acceptance",
+          "actual": "queued",
+          "expected": "queued",
+          "status": "pass",
+          "refs": [
+            "d88d2d3b-ca95-43ef-bd97-0001a17a4661"
+          ]
+        },
+        {
+          "id": "native-resume-new-run-codex",
+          "actual": 2,
+          "expected": 2,
+          "status": "pass",
+          "refs": [
+            "f3258bfc-f0bb-412d-84dc-5601102774e2"
+          ]
+        },
+        {
+          "id": "codex-steer-effect",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "f3258bfc-f0bb-412d-84dc-5601102774e2"
+          ]
+        },
+        {
+          "id": "claude-guidance-queued",
+          "actual": "queued",
+          "expected": "queued",
+          "status": "pass",
+          "refs": [
+            "fd657675-8ee4-4733-99cc-a7351052a832"
+          ]
+        },
+        {
+          "id": "question-answered-f6a392c5-549a-4e95-a9a7-476033bfcb8c",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "fd657675-8ee4-4733-99cc-a7351052a832",
+            "f6a392c5-549a-4e95-a9a7-476033bfcb8c"
+          ]
+        },
+        {
+          "id": "claude-real-read-edit-write-command",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "fd657675-8ee4-4733-99cc-a7351052a832"
+          ]
+        },
+        {
+          "id": "claude-real-search",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "fd657675-8ee4-4733-99cc-a7351052a832"
+          ]
+        },
+        {
+          "id": "claude-queue-processed",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "fd657675-8ee4-4733-99cc-a7351052a832"
+          ]
+        },
+        {
+          "id": "native-resume-new-run-claude",
+          "actual": 2,
+          "expected": 2,
+          "status": "pass",
+          "refs": [
+            "d88d2d3b-ca95-43ef-bd97-0001a17a4661"
+          ]
+        },
+        {
+          "id": "claude-guidance-effect",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "d88d2d3b-ca95-43ef-bd97-0001a17a4661"
+          ]
+        },
+        {
+          "id": "host-hidden-inputs",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": [
+            "8da5bf41-450d-4d40-8684-896dddf8894c"
+          ]
+        },
+        {
+          "id": "user-baseline-preserved",
+          "actual": "user-owned baseline\n",
+          "expected": "user-owned baseline\n",
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "integration-report-present",
+          "actual": true,
+          "expected": true,
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "all-accepted",
+          "actual": [
+            "accepted",
+            "accepted",
+            "accepted"
+          ],
+          "expected": [
+            "accepted",
+            "accepted",
+            "accepted"
+          ],
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "restart-preserves-completion",
+          "actual": "completed",
+          "expected": "completed",
+          "status": "pass",
+          "refs": []
+        },
+        {
+          "id": "execution-complete",
+          "actual": "stop-codex",
+          "expected": "complete",
+          "status": "fail",
+          "refs": []
+        }
+      ],
+      "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\native-LUELqV",
+      "fixtureDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-OAfr74"
+    },
+    "budget": {
+      "currency": "CNY",
+      "maxCny": 27.660287999999998,
+      "maxRequests": 6,
+      "reservedCny": 0.122416,
+      "requests": 1,
+      "ledger": [
+        {
+          "request": 1,
+          "inputByteUpperBound": 14220,
+          "maxOutputTokens": 4096,
+          "reservationCny": 0.122416,
+          "status": "completed",
+          "usage": {
+            "inputTokens": 1472,
+            "outputTokens": 695
+          },
+          "estimatedCny": 0.008504,
+          "structuredOutput": null,
+          "httpStatus": 200
+        }
+      ],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      },
+      "managerReservedCny": 0.122416,
+      "workerUpperBoundCny": 20,
+      "workerReservationCny": 0,
+      "previousReservedCny": 22.339712000000002,
+      "cumulativeReservedCny": 22.462128000000003,
+      "workerBilling": "operator_declared_upper_bound_not_a_metered_bill",
+      "workerActualBilledCny": null
+    },
+    "scores": {
+      "schemaVersion": 1,
+      "engine": "py-openjudge",
+      "version": "0.2.0",
+      "python": "3.11.9",
+      "results": [
+        {
+          "caseId": "native-codex-claude",
+          "attemptId": "3b1d7384063aaec1",
+          "hardStatus": "fail",
+          "score": 0,
+          "reason": "deepseek-manager-real:pass; dispatch:pass; codex-real-command-tool:pass; codex-real-file-tool:pass; codex-steer-processed:pass; claude-waits-for-codex-acceptance:pass; native-resume-new-run-codex:pass; codex-steer-effect:pass; claude-guidance-queued:pass; question-answered-f6a392c5-549a-4e95-a9a7-476033bfcb8c:pass; claude-real-read-edit-write-command:pass; claude-real-search:pass; claude-queue-processed:pass; native-resume-new-run-claude:pass; claude-guidance-effect:pass; host-hidden-inputs:pass; user-baseline-preserved:pass; integration-report-present:pass; all-accepted:pass; restart-preserves-completion:pass; execution-complete:fail",
+          "semanticStatus": "not_run"
+        }
+      ],
+      "distribution": {
+        "name": "Distribution Analysis",
+        "metadata": {
+          "explanation": "Analyzed 1 scores with mean=0.000, median=0.000, stdev=0.000",
+          "total_samples": 1,
+          "valid_results": 1,
+          "error_results": 0,
+          "skipped_results": 0,
+          "coverage_rate": 1
+        },
+        "mean": 0,
+        "median": 0,
+        "stdev": 0,
+        "min_score": 0,
+        "max_score": 0
+      },
+      "semanticStatus": "not_run"
+    }
+  },
+  {
+    "name": "native-opySvw",
+    "result": {
+      "status": "pass",
+      "stage": "complete",
+      "inspection": {
+        "commands": {
+          "codex": {
+            "executable": "C:\\Users\\1\\AppData\\Local\\OpenAI\\Codex\\bin\\22cfb1d302613eae\\codex.exe",
+            "prefix": []
+          },
+          "claude": {
+            "executable": "C:\\Users\\1\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+            "prefix": []
+          }
+        },
+        "claude": {
+          "baseUrl": "http://127.0.0.1:15721",
+          "model": "claude-sonnet-5",
+          "hasCredential": true
+        },
+        "versions": {
+          "codex": "codex-cli 0.166.0-alpha.5.1",
+          "claude": "2.1.114 (Claude Code)"
+        }
+      },
+      "checks": [
+        {
+          "id": "stop-evidence-codex",
+          "actual": "quiescent",
+          "expected": "quiescent",
+          "status": "pass",
+          "refs": [
+            "1519261f-db2d-4b81-b416-049ba9f441eb"
+          ]
+        },
+        {
+          "id": "no-late-write-codex",
+          "actual": false,
+          "expected": false,
+          "status": "pass",
+          "refs": [
+            "1519261f-db2d-4b81-b416-049ba9f441eb"
+          ]
+        },
+        {
+          "id": "stop-evidence-claude",
+          "actual": "quiescent",
+          "expected": "quiescent",
+          "status": "pass",
+          "refs": [
+            "22bcfa84-b23c-4147-b015-ca4dac969627"
+          ]
+        },
+        {
+          "id": "no-late-write-claude",
+          "actual": false,
+          "expected": false,
+          "status": "pass",
+          "refs": [
+            "22bcfa84-b23c-4147-b015-ca4dac969627"
+          ]
+        },
+        {
+          "id": "no-fake-model-calls",
+          "actual": 0,
+          "expected": 0,
+          "status": "pass",
+          "refs": []
+        }
+      ],
+      "directory": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\evaluation\\native-opySvw",
+      "fixtureDirectory": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-delivery-fixture-MFZoGI"
+    },
+    "budget": {
+      "currency": "CNY",
+      "maxCny": 27.537872,
+      "maxRequests": 6,
+      "reservedCny": 0,
+      "requests": 0,
+      "ledger": [],
+      "actualBilledCny": null,
+      "priceSource": "https://help.aliyun.com/zh/model-studio/model-pricing",
+      "pricingCheckedAt": "2026-11-02",
+      "estimateRatesPerMillion": {
+        "input": 2,
+        "output": 8
+      },
+      "reservationRatesPerMillion": {
+        "input": 4,
+        "output": 16
+      },
+      "managerReservedCny": 0,
+      "workerUpperBoundCny": 20,
+      "workerReservationCny": 0,
+      "previousReservedCny": 22.462128,
+      "cumulativeReservedCny": 22.462128,
+      "workerBilling": "operator_declared_upper_bound_not_a_metered_bill",
+      "workerActualBilledCny": null
+    },
+    "scores": {
+      "schemaVersion": 1,
+      "engine": "py-openjudge",
+      "version": "0.2.0",
+      "python": "3.11.9",
+      "results": [
+        {
+          "caseId": "native-codex-claude-stop",
+          "attemptId": "856b04af40c2afbe",
+          "hardStatus": "pass",
+          "score": 1,
+          "reason": "stop-evidence-codex:pass; no-late-write-codex:pass; stop-evidence-claude:pass; no-late-write-claude:pass; no-fake-model-calls:pass",
+          "semanticStatus": "not_run"
+        }
+      ],
+      "distribution": {
+        "name": "Distribution Analysis",
+        "metadata": {
+          "explanation": "Analyzed 1 scores with mean=1.000, median=1.000, stdev=0.000",
+          "total_samples": 1,
+          "valid_results": 1,
+          "error_results": 0,
+          "skipped_results": 0,
+          "coverage_rate": 1
+        },
+        "mean": 1,
+        "median": 1,
+        "stdev": 0,
+        "min_score": 1,
+        "max_score": 1
+      },
+      "semanticStatus": "not_run"
+    }
+  }
+]

@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "scope": "Codex self-review and observed evaluation failures; no confirmed product business defect",
+  "findings": [
+    {
+      "id": "OJ-001",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "Preserved README was CRLF while fixture expected LF",
+      "rootCause": "Temporary Git repository inherited Windows core.autocrlf, so checkout legitimately converted baseline line endings",
+      "evidence": "first-failure.json",
+      "fix": "scripts/evaluation/collaboration-scenarios.mjs: set core.autocrlf=false in the disposable repository before baseline commit",
+      "verification": "Subsequent protocol and real diamond scenarios passed byte preservation"
+    },
+    {
+      "id": "OJ-002",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "Real manager mode returned api but test expected pi",
+      "rootCause": "New scenario reused a legacy real-collaboration script's outdated mode expectation",
+      "fix": "scripts/evaluation/collaboration-scenarios.mjs: assert current api mode",
+      "verification": "Both complete real-provider runs passed real-manager-produced-plan"
+    },
+    {
+      "id": "OJ-003",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "OpenJudge structured scoring returned HTTP 400 invalid_parameter_error",
+      "rootCause": "OpenAI SDK parse sent json_schema output mode, which this DashScope model rejected",
+      "evidence": "budget-history.json: first batch request 3",
+      "fix": "src/evaluation/model-gateway.mjs: translate json_schema to json_object plus schema instructions; preserve SDK parsing",
+      "verification": "Later real scoring requests with structuredOutput=json_schema completed with HTTP 200 and parsed scores"
+    },
+    {
+      "id": "OJ-004",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "An uncaught semantic provider exception prevented hard results from being written to scores.json",
+      "rootCause": "Initial evaluator handled GraderError results but not exceptions raised by LLMGrader.aevaluate",
+      "fix": "scripts/evaluation/openjudge/evaluate.py: catch errors per semantic case, retain hard verdicts, return grader_error and nonzero exit",
+      "verification": "test/agent-evaluation.test.mjs: actual connection failure retained hardStatus=pass, semanticStatus=grader_error and score=null"
+    },
+    {
+      "id": "OJ-005",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "Self-review found normalized task dependencies absent despite session dependency edges existing",
+      "rootCause": "Initial collector read task.depends_on, while current coordinator exposes session.dependencies rows",
+      "fix": "src/evaluation/evidence.mjs: map dependency edges by task_id and depends_on_id",
+      "verification": "New mapping regression and final case-summary.json retain all diamond DAG edges"
+    },
+    {
+      "id": "OJ-006",
+      "category": "SEMANTIC_REVIEW",
+      "status": "mitigated",
+      "confidence": "confirmed",
+      "observation": "A 4/5 tool-selection explanation incorrectly suggested run_check did not execute the requested Node command",
+      "rootCause": "Initial grader input omitted the host's approved verification contract linking run_check(unit) to Node check.cjs",
+      "fix": "Export source verification-contract event IDs/runtime/check args and supply them to tool-selection grading",
+      "verification": "semantic-recheck.json retained 4/5 but correctly recognized actual execution; final fresh batch scored 5/5",
+      "remainingLimitation": "Semantic scores vary across runs and lack human calibration; keep diagnostic-only and never override objective verification"
+    },
+    {
+      "id": "OJ-007",
+      "category": "EVAL_PIPELINE",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "Final self-review found that not_run records could generate failure findings from their underlying false/unknown fields",
+      "rootCause": "Finding generation filtered assertions without respecting the case not_run state",
+      "fix": "src/evaluation/evidence.mjs: return no business findings for not_run cases",
+      "verification": "Targeted hard-evidence and redaction tests passed 2/2, including normalization of an unexecuted task; existing executed pass cases are unchanged"
+    },
+    {
+      "id": "OJ-008",
+      "category": "ENVIRONMENT_PROVIDER",
+      "status": "fixed",
+      "confidence": "confirmed",
+      "observation": "A fresh standard venv/pip install using the local default mirror could not find openai==3.42.1",
+      "rootCause": "Local default pip index mirror lacked the locked release that the resolver obtained from official PyPI",
+      "fix": "Use explicit https://pypi.org/simple in CI and documented pip installation, preserving locked versions",
+      "verification": "See installation-check.json for the actual official-index installation and evaluation checks"
+    }
+  ]
+}

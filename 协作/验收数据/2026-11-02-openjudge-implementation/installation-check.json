@@ -1,0 +1,21 @@
+{
+  "status": "VERIFIED",
+  "environment": "standard Python venv + pip, independent from uv-installed environment",
+  "index": "https://pypi.org/simple",
+  "openjudgeVersion": "0.2.0",
+  "openaiVersion": "3.42.1",
+  "dependencyCheck": "No broken requirements found",
+  "retainedEvidenceReevaluation": {
+    "cases": 8,
+    "passed": 8,
+    "newModelRequests": 0
+  },
+  "upstreamDirectUrl": {
+    "url": "https://github.com/agentscope-ai/OpenJudge.git",
+    "vcs_info": {
+      "commit_id": "070f7b8f2a3144f50788a9161c509c24130fb502",
+      "requested_revision": "070f7b8f2a3144f50788a9161c509c24130fb502",
+      "vcs": "git"
+    }
+  }
+}

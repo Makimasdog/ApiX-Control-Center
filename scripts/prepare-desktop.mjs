@@ -42,6 +42,6 @@ if (!existsSync(licenseCache)) {
 }
 cpSync(licenseCache, join(backend, 'runtime/NODE-LICENSE.txt'));
 execFileSync(process.execPath, [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], { cwd: backend, stdio: 'inherit' });
-for (const name of ['main.cjs', 'backend.cjs']) cpSync(join(root, 'desktop', name), join(stage, 'shell', name));
+for (const name of ['main.cjs', 'backend.cjs', 'preload.cjs', 'worker-notifications.cjs']) cpSync(join(root, 'desktop', name), join(stage, 'shell', name));
 writeFileSync(join(stage, 'shell/package.json'), JSON.stringify({ name: pkg.name, version: pkg.version, description: pkg.description, license: pkg.license, author: 'ApiX', main: 'main.cjs' }, null, 2) + '\n');
 console.log('桌面资源已准备：' + stage);

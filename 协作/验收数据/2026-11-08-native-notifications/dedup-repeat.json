@@ -1,0 +1,17 @@
+[
+  {
+    "tag": "016be827-7ec0-4ca9-8802-339a12f12290",
+    "group": "Notifications",
+    "xml": "<toast>\r\n <visual>\r\n  <binding template=\"ToastGeneric\">\r\n   <text>ApiX · 员工等待回答</text>\r\n   <text>失效核查员 正在等待你的决定。点击返回原对话。</text>\r\n  </binding>\r\n </visual>\r\n</toast>"
+  },
+  {
+    "tag": "57200e46-dd85-4577-a1d9-c8f9f6e91e43",
+    "group": "Notifications",
+    "xml": "<toast>\r\n <visual>\r\n  <binding template=\"ToastGeneric\">\r\n   <text>ApiX · 员工等待审批</text>\r\n   <text>审批核查员 正在等待你的决定。点击返回原对话。</text>\r\n  </binding>\r\n </visual>\r\n</toast>"
+  },
+  {
+    "tag": "0a96f7a5-24b6-41c4-95cc-ee54918940b5",
+    "group": "Notifications",
+    "xml": "<toast>\r\n <visual>\r\n  <binding template=\"ToastGeneric\">\r\n   <text>ApiX · 员工等待回答</text>\r\n   <text>点击核查员 正在等待你的决定。点击返回原对话。</text>\r\n  </binding>\r\n </visual>\r\n</toast>"
+  }
+]

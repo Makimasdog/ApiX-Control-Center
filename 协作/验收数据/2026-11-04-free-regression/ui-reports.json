@@ -1,0 +1,239 @@
+{
+  "command": "npm run test:ui:all",
+  "exitCode": 0,
+  "scriptCount": 14,
+  "reports": [
+    {
+      "passed": true,
+      "cases": 64,
+      "screenshots": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-ui-review",
+      "modelCalls": 0
+    },
+    {
+      "passed": true,
+      "checks": [
+        "project/employee/provider names render as text and survive form editing",
+        "event filters, employee model/accounts, autonomy, scheduling and graph retain nested controls and quoted values",
+        "conversation model options preserve values and selected effort",
+        "MCP names, tools and editable JSON remain escaped and intact",
+        "folder paths round-trip through quoted attributes without injection",
+        "timeline citations, output links, delivery versions and recovery/readiness guards survive renderer migration",
+        "history filters, employee progress and overview cards preserve escaped text and existing controls"
+      ],
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-html-views-review"
+    },
+    {
+      "passed": true,
+      "cases": [
+        "create",
+        "masked-key",
+        "bind",
+        "card-edit-and-save",
+        "endpoint-change-guard",
+        "save-only-unbound",
+        "incompatible-visible",
+        "targeted-claude-create",
+        "save-and-apply",
+        "bound-edit",
+        "placeholder-rejected",
+        "partial-apply-failure",
+        "apix-save-apply-and-edit",
+        "desktop-layout",
+        "mobile-layout"
+      ],
+      "modelCalls": 0,
+      "screenshots": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-provider-review"
+    },
+    {
+      "passed": [
+        "context-breakdown",
+        "manual-focus",
+        "instruction-metadata",
+        "candidate-confirm",
+        "status-filter",
+        "project-switches",
+        "responsive"
+      ],
+      "localModelCalls": 6,
+      "paidModelCalls": 0,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-memory-review"
+    },
+    {
+      "passed": [
+        "native-provider-usage",
+        "paired-cache-ratio",
+        "cache-conflict",
+        "unknown-fields",
+        "final-request-diagnostics",
+        "saving-mode",
+        "mode-persistence",
+        "task-switch",
+        "stable-standard-saving",
+        "stable-core-diagnostic",
+        "strategy-persistence",
+        "legacy-fallback",
+        "responsive",
+        "no-browser-errors"
+      ],
+      "paidModelCalls": 0,
+      "localModelCalls": 6,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-token-usage-review"
+    },
+    {
+      "passed": [
+        "no-gain-visible",
+        "refresh-no-retry",
+        "server-restart-persistence",
+        "resume-no-retry",
+        "manual-retry",
+        "atomic-clear",
+        "responsive",
+        "no-browser-errors"
+      ],
+      "localModelCalls": 3,
+      "paidModelCalls": 0,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-context-compaction-review"
+    },
+    {
+      "passed": true,
+      "projectBytes": 9437184,
+      "approvalRequests": 0,
+      "employees": 0,
+      "automaticWorkflow": false,
+      "modelCalls": 5,
+      "paidCalls": 0,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-task-flow"
+    },
+    {
+      "passed": true,
+      "modelCalls": 0,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-navigation-review",
+      "cases": [
+        "single-entry",
+        "empty-board",
+        "existing-process-selection",
+        "progress-primary",
+        "legacy-controls",
+        "draft-preservation",
+        "overview-route",
+        "source-child-route",
+        "responsive"
+      ]
+    },
+    {
+      "passed": true,
+      "modelCalls": 0,
+      "writes": 0,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-graph-review",
+      "cases": [
+        "dependency-layout",
+        "parallel-branches",
+        "zoom",
+        "keyboard-drilldown",
+        "escaped-content",
+        "report",
+        "recovery-guards",
+        "live-status",
+        "stale-inspection",
+        "acceptance-guard",
+        "goal-details",
+        "back",
+        "responsive-themes"
+      ]
+    },
+    {
+      "passed": true,
+      "modelHttpRequests": 5,
+      "backoffRetries": 2,
+      "sideEffectExecutions": 1,
+      "paidModelCalls": 0,
+      "browserErrors": 0,
+      "out": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-recovery-review"
+    },
+    {
+      "reports": [
+        {
+          "kind": "delivery",
+          "passed": true,
+          "checks": [
+            "real-browser-submit",
+            "verified-delivery",
+            "feedback",
+            "revision-v2",
+            "accept",
+            "reload",
+            "responsive",
+            "second-task-net-diff",
+            "historical-acceptance"
+          ],
+          "paidModelCalls": 0,
+          "localProtocolCalls": 17
+        },
+        {
+          "kind": "npm",
+          "passed": true,
+          "checks": [
+            "real-browser-submit",
+            "verified-delivery",
+            "feedback",
+            "revision-v2",
+            "accept",
+            "reload",
+            "responsive",
+            "offline-npm-approval",
+            "failed-check-log-read",
+            "npm-copy-verification"
+          ],
+          "paidModelCalls": 0,
+          "localProtocolCalls": 12
+        }
+      ],
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp\\verification\\project-browser"
+    },
+    {
+      "passed": [
+        "backend-opt-in",
+        "employee-run-entry",
+        "question-card",
+        "two-employee-isolation",
+        "native-guidance",
+        "explicit-answer",
+        "turn-and-stop-state",
+        "history-reload",
+        "escaped-output",
+        "artifacts",
+        "responsive",
+        "no-browser-errors"
+      ],
+      "paidModelCalls": 0,
+      "localNativeRuns": 2,
+      "output": "E:\\Projects\\wyy\\ApiX-Control-Center\\.tmp-agent-workbench-review"
+    },
+    {
+      "passed": true,
+      "paidModelCalls": 0,
+      "localPlanningCalls": 1,
+      "localNativeRuns": 2,
+      "output": "C:\\Users\\1\\AppData\\Local\\Temp\\apix-assistant-workbench-review",
+      "cases": [
+        "main-workbench",
+        "real-child-workers",
+        "employee-isolation",
+        "guidance-drafts",
+        "main-draft",
+        "docked-and-drawer",
+        "resize-focus",
+        "escape-close",
+        "light-dark",
+        "guidance",
+        "question",
+        "artifacts",
+        "focus-return",
+        "thread-reset",
+        "worker-list-retry",
+        "failure-diagnostics",
+        "employee-navigation"
+      ]
+    }
+  ]
+}

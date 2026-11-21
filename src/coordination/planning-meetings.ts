@@ -17,6 +17,8 @@ import { randomUUID } from 'node:crypto';
 import { type Store, type PlanStep, object, text } from './contracts.js';
 import { type Scheduling, taskProfile } from './scheduling.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** 会议记录的数据结构（对应 planning_meetings 表的一行） */
 interface Meeting {id:string;session_id:string;plan_id:string;round:number;status:string;body:string;created_at:string}
 
@@ -30,7 +32,7 @@ interface Meeting {id:string;session_id:string;plan_id:string;round:number;statu
 export function createPlanningMeetings(store:Store,scheduling:Scheduling,infer:(employeeId:string,prompt:string)=>Promise<string>) {
   const {db,row,rows,now}=store;
   // 初始化会议记录表：存储每轮会议的参与者、提案、分歧和纪要
-  db.exec(`CREATE TABLE IF NOT EXISTS planning_meetings(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES coordination_sessions(id),plan_id TEXT NOT NULL REFERENCES plans(id),round INTEGER NOT NULL,status TEXT NOT NULL,body TEXT NOT NULL,created_at TEXT NOT NULL);`);
+  ensureModuleSchema(db, "coordination-planning-meetings");
   // 启动时将上次中断的会议（status='running'）标记为 interrupted，防止悬挂状态
   db.prepare("UPDATE planning_meetings SET status='interrupted' WHERE status='running'").run();
 

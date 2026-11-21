@@ -7,6 +7,7 @@ import {PreflightError} from '../../recovery/fault-policy.js';
 import {changed,digest,invalid,loadManifest,readManifest,required,skillId,unavailable,type AgentSkill} from './manifest.js';
 import {builtinMarket} from './market.js';
 import {createSkillOperations,skillTool,type SkillFileRunner} from './operations.js';
+import {ensureModuleSchema} from '../../infrastructure/schema.js';
 
 function validateId(id:string){
   if(!skillId.test(id))throw invalid('技能标识无效');
@@ -28,10 +29,8 @@ export function createAgentSkills(store:Store,dataDir:string,projectRoot:(id:str
   projectMode:(id:string)=>string,fetcher:typeof fetch=fetch){
   const {db,row,now}=store;
   const base=join(dataDir,'agent-skills');
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_skill_grants (
-    project_id TEXT NOT NULL REFERENCES projects(id),skill_id TEXT NOT NULL,revision TEXT NOT NULL,
-    updated_at TEXT NOT NULL, PRIMARY KEY(project_id,skill_id)
-  )`);
+  ensureModuleSchema(db, "assistant-core-skill-registry");
+
   const execute=createSkillOperations(store,projectRoot,fetcher);
 
   function project(id:string){

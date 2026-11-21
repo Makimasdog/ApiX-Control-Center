@@ -15,6 +15,8 @@
 import {createHash,randomUUID} from 'node:crypto';
 import type {Store} from '../coordination/contracts.js';
 import {CommandSafetyError} from './assistant-commands.js';
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /** canonical - 将对象转为规范形式（键排序 + 递归处理），用于生成稳定的指纹 */
 const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonical(value[k])])):value;
 /**
@@ -25,7 +27,7 @@ const canonical=(value:any):any=>Array.isArray(value)?value.map(canonical):value
  * 相同参数的重复执行会被检测为“已有结果待核对”而非重新执行。
  */
 export function createEffectJournal({db,row,now}:Store){
-  db.exec(`CREATE TABLE IF NOT EXISTS assistant_effects(id TEXT PRIMARY KEY,schema_version INTEGER NOT NULL DEFAULT 1,session_id TEXT NOT NULL REFERENCES assistant_sessions(id),scope_key TEXT NOT NULL,tool TEXT NOT NULL,state TEXT NOT NULL,input_fingerprint TEXT NOT NULL,output_fingerprint TEXT,result_event_id INTEGER REFERENCES assistant_events(id),created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS assistant_effect_scope ON assistant_effects(session_id,scope_key);CREATE UNIQUE INDEX IF NOT EXISTS assistant_effect_pending ON assistant_effects(session_id,scope_key) WHERE state='started';`);
+  ensureModuleSchema(db, "assistant-assistant-effects");
   /**
    * begin - 开始一个副作用操作
    * @param sessionId - 会话 ID

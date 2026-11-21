@@ -15,6 +15,10 @@
  */
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import { fileURLToPath } from 'node:url';
+
+// 仓库内可能存在 .agents/worktrees 等嵌套 Git 工作树，会让 typescript-eslint 出现多个候选根目录；显式钉住本配置文件所在目录。
+const tsconfigRootDir = fileURLToPath(new URL('.', import.meta.url));
 
 // 护栏规则(新增代码即强制):XSS 兜底 —— 禁止把含 ${} 插值的普通模板串直接赋给 innerHTML。
 // 允许的写法:html`` 自动转义 tagged template(方案 P9)、不含插值的纯字符串、textContent。
@@ -52,12 +56,16 @@ const toWarn = rules => Object.fromEntries(Object.entries(rules).map(([id, level
 export default tseslint.config(
   // 第一段：忽略不需要检查的目录（构建产物、依赖、临时文件、文档等）
   {
-    ignores: ['dist/**', 'node_modules/**', 'desktop/**', 'out/**', '.tmp*/**', '.tmp-lint-files.mjs', 'coverage/**', '协作/**', '示例/**', 'docs/**'],
+    ignores: ['dist/**', 'node_modules/**', 'desktop/**', 'out/**', '.tmp*/**', '.tmp-lint-files.mjs', 'coverage/**', '.agents/**', '协作/**', '示例/**', 'docs/**'],
   },
   // 第二段：JS 推荐规则，全部降级为 warn
   { rules: toWarn(eslint.configs.recommended.rules) },
   // 第三段：TypeScript ESLint 推荐规则，也全部降级为 warn
-  ...tseslint.configs.recommended.map(config => ({ ...config, rules: config.rules ? toWarn(config.rules) : {} })),
+  ...tseslint.configs.recommended.map(config => ({
+    ...config,
+    languageOptions: { ...config.languageOptions, parserOptions: { ...config.languageOptions?.parserOptions, tsconfigRootDir } },
+    rules: config.rules ? toWarn(config.rules) : {},
+  })),
   // 第四段：自定义强制规则
   {
     rules: {

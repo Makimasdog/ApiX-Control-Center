@@ -15,6 +15,8 @@
  */
 import type { Store, DomainEvent } from './contracts.js';
 
+import {ensureModuleSchema} from '../infrastructure/schema.js';
+
 /**
  * createMemory - 创建事件溯源账本实例
  * @param store - 数据库存储层
@@ -23,13 +25,7 @@ import type { Store, DomainEvent } from './contracts.js';
 export function createMemory(store: Store) {
   const { db, row, rows, now } = store;
   // 初始化事件账本表及索引（按项目+序号、聚合根+序号、项目+聚合根+序号）
-  db.exec(`CREATE TABLE IF NOT EXISTS apix_ledger (
-    sequence INTEGER PRIMARY KEY AUTOINCREMENT, schema_version INTEGER NOT NULL DEFAULT 1,
-    project_id TEXT NOT NULL REFERENCES projects(id), aggregate_id TEXT NOT NULL,
-    kind TEXT NOT NULL, actor TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS apix_ledger_project ON apix_ledger(project_id,sequence);
-    CREATE INDEX IF NOT EXISTS apix_ledger_aggregate ON apix_ledger(aggregate_id,sequence);
-    CREATE INDEX IF NOT EXISTS apix_ledger_project_aggregate ON apix_ledger(project_id,aggregate_id,sequence);`);
+  ensureModuleSchema(db, "coordination-memory");
   // 注册 SQLite 自定义函数：大小写不敏感的子串搜索（用于事件负载全文检索）
   db.function('apix_contains',{deterministic:true},(payload,query)=>String(payload).toLocaleLowerCase().includes(String(query).toLocaleLowerCase())?1:0);
 

@@ -41,7 +41,7 @@ import {conversationModel,saveConversationModel} from '../../control-plane.mjs';
 // Agent 供应商管理
 import {listAgentProviders,saveAgentProvider,bindAgentProvider,removeAgentProvider,adoptAgentProvider} from '../../control-plane.mjs';
 // 员工运行时检测
-import {inspectEmployeeRuntime} from '../../control-plane.mjs';
+import {runRuntime,runRuntimeEvents,saveEmployeeRuntime,sendRunMessage,runInteractions,answerRunInteraction,inspectEmployeeRuntime} from '../../control-plane.mjs';
 // MCP 服务器管理
 import {mcpServers,saveMcpServer,discoverMcpTools} from '../../control-plane.mjs';
 // 助手输出与日志
@@ -53,7 +53,7 @@ import {chatHistory,changeChatHistory} from '../../control-plane.mjs';
 // 核心数据操作（项目/员工/对话/记忆/任务/消息/锁等）
 import { snapshot, scanRuntimes, taskDetails, registerEmployee, updateEmployee, deleteEmployee, createProject, updateProject, createConversation, renameConversation, createTask, resumeTask, saveProjectProfile, createMemory, updateMemory, deleteMemory, searchMemories, createDirectorPlan, sendDirectorMessage, saveDirectorProposal, approveDirectorProposal, approveDirectorPlan, cancelPendingDirectorPlan, revisePendingPlanTask, resolveApproval, stopRun, acceptTask, createDepartment, updateDepartment, addRepository, saveWorkflowPack, workflowPack, createCollaborativePlan, createReviewMeeting, createManagerReview, prepareIntegration, applyIntegration, registerMailbox, listMailboxes, sendMessage, receiveMessages, ackMessage, nackMessage, completeMessage, rejectMessage, messageDetails, messageThread, messageEventsSince, acquireLock, renewLock, releaseLock, listLocks, attachMessageArtifact, freezeHistoricalDelivery } from '../../control-plane.mjs';
 // 协调会话管理
-import { listCoordinationSessions, coordinationSessionDetails, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from '../../control-plane.mjs';
+import { listCoordinationSessions, coordinationSessionDetails, coordinationCollaborationActivity, createCoordinationSession, answerCoordinationSession, confirmCoordinationSession, dispatchCoordinationSession, reviseCoordinationSession, coordinationTimeline } from '../../control-plane.mjs';
 // 协调讨论、权限与管理者设置
 import { discussCoordinationSession, setCoordinationInteractionMode, editCoordinationPlan, changePermission, permissionPolicy, managerSettings, saveManagerSettings, testManagerConnection, searchCoordinationMemory, employeeDetails } from '../../control-plane.mjs';
 // 协调员工指令、运行时适配器与执行设置
@@ -69,7 +69,7 @@ import { workflowSettings, saveWorkflow, stopCoordinationSession, readiness, ins
 // 自治设置
 import { autonomySettings, saveAutonomySettings, resumeAutonomySession } from '../../control-plane.mjs';
 // 助手会话管理
-import { createAssistantSession, assistantSession, assistantSessions, assistantMessage, assistantMedia, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
+import { createAssistantSession, assistantSession, assistantSessions, desktopWorkerRequests, assistantMedia, assistantMessage, assistantReply, assistantStop, assistantResume, assistantEditMemory, assistantEvents } from '../../control-plane.mjs';
 
 /**
  * requiredProject - 从查询参数中提取必需的 projectId
@@ -177,7 +177,8 @@ export const apiRoutes=[
   // 项目诊断信息
   get(/^\/api\/assistant\/sessions\/([^/]+)\/project-diagnosis$/,({m})=>assistantProjectDiagnosis(m[1])),
   // 助手会话列表与会话详情
-  get(/^\/api\/assistant\/sessions$/,({query})=>assistantSessions(query.get('projectId')??'')),
+  get(/^\/api\/assistant\/sessions$/,({query})=>assistantSessions(query.get('projectId')??'',query.get('view')==='attention')),
+  get(/^\/api\/assistant\/worker-notifications$/,()=>desktopWorkerRequests()),
   get(/^\/api\/assistant\/sessions\/([^/]+)$/,({m})=>assistantSession(m[1])),
   // 就绪检查（员工/项目是否准备好执行任务）
   get(/^\/api\/readiness$/,async({query})=>readiness(query.get('projectId')??'')),
@@ -195,6 +196,7 @@ export const apiRoutes=[
   get(/^\/api\/coordination\/memory$/,({query})=>searchCoordinationMemory(query.get('projectId'),query.get('q')??'')),
   get(/^\/api\/coordination\/sessions$/,({query})=>listCoordinationSessions(query.get('projectId'),query.get('summary')==='1')),
   get(/^\/api\/coordination\/sessions\/([^/]+)\/timeline$/,({m,query})=>coordinationTimeline(m[1],query.has('at')?Number(query.get('at')):undefined)),
+  get(/^\/api\/coordination\/sessions\/([^/]+)\/activity$/,({m})=>coordinationCollaborationActivity(m[1])),
   get(/^\/api\/coordination\/sessions\/([^/]+)$/,({m})=>coordinationSessionDetails(m[1])),
   // 记忆搜索
   get(/^\/api\/memories\/search$/,({query})=>searchMemories(query.get('projectId'),query.get('q'))),
@@ -208,6 +210,12 @@ export const apiRoutes=[
   get(/^\/api\/tasks\/([^/]+)\/delivery$/,async({m})=>inspectTaskDelivery(m[1])),
   // 员工与排程查询
   get(/^\/api\/projects\/([^/]+)\/execution$/,({m})=>executionSettings(m[1])),
+  get(/^\/api\/runs\/([^/]+)\/runtime$/,({m})=>runRuntime(m[1])),
+  get(/^\/api\/runs\/([^/]+)\/runtime-events$/,({m,query})=>runRuntimeEvents(m[1],Object.fromEntries(query))),
+  get(/^\/api\/runs\/([^/]+)\/interactions$/,({m})=>runInteractions(m[1])),
+  post(/^\/api\/employees\/([^/]+)\/runtime-settings$/,({m,body})=>saveEmployeeRuntime(m[1],body),configLimit),
+  post(/^\/api\/runs\/([^/]+)\/messages$/,({m,body})=>sendRunMessage(m[1],body),messageLimit),
+  post(/^\/api\/runs\/([^/]+)\/interactions\/([^/]+)\/answer$/,({m,body})=>answerRunInteraction(m[1],m[2],body),messageLimit),
   get(/^\/api\/employees\/([^/]+)\/details$/,({m})=>employeeDetails(m[1])),
   get(/^\/api\/employees\/([^/]+)\/capabilities$/,({m})=>employeeCapability(m[1])),
   get(/^\/api\/projects\/([^/]+)\/scheduling$/,({m})=>schedulingView(m[1])),
