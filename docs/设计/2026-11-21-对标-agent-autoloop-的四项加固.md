@@ -141,3 +141,11 @@
 4. **P3 基准与崩溃模拟**（收尾，把数字做出来）
 
 每步都附了验收测试；新增测试文件必须同步加进 `package.json` 的 `test` / `test:coverage` 显式列表，否则 CI 不会跑到。
+
+---
+
+## 进度
+
+- 2026-11-21 P0 完成：迁移 13（agent_messages 链路字段）+ mailbox 投递前熔断 + 全部调用点沿父续链（指导/复查/自治检查点），熔断转 `worker_attention`。验收 test/message-chain-budget.test.mjs 3/3；受影响套件 messaging/coordinator 81 用例、autonomy/apix-agent/five-fixes 39 用例全绿。
+- 2026-11-21 P1 完成：`scripts/inspect/why.mjs`（`npm run why -- --session|--task|--run [--json]`），只读打开 apix.sqlite 输出带账本序号的单条时间线。验收 test/why-trace.test.mjs 3/3。
+- P2 / P3 待办：事务边界审计与只读重建校验器、benchmark 与强杀模拟。
