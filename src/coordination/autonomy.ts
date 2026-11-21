@@ -212,7 +212,17 @@ export function createAutonomy(deps:Dependencies) {
     if(prompt.length>10000){halt(plan,'修复说明超过任务上下文上限，请精简后重新安排');return;}
     const repairId=pending?.id??randomUUID();
     if(!pending)db.prepare('INSERT INTO autonomy_repairs(id,task_id,attempt,employee_id,instruction,status,created_at,run_id) VALUES (?,?,?,?,?,?,?,?)').run(repairId,task.id,binding.repairs+1,chosen?.employeeId??pool[0]!.employeeId,prompt,chosen?'prepared':'waiting',now(),row<{id:string}>('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1',task.id)?.id??null);
-    if(!chosen){db.prepare("UPDATE tasks SET status='needs_revision',updated_at=? WHERE id=?").run(now(),task.id);if(!pending)deps.record(task.id,'autonomy.repair_waiting',{repairId,reasons:pool.map(c=>({employeeId:c.employeeId,waiting:c.waiting}))});return;}
+    if(!chosen){
+      // 状态写与可重放账本证据同事务；无可用员工时也要留下 needs_revision 证据
+      db.exec('SAVEPOINT autonomy_repair_waiting');
+      try{
+        db.prepare("UPDATE tasks SET status='needs_revision',updated_at=? WHERE id=?").run(now(),task.id);
+        deps.record(task.id,'task.status_changed',{status:'needs_revision',reason:'等待可用员工接手修复'});
+        if(!pending)deps.record(task.id,'autonomy.repair_waiting',{repairId,reasons:pool.map(c=>({employeeId:c.employeeId,waiting:c.waiting}))});
+        db.exec('RELEASE autonomy_repair_waiting');
+      }catch(error){db.exec('ROLLBACK TO autonomy_repair_waiting');db.exec('RELEASE autonomy_repair_waiting');throw error;}
+      return;
+    }
     db.prepare("UPDATE autonomy_repairs SET status='prepared',employee_id=? WHERE id=?").run(chosen.employeeId,repairId);
     try{await deps.retry(task,chosen.employeeId,prompt);db.prepare("UPDATE autonomy_repairs SET status='dispatched' WHERE id=?").run(repairId);db.prepare('UPDATE autonomy_tasks SET repairs=repairs+1,last_checkpoint=NULL WHERE task_id=?').run(task.id);deps.record(task.id,'autonomy.repair_dispatched',{repairId,employeeId:chosen.employeeId,findings});}
     catch(error){db.prepare("UPDATE autonomy_repairs SET status='blocked' WHERE id=?").run(repairId);halt(plan,String(error instanceof Error?error.message:error));}
@@ -247,7 +257,13 @@ export function createAutonomy(deps:Dependencies) {
       db.prepare('UPDATE autonomy_checks SET status=?,body=? WHERE id=?').run(passed?'passed':'failed',JSON.stringify({tests,review,findings}),checkId);completed=true;
       deps.record(task.id,'autonomy.quality_checked',{checkId,passed,tests,review});
       if(passed){(await deps.accept(task.id,inspection.fingerprint));return;} // 验收通过
-      db.prepare("UPDATE tasks SET status='needs_revision',updated_at=? WHERE id=? AND status='completed'").run(now(),task.id);
+      // 条件更新可能未命中（任务已不是 completed）；只有真实变更才记可重放证据
+      db.exec('SAVEPOINT autonomy_needs_revision');
+      try{
+        const changed=db.prepare("UPDATE tasks SET status='needs_revision',updated_at=? WHERE id=? AND status='completed'").run(now(),task.id).changes;
+        if(changed)deps.record(task.id,'task.status_changed',{status:'needs_revision',reason:'自主验收未通过'});
+        db.exec('RELEASE autonomy_needs_revision');
+      }catch(error){db.exec('ROLLBACK TO autonomy_needs_revision');db.exec('RELEASE autonomy_needs_revision');throw error;}
       await repair(plan,row<ManagedTask>('SELECT * FROM tasks WHERE id=?',task.id)!,findings,policy); // 验收失败，触发自动修复
     }catch(error){if(!completed){const uncertain=(error as {code?:string}).code==='VERIFICATION_UNKNOWN';const previous=row<{body:string}>('SELECT body FROM autonomy_checks WHERE id=?',checkId)!;db.prepare('UPDATE autonomy_checks SET status=?,body=? WHERE id=?').run(uncertain?'interrupted':'error',JSON.stringify({...JSON.parse(previous.body),tests,error:redact(String(error instanceof Error?error.message:error))}),checkId);}throw error;}
   }

@@ -148,4 +148,5 @@
 
 - 2026-11-21 P0 完成：迁移 13（agent_messages 链路字段）+ mailbox 投递前熔断 + 全部调用点沿父续链（指导/复查/自治检查点），熔断转 `worker_attention`。验收 test/message-chain-budget.test.mjs 3/3；受影响套件 messaging/coordinator 81 用例、autonomy/apix-agent/five-fixes 39 用例全绿。
 - 2026-11-21 P1 完成：`scripts/inspect/why.mjs`（`npm run why -- --session|--task|--run [--json]`），只读打开 apix.sqlite 输出带账本序号的单条时间线。验收 test/why-trace.test.mjs 3/3。
-- P2 / P3 待办：事务边界审计与只读重建校验器、benchmark 与强杀模拟。
+- P2 已在分支实现。覆盖六个协调写入口的故障注入，新增 `npm run verify:ledger -- --db <路径> [--strict] [--json]`。隔离协作库的约定字段零差异，历史缺证据和注入差异分别得到 yellow、red。详见 [P2 自审](../../协作/审查/2026-11/2026-11-21-账本事务与投影自审.md)。
+- P3 待办：性能基准与强杀模拟。

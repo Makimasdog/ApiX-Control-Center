@@ -151,14 +151,26 @@ export function createCoordinator(deps: Dependencies) {
    * @param content - 内容
    */
   function turn(s: Session, role: string, kind: string, content: string) {
-    db.prepare('INSERT INTO coordination_turns(id,session_id,role,kind,content,created_at) VALUES (?,?,?,?,?,?)').run(randomUUID(), s.id, role, kind, content, now());
-    memory.append(s.project_id, s.id, 'interaction.recorded', { role, kind, content, revision: s.revision }, role);
+    transaction(() => {
+      db.prepare('INSERT INTO coordination_turns(id,session_id,role,kind,content,created_at) VALUES (?,?,?,?,?,?)').run(randomUUID(), s.id, role, kind, content, now());
+      memory.append(s.project_id, s.id, 'interaction.recorded', { role, kind, content, revision: s.revision }, role);
+    });
   }
   /**
-   * transaction - 包装 SQLite 事务（BEGIN/COMMIT/ROLLBACK）
+   * transaction - 包装 SQLite 事务（可重入）
    * @param action - 事务内执行的操作
+   * 设计意图：统一用 SAVEPOINT——外层无事务时 RELEASE 即提交，嵌套在其它 BEGIN/SAVEPOINT
+   *   （如 control-plane 调用点或 recordTask 嵌套）内时只回滚本层，不破坏外层事务。
    */
-  function transaction(action: () => void) { db.exec('BEGIN'); try { action(); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; } }
+  let txDepth = 0;
+  function transaction<T>(action: () => T): T {
+    const savepoint = `coord_tx_${txDepth}`;
+    db.exec(`SAVEPOINT ${savepoint}`);
+    txDepth++;
+    try { const result = action(); db.exec(`RELEASE ${savepoint}`); return result; }
+    catch (e) { db.exec(`ROLLBACK TO ${savepoint}`); db.exec(`RELEASE ${savepoint}`); throw e; }
+    finally { txDepth--; }
+  }
   /**
    * editable - 乐观锁校验：检查会话是否可编辑
    * @param id - 会话 ID
@@ -227,6 +239,7 @@ export function createCoordinator(deps: Dependencies) {
       }
       db.prepare("UPDATE coordination_sessions SET status='cancelled',updated_at=? WHERE id=?").run(now(),id);
       turn(s,'user','stop_requested','停止当前工作；取消未启动任务并请求停止正在执行的员工。');
+      checkpoint(id);
     });
     for(const task of tasks)for(const run of rows<{id:string}>("SELECT id FROM runs WHERE task_id=? AND status IN ('starting','running','stopping')",task.id))deps.stopRun(run.id);
     return details(id);
@@ -453,6 +466,8 @@ export function createCoordinator(deps: Dependencies) {
     transaction(() => {
       db.prepare("UPDATE approvals SET status='revoked',resolved_at=? WHERE task_id IN (SELECT id FROM tasks WHERE plan_id=?) AND status='pending'").run(now(),s.plan_id);
       db.prepare("UPDATE tasks SET status='cancelled',updated_at=? WHERE plan_id=?").run(now(),s.plan_id);
+      // 旧计划任务被替换后不再进入后续快照，取消状态必须留下可重放事件
+      for(const old of rows<{id:string}>('SELECT id FROM tasks WHERE plan_id=?',s.plan_id)) recordTask(old.id,'task.status_changed',{status:'cancelled',reason:'计划已替换'});
       writePlan(s,reviewedSteps,boundArchitecture); checkpoint(id);
     });
     return details(id);
@@ -526,19 +541,27 @@ export function createCoordinator(deps: Dependencies) {
     assertExecution(task);
     return {s,task};
   }
-  /** 用户向员工发送指导消息 */
+  /** 用户向员工发送指导消息（消息落库与指导账本事件同事务；账本写失败时消息一并回滚） */
   function instructEmployee(sessionId: string, input: Record<string,unknown>) {
     const taskId = text(input.taskId,100); const content = text(input.content,2000);
     const {s,task} = activeTask(sessionId,taskId,input.revision);
     // 指导沿员工最近一条上报续链：人工介入不重置链路跳数，深链任务再次指导仍会被熔断
     const parent = row<{id:string}>("SELECT id FROM agent_messages WHERE task_id=? AND to_agent='apix-director' ORDER BY rowid DESC LIMIT 1",task.id)?.id;
-    const message = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,parentMessageId:parent,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
-    if (message.chainCapped) {
-      transaction(() => {turn(s,'apix','worker_attention',`消息链跳数已达上限（hop=${message.hop}），本次指导未投递；请核对员工间派活链路，或使用“中途调整”修改目标。`);checkpoint(sessionId);});
-      return details(sessionId);
-    }
+    const message = transaction(() => {
+      const sent = deps.sendMessage({projectId:s.project_id,taskId:task.id,from:'apix-director',to:task.employee_id,type:'event',idempotencyKey:`user-guidance:${randomUUID()}`,timeoutMs:3600000,parentMessageId:parent,payload:{kind:'guidance',source:'user',content,requirementRevision:s.revision}});
+      if (sent.chainCapped) {
+        turn(s,'apix','worker_attention',`消息链跳数已达上限（hop=${sent.hop}），本次指导未投递；请核对员工间派活链路，或使用“中途调整”修改目标。`);
+        checkpoint(sessionId);
+      } else if (sent.status !== 'rejected') {
+        turn(s,'user','worker_guidance',`向员工补充：${content}`);
+        memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:sent.id,source:'user',content},'user');
+        checkpoint(sessionId);
+      }
+      // rejected：拦截记录（消息+事件）随事务提交保留，错误在提交后抛出
+      return sent;
+    });
+    if (message.chainCapped) return details(sessionId);
     if (message.status === 'rejected') throw new Error('指导消息被监督规则拒绝');
-    transaction(() => {turn(s,'user','worker_guidance',`向员工补充：${content}`);memory.append(s.project_id,s.id,'guidance.sent',{taskId,messageId:message.id,source:'user',content},'user');checkpoint(sessionId);});
     return details(sessionId);
   }
   /**
@@ -620,12 +643,15 @@ export function createCoordinator(deps: Dependencies) {
       }
     }
   }
-  /** 记录任务事件（写入事件溯源账本并创建快照） */
+  /** 记录任务事件（任务/会话两条账本事件与快照同事务落库；通知回调在提交后触发） */
   function recordTask(taskId: string, kind: string, payload: unknown) {
     const t = row<Task>('SELECT * FROM tasks WHERE id=?',taskId); if (!t) return;
-    memory.append(t.project_id,taskId,kind,payload);
     const b = t.plan_id ? row<{session_id: string}>('SELECT session_id FROM coordination_plan_briefs WHERE plan_id=?',t.plan_id) : undefined;
-    if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id);deps.onTaskEvent?.(b.session_id,kind); }
+    transaction(() => {
+      memory.append(t.project_id,taskId,kind,payload);
+      if (b) { memory.append(t.project_id,b.session_id,kind,{taskId,payload}); checkpoint(b.session_id); }
+    });
+    if (b) deps.onTaskEvent?.(b.session_id,kind);
   }
   /** 校验任务是否可重试（状态、版本、权限检查） */
   function assertRetry(taskId:string,input:Record<string,unknown>) {

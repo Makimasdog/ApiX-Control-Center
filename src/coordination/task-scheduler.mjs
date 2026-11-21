@@ -19,6 +19,19 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
   let pumping=false;
 
   /**
+   * recordStatus - 任务状态推进与账本证据同事务落库，失败一起回滚
+   * @param taskId - 任务 ID
+   * @param status - 目标状态（写入 task.status_changed 事件供投影重放）
+   * @param reason - 排队/阻塞原因（可选）
+   * @param update - 实际的状态 UPDATE（含 onWaiting 等伴随写入）
+   */
+  function recordStatus(taskId, status, reason, update) {
+    db.exec('SAVEPOINT task_status');
+    try { update(); recordTask(taskId, 'task.status_changed', { status, reason: reason ?? null }); db.exec('RELEASE task_status'); }
+    catch (error) { db.exec('ROLLBACK TO task_status'); db.exec('RELEASE task_status'); throw error; }
+  }
+
+  /**
    * advance - 尝试推进单个任务的状态机
    * @param id - 任务 ID
    *
@@ -40,11 +53,13 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
         const failed=dependencies.filter(d=>!["accepted","completed","queued","running","awaiting_approval"].includes(d.status));
         // 所有失败的前置任务都是 failed 且可恢复 → 保持排队等待自动恢复
         if(failed.every(d=>d.status==='failed' && recoverable(d))){
-          db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);
-          onWaiting(candidate,'前置步骤失败，ApiX 正在自动恢复');return;
+          recordStatus(candidate.id,'queued','前置步骤失败，ApiX 正在自动恢复',()=>{
+            db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);
+            onWaiting(candidate,'前置步骤失败，ApiX 正在自动恢复');
+          });return;
         }
         // 否则标记为 blocked，并级联阻塞所有后续依赖任务
-        db.prepare("UPDATE tasks SET status='blocked',updated_at=? WHERE id=? AND status IN ('queued','awaiting_approval')").run(now(), candidate.id);
+        recordStatus(candidate.id,'blocked','前置任务失败',()=>db.prepare("UPDATE tasks SET status='blocked',updated_at=? WHERE id=? AND status IN ('queued','awaiting_approval')").run(now(), candidate.id));
         scheduleDependents(candidate.id);
         return;
       }
@@ -60,17 +75,22 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
       // 前置依赖已满足，执行自定义准入检查
       else reason=admission(candidate);
       // 有阻塞原因 → 保持排队状态并通知
-      if(reason){if(candidate.status!=='queued'||candidate.queue_reason!==reason){db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);onWaiting(candidate,reason);}return;}
+      if(reason){if(candidate.status!=='queued'||candidate.queue_reason!==reason){recordStatus(candidate.id,'queued',reason,()=>{db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),candidate.id);onWaiting(candidate,reason);});}return;}
       // 所有条件满足 → 推进到 running 状态并派发执行
       if (["queued", "awaiting_approval"].includes(candidate.status)) {
-        db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), candidate.id);
+        recordStatus(candidate.id,'running',null,()=>db.prepare("UPDATE tasks SET status='running',updated_at=? WHERE id=?").run(now(), candidate.id));
         // failed 回调：派发失败时根据错误类型设置 blocked 或 failed 状态
         const failed=error=>{
           // 防止重复处理：仅当任务仍在 running/failed/blocked 状态时处理
           if(!['running','failed','blocked'].includes(row('SELECT status FROM tasks WHERE id=?',candidate.id)?.status))return;
           // HANDOFF_CONFLICT / WORKER_CREDENTIAL_CONFLICT → blocked；其他 → failed
-          db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed',String(error.message), now(), candidate.id);
-          recordTask(candidate.id, 'task.launch_failed', {error: String(error.message)});
+          const failedStatus=['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed';
+          db.exec('SAVEPOINT task_launch_failed');
+          try{
+            db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(failedStatus,String(error.message), now(), candidate.id);
+            recordTask(candidate.id, 'task.launch_failed', {error: String(error.message), status: failedStatus, result: String(error.message)});
+            db.exec('RELEASE task_launch_failed');
+          }catch(rollbackError){db.exec('ROLLBACK TO task_launch_failed');db.exec('RELEASE task_launch_failed');throw rollbackError;}
           return scheduleDependents(candidate.id);
         };
         try { const result=launch(candidate);return result?.then?result.catch(failed):result; } catch (error) {return failed(error);}
@@ -117,7 +137,7 @@ export function createTaskScheduler({ db, row, rows, now, launch, recordTask = (
       const dependencies=rows('SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?',task.id);
       // 审批通过 + 有前置依赖 + 前置依赖状态均可接受 → 恢复为 queued
       if(approval?.status!=='approved' || !dependencies.length || dependencies.some(t=>!['accepted','completed','queued','running','awaiting_approval'].includes(t.status)))continue;
-      db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),task.id);onWaiting(task,'等待恢复任务验收');changed=true;
+      recordStatus(task.id,'queued','等待恢复任务验收',()=>{db.prepare("UPDATE tasks SET status='queued',updated_at=? WHERE id=?").run(now(),task.id);onWaiting(task,'等待恢复任务验收');});changed=true;
     }}while(changed);
   }
   return { scheduleDependents,pump,resumeBlocked };

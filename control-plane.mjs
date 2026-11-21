@@ -394,14 +394,6 @@ const running = new Map();
 // preparingRuns: 正在启动中的 Agent 进程 Map（runId → 准备状态）
 const preparingRuns = new Map();
 
-// A process cannot be safely reattached after a control-plane restart.
-// 启动恢复：服务重启后，将上次未完成的运行和任务标记为 'unknown' 状态
-// 原因：进程无法在重启后重新接管，必须人工确认或自动恢复
-const recoveredTasks = db.prepare("SELECT id FROM tasks WHERE status IN ('running','stopping')").all();
-db.prepare("UPDATE runs SET status='unknown', status_source='recovery', ended_at=? WHERE status IN ('starting','running','stopping')").run(now());
-db.prepare("UPDATE tasks SET status='unknown', updated_at=? WHERE status IN ('running','stopping')").run(now());
-db.prepare("UPDATE director_messages SET status='failed',content='主 Agent 推理被服务重启中断，请重新发送消息。' WHERE status='processing'").run();
-
 // ===== CLI 路径缓存 =====
 // 缓存可执行文件路径（pi/codex/claude 等），每 10 秒刷新一次
 const executableCache = new Map();
@@ -452,6 +444,18 @@ const tokenUsage=createTokenUsage(store);
 const projectMemory=createProjectMemory(store);
 const employeeInsights = createEmployeeInsights(store);
 const memory = createEventMemory(store);
+// A process cannot be safely reattached after a control-plane restart.
+// 启动恢复：将上次未完成的运行和任务标记为 'unknown'，状态写与 task.status_changed 账本证据同事务。
+// 放在账本初始化之后才能落证据；此处仍在同步初始化段，先于任何定时器与 HTTP 服务。
+const recoveredTasks = db.prepare("SELECT id,project_id FROM tasks WHERE status IN ('running','stopping')").all();
+db.exec("BEGIN");
+try {
+  db.prepare("UPDATE runs SET status='unknown', status_source='recovery', ended_at=? WHERE status IN ('starting','running','stopping')").run(now());
+  db.prepare("UPDATE tasks SET status='unknown', updated_at=? WHERE status IN ('running','stopping')").run(now());
+  db.prepare("UPDATE director_messages SET status='failed',content='主 Agent 推理被服务重启中断，请重新发送消息。' WHERE status='processing'").run();
+  for (const task of recoveredTasks) memory.append(task.project_id, task.id, 'task.status_changed', { status: 'unknown', reason: 'service-restart' });
+  db.exec("COMMIT");
+} catch (error) { db.exec("ROLLBACK"); throw error; }
 const permissions = createPermissions(store, memory);
 const runtimeAdapters = createRuntimeAdapters(store, findExecutable);
 const agentMailbox = createAgentMailbox(store);
@@ -533,15 +537,21 @@ function event(runId, source, kind, payload = {}) {
  * 4. 依赖任务调度
  */
 function setRun(runId, status, source, exitCode = null) {
-  db.prepare("UPDATE runs SET status=?,status_source=?,ended_at=CASE WHEN ? IN ('completed','failed','cancelled','unknown','blocked') THEN ? ELSE ended_at END,exit_code=COALESCE(?,exit_code) WHERE id=?").run(status, source, status, now(), exitCode, runId);
+  // 运行/任务状态与 agent.status 账本事件同事务；依赖推进与派发（可能 spawn）在提交后执行
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE runs SET status=?,status_source=?,ended_at=CASE WHEN ? IN ('completed','failed','cancelled','unknown','blocked') THEN ? ELSE ended_at END,exit_code=COALESCE(?,exit_code) WHERE id=?").run(status, source, status, now(), exitCode, runId);
+    const run = row("SELECT task_id FROM runs WHERE id=?", runId);
+    if (run) {
+      if (['completed','failed','cancelled','blocked'].includes(status)) scheduling.settle(runId,null,source==='workspace' || source==='spawn');
+      db.prepare("UPDATE tasks SET status=?,updated_at=?,verification_status=? WHERE id=?").run(status, now(), status === "completed" ? "ready" : status === "failed" ? "failed" : "pending", run.task_id);
+      const task = row("SELECT project_id,employee_id FROM tasks WHERE id=?", run.task_id);
+      if (task) appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: run.task_id, runId, status, source });
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
-  if (run) {
-    if (['completed','failed','cancelled','blocked'].includes(status)) scheduling.settle(runId,null,source==='workspace' || source==='spawn');
-    db.prepare("UPDATE tasks SET status=?,updated_at=?,verification_status=? WHERE id=?").run(status, now(), status === "completed" ? "ready" : status === "failed" ? "failed" : "pending", run.task_id);
-    const task = row("SELECT project_id,employee_id FROM tasks WHERE id=?", run.task_id);
-    if (task) appendMessageEvent(task.project_id, null, "agent.status", task.employee_id ?? "system", { taskId: run.task_id, runId, status, source });
-    if (["completed", "failed", "cancelled","blocked"].includes(status)) {scheduleDependents(run.task_id);pumpTasks();}
-  }
+  if (run && ["completed", "failed", "cancelled","blocked"].includes(status)) {scheduleDependents(run.task_id);pumpTasks();}
 }
 function admission(task) {
   const waiting=executionControl.admission(task);if(waiting)return waiting;
@@ -559,12 +569,18 @@ function textFromMessage(message) {
 function recordOutput(runId, output, status) {
   if (!output.trim()) return;
   const run = row("SELECT task_id FROM runs WHERE id=?", runId);
-  db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(output, now(), run.task_id);
   const artifactId = randomUUID();
-  db.prepare("INSERT INTO artifacts(id,run_id,kind,content,created_at) VALUES (?,?,?,?,?)").run(artifactId, runId, "agent-response", output, now());
-  coordinator.recordTask(run.task_id, 'artifact.collected', { artifactId, runId, content: output, status });
+  // 任务结果、交付物与 artifact.collected 账本事件同事务；消息投递在提交后执行
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(output, now(), run.task_id);
+    db.prepare("INSERT INTO artifacts(id,run_id,kind,content,created_at) VALUES (?,?,?,?,?)").run(artifactId, runId, "agent-response", output, now());
+    coordinator.recordTask(run.task_id, 'artifact.collected', { artifactId, runId, content: output, status });
+    const task = row("SELECT plan_id,project_id,employee_id,conversation_id FROM tasks WHERE id=?", run.task_id);
+    if (task?.plan_id) db.prepare("INSERT INTO shared_artifacts(id,plan_id,task_id,kind,content,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(), task.plan_id, run.task_id, "agent-response", output, now());
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
   const task = row("SELECT plan_id,project_id,employee_id,conversation_id FROM tasks WHERE id=?", run.task_id);
-  if (task?.plan_id) db.prepare("INSERT INTO shared_artifacts(id,plan_id,task_id,kind,content,created_at) VALUES (?,?,?,?,?,?)").run(randomUUID(), task.plan_id, run.task_id, "agent-response", output, now());
   if (task?.employee_id) {
     try {
       const dispatchMessageId = running.get(runId)?.dispatchMessageId;
@@ -680,6 +696,8 @@ async function launch(task) {
     db.prepare("INSERT INTO runs(id,task_id,runtime,status,status_source,started_at) VALUES (?,?,?,?,?,?)").run(runId, task.id, task.runtime, "starting", "apix", now());
     if(task.employee_id)scheduling.attempt(runId,task.id,task.employee_id);
     db.prepare("UPDATE tasks SET status='running',queue_reason=NULL,recovery_fingerprint=NULL,updated_at=? WHERE id=?").run(now(), task.id);
+    // 直接审批路径不经调度器 recordStatus，running 状态须在此留同事务证据
+    coordinator.recordTask(task.id,'task.status_changed',{status:'running',reason:null});
     db.exec('RELEASE start_run');
   }catch(error){db.exec('ROLLBACK TO start_run');db.exec('RELEASE start_run');throw error;}
   let child;
@@ -704,7 +722,17 @@ async function launch(task) {
     assertStarting();cwd=await workspaceFor(task,project,assertStarting);
     skipGitRepoCheck=task.runtime==='codex'&&!(await gitRoot(cwd));assertStarting();
     const waiting=executionControl.admission(row('SELECT * FROM tasks WHERE id=?',task.id));
-    if(waiting){scheduling.settle(runId,null,true);db.prepare("UPDATE runs SET status='cancelled',status_source='preparation-deferred',ended_at=? WHERE id=?").run(now(),runId);db.prepare("UPDATE tasks SET status='queued',queue_reason=?,recovery_fingerprint=?,updated_at=? WHERE id=?").run(waiting,task.recovery_fingerprint??null,now(),task.id);return null;}
+    if(waiting){
+      db.exec('SAVEPOINT preparation_deferred');
+      try{
+        scheduling.settle(runId,null,true);
+        db.prepare("UPDATE runs SET status='cancelled',status_source='preparation-deferred',ended_at=? WHERE id=?").run(now(),runId);
+        db.prepare("UPDATE tasks SET status='queued',queue_reason=?,recovery_fingerprint=?,updated_at=? WHERE id=?").run(waiting,task.recovery_fingerprint??null,now(),task.id);
+        coordinator.recordTask(task.id,'task.status_changed',{status:'queued',reason:waiting});
+        db.exec('RELEASE preparation_deferred');
+      }catch(error){db.exec('ROLLBACK TO preparation_deferred');db.exec('RELEASE preparation_deferred');throw error;}
+      return null;
+    }
   } catch(error){setRun(runId,preparing.cancelled?'cancelled':error.code==='HANDOFF_CONFLICT'?'blocked':'failed','workspace');throw error;}
   finally{preparingRuns.delete(runId);}
   const fullAccess = permissions.decision(task.project_id, task.employee_id) === "allow";
@@ -776,8 +804,17 @@ async function launch(task) {
       completeMessage(active.dispatchMessageId, { agentId: task.employee_id });
     }
     setRun(runId, status, "process-exit", code);
-    if(active.healthStop)db.prepare("UPDATE tasks SET result=result||? WHERE id=?").run('\n员工长时间无响应，已请求停止；副作用待核对，未自动重放。',task.id);
-    if (status === "failed" && !active.output.trim() && active.stderr.trim()) db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(active.stderr.trim(), now(), task.id);
+    // result 是投影比较字段：兜底写入与 task.result_recorded 证据同事务，避免旁路写造成假差异
+    const recordResultFallback=(update,reason)=>{
+      db.exec('SAVEPOINT task_result_fallback');
+      try{
+        update();
+        coordinator.recordTask(task.id,'task.result_recorded',{result:row('SELECT result FROM tasks WHERE id=?',task.id)?.result??null,reason});
+        db.exec('RELEASE task_result_fallback');
+      }catch(error){db.exec('ROLLBACK TO task_result_fallback');db.exec('RELEASE task_result_fallback');throw error;}
+    };
+    if(active.healthStop)recordResultFallback(()=>db.prepare("UPDATE tasks SET result=result||? WHERE id=?").run('\n员工长时间无响应，已请求停止；副作用待核对，未自动重放。',task.id),'agent-unresponsive');
+    if (status === "failed" && !active.output.trim() && active.stderr.trim()) recordResultFallback(()=>db.prepare("UPDATE tasks SET result=?,updated_at=? WHERE id=?").run(active.stderr.trim(), now(), task.id),'failed-stderr');
     event(runId, "process", "run_exited", { code, signal, status, stopRequested: active.stopped, stopConfirmed: confirmedStop });
     running.delete(runId);
   });
@@ -1121,40 +1158,68 @@ export async function resolveApproval(id, approved) {
   const project = row("SELECT * FROM projects WHERE id=?", task.project_id);
   const repository = task.repository_id ? row("SELECT path FROM project_repositories WHERE id=? AND project_id=?", task.repository_id, task.project_id) : null;
   if (approved && (approval.target_path !== (repository?.path ?? project?.path) || approval.prompt_hash !== createHash("sha256").update(task.prompt).digest("hex"))) throw new Error("任务内容或项目目录已变化，请重新创建任务并审批");
-  db.prepare("UPDATE approvals SET status=?,resolved_at=? WHERE id=?").run(approved ? "approved" : "rejected", now(), id);
-  if (!approved) { db.prepare("UPDATE tasks SET status='rejected',updated_at=? WHERE id=?").run(now(), task.id); scheduleDependents(task.id); return null; }
-  const dependencies = rows("SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?", task.id);
-  if (dependencies.some((dependency) => ["failed", "cancelled", "blocked", "unknown", "rejected", "needs_revision"].includes(dependency.status))) {
-    db.prepare("UPDATE tasks SET status='blocked',updated_at=? WHERE id=?").run(now(), task.id);
-    return null;
-  }
-  const requiresAcceptance = ['collaboration','coordinator'].includes(row("SELECT mode FROM plans WHERE id=?", task.plan_id)?.mode) || !!row("SELECT id FROM meeting_items WHERE task_id=?", task.id);
-  if (!dependencies.every((dependency) => requiresAcceptance ? dependency.status === "accepted" : ["completed", "accepted"].includes(dependency.status))) {
-    db.prepare("UPDATE tasks SET status='queued',queue_reason='等待前置任务验收',updated_at=? WHERE id=?").run(now(), task.id);
-    return null;
-  }
-  const queueReason=admission(task);
-  if(queueReason){db.prepare("UPDATE tasks SET status='queued',queue_reason=?,updated_at=? WHERE id=?").run(queueReason,now(),task.id);return null;}
+  // 审批结果与任务状态、账本证据同事务；launch（spawn）在提交后执行
+  let deferred = false;
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE approvals SET status=?,resolved_at=? WHERE id=?").run(approved ? "approved" : "rejected", now(), id);
+    if (!approved) { db.prepare("UPDATE tasks SET status='rejected',updated_at=? WHERE id=?").run(now(), task.id); coordinator.recordTask(task.id, "task.status_changed", { status: "rejected", approvalId: id }); deferred = true; }
+    else {
+      const dependencies = rows("SELECT t.status FROM tasks t JOIN task_dependencies d ON d.depends_on_id=t.id WHERE d.task_id=?", task.id);
+      if (dependencies.some((dependency) => ["failed", "cancelled", "blocked", "unknown", "rejected", "needs_revision"].includes(dependency.status))) {
+        db.prepare("UPDATE tasks SET status='blocked',updated_at=? WHERE id=?").run(now(), task.id);
+        coordinator.recordTask(task.id, "task.status_changed", { status: "blocked", reason: "前置任务失败" });
+        deferred = true;
+      } else {
+        const requiresAcceptance = ['collaboration','coordinator'].includes(row("SELECT mode FROM plans WHERE id=?", task.plan_id)?.mode) || !!row("SELECT id FROM meeting_items WHERE task_id=?", task.id);
+        if (!dependencies.every((dependency) => requiresAcceptance ? dependency.status === "accepted" : ["completed", "accepted"].includes(dependency.status))) {
+          db.prepare("UPDATE tasks SET status='queued',queue_reason='等待前置任务验收',updated_at=? WHERE id=?").run(now(), task.id);
+          coordinator.recordTask(task.id, "task.status_changed", { status: "queued", reason: "等待前置任务验收" });
+          deferred = true;
+        } else {
+          const queueReason = admission(task);
+          if (queueReason) { db.prepare("UPDATE tasks SET status='queued',queue_reason=?,updated_at=? WHERE id=?").run(queueReason, now(), task.id); coordinator.recordTask(task.id, "task.status_changed", { status: "queued", reason: queueReason }); deferred = true; }
+        }
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  if (deferred) { if (!approved) scheduleDependents(task.id); return null; }
   try { return (await launch(task)); }
   catch (error) {
     if(['cancelled','stopping'].includes(row('SELECT status FROM tasks WHERE id=?',task.id)?.status))throw error;
-    db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code)?'blocked':'failed',error.message, now(), task.id);
-    coordinator.recordTask(task.id, "task.launch_failed", { error: error.message });
+    const failedStatus = ['HANDOFF_CONFLICT','WORKER_CREDENTIAL_CONFLICT'].includes(error.code) ? 'blocked' : 'failed';
+    db.exec("BEGIN");
+    try {
+      db.prepare("UPDATE tasks SET status=?,result=?,updated_at=? WHERE id=?").run(failedStatus, error.message, now(), task.id);
+      coordinator.recordTask(task.id, "task.launch_failed", { error: error.message, status: failedStatus, result: error.message });
+      db.exec("COMMIT");
+    } catch (rollbackError) { db.exec("ROLLBACK"); throw rollbackError; }
     scheduleDependents(task.id);
     throw error;
   }
 }
 export function stopRun(id,source='user') {
   const preparing=preparingRuns.get(id);
-  if(preparing){preparing.cancelled=true;db.prepare("UPDATE runs SET status='stopping',status_source='preparation-cancelled',stop_requested_at=? WHERE id=?").run(now(),id);db.prepare("UPDATE tasks SET status='stopping',updated_at=? WHERE id=(SELECT task_id FROM runs WHERE id=?)").run(now(),id);event(id,'apix','preparation_cancelled',{agentStarted:false});return;}
+  // 停止状态与账本证据同事务；进程终止（外部副作用）在提交后执行
+  const recordStopping=(runSource,kind,payload)=>{
+    db.exec('SAVEPOINT stop_run');
+    try{
+      db.prepare("UPDATE runs SET status='stopping',status_source=?,stop_requested_at=? WHERE id=?").run(runSource,now(),id);
+      db.prepare("UPDATE tasks SET status='stopping',updated_at=? WHERE id=(SELECT task_id FROM runs WHERE id=?)").run(now(),id);
+      event(id,'apix',kind,payload);
+      const run=row("SELECT task_id FROM runs WHERE id=?",id);
+      if(run)coordinator.recordTask(run.task_id,'task.status_changed',{status:'stopping',runId:id,source:runSource});
+      db.exec('RELEASE stop_run');
+    }catch(error){db.exec('ROLLBACK TO stop_run');db.exec('RELEASE stop_run');throw error;}
+  };
+  if(preparing){recordStopping('preparation-cancelled','preparation_cancelled',{agentStarted:false});preparing.cancelled=true;return;}
   const active = running.get(id);
   if(source==='user'&&active)active.healthStop=false;
   if (!active) throw new Error("此 Run 已不受当前服务管理，无法确认停止");
   if (active.stopped) return;
+  recordStopping('apix-request','stop_requested');
   active.stopped = true;
-  db.prepare("UPDATE runs SET status='stopping',status_source='apix-request',stop_requested_at=? WHERE id=?").run(now(), id);
-  db.prepare("UPDATE tasks SET status='stopping',updated_at=? WHERE id=(SELECT task_id FROM runs WHERE id=?)").run(now(), id);
-  event(id, "apix", "stop_requested");
   if (active.runtime === "pi" && active.child.stdin.writable) active.child.stdin.write(JSON.stringify({ id: randomUUID(), type: "abort" }) + "\n");
   else active.child.kill();
   setTimeout(() => { if (running.has(id)) active.child.kill(); }, 3000).unref();
@@ -1164,9 +1229,15 @@ export async function acceptTask(id, accepted, fingerprint, source='user') {
   if (!task || task.status !== "completed") throw new Error("只有已完成的任务可以验收");
   const assertAllowed=()=>{if(permissions.get(task.project_id).mode==='read_only')throw new Error('只读模式不能冻结交付');if(source==='apix')coordinator.assertExecution(task);};
   if(accepted && task.plan_id){assertAllowed();await codeHandoffs.freeze(task,fingerprint,assertAllowed);}
-  db.prepare("UPDATE tasks SET status=?,updated_at=? WHERE id=?").run(accepted ? "accepted" : "needs_revision", now(), id);
+  // 验收状态与账本证据同事务；依赖推进在提交后执行
   const run = row("SELECT id FROM runs WHERE task_id=? ORDER BY started_at DESC LIMIT 1", id);
-  if (run) event(run.id, source, "task_reviewed", { accepted, ...(source==='apix'?{type:'autonomous_quality',reviewMode:'apix_self_review'}:{}) });
+  db.exec('SAVEPOINT accept_task');
+  try{
+    db.prepare("UPDATE tasks SET status=?,updated_at=? WHERE id=?").run(accepted ? "accepted" : "needs_revision", now(), id);
+    if (run) event(run.id, source, "task_reviewed", { accepted, ...(source==='apix'?{type:'autonomous_quality',reviewMode:'apix_self_review'}:{}) });
+    coordinator.recordTask(id,'task.status_changed',{status:accepted?'accepted':'needs_revision',source});
+    db.exec('RELEASE accept_task');
+  }catch(error){db.exec('ROLLBACK TO accept_task');db.exec('RELEASE accept_task');throw error;}
   await scheduleDependents(id);
 }
 
