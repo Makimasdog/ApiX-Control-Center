@@ -25,7 +25,8 @@ body .sidebar{overflow-y:auto}body #assistant-thread-list{display:block!importan
 #assistant-delivery button { margin: 4px 2px; }
 #assistant-delivery textarea { width: 100%; min-height: 75px; }
 
-@media(max-width:820px){#page-assistant.show-inspector .assistant-inspector{display:block;position:fixed;inset:90px 0 0;z-index:20;border-top:1px solid var(--border);padding:14px}#page-assistant.show-inspector .assistant-header{position:fixed;inset:48px 0 auto;z-index:21;background:var(--surface);padding:8px}}
+/* 详情抽屉在 ≤1200px 的展开形态由 design-system.css 的 show-inspector 规则统一处理；
+   旧双层顶栏时代的“固定头部+90px 抽屉”规则已随顶栏合并删除，避免抽屉盖住会话头部的按钮。 */
 
 #assistant-budget{margin-block:12px;overflow-wrap:anywhere;font-size:13px}
 #assistant-budget progress{width:100%;height:8px;accent-color:var(--accent)}

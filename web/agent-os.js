@@ -97,7 +97,15 @@ function setNavigation(open, restoreFocus = false) {
   navigationToggle.setAttribute("aria-expanded", String(expanded));
   navigationToggle.setAttribute("aria-label", expanded ? "关闭导航" : "打开导航");
   $("#navigation-backdrop").hidden = !expanded;
-  if (restoreFocus) navigationToggle.focus();
+  // 对话页合并顶栏后全局顶栏被隐藏，焦点还原改落在可见的会话内菜单按钮上。
+  if (restoreFocus) visibleNavigationToggle().focus();
+}
+function visibleNavigationToggle() {
+  const assistantMenu = document.querySelector("#assistant-menu");
+  // 对话页隐藏全局顶栏后，按钮自身的 display 仍是 grid，需用 checkVisibility 连祖先一起判定，
+  // 否则会把焦点还原到不可见的 #navigation-toggle 上造成焦点丢失。
+  if (assistantMenu && !navigationToggle.checkVisibility() && assistantMenu.checkVisibility()) return assistantMenu;
+  return navigationToggle;
 }
 navigationToggle.addEventListener("click", () => {
   const open = !document.body.hasAttribute("data-navigation-open");
@@ -126,6 +134,9 @@ function go(page) {
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.pageTarget === page));
   $$(".nav-item").forEach(item => { if (item.dataset.pageTarget === page) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
   if (document.body.hasAttribute("data-navigation-open")) { setNavigation(false); $("#main-content").focus(); }
+  // 设置页有自己的分区导航，收起侧栏的对话历史，聚焦当前分区。
+  const sidebarHistory = $("#sidebar-history");
+  if (sidebarHistory) sidebarHistory.hidden = page === "settings";
   const pageTitle = { assistant: "对话", settings: "应用与协作设置", overview: "管理总览", coordinator: "协作进度", workspace: "工作台", director: "Director", missions: "任务与员工", employee: "员工详情", memory: "项目记忆", knowledge:"知识库与工具安全", projects: "项目管理", resources: "Skills 与 MCP" }[page] ?? "工作区";
   $("#breadcrumb-page").textContent = pageTitle;
   document.title = `${pageTitle} · ApiX`;

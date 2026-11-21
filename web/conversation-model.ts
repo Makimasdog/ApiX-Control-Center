@@ -7,14 +7,18 @@ export function conversationModelPicker(container:HTMLElement,compact=false){
   function render(){
     if(!config)return;
     const c=config, disabled=locked||saving?'disabled':'';
-    const model=html`<label><span>模型</span><input list="${container.id}-models" aria-label="本对话模型" title="${c.settings.model}" placeholder="选择或输入模型 ID" value="${c.settings.model}" maxlength="200" ${disabled}><datalist id="${container.id}-models">`
-      +c.models.map(m=>html`<option value="${m.id}">${m.name}</option>`).join('')+'</datalist></label>';
-    const effort=html`<label><span>思考强度</span><select aria-label="本对话思考强度" title="${c.efforts.length?'本对话思考强度':'此模型使用供应商默认思考强度'}" ${locked||saving||!c.efforts.length?'disabled':''}><option value="">${compact?'默认':'供应商默认'}</option>`
-      +c.efforts.map(e=>html`<option value="${e}" ${c.settings.reasoningEffort===e?'selected':''}>${labels[e]??e}</option>`).join('')+'</select></label>';
+    // 紧凑形态无可见顶标签，与执行方式、发送按钮同一基线；可访问名称由 aria-label 保留。
+    const model=compact
+      ?html`<label class="conversation-model-inline"><svg class="icon" aria-hidden="true"><use href="#icon-spark"/></svg><input list="${container.id}-models" aria-label="本对话模型" title="${c.settings.model}" placeholder="模型 ID" value="${c.settings.model}" maxlength="200" ${disabled}><datalist id="${container.id}-models">`+c.models.map(m=>html`<option value="${m.id}">${m.name}</option>`).join('')+'</datalist></label>'
+      :html`<label><span>模型</span><input list="${container.id}-models" aria-label="本对话模型" title="${c.settings.model}" placeholder="选择或输入模型 ID" value="${c.settings.model}" maxlength="200" ${disabled}><datalist id="${container.id}-models">`+c.models.map(m=>html`<option value="${m.id}">${m.name}</option>`).join('')+'</datalist></label>';
+    const effort=compact
+      ?html`<label class="conversation-model-inline"><svg class="icon" aria-hidden="true"><use href="#icon-activity"/></svg><select aria-label="本对话思考强度" title="${c.efforts.length?'本对话思考强度':'此模型使用供应商默认思考强度'}" ${locked||saving||!c.efforts.length?'disabled':''}><option value="">思考 · 默认</option>`
+      :html`<label><span>思考强度</span><select aria-label="本对话思考强度" title="${c.efforts.length?'本对话思考强度':'此模型使用供应商默认思考强度'}" ${locked||saving||!c.efforts.length?'disabled':''}><option value="">供应商默认</option>`;
+    const effortOptions=c.efforts.map(e=>html`<option value="${e}" ${c.settings.reasoningEffort===e?'selected':''}>${labels[e]??e}</option>`).join('')+'</select></label>';
     const options=(c.models.length?'':'<button type="button" class="text-action" data-open-provider-center>去供应商中心配置</button>')
       +html`<small>${c.providerName} · ${c.followsManager?'沿用 ApiX 默认模型':'本对话自定义'}</small><button type="button" class="text-action" data-use-global-model ${disabled}>恢复 ApiX 默认模型</button><small>服务：${c.settings.baseUrl||c.providerName}</small>`;
     const actions=compact?'<details class="conversation-model-options"><summary aria-label="更多模型设置" title="更多模型设置">⋯</summary><div>'+options+'</div></details>':options;
-    container.innerHTML='<div class="conversation-model-picker">'+model+effort+actions+'<span role="status" class="conversation-model-feedback"></span></div>';
+    container.innerHTML='<div class="conversation-model-picker">'+model+effort+effortOptions+actions+'<span role="status" class="conversation-model-feedback"></span></div>';
   }
   container.addEventListener('click',event=>{if(event.target instanceof Element&&event.target.closest('[data-open-provider-center]'))document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();});
   if(compact)container.addEventListener('keydown',event=>{

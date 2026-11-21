@@ -68,17 +68,18 @@ try {
  }
  await page.setViewportSize({width:1440,height:960});await page.emulateMedia({colorScheme:'light'});
  await page.locator('.nav-item[data-page-target=settings]').click();
- await page.waitForSelector('#page-settings.active-page');await page.waitForSelector('#project-execution');await page.waitForSelector('.provider-center [data-provider-form]',{state:'attached'});
+ // 设置页分区化后 #project-execution 在执行分区面板内，需先切换分区；供应商面板默认就续。
+ await page.waitForSelector('#page-settings.active-page');await page.locator('[data-settings-tab="execution"]').click();await page.waitForSelector('#project-execution');await page.locator('[data-settings-tab="providers"]').click();await page.waitForSelector('.provider-center [data-provider-refresh]',{state:'attached'});
  assert(await page.locator('.provider-center [data-provider-add]').isVisible());assert.equal(await page.locator('#coord-model').count(),0);assert(!await page.locator('#assistant-input').isVisible());assert(!await page.locator('#desktop-start textarea').isVisible());
  await page.screenshot({path:join(output,'settings.png')});assert.deepEqual(errors,[]);
- await page.locator('.nav-item[data-page-target=assistant]').click();await page.locator('#assistant-new').click();
+ await page.locator('.nav-item[data-page-target=assistant]').click();await page.locator('#assistant-new-chat').click();
  await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='等待消息');
  await page.locator('#assistant-execution-mode').selectOption('read_only');await page.locator('#assistant-input').fill('只读检查，不允许运行命令');await page.locator('#assistant-form button[type=submit]').click();
  await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='需要检查');
  const readonly=(await fixture.request('/api/assistant/sessions?projectId='+fixture.projectId)).find(s=>s.id!==session.id);
  const blocked=await fixture.request('/api/assistant/sessions/'+readonly.id);assert.equal(blocked.policy.mode,'read_only');assert(!blocked.events.some(e=>e.kind==='command_intent'));
  await fixture.request('/api/manager/settings',{...global,provider:'deepseek',baseUrl:'https://api.deepseek.com/v1',model:'deepseek-flash',apiKeyEnv:'DEEPSEEK_API_KEY'});
- await page.locator('#assistant-new').click();
+ await page.locator('#assistant-new-chat').click();
  await page.waitForFunction(()=>document.querySelector('#assistant-model input')?.value==='deepseek-flash');
  await effort.selectOption('high');
  const feedback=page.locator('#assistant-model [role=status]');await feedback.waitFor();

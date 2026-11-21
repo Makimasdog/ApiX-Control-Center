@@ -10,20 +10,19 @@ type Pending={id:string;kind:string;question:string;tool?:string;toolDescription
 type ChildAttention={childSessionId:string;reason:string;taskId:string|null;fingerprint?:string|null;title?:string;unlinked?:boolean;canResume?:boolean;autoRepair?:boolean;employeeId?:string|null};
 type Session={modelConfigurationBlocked?:boolean;childAttention?:ChildAttention|null;promptStrategy?:'legacy'|'stable-prefix-v1';promptSettingsVersion?:number;generation?:string|null;optimizationMode?:'standard'|'saving';task_id?:string|null;limits?:{maxCalls:number};review?:any;capabilities?:{managedCommands:{available:boolean;reason:string|null}};verificationStatus?:string;acceptanceStatus?:string;id:string;project_id:string;title:string;status:string;version:number;steps:number;summary:string;child_session_id:string|null;busy:boolean;pending:Pending|null;workerInteractions?:RuntimeInteraction[];previousEventId:number|null;events:{id:number;role:string;kind:string;body:Record<string,unknown>}[];notes:{title:string;content:string;source:string;version:number;kind:string;status:string}[];policy:{mode:string;version:number}};
 const root=document.querySelector<HTMLElement>('#page-assistant')!;
-root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-main"><header class="assistant-header"><div><strong id="assistant-project">ApiX</strong><span id="assistant-status">通用 Agent · 自动循环</span></div><div><button id="assistant-personal-memory" class="text-action" aria-haspopup="dialog">个人记忆</button><button id="assistant-details" class="text-action" aria-expanded="false" aria-controls="assistant-inspector">交付与详情</button><button id="assistant-advanced" class="text-action">协作进度</button><button id="assistant-config" class="text-action">协作设置</button><button id="assistant-new" class="outline-button">新对话</button></div></header><section class="assistant-team" aria-label="协作工作台"><header><div><h2>协作工作台</h2><p>主会话统筹目标，员工过程与成果在此汇合。</p></div><button class="text-action" id="assistant-employees">管理员工</button></header><div id="assistant-workers"><p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p></div></section><div id="assistant-transcript" class="assistant-transcript" aria-live="polite"><div class="assistant-welcome"><span>ApiX</span><h1>今天想完成什么？</h1><p>直接描述目标。我会选择工具、加载 Skill，或协调本机 Agent，检查结果后继续推进。</p></div></div><div id="assistant-thinking" class="assistant-thinking" hidden aria-live="polite"><span class="thinking-caret" aria-hidden="true"></span><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="thinking-label" data-thinking-label>正在思考</span><span class="thinking-elapsed" data-thinking-elapsed></span></div><p id="assistant-error" role="alert"></p><div class="assistant-compose-wrap"><div id="assistant-pending"></div><section id="assistant-worker-interactions" aria-label="员工等待你的决定" hidden></section><form id="assistant-form" class="assistant-composer"><textarea id="assistant-input" rows="3" maxlength="10000" placeholder="向 ApiX 描述任务，也可以在执行中补充要求…" aria-label="给 ApiX 的消息"></textarea><div class="assistant-compose-toolbar">
+root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-main"><header class="assistant-header"><div class="assistant-header-context"><button id="assistant-menu" type="button" class="icon-button" aria-label="打开导航" aria-controls="main-navigation"><svg class="icon" aria-hidden="true"><use href="#icon-grid"/></svg></button><strong id="assistant-project">ApiX</strong><span id="assistant-status" class="assistant-status"><i class="assistant-status-dot" data-status="idle" aria-hidden="true"></i><span id="assistant-status-text">等待消息</span></span></div><div class="assistant-header-actions"><button id="assistant-personal-memory" class="text-action" aria-haspopup="dialog">个人记忆</button><button id="assistant-details" class="text-action" aria-expanded="false" aria-controls="assistant-inspector">详情</button><button id="assistant-advanced" class="text-action" hidden>协作进度</button><button id="assistant-config" class="text-action" hidden>协作设置</button><button id="assistant-new" class="outline-button" hidden>新对话</button></div></header><section class="assistant-team" aria-label="协作工作台"><details id="assistant-team-details" class="assistant-team-details"><summary><strong>协作工作台</strong><small id="assistant-team-summary">尚未委派员工任务</small></summary><div class="assistant-team-body"><p class="assistant-team-note">主会话统筹目标，员工过程与成果在此汇合。</p><div id="assistant-workers"><p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p></div><div class="assistant-team-foot"><button class="text-action" id="assistant-employees">管理员工</button></div></div></details></section><div id="assistant-transcript" class="assistant-transcript" aria-live="polite"><div class="assistant-welcome"><span>ApiX</span><h1>今天想完成什么？</h1><p>直接描述目标。我会选择工具、加载 Skill，或协调本机 Agent，检查结果后继续推进。</p></div></div><div id="assistant-thinking" class="assistant-thinking" hidden aria-live="polite"><span class="thinking-caret" aria-hidden="true"></span><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="thinking-label" data-thinking-label>正在思考</span><span class="thinking-elapsed" data-thinking-elapsed></span></div><p id="assistant-error" role="alert"></p><div class="assistant-compose-wrap"><div id="assistant-pending"></div><section id="assistant-worker-interactions" aria-label="员工等待你的决定" hidden></section><div class="assistant-resume-bar" id="assistant-resume-bar" hidden><span id="assistant-resume-status"></span><button id="assistant-resume" type="button" class="outline-button">检查后继续</button></div><form id="assistant-form" class="assistant-composer"><textarea id="assistant-input" rows="3" maxlength="10000" placeholder="向 ApiX 描述任务，也可以在执行中补充要求…" aria-label="给 ApiX 的消息"></textarea><div class="assistant-compose-toolbar">
   <div class="assistant-compose-mode">
     <label class="assistant-mode"><select id="assistant-execution-mode" aria-label="执行方式" aria-describedby="assistant-mode-hint">
       <option value="full_access">自动执行</option><option value="ask_approval">逐次确认</option><option value="read_only">只读</option>
     </select></label>
     <button id="assistant-stop" type="button" class="text-action" hidden>停止</button>
-    <button id="assistant-resume" type="button" class="text-action" hidden>检查后继续</button>
   </div>
   <div class="assistant-compose-actions">
     <div id="assistant-model"><button type="button" class="outline-button" data-choose-conversation-model>模型与思考强度</button></div>
     <button type="submit" class="send-button" aria-label="发送给 ApiX"><svg class="icon" aria-hidden="true"><use href="#icon-send"/></svg><span aria-hidden="true">…</span></button>
   </div>
 </div>
-<small id="assistant-mode-hint">自动执行可修改文件、运行命令和测试，可能产生模型费用。</small></form></div></section><aside id="assistant-inspector" class="assistant-inspector"><h2>工作详情</h2><section><h3>Node/npm 项目接入</h3><button id="npm-diagnose" type="button" class="outline-button">只读诊断项目</button><div id="npm-diagnosis"></div><form id="npm-proposal"><label>允许修改的源码路径（逗号分隔）<input name="paths" value="src" maxlength="1000" required></label><label><input name="network" type="checkbox">批准 npm 公共仓库下载（不包含安装脚本或模型费用）</label><button type="submit" class="outline-button">生成准备与检查方案</button></form><div id="npm-plan"></div></section><p id="assistant-inspect-status">选择项目后开始对话。</p><section><h3>工具与员工</h3><div id="assistant-activity"></div><div id="assistant-child"></div></section><section><h3>本任务交付</h3><div id="assistant-delivery"></div></section><section><h3>Token 用量与优化</h3><button id="assistant-usage-refresh" type="button" class="outline-button">刷新任务用量</button><div id="assistant-usage" aria-live="polite">选择对话后查看任务用量。</div><form id="assistant-optimization"><label>上下文模式<select name="mode"><option value="standard">标准</option><option value="saving">节省</option></select></label><label id="assistant-prompt-strategy" hidden>输入布局<select name="promptStrategy"><option value="legacy">现有布局</option><option value="stable-prefix-v1">稳定布局（试验）</option></select></label><button type="submit" class="outline-button">应用模式</button><small>节省模式按需加载工具参数并折叠较旧结果；完整记录可回读。空闲且安全状态已确认时可修改。</small></form><p id="assistant-optimization-status" role="status"></p></section><section><h3>上下文占用</h3><button id="assistant-context-refresh" type="button" class="outline-button">查看上下文占用</button><div id="assistant-budget" aria-live="polite"></div><form id="assistant-compact"><label>压缩时重点保留<textarea name="focus" maxlength="2000" placeholder="例如：验收标准、未完成事项和文件引用"></textarea></label><button type="submit" class="outline-button">压缩历史</button><small>调用当前模型，按现有费用预算执行；原始记录保留。</small></form></section><section><h3>工作摘要</h3><pre id="assistant-context">暂无压缩摘要；原始记录持续保存。</pre></section><section><h3>项目记忆</h3><div id="assistant-notes"></div><details><summary>添加或修改记忆</summary><form id="assistant-memory"><input name="title" placeholder="记忆标题" maxlength="120" required aria-label="记忆标题"><textarea name="content" placeholder="项目约定或偏好" maxlength="3000" required aria-label="记忆内容"></textarea><button type="submit" class="outline-button">保存记忆</button></form></details></section></aside></div><dialog id="assistant-dialog" class="assistant-dialog" aria-labelledby="assistant-question"><form id="assistant-request"><h2 id="assistant-question"></h2><div id="assistant-options"></div><p id="assistant-request-error" role="alert"></p><textarea id="assistant-choice-text" maxlength="4000" placeholder="也可以补充说明" aria-label="补充回答"></textarea><div class="assistant-request-actions"><button id="assistant-request-dismiss" type="button" class="text-action">稍后处理</button><button id="assistant-deny" type="button" class="outline-button">拒绝</button><button id="assistant-approve" type="submit" class="primary-button">提交选择</button></div></form></dialog>`;
+</form><small id="assistant-mode-hint">自动执行可修改文件、运行命令和测试，可能产生模型费用。</small></div></section><aside id="assistant-inspector" class="assistant-inspector"><h2>工作详情</h2><section><h3>Node/npm 项目接入</h3><button id="npm-diagnose" type="button" class="outline-button">只读诊断项目</button><div id="npm-diagnosis"></div><form id="npm-proposal"><label>允许修改的源码路径（逗号分隔）<input name="paths" value="src" maxlength="1000" required></label><label><input name="network" type="checkbox">批准 npm 公共仓库下载（不包含安装脚本或模型费用）</label><button type="submit" class="outline-button">生成准备与检查方案</button></form><div id="npm-plan"></div></section><p id="assistant-inspect-status">选择项目后开始对话。</p><section><h3>工具与员工</h3><div id="assistant-activity"></div><div id="assistant-child"></div></section><section><h3>本任务交付</h3><div id="assistant-delivery"></div></section><section><h3>Token 用量与优化</h3><button id="assistant-usage-refresh" type="button" class="outline-button">刷新任务用量</button><div id="assistant-usage" aria-live="polite">选择对话后查看任务用量。</div><form id="assistant-optimization"><label>上下文模式<select name="mode"><option value="standard">标准</option><option value="saving">节省</option></select></label><label id="assistant-prompt-strategy" hidden>输入布局<select name="promptStrategy"><option value="legacy">现有布局</option><option value="stable-prefix-v1">稳定布局（试验）</option></select></label><button type="submit" class="outline-button">应用模式</button><small>节省模式按需加载工具参数并折叠较旧结果；完整记录可回读。空闲且安全状态已确认时可修改。</small></form><p id="assistant-optimization-status" role="status"></p></section><section><h3>上下文占用</h3><button id="assistant-context-refresh" type="button" class="outline-button">查看上下文占用</button><div id="assistant-budget" aria-live="polite"></div><form id="assistant-compact"><label>压缩时重点保留<textarea name="focus" maxlength="2000" placeholder="例如：验收标准、未完成事项和文件引用"></textarea></label><button type="submit" class="outline-button">压缩历史</button><small>调用当前模型，按现有费用预算执行；原始记录保留。</small></form></section><section><h3>工作摘要</h3><pre id="assistant-context">暂无压缩摘要；原始记录持续保存。</pre></section><section><h3>项目记忆</h3><div id="assistant-notes"></div><details><summary>添加或修改记忆</summary><form id="assistant-memory"><input name="title" placeholder="记忆标题" maxlength="120" required aria-label="记忆标题"><textarea name="content" placeholder="项目约定或偏好" maxlength="3000" required aria-label="记忆内容"></textarea><button type="submit" class="outline-button">保存记忆</button></form></details></section></aside></div><dialog id="assistant-dialog" class="assistant-dialog" aria-labelledby="assistant-question"><form id="assistant-request"><h2 id="assistant-question"></h2><div id="assistant-options"></div><p id="assistant-request-error" role="alert"></p><textarea id="assistant-choice-text" maxlength="4000" placeholder="也可以补充说明" aria-label="补充回答"></textarea><div class="assistant-request-actions"><button id="assistant-request-dismiss" type="button" class="text-action">稍后处理</button><button id="assistant-deny" type="button" class="outline-button">拒绝</button><button id="assistant-approve" type="submit" class="primary-button">提交选择</button></div></form></dialog>`;
 const $=<T extends HTMLElement>(selector:string)=>root.querySelector<T>(selector)!;
 const collaborationHost=document.createElement('div');
 collaborationHost.className='collaboration-scene';
@@ -38,6 +37,15 @@ let modeProject='',modeDirty=false,contextGeneration=0;
 const executionMode=$<HTMLSelectElement>('#assistant-execution-mode');
 executionMode.value='ask_approval';
 $('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;});
+let projectName='ApiX';
+const teamDetails=$<HTMLDetailsElement>('#assistant-team-details'),teamSummary=$('#assistant-team-summary');
+// 用户手动收起后轮询不得再自动展开；仅在再次回到“无员工”状态时重置该标记。
+let teamUserClosed=false,teamExpectedOpen=false;
+teamDetails.addEventListener('toggle',()=>{if(teamDetails.open!==teamExpectedOpen){teamExpectedOpen=teamDetails.open;if(!teamDetails.open)teamUserClosed=true;}});
+function setTeamOpen(open:boolean){teamExpectedOpen=open;if(teamDetails.open!==open)teamDetails.open=open;}
+function setStatus(text:string,status:string){$('#assistant-status-text').textContent=text;root.querySelector<HTMLElement>('.assistant-status-dot')!.dataset.status=status;}
+$('#assistant-menu').addEventListener('click',()=>document.querySelector<HTMLButtonElement>('#navigation-toggle')?.click());
+let stopRequestPending=false;
 let reviewSignature='' ;
 type AssistantDestination={id:string;delivery?:boolean;approval?:boolean;interactionId?:string};
 let destination:AssistantDestination|undefined;
@@ -75,8 +83,10 @@ function renderTranscript(s:Session){
   const box=$('#assistant-transcript'),selection=window.getSelection();
   if(signature===lastRender||selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
   const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<100;
+  const openRecords=new Set(renderedSession===s.id?[...box.querySelectorAll<HTMLDetailsElement>('details[data-execution-record][open]')].map(node=>node.dataset.executionRecord):[]);
   if(renderedSession!==s.id){renderedSession=s.id;renderedEventIds.clear();}
   box.innerHTML=(cursor?'<button class="text-action" id="assistant-load-older">加载更早记录</button>':'')+assistantTimeline(events,collaborationSpeech);
+  for(const node of box.querySelectorAll<HTMLDetailsElement>('details[data-execution-record]'))node.open=openRecords.has(node.dataset.executionRecord);
   // 只给本轮新到达的消息加入场动画；整段 innerHTML 每次刷新都是新节点，因此必须按事件 id 判定。
   for(const node of box.querySelectorAll<HTMLElement>('[data-event-id]')){
     const id=Number(node.dataset.eventId);
@@ -121,7 +131,8 @@ function render(s:Session){
   if(active&&current?.id!==s.id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:s.id,kind:'assistant'}}));
   if(current?.id!==s.id||current?.promptStrategy!==s.promptStrategy){$('#assistant-prompt-strategy').hidden=s.promptSettingsVersion===undefined;$<HTMLSelectElement>('#assistant-optimization [name=promptStrategy]').value=s.promptStrategy??'legacy';}if(current?.id!==s.id){$('#assistant-usage').textContent='点击刷新任务用量查看当前任务。';$('#assistant-optimization-status').textContent='';$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';}if(current?.optimizationMode!==s.optimizationMode)$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';if(current&&current.id!==s.id){olderEvents=[];olderCursor=undefined;notesSignature='';}
   if(modeProject!==s.project_id){modeProject=s.project_id;}if(!modeDirty)executionMode.value=s.policy.mode;
-  if(current?.task_id!==s.task_id)$('#assistant-usage').textContent='任务已切换，请刷新任务用量。';current=s;threadId=s.id;localStorage.setItem('apix.assistant.'+projectId,s.id);$('#assistant-status').textContent=({idle:'等待消息',running:'正在执行',waiting_user:'需要你的决定',waiting_agents:'员工执行与验收中',completed:'本轮完成',attention:'需要检查',stopped:'已停止'} as Record<string,string>)[s.status]??s.status;
+  if(current?.task_id!==s.task_id)$('#assistant-usage').textContent='任务已切换，请刷新任务用量。';current=s;threadId=s.id;localStorage.setItem('apix.assistant.'+projectId,s.id);setStatus(({idle:'等待消息',running:'正在执行',waiting_user:'需要你的决定',waiting_agents:'员工执行与验收中',completed:'本轮完成',attention:'需要检查',stopped:'已停止'} as Record<string,string>)[s.status]??s.status,s.status);
+  $('#assistant-project').textContent=s.title?.trim()||projectName;
   $('#assistant-inspect-status').textContent=`${({verified:s.acceptanceStatus==='accepted'?'可信检查通过 · 当前交付已验收':'可信检查通过 · 尚未正式验收',needs_review:'未验证 · 待审查',unverified:'尚缺可信检查',failed:'可信检查失败',unknown:'检查结果未知',not_required:'本轮无需代码验证'} as Record<string,string>)[s.verificationStatus??'']??'未验证'} · 本轮 ${s.steps}/${s.limits?.maxCalls??24} 步 · ${s.policy.mode==='full_access'?'项目完全访问':s.policy.mode==='read_only'?'只读':'按次批准'}`;
   if(s.capabilities?.managedCommands.available===false)$('#assistant-inspect-status').textContent+=' · '+s.capabilities.managedCommands.reason;
   const reviewKey=JSON.stringify([s.id,s.review,s.busy,s.version]);if(reviewSignature!==reviewKey){const previousDelivery=root.querySelector<HTMLElement>('[data-reviewed-delivery]')?.dataset.reviewedDelivery;const draft=root.querySelector<HTMLTextAreaElement>('#delivery-feedback')?.value??'';root.querySelector<HTMLElement>('#assistant-delivery')!.innerHTML=deliveryView(s.review,s.busy);const field=root.querySelector<HTMLTextAreaElement>('#delivery-feedback');if(field&&previousDelivery===s.review?.latestDelivery?.id)field.value=draft;reviewSignature=reviewKey;}
@@ -152,9 +163,13 @@ function render(s:Session){
     pendingBox.innerHTML=s.pending?html`<button id="assistant-open-request" type="button" class="outline-button">${s.pending.kind==='approval'?'操作待批准 · 查看详情':s.pending.kind==='intent'?'查看候选答案':'需要你的决定 · 查看并回答'}</button>`:s.childAttention?html`<button id="assistant-open-child-attention" type="button" class="outline-button">${s.childAttention.unlinked?'协作流程等待确认':'员工流程需要确认'} · 查看原因</button>`:s.modelConfigurationBlocked?'<span>对话已保留。更新模型配置后可直接重试。 </span><button id="assistant-retry-model" type="button" class="outline-button">重试本轮</button>':'';
   }
   $<HTMLTextAreaElement>('#assistant-input').placeholder=s.pending?.kind==='intent'?'直接回复上方的问题，ApiX 会继续处理…':'向 ApiX 描述任务，也可以在执行中补充要求…';
-  if(s.modelConfigurationBlocked)$('#assistant-status').textContent='模型连接需要配置';
-  $('#assistant-resume').textContent=s.modelConfigurationBlocked?'配置模型':'检查后继续';
-  $('#assistant-resume').hidden=!['attention','stopped'].includes(s.status);$('#assistant-stop').hidden=['idle','completed','stopped'].includes(s.status);
+  if(s.modelConfigurationBlocked)setStatus('模型连接需要配置','attention');
+  const paused=['attention','stopped'].includes(s.status);
+  $('#assistant-resume-bar').hidden=!paused;
+  $('#assistant-resume-status').textContent=s.modelConfigurationBlocked?'模型连接需要配置':s.status==='stopped'?'任务已停止':'任务需要检查';
+  $('#assistant-resume').textContent=s.modelConfigurationBlocked?'配置模型':'检查并继续';
+  $('#assistant-stop').hidden=!['running','waiting_agents','waiting_user'].includes(s.status);
+  updateStopButton();
   const target=active&&destination?.id===s.id?destination:undefined;
   if(s.pending&&s.pending.id!==lastRequest&&active){lastRequest=s.pending.id;if(!target?.interactionId&&s.pending.kind==='choice')openRequest();}
   else if(!s.pending&&(!s.childAttention||!active))$<HTMLDialogElement>('#assistant-dialog').close();
@@ -241,9 +256,22 @@ $('#assistant-form').addEventListener('submit',event=>{event.preventDefault();if
   if(version!==generation)return;if(input.value.trim()===content)input.value='';$('#assistant-error').textContent='';await refresh();}catch(e){error(e);}finally{setPosting(false);}})();});
 $('#assistant-input').addEventListener('keydown',event=>{if(event instanceof KeyboardEvent&&event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();$<HTMLFormElement>('#assistant-form').requestSubmit();}});
 $('#assistant-new').addEventListener('click',()=>{if(posting)return;setPosting(true);void newSession(true).then(()=>refresh()).catch(error).finally(()=>setPosting(false));});
-$('#assistant-stop').addEventListener('click',()=>{if(current)void api<Session>('/api/assistant/sessions/'+current.id+'/stop',{}).then(applyCurrent).catch(error);});
+function updateStopButton(){
+  const stop=$<HTMLButtonElement>('#assistant-stop');
+  stop.disabled=stopRequestPending;
+  stop.textContent=stopRequestPending?'停止中…':'停止';
+}
+$('#assistant-stop').addEventListener('click',()=>{
+  if(!current||stopRequestPending)return;
+  stopRequestPending=true;
+  updateStopButton();
+  void api<Session>('/api/assistant/sessions/'+current.id+'/stop',{}).then(applyCurrent).catch(error).finally(()=>{
+    stopRequestPending=false;
+    updateStopButton();
+  });
+});
 $('#assistant-resume').addEventListener('click',()=>{if(current?.modelConfigurationBlocked){openConfiguration();return;}if(current&&window.confirm('请确认已检查工具、员工和验证结果，原命令已停止；继续不会重放未确认的操作。'))void api<Session>('/api/assistant/sessions/'+current.id+'/resume',{version:current.version,confirmed:true}).then(applyCurrent).catch(error);});
-function openConfiguration(){document.querySelector<HTMLButtonElement>('[data-page-target="settings"]')?.click();}
+function openConfiguration(){document.dispatchEvent(new Event('apix:manager-settings'));}
 $('#assistant-details').addEventListener('click',()=>{document.dispatchEvent(new Event('apix:close-agent-run'));const open=root.classList.toggle('show-inspector');$('#assistant-details').setAttribute('aria-expanded',String(open));});
 $('#assistant-config').addEventListener('click',openConfiguration);
 $('#assistant-advanced').addEventListener('click',()=>{
@@ -267,7 +295,7 @@ root.addEventListener('click',event=>{const target=event.target;if(!(target inst
   if(target.closest('#assistant-load-older')&&current){const id=current.id,version=generation,cursor=olderCursor===undefined?current.previousEventId:olderCursor;const box=$('#assistant-transcript'),height=box.scrollHeight,top=box.scrollTop;void api<{events:Session['events'];previousEventId:number|null}>('/api/assistant/sessions/'+id+'/events?before='+cursor).then(page=>{if(generation!==version||current?.id!==id)return;olderEvents=[...page.events,...olderEvents,...current.events];olderCursor=page.previousEventId;lastRender='';render(current);box.scrollTop=top+box.scrollHeight-height;}).catch(error);}
   const note=target.closest<HTMLElement>('[data-delete-note]');if(note&&current)void api<Session>('/api/assistant/sessions/'+current.id+'/memory',{title:note.dataset.deleteNote,version:Number(note.dataset.version),delete:true}).then(applyCurrent).catch(error);
 });
-function clearSession(){destination=undefined;setThinking(false);renderedEventIds.clear();renderedSession='';$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="outline-button" data-choose-conversation-model>模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';lastChildAttention='';clearAttentionDialog();$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';$('#assistant-status').textContent='等待消息';$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume').hidden=true;$('#assistant-stop').hidden=true;}
+function clearSession(){destination=undefined;setThinking(false);renderedEventIds.clear();renderedSession='';$('#assistant-worker-interactions').replaceChildren();$('#assistant-worker-interactions').hidden=true;workerContext='';document.dispatchEvent(new Event('apix:close-agent-run'));teamUserClosed=false;setTeamOpen(false);teamSummary.textContent='尚未委派员工任务';$('#assistant-workers').dataset.signature='';$('#assistant-workers').innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p>'; $('#assistant-prompt-strategy').hidden=true;npmPlan=null;$('#npm-plan').textContent='';$('#npm-diagnosis').textContent='';reviewSignature='';root.querySelector<HTMLElement>('#assistant-delivery')!.textContent='选择对话后查看本任务交付';updateModel('assistant','');$('#assistant-model').innerHTML='<button type="button" class="outline-button" data-choose-conversation-model>模型与思考强度</button>';generation++;olderEvents=[];olderCursor=undefined;notesSignature='';current=null;threadId='';lastRender='';lastRequest='';lastChildAttention='';clearAttentionDialog();$<HTMLDialogElement>('#assistant-dialog').close();$('#assistant-transcript').innerHTML='<div class="assistant-welcome"><h1>今天想完成什么？</h1><p>直接描述目标，ApiX 会持续推进。</p></div>';$('#assistant-notes').textContent='';$('#assistant-activity').textContent='';$('#assistant-context').textContent='暂无压缩摘要；原始记录持续保存。';$('#assistant-budget').textContent='';$('#assistant-usage').textContent='选择对话后查看任务用量。';$('#assistant-optimization-status').textContent='';$('#assistant-child').textContent='';$('#assistant-pending').textContent='';setStatus('等待消息','idle');$('#assistant-project').textContent=projectName;$('#assistant-inspect-status').textContent='选择对话后查看详情';$('#assistant-error').textContent='';$('#assistant-resume-bar').hidden=true;$('#assistant-stop').hidden=true;}
 document.addEventListener('apix:open-assistant',((event:CustomEvent<string|AssistantDestination>)=>{
   const target=typeof event.detail==='string'?{id:event.detail}:event.detail;
   if(!target.interactionId||current?.id!==target.id)selectSession(target.id);
@@ -330,8 +358,14 @@ $('#assistant-memory').addEventListener('submit',event=>{event.preventDefault();
 root.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-approve-note]');if(button&&current)void api<Session>('/api/assistant/sessions/'+current.id+'/memory',{title:button.dataset.approveNote,version:Number(button.dataset.version),approve:true}).then(applyCurrent).catch(error);});
 document.addEventListener('apix:page',((event:CustomEvent<string>)=>{active=event.detail==='assistant';if(!active)$<HTMLDialogElement>('#assistant-dialog').close();else{lastChildAttention='';void refresh();}}) as EventListener);
 document.addEventListener('apix:snapshot',((event:CustomEvent<{projectId:string;data:{projects:{id:string;name:string}[]}}>)=>{
-  const id=event.detail.projectId;if(id!==projectId){modeProject=id;modeDirty=false;executionMode.value='ask_approval';selectSession(localStorage.getItem('apix.assistant.'+id)??'',id);}
-  $('#assistant-project').textContent=event.detail.data.projects.find(p=>p.id===id)?.name??'ApiX · 通用对话';void refresh();
+  const id=event.detail.projectId;
+  if(id!==projectId){
+    modeProject=id;modeDirty=false;executionMode.value='ask_approval';
+    projectName=event.detail.data.projects.find(p=>p.id===id)?.name??'ApiX · 通用对话';
+    $('#assistant-project').textContent=projectName;
+    selectSession(localStorage.getItem('apix.assistant.'+id)??'',id);
+  }
+  void refresh();
 }) as EventListener);
 setInterval(()=>void refresh(),1200);
 document.addEventListener('apix:collaboration-change',()=>{
@@ -358,12 +392,14 @@ let appliedWorkerRequest=0;
 type WorkerTask={id:string;employee_id:string;employee_name?:string;runtime:string;status:string;prompt:string;result?:string;queue_reason?:string;
   recovery?:{automatic:boolean;state:string;attempts:number;maxAttempts:number;reason?:string}};
 async function showWorkers(s:Session,childId:string|null){
-  const box=$('#assistant-workers'),context=s.id+':'+childId,request=++workerRequest;workerContext=context;
+  const box=$('#assistant-workers'),context=s.id+':'+childId,request=++workerRequest;
+  if(workerContext!==context){teamUserClosed=false;setTeamOpen(false);workerContext=context;}
   if(!childId){
     collaborationSpeech=updateCollaboration(null);
     renderTranscript(s);
     box.dataset.signature='';
     box.innerHTML='<p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。<small>现有员工保持原运行方式；在员工设置中可切换试验运行后端。</small></p>';
+    teamSummary.textContent='尚未委派员工任务';
     return;
   }
   try{
@@ -387,6 +423,10 @@ async function showWorkers(s:Session,childId:string|null){
     renderTranscript(current);
     const runs=workerRuns.filter(run=>child.tasks.some(task=>task.id===run.task_id));
     const signature=JSON.stringify([workerEmployees,child.tasks,runs]);
+    const hasWorkers=child.tasks.length>0;
+    // 真正有员工任务时自动展开；用户手动收起后轮询保持收起。
+    if(hasWorkers){if(!teamDetails.open&&!teamUserClosed)setTeamOpen(true);}
+    teamSummary.textContent=hasWorkers?child.tasks.length+' 项员工任务'+(summary?' · '+summary:''):'协作计划尚未生成员工任务';
     if(box.dataset.signature===signature)return;
     box.dataset.signature=signature;
     box.innerHTML=child.tasks.length?child.tasks.map((t,index)=>{
@@ -397,6 +437,6 @@ async function showWorkers(s:Session,childId:string|null){
       const reason=t.recovery?.reason??(t.status==='queued'?t.queue_reason:null);
       return html`<button type="button" class="agent-worker-row" aria-pressed="${run?.id===workerSelection}" ${run?'':'disabled'} data-worker-task="${t.id}" data-worker-run="${run?.id??''}"><strong>${t.prompt}</strong><span>${name} · ${t.runtime} · ${status} · ${run?.pending_interactions?run.pending_interactions+' 项待处理 · ':''}${elapsed}</span>`+(['failed','blocked','unknown','needs_revision'].includes(t.status)&&t.result?html`<small class="agent-worker-failure">失败原因：${String(t.result).slice(-500)}</small>`:'')+(reason?html`<small>${reason}</small>`:'')+'</button>';
     }).join(''):'<p class="assistant-team-empty">协作计划尚未生成员工任务，可从协作进度继续。</p>';
-  }catch(error){if(current?.id===s.id&&workerContext===context&&request>=appliedWorkerRequest){appliedWorkerRequest=request;box.dataset.signature='';box.textContent='员工过程加载失败，可从协作进度重试。';}}
+  }catch(error){if(current?.id===s.id&&workerContext===context&&request>=appliedWorkerRequest){appliedWorkerRequest=request;box.dataset.signature='';box.textContent='员工过程加载失败，可从协作进度重试。';teamSummary.textContent='员工过程加载失败';}}
 }
 root.addEventListener('click',event=>{const button=(event.target as Element).closest<HTMLElement>('[data-worker-run]');if(button?.dataset.workerRun)document.dispatchEvent(new CustomEvent('apix:open-agent-run',{detail:{runId:button.dataset.workerRun,taskId:button.dataset.workerTask,workspace:true}}));});

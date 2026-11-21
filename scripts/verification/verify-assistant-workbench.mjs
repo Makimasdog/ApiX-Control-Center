@@ -52,6 +52,10 @@ try{
     };
   },{project:h.projectId,id:parent.id});
   await page.goto(h.origin);await page.locator('[data-page-target="assistant"]').first().click();
+  assert(await page.locator('.topbar').isHidden());
+  assert.equal(Math.round((await page.locator('.assistant-header').boundingBox()).height),48);
+  assert(await page.locator('#assistant-mode-hint').isVisible());
+  assert.equal(await page.locator('#assistant-mode-hint').evaluate(node=>node.closest('form')===null),true);
   const rows=page.locator('#assistant-workers [data-worker-run]');await rows.first().waitFor();assert.equal(await rows.count(),2);
   const scene=page.locator('.collaboration-scene');
   await scene.locator('.collaboration-agent').last().waitFor();
@@ -61,8 +65,10 @@ try{
   const question=requests.locator('form').filter({hasText:'范围核查员 · 员工提问'});
   const approval=requests.locator('form').filter({hasText:'文档核查员 · 操作审批'});
   const openOverview=async()=>{
-    const navigation=page.locator('#navigation-toggle');
-    if(await navigation.isVisible())await navigation.click();
+    // 对话页合并顶栏后，移动端菜单按钮是会话头部的 #assistant-menu；桌面端侧栏常开无需切换。
+    const menu=page.locator('#assistant-menu');
+    if(await menu.isVisible())await menu.click();
+    else{const navigation=page.locator('#navigation-toggle');if(await navigation.isVisible())await navigation.click();}
     await page.locator('.nav-item[data-page-target="overview"]').click();
   };
   const attention=page.locator('#overview-action-list');
@@ -157,13 +163,14 @@ try{
   assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('data-worker-run')),firstRun);
   await rows.nth(1).click();await panel.locator('[data-interaction]').waitFor();assert.equal(await panel.locator('[data-guidance] textarea').inputValue(),'第二位员工的独立草稿');
   await page.route('**/api/assistant/sessions',route=>route.fulfill({status:503,json:{error:'本地夹具模拟创建失败'}}));
-  await page.locator('#assistant-new').click();
+  // 顶栏“新对话”入口已并入侧栏；#assistant-new 保留为程序化锚点，390 视口下侧栏按钮不在可视区域，用页面内点击驱动。
+  await page.evaluate(()=>document.querySelector('#assistant-new')?.click());
   await page.locator('#assistant-error').getByText('本地夹具模拟创建失败').waitFor();
   assert.equal(await page.locator('#assistant-input').inputValue(),'保留主会话草稿，不发送');
   assert.equal(await rows.count(),2);
   await page.unroute('**/api/assistant/sessions');
   const created=page.waitForResponse(response=>response.url().endsWith('/api/assistant/sessions')&&response.request().method()==='POST'&&response.ok());
-  await page.locator('#assistant-new').click();await page.waitForFunction(()=>!document.querySelector('#page-assistant').classList.contains('show-agent-workbench'));
+  await page.evaluate(()=>document.querySelector('#assistant-new')?.click());await page.waitForFunction(()=>!document.querySelector('#page-assistant').classList.contains('show-agent-workbench'));
   const fresh=await (await created).json();
   assert.equal(await page.locator('#assistant-workers [data-worker-run]').count(),0);
   assert.equal(await requests.locator('form').count(),0);
@@ -206,11 +213,34 @@ try{
   const input=page.locator('#assistant-input');
   await openThread(fresh.id).click();
   await openThread(fresh.id).and(page.locator('.selected')).waitFor();
+  const historySearch=history.locator('#assistant-history-search');
+  await historySearch.fill('从未存在的会话标题');
+  await openThread(fresh.id).waitFor({state:'detached'});
+  await historySearch.clear();
+  await openThread(fresh.id).waitFor();
+  const historyMenu=id=>history.locator(`[data-thread-menu="${id}"] > summary`);
+  const archive=history.locator(`[data-history-action="archive"][data-history-id="${fresh.id}"]`);
+  assert(await archive.isHidden());
+  await historyMenu(fresh.id).focus();
+  await page.keyboard.press('Enter');
+  await archive.waitFor();
+  await archive.focus();
+  await page.keyboard.press('Escape');
+  assert(await archive.isHidden());
+  assert.equal(await historyMenu(fresh.id).evaluate(node=>node===document.activeElement),true);
+  await h.request(`/api/assistant/sessions/${fresh.id}/stop`,{});
+  const recovery=page.locator('#assistant-resume-bar');
+  await recovery.waitFor();
+  assert.match(await recovery.innerText(),/任务已停止/);
+  assert.equal(await recovery.evaluate(node=>!!(node.compareDocumentPosition(document.querySelector('#assistant-form'))&Node.DOCUMENT_POSITION_FOLLOWING)),true);
+  await openThread(fresh.id).locator('[data-status="stopped"]').waitFor();
   await input.fill('即将归档对话的独立草稿');
+  await historyMenu(fresh.id).click();
   await history.locator(`[data-history-action="archive"][data-history-id="${fresh.id}"]`).click();
   await openThread(parent.id).and(page.locator('.selected')).waitFor();
   assert.equal(await input.inputValue(),'保留主会话草稿，不发送');
   await history.locator('select').selectOption('archived');
+  await historyMenu(fresh.id).click();
   await Promise.all([
     page.waitForResponse(response=>response.url().endsWith('/api/chat-history/assistant/'+fresh.id)&&response.ok()),
     history.locator(`[data-history-action="restore"][data-history-id="${fresh.id}"]`).click(),
@@ -218,7 +248,10 @@ try{
   await history.locator('select').selectOption('active');
   await openThread(fresh.id).click();
   assert.equal(await input.inputValue(),'即将归档对话的独立草稿');
+  // 协作工作台改为单行可展开：无员工任务时收起，需先展开再进入“管理员工”。
+  const team=page.locator('#assistant-team-details');
+  if(!await team.evaluate(details=>details.open))await team.locator('> summary').click();
   await page.locator('#assistant-employees').click();assert(await page.locator('#page-missions').evaluate(e=>e.classList.contains('active-page')));
   assert.deepEqual(errors,[]);assert.equal(h.calls.filter(c=>c.phase==='planning').length,1);assert.equal(h.calls.length,1);
-  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','notification-owner-boundary','notification-cross-project','notification-pending-removal','artifacts','focus-return','thread-reset','new-thread-failure','archive-restore-draft','worker-list-retry','failure-diagnostics','employee-navigation']}));
+  console.log(JSON.stringify({passed:true,paidModelCalls:0,localPlanningCalls:1,localNativeRuns:2,output,cases:['main-workbench','real-child-workers','employee-isolation','guidance-drafts','main-draft','docked-and-drawer','resize-focus','escape-close','light-dark','guidance','main-question','main-approval-denial','overview-exact-card-focus','overview-processed-removal','notification-owner-boundary','notification-cross-project','notification-pending-removal','artifacts','focus-return','thread-reset','new-thread-failure','archive-restore-draft','worker-list-retry','failure-diagnostics','employee-navigation','single-header','composer-hint-outside-form','history-search-and-menu','stopped-recovery-bar']}));
 }finally{await browser?.close();await h.close();}

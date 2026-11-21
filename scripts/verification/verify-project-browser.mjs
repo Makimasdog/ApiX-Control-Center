@@ -15,7 +15,7 @@ try{
   page.on('pageerror',error=>errors.push(error.message));
   try{
    await page.addInitScript(id=>localStorage.setItem('apix.selectedProject',id),h.projectId);await h.authorize(page);await page.goto(h.origin);
-   await page.locator('#assistant-input').waitFor();await page.locator('#assistant-new').click();
+   await page.locator('#assistant-input').waitFor();await page.locator('#assistant-new-chat').click();
    await page.waitForFunction(()=>document.querySelector('#assistant-status')?.textContent==='等待消息');
    await page.locator('#assistant-execution-mode').selectOption('full_access');
    await page.locator('#assistant-details').click();
