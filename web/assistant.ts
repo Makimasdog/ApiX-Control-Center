@@ -13,10 +13,9 @@ type Session={modelConfigurationBlocked?:boolean;childAttention?:ChildAttention|
 const root=document.querySelector<HTMLElement>('#page-assistant')!;
 root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-main"><header class="assistant-header"><div class="assistant-header-context"><button id="assistant-menu" type="button" class="icon-button" aria-label="打开导航" aria-controls="main-navigation"><svg class="icon" aria-hidden="true"><use href="#icon-grid"/></svg></button><strong id="assistant-project">ApiX</strong><span id="assistant-status" class="assistant-status"><i class="assistant-status-dot" data-status="idle" aria-hidden="true"></i><span id="assistant-status-text">等待消息</span></span></div><div class="assistant-header-actions"><button id="assistant-personal-memory" class="text-action" aria-haspopup="dialog">个人记忆</button><button id="assistant-details" class="text-action" aria-expanded="false" aria-controls="assistant-inspector">详情</button><button id="assistant-advanced" class="text-action" hidden>协作进度</button><button id="assistant-config" class="text-action" hidden>协作设置</button><button id="assistant-new" class="outline-button" hidden>新对话</button></div></header><section class="assistant-team" aria-label="协作工作台"><details id="assistant-team-details" class="assistant-team-details"><summary><strong>协作工作台</strong><small id="assistant-team-summary">尚未委派员工任务</small></summary><div class="assistant-team-body"><p class="assistant-team-note">主会话统筹目标，员工过程与成果在此汇合。</p><div id="assistant-workers"><p class="assistant-team-empty">尚未委派员工任务。向 ApiX 描述目标后，可在这里跟进参与员工。</p></div><div class="assistant-team-foot"><button class="text-action" id="assistant-employees">管理员工</button></div></div></details></section><div id="assistant-transcript" class="assistant-transcript" aria-live="polite"><div class="assistant-welcome"><span>ApiX</span><h1>今天想完成什么？</h1><p>直接描述目标。我会选择工具、加载 Skill，或协调本机 Agent，检查结果后继续推进。</p></div></div><div id="assistant-thinking" class="assistant-thinking" hidden aria-live="polite"><span class="thinking-caret" aria-hidden="true"></span><span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="thinking-label" data-thinking-label>正在思考</span><span class="thinking-elapsed" data-thinking-elapsed></span></div><p id="assistant-error" role="alert"></p><div class="assistant-compose-wrap"><div id="assistant-pending"></div><section id="assistant-worker-interactions" aria-label="员工等待你的决定" hidden></section><div class="assistant-resume-bar" id="assistant-resume-bar" hidden><span id="assistant-resume-status"></span><button id="assistant-resume" type="button" class="outline-button">检查后继续</button></div><form id="assistant-form" class="assistant-composer"><textarea id="assistant-input" rows="3" maxlength="10000" placeholder="向 ApiX 描述任务，也可以在执行中补充要求…" aria-label="给 ApiX 的消息"></textarea><div class="assistant-media-controls"><label>添加附件<input id="assistant-attachments" type="file" multiple aria-label="添加附件"></label><label><input id="assistant-markdown" type="checkbox">Markdown</label></div><div class="assistant-compose-toolbar">
   <div class="assistant-compose-mode">
-    <label class="assistant-mode"><select id="assistant-execution-mode" aria-label="执行方式" aria-describedby="assistant-mode-hint">
+    <label class="assistant-mode" data-risk="medium"><select id="assistant-execution-mode" aria-label="执行方式" aria-describedby="assistant-mode-hint">
       <option value="full_access">自动执行</option><option value="ask_approval">逐次确认</option><option value="read_only">只读</option>
     </select></label>
-    <output id="assistant-mode-risk" class="assistant-mode-risk" data-risk="medium" aria-live="polite">逐次确认</output>
     <button id="assistant-stop" type="button" class="text-action" hidden>停止</button>
   </div>
   <div class="assistant-compose-actions">
@@ -39,11 +38,13 @@ let modeProject='',modeDirty=false,contextGeneration=0;
 const executionMode=$<HTMLSelectElement>('#assistant-execution-mode');
 // 风险等级只由执行方式决定，随下拉框实时更新；颜色在 CSS 里按 data-risk 取值。
 const executionRisks:Record<string,[string,string]>={read_only:['low','只读'],ask_approval:['medium','逐次确认'],full_access:['high','自动执行 · 可改文件']};
+// 风险只体现在颜色上：下拉框本身已经写了当前档位，再并排一句同样的文字是噪音。
 function showExecutionRisk(){
-  const [risk,label]=executionRisks[executionMode.value]??executionRisks.ask_approval!;
-  const badge=$('#assistant-mode-risk');
-  badge.dataset.risk=risk;
-  badge.textContent=label;
+  const [risk,text]=executionRisks[executionMode.value]??executionRisks.ask_approval!;
+  const shell=executionMode.closest('label');
+  if(!shell)return;
+  shell.dataset.risk=risk;
+  shell.title='执行方式：'+text;
 }
 executionMode.value='ask_approval';
 showExecutionRisk();
