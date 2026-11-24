@@ -501,7 +501,7 @@ const scheduling=createScheduling(store,{
   employees:()=>rows('SELECT * FROM employees WHERE deleted_at IS NULL'),available:id=>runtimes().some(r=>r.id===id && r.available && r.managed),
   denied:(projectId,employeeId,drafting=false)=>drafting ? permissions.get(projectId,employeeId).mode==='read_only' : permissions.decision(projectId,employeeId)==='deny',waiting:task=>executionControl.admission(task),supportsModel:(runtime,id)=>runtimeAdapters.supportsModel(runtime)||agentProviders.supports(id)
 });
-const agentProviders=createAgentProviders({...store,dataDir,credentials,profile:scheduling.profile,saveProfile:scheduling.saveProfile,managerSettings:()=>coordinator.getSettings(),saveManager:input=>coordinator.saveSettings(input)});
+const agentProviders=createAgentProviders({...store,dataDir,credentials,profile:scheduling.profile,saveProfile:scheduling.saveProfile,managerSettings:()=>coordinator.getSettings(),saveManager:input=>coordinator.saveSettings(input),lastInference:tokenUsage.lastSuccess});
 const autonomy=createAutonomy({...store,fault:taskFault,permissions,scheduling,
   employees:()=>rows('SELECT * FROM employees WHERE enabled=1 AND deleted_at IS NULL'),
   workflow:projectId=>coordinator.workflowSettings(projectId),

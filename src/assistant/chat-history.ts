@@ -17,6 +17,19 @@ import type {Store} from '../coordination/contracts.js';
 const tables={assistant:'assistant_sessions',coordination:'coordination_sessions'} as const;
 
 /**
+ * attentionReason - 列表里「需检查」的原因，只从已有记录派生，不新增状态字段
+ *
+ * 服务重启会把所有 running 会话改成 attention 并写 restart_interrupted；任何一次 resumed
+ * 都把原因清掉。检查失败看 completion_rejected，待批准看 pending.kind。协调会话没有这些列，
+ * 只保留原状态文案，因此列表里显式返回 NULL。
+ */
+const attentionReasonSql=`CASE WHEN status<>'attention' THEN NULL
+  WHEN COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=assistant_sessions.id AND kind='restart_interrupted'),0)>COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=assistant_sessions.id AND kind='resumed'),0) THEN 'restart'
+  WHEN json_extract(pending,'$.kind')='approval' THEN 'approval'
+  WHEN COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=assistant_sessions.id AND kind='completion_rejected'),0)>COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=assistant_sessions.id AND kind='resumed'),0) THEN 'check_failed'
+  END`;
+
+/**
  * historyColumns - 确保会话表包含 archived_at 和 deleted_at 列
  * 若缺失则自动 ALTER TABLE 添加，实现平滑迁移。
  * @param store - 数据库 Store
@@ -40,7 +53,7 @@ export function createChatHistory(store:Store,active:(kind:string,id:string)=>bo
      * @param view - 视图类型：'active'（未归档未删除）、'archived'（已归档未删除）、'deleted'（已删除）
      * @returns 按更新时间倒序排列的对话列表，合并 assistant 和 coordination 两种类型
      */
-    list(projectId:string,view='active'){if(!store.row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');if(!['active','archived','deleted'].includes(view))throw new Error('历史筛选无效');const where=view==='deleted'?'deleted_at IS NOT NULL':view==='archived'?'deleted_at IS NULL AND archived_at IS NOT NULL':'deleted_at IS NULL AND archived_at IS NULL';return (Object.entries(tables).flatMap(([kind,table])=>store.rows<{updated_at:string;[key:string]:unknown}>(`SELECT id,project_id,title,status,${kind==='assistant'?'version':'revision'} AS version,updated_at,archived_at,deleted_at FROM ${table} WHERE project_id=? AND ${where} ORDER BY updated_at DESC LIMIT 500`,projectId).map(s=>({...s,kind})))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));},
+    list(projectId:string,view='active'){if(!store.row('SELECT id FROM projects WHERE id=?',projectId))throw new Error('项目不存在');if(!['active','archived','deleted'].includes(view))throw new Error('历史筛选无效');const where=view==='deleted'?'deleted_at IS NOT NULL':view==='archived'?'deleted_at IS NULL AND archived_at IS NOT NULL':'deleted_at IS NULL AND archived_at IS NULL';return (Object.entries(tables).flatMap(([kind,table])=>store.rows<{updated_at:string;[key:string]:unknown}>(`SELECT id,project_id,title,status,${kind==='assistant'?'version':'revision'} AS version,updated_at,archived_at,deleted_at,${kind==='assistant'?`${attentionReasonSql} AS attentionReason,json_extract(pending,'$.kind') AS pendingKind`:'NULL AS attentionReason,NULL AS pendingKind'} FROM ${table} WHERE project_id=? AND ${where} ORDER BY updated_at DESC LIMIT 500`,projectId).map(s=>({...s,kind})))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));},
 
     /**
      * change - 对对话执行归档、删除或恢复操作

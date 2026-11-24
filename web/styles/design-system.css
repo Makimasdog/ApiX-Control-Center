@@ -548,6 +548,21 @@ body:has(#page-assistant.active-page) .topbar { display: none; }
 .assistant-composer[aria-busy="true"] .send-button span { display: inline; }
 .assistant-composer > div > span, .assistant-composer .hint { flex: 1; color: var(--text-muted); font-size: var(--fs-micro); }
 .assistant-mode select, .assistant-compose-mode select { min-height: var(--h-control); padding: 4px var(--s-5) 4px var(--s-2); font-size: var(--fs-caption); background-position: right 14px center, right 9px center; }
+/* 执行方式风险：圆点 + 文案，颜色全部取自语义令牌，等级由 data-risk 切换。 */
+.assistant-mode {
+  display: inline-flex; align-items: center; gap: var(--s-1); padding: 1px var(--s-2) 1px var(--s-1);
+  border-radius: var(--r-pill); background: var(--surface-inset);
+}
+.assistant-mode::before { content: ""; width: 6px; height: 6px; margin-left: 2px; border-radius: var(--r-pill); background: var(--text-secondary); }
+.assistant-mode[data-risk="low"] { background: var(--success-subtle); }
+.assistant-mode[data-risk="low"]::before, .assistant-mode[data-risk="low"] select { color: var(--success); }
+.assistant-mode[data-risk="low"]::before { background: var(--success); }
+.assistant-mode[data-risk="medium"] { background: var(--warning-subtle); }
+.assistant-mode[data-risk="medium"]::before, .assistant-mode[data-risk="medium"] select { color: var(--warning); }
+.assistant-mode[data-risk="medium"]::before { background: var(--warning); }
+.assistant-mode[data-risk="high"] { background: var(--danger-subtle); }
+.assistant-mode[data-risk="high"]::before, .assistant-mode[data-risk="high"] select { color: var(--danger); }
+.assistant-mode[data-risk="high"]::before { background: var(--danger); }
 #assistant-mode-hint { display: block; margin-top: var(--s-2); color: var(--text-secondary); font-size: 12px; text-align: center; }
 .send-button {
   width: 32px; height: 32px; min-width: 32px; min-height: 32px; padding: 0; border: 0;

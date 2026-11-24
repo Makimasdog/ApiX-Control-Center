@@ -1,6 +1,6 @@
 import {html} from './html.js';
 import {trackSettingsSave} from './application-settings.js';
-type Provider={contextWindow?:number|null;id:string;version:number;name:string;model:string;baseUrl:string;apiType:string;authHeader?:string;hasKey:boolean};
+type Provider={contextWindow?:number|null;id:string;version:number;name:string;model:string;baseUrl:string;apiType:string;authHeader?:string;hasKey:boolean;lastSuccessAt?:string|null;lastSuccessModel?:string|null};
 type Agent={id:string;name:string;runtime:string;providerId:string|null;version:number|string;model:string;baseUrl?:string;source:string;configured?:boolean;adoptable?:boolean};
 type Catalog={providers:Provider[];agents:Agent[];protocols:Record<string,string[]>};
 type Preset={id:string;name:string;baseUrl:string;apiType:string;requiresApiKey:boolean;models:{id:string;name:string}[]};
@@ -41,6 +41,12 @@ export function providerCenter(container:HTMLElement,options:Options){
     ([...content.querySelectorAll<HTMLButtonElement>('[data-provider-edit]')].find(button=>button.dataset.providerEdit===editorTrigger)??content.querySelector<HTMLButtonElement>('[data-provider-add]'))?.focus();
   }
   drawer.addEventListener('cancel',event=>{event.preventDefault();if(!busy)closeEditor();});
+  // 卡片第三行优先用真实推理账本自证；账本里没有成功记录时才说“未验证连接”，本次页面的手动测试只作次要信息。
+  function connectionText(provider:Provider,tested?:{text:string;ok:boolean}){
+    const time=Date.parse(String(provider.lastSuccessAt??''));
+    const ledger=Number.isFinite(time)?`最近一次成功推理：${new Date(time).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).replace(/\//g,'-')} · ${provider.lastSuccessModel??provider.model}`:'未验证连接';
+    return tested?`${ledger} · 手动测试：${tested.ok?tested.text:'失败'}`:ledger;
+  }
   function wireConnectionTest(scope:HTMLElement,agent:Agent,providerId?:string){
     const button=scope.querySelector<HTMLButtonElement>('[data-test-connection]')!;
     const result=scope.querySelector<HTMLElement>('[data-test-status]')!;
@@ -62,8 +68,8 @@ export function providerCenter(container:HTMLElement,options:Options){
       }
       if(lastConnection){
         result.textContent=lastConnection.text;
-        const badge=[...content.querySelectorAll<HTMLElement>('[data-provider-connection]')].find(node=>node.dataset.providerConnection===providerId);
-        if(badge&&data?.agents.find(item=>item.id==='apix')?.version===agent.version){badge.textContent=lastConnection.ok?lastConnection.text:'最近测试失败';badge.dataset.connectionState=lastConnection.ok?'ok':'failed';}
+        const badge=[...content.querySelectorAll<HTMLElement>('[data-provider-connection]')].find(node=>node.dataset.providerConnection===providerId),tested=data?.providers.find(item=>item.id===providerId);
+        if(badge&&tested&&data?.agents.find(item=>item.id==='apix')?.version===agent.version){badge.textContent=connectionText(tested,lastConnection);badge.dataset.connectionState=lastConnection.ok?'ok':'failed';}
       }
     });
   }
@@ -76,7 +82,7 @@ export function providerCenter(container:HTMLElement,options:Options){
     const current=manager.baseUrl?`${bound?.name??new URL(manager.baseUrl).hostname} · ${manager.model}`:'尚未配置 ApiX 模型通道';
     content.innerHTML=html`
       <div class="provider-toolbar"><input type="search" data-provider-search aria-label="查找供应商" placeholder="查找供应商" value="${filter}" ${showCatalog?'hidden':''}><button type="button" class="primary-button" data-provider-add aria-expanded="${showCatalog}">${showCatalog?'关闭目录':'添加供应商'}</button></div>
-      <div class="provider-cards" ${showCatalog?'hidden':''}>` + (data.providers.map(p=>{const users=data!.agents.filter(a=>a.providerId===p.id);const tested=apix.providerId===p.id&&lastConnection?.version===apix.version?lastConnection:undefined;return html`<article class="provider-card"><span class="provider-icon" aria-hidden="true">${p.name.slice(0,1).toUpperCase()}</span><div class="provider-identity"><strong>${p.name}</strong><small>${p.baseUrl?new URL(p.baseUrl).hostname:'本机 Codex 登录'} · ${p.model}</small></div><div class="provider-usage"><span>${users.map(a=>a.id==='apix'?'ApiX 默认':a.name).join('、')||'未绑定'}</span><small>${p.hasKey?'密钥已保存':p.apiType==='codex-login'?'本机登录':'无需密钥'}</small><small data-provider-connection="${p.id}" data-connection-state="${tested?.ok?'ok':tested?'failed':'unknown'}">${tested?.ok?tested.text:tested?'最近测试失败':'未验证连接'}</small></div><button type="button" class="text-action" data-provider-edit="${p.id}" aria-label="编辑 ${p.name}">编辑</button></article>`;}).join('')) + html`</div>
+      <div class="provider-cards" ${showCatalog?'hidden':''}>` + (data.providers.map(p=>{const users=data!.agents.filter(a=>a.providerId===p.id);const tested=apix.providerId===p.id&&lastConnection?.version===apix.version?lastConnection:undefined;return html`<article class="provider-card"><span class="provider-icon" aria-hidden="true">${p.name.slice(0,1).toUpperCase()}</span><div class="provider-identity"><strong>${p.name}</strong><small>${p.baseUrl?new URL(p.baseUrl).hostname:'本机 Codex 登录'} · ${p.model}</small></div><div class="provider-usage"><span>${users.map(a=>a.id==='apix'?'ApiX 默认':a.name).join('、')||'未绑定'}</span><small>${p.hasKey?'密钥已保存':p.apiType==='codex-login'?'本机登录':'无需密钥'}</small><small data-provider-connection="${p.id}" data-connection-state="${p.lastSuccessAt?'ok':tested?.ok?'ok':tested?'failed':'unknown'}">${connectionText(p,tested)}</small></div><button type="button" class="text-action" data-provider-edit="${p.id}" aria-label="编辑 ${p.name}">编辑</button></article>`;}).join('')) + html`</div>
       <p class="coord-muted" data-provider-empty hidden></p>
       <section class="provider-catalog" ${showCatalog?'':'hidden'} aria-label="添加供应商">
         <div class="provider-heading"><h3>添加供应商</h3><button type="button" class="text-action" data-provider-template="custom">＋ 自定义供应商</button></div>

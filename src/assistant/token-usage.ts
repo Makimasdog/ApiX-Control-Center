@@ -95,6 +95,17 @@ export function createTokenUsage({db,row,rows,now}:Store){
     for(const value of recent){const saved=row<{body:string}>('SELECT body FROM model_usage_details WHERE usage_id=?',String(value.id));if(saved)value.usageDetails=JSON.parse(saved.body) as UsageDetails;}
     return {schema:1,source:'provider_usage',taskId,task:aggregate(scope,params),session:aggregate('AND session_id=?',[sessionId]),project:aggregate('',[]),recent,historyLimit:30,cost:null,externalCliUsage:'unknown'};
   }
-  return {start,finish,report,diagnosticScope,attachDiagnostic};
+  /**
+   * lastSuccess - 最近一次成功推理（账本里 status='completed' 的最新一条）
+   *
+   * 账本只记 settings.provider（'custom'/'apix-custom' 之类的通道类型），没有供应商记录 ID，
+   * 所以只能按模型 ID + 协议匹配；同一模型走多条通道时会共用这条证据。
+   * @returns 最近一次成功的创建时间与模型名；没有任何成功记录时返回 null
+   */
+  function lastSuccess(model:string,apiType:string){
+    const saved=row<{created_at:string;model:string}>("SELECT created_at,model FROM model_token_usage WHERE status='completed' AND model=? AND api_type=? ORDER BY created_at DESC,rowid DESC LIMIT 1",model,apiType);
+    return saved?{at:saved.created_at,model:saved.model}:null;
+  }
+  return {start,finish,report,diagnosticScope,attachDiagnostic,lastSuccess};
 }
 export type TokenUsageReport=ReturnType<ReturnType<typeof createTokenUsage>['report']>;
