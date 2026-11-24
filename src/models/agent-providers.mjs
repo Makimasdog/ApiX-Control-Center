@@ -52,7 +52,7 @@ function runtimeConfig(path,value){
  * @param deps - 依赖注入：数据库、凭据存储、员工配置等
  * @returns 包含 list/save/bind/remove/adopt/prepare 等方法的对象
  */
-export function createAgentProviders({db,row,rows,now,dataDir,credentials,profile,saveProfile,managerSettings,saveManager,environment=process.env}){
+export function createAgentProviders({db,row,rows,now,dataDir,credentials,profile,saveProfile,managerSettings,saveManager,environment=process.env,lastInference}){
   // 创建提供商表和绑定表
   ensureModuleSchema(db, "models-agent-providers");
 
@@ -68,6 +68,15 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   /** managerVersion - 计算当前应用级模型设置的哈希版本 */
   const managerVersion=()=>createHash('sha256').update(JSON.stringify(managerSettings())).digest('hex');
 
+  /**
+   * lastSuccess - 用真实推理账本给供应商自证
+   *
+   * 账本（model_token_usage）只记通道类型和模型 ID，没有供应商记录 ID，因此按
+   * model + apiType 匹配；同一模型、同一协议的多条供应商会共用同一条证据。
+   * 未注入 lastInference（例如单独构造本模块）时返回 null，不伪造证据。
+   */
+  const lastSuccess=p=>lastInference?.(p.model,p.apiType)??null;
+
   /** idle - 检查员工是否空闲（无运行中/待执行/待验收任务） */
   function idle(id){if(row("SELECT id FROM tasks WHERE employee_id=? AND status IN ('running','starting','stopping','unknown','queued','awaiting_approval','completed') LIMIT 1",id)||row("SELECT r.id FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.employee_id=? AND (r.status IN ('running','starting','stopping','unknown') OR r.ended_at IS NULL) LIMIT 1",id))throw Error('该员工有运行中、待执行或待验收任务，请先停止或处理后再切换供应商');}
 
@@ -78,7 +87,7 @@ export function createAgentProviders({db,row,rows,now,dataDir,credentials,profil
   function managerMatch(p,s){return p.apiType!=='codex-login'&&['custom','apix-custom'].includes(s.provider)&&s.model===p.model&&s.baseUrl===p.baseUrl&&s.apiType===p.apiType&&s.apiKeyEnv===(p.keyRef??'')&&(s.contextWindow??null)===(p.contextWindow??null);}
 
   /** list - 列出所有提供商、Agent 绑定状态和应用级配置 */
-  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(publicProfile),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；同一对话内尚未单独选择模型时采用'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
+  function list(){const providers=rows('SELECT id FROM agent_providers ORDER BY rowid').map(r=>get(r.id));const current=managerSettings(),matched=providers.find(p=>managerMatch(p,current)),configured=!!(current.model&&current.baseUrl);return {protocols:providerProtocols,providers:providers.map(p=>{const success=lastSuccess(p);return {...publicProfile(p),lastSuccessAt:success?.at??null,lastSuccessModel:success?.model??null};}),agents:[{id:'apix',name:'ApiX',runtime:'apix',providerId:matched?.id??null,version:managerVersion(),model:current.model,baseUrl:current.baseUrl,configured,adoptable:configured&&!matched,source:'应用默认；同一对话内尚未单独选择模型时采用'},...rows('SELECT id,name,runtime FROM employees WHERE deleted_at IS NULL').map(e=>({...e,providerId:binding(e.id).provider_id,version:binding(e.id).version,model:profile(e.id).model,source:binding(e.id).provider_id?'ApiX 专用覆盖':'沿用本机 CLI 配置（可能包含中转）'}))]};}
 
   /** transaction - 在 SAVEPOINT 中执行操作，失败时回滚 */
   function transaction(work){db.exec('SAVEPOINT agent_provider');try{const value=work();db.exec('RELEASE agent_provider');return value;}catch(e){db.exec('ROLLBACK TO agent_provider;RELEASE agent_provider');throw e;}}

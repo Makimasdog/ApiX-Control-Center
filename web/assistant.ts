@@ -16,6 +16,7 @@ root.innerHTML=html`<div class="assistant-workspace"><section class="assistant-m
     <label class="assistant-mode"><select id="assistant-execution-mode" aria-label="执行方式" aria-describedby="assistant-mode-hint">
       <option value="full_access">自动执行</option><option value="ask_approval">逐次确认</option><option value="read_only">只读</option>
     </select></label>
+    <output id="assistant-mode-risk" class="assistant-mode-risk" data-risk="medium" aria-live="polite">逐次确认</output>
     <button id="assistant-stop" type="button" class="text-action" hidden>停止</button>
   </div>
   <div class="assistant-compose-actions">
@@ -36,8 +37,17 @@ let olderEvents:Session['events']=[],olderCursor:number|null|undefined,notesSign
 let collaborationSpeech:CollaborationSpeech[]=[];
 let modeProject='',modeDirty=false,contextGeneration=0;
 const executionMode=$<HTMLSelectElement>('#assistant-execution-mode');
+// 风险等级只由执行方式决定，随下拉框实时更新；颜色在 CSS 里按 data-risk 取值。
+const executionRisks:Record<string,[string,string]>={read_only:['low','只读'],ask_approval:['medium','逐次确认'],full_access:['high','自动执行 · 可改文件']};
+function showExecutionRisk(){
+  const [risk,label]=executionRisks[executionMode.value]??executionRisks.ask_approval!;
+  const badge=$('#assistant-mode-risk');
+  badge.dataset.risk=risk;
+  badge.textContent=label;
+}
 executionMode.value='ask_approval';
-$('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;});
+showExecutionRisk();
+$('#assistant-execution-mode').addEventListener('change',()=>{modeDirty=true;showExecutionRisk();});
 let projectName='ApiX';
 const teamDetails=$<HTMLDetailsElement>('#assistant-team-details'),teamSummary=$('#assistant-team-summary');
 // 用户手动收起后轮询不得再自动展开；仅在再次回到“无员工”状态时重置该标记。
@@ -133,7 +143,7 @@ function render(s:Session){
   $('#assistant-transcript').dataset.busy=String(sessionBusy);
   if(active&&current?.id!==s.id)document.dispatchEvent(new CustomEvent('apix:thread-selected',{detail:{id:s.id,kind:'assistant'}}));
   if(current?.id!==s.id||current?.promptStrategy!==s.promptStrategy){$('#assistant-prompt-strategy').hidden=s.promptSettingsVersion===undefined;$<HTMLSelectElement>('#assistant-optimization [name=promptStrategy]').value=s.promptStrategy??'legacy';}if(current?.id!==s.id){$('#assistant-usage').textContent='点击刷新任务用量查看当前任务。';$('#assistant-optimization-status').textContent='';$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';}if(current?.optimizationMode!==s.optimizationMode)$<HTMLSelectElement>('#assistant-optimization [name=mode]').value=s.optimizationMode??'standard';if(current&&current.id!==s.id){olderEvents=[];olderCursor=undefined;notesSignature='';}
-  if(modeProject!==s.project_id){modeProject=s.project_id;}if(!modeDirty)executionMode.value=s.policy.mode;
+  if(modeProject!==s.project_id){modeProject=s.project_id;}if(!modeDirty){executionMode.value=s.policy.mode;showExecutionRisk();}
   if(current?.task_id!==s.task_id)$('#assistant-usage').textContent='任务已切换，请刷新任务用量。';current=s;threadId=s.id;root.classList.toggle('assistant-external-session',Boolean(s.message_channel));$('#assistant-channel-hint').hidden=!s.message_channel;localStorage.setItem('apix.assistant.'+projectId,s.id);setStatus(({idle:'等待消息',running:'正在执行',waiting_user:'需要你的决定',waiting_agents:'员工执行与验收中',completed:'本轮完成',attention:'需要检查',stopped:'已停止'} as Record<string,string>)[s.status]??s.status,s.status);
   $('#assistant-project').textContent=s.title?.trim()||projectName;
   $('#assistant-inspect-status').textContent=`${({verified:s.acceptanceStatus==='accepted'?'可信检查通过 · 当前交付已验收':'可信检查通过 · 尚未正式验收',needs_review:'未验证 · 待审查',unverified:'尚缺可信检查',failed:'可信检查失败',unknown:'检查结果未知',not_required:'本轮无需代码验证'} as Record<string,string>)[s.verificationStatus??'']??'未验证'} · 本轮 ${s.steps}/${s.limits?.maxCalls??24} 步 · ${s.policy.mode==='full_access'?'项目完全访问':s.policy.mode==='read_only'?'只读':'按次批准'}`;
@@ -365,7 +375,7 @@ document.addEventListener('apix:page',((event:CustomEvent<string>)=>{active=even
 document.addEventListener('apix:snapshot',((event:CustomEvent<{projectId:string;data:{projects:{id:string;name:string}[]}}>)=>{
   const id=event.detail.projectId;
   if(id!==projectId){
-    modeProject=id;modeDirty=false;executionMode.value='ask_approval';
+    modeProject=id;modeDirty=false;executionMode.value='ask_approval';showExecutionRisk();
     projectName=event.detail.data.projects.find(p=>p.id===id)?.name??'ApiX · 通用对话';
     $('#assistant-project').textContent=projectName;
     selectSession(localStorage.getItem('apix.assistant.'+id)??'',id);

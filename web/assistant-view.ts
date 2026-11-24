@@ -8,6 +8,33 @@ function logLinks(operationId:unknown){if(!operationId)return '';return html`<di
 function fileCard(tool:unknown,value:Record<string,unknown>){return html`<details class="assistant-tool-detail assistant-file-result"><summary>${value.conflict?'!':'✓'} ${tool} · ${value.path??'本会话文件'} ${value.added!==undefined?`+${String((value.added)??'')} / −${String((value.removed)??'')}`:''}</summary><p>版本 ${value.beforeSha256??'新建'} → ${value.afterSha256??value.sha256??'见结果'}</p>` + (value.startLine!==undefined?html`<p>行 ${value.startLine}–${value.endLine} · ${value.bytesReturned??''} 字节</p>`:'') + (value.diffTruncated?'<p class="assistant-evidence-warning">差异受预算限制，未完整展示。</p>':'') + html`<pre>${value.diff??value.content??JSON.stringify(value,null,2)}</pre>` + (outputLink(value)) + html`</details>`;}
 export function approvalLabel(kind:string,tool?:string){return kind==='approval'?(tool==='configure_agents'?'授权此项目并继续':tool==='configure_verification'?'批准此验收契约':'仅批准这一次'):'提交选择';}
 export function toolResultSucceeded(body:Record<string,unknown>){return body.ok!==false&&hostResultSucceeded(body.result);}
+// 系统错误的常见英文原文到中文解释；未命中时原样显示，不做猜测性翻译。
+const errorHints:[RegExp,string][]=[
+  [/ENOENT|The system cannot find the file specified/i,'系统找不到指定的文件'],
+  [/EACCES|permission denied/i,'没有权限访问该文件或目录'],
+  [/EPERM/i,'操作被系统拒绝'],
+  [/EADDRINUSE|address already in use/i,'端口已被占用'],
+  [/ETIMEDOUT|timed out/i,'操作超时'],
+  [/EPIPE|broken pipe/i,'管道已断开'],
+  [/ENOSPC|no space left/i,'磁盘空间不足'],
+  [/not recognized as an internal or external command|command not found/i,'找不到该命令'],
+];
+function errorHint(value:string){for(const [pattern,zh] of errorHints)if(pattern.test(value))return zh;return '';}
+// 失败的工具结果先给一行人话：命令 + 工作目录 + 中文解释，原始英文保留在括号里。
+function failureNote(tool:unknown,body:Record<string,unknown>){
+  const result=(body.result??{}) as Record<string,unknown>;
+  const raw=String(body.error??result.error??'').trim();
+  if(!raw)return '';
+  const args=(body.args??{}) as Record<string,unknown>;
+  const executable=typeof args.executable==='string'?args.executable:'';
+  const rest=Array.isArray(args.args)?args.args.map(String).join(' '):'';
+  const cwd=String(args.cwd??result.cwd??'').trim();
+  const command=[executable,rest].filter(Boolean).join(' ');
+  const hint=errorHint(raw);
+  const text=hint?hint+'（'+raw.slice(0,240)+'）':raw.slice(0,300);
+  return html`<p class="assistant-evidence-warning">${tool?String(tool)+' ':'执行'}失败${command?'（命令 '+command+'）':''}${cwd?'，工作目录 '+cwd:''}：${text}</p>`;
+}
+
 function messageContent(value:unknown){
   const text=String(value??'');let output='',position=0;
   for(const match of text.matchAll(/KB:[\w-]+:[\w-]+:\d+:\d+/g)){
@@ -65,7 +92,7 @@ function timelineEvent(e:TimelineEvent,inline=false,sessionId=''){
     if(e.body.ok===false&&['edit_file','write_file'].includes(String(e.body.tool)))return html`<article class="assistant-evidence-warning">文件编辑未提交 / 冲突：${e.body.error}</article>`;
     if(e.body.tool==='search_files'&&e.body.ok!==false)return html`<details class="assistant-tool-detail"><summary>代码搜索 · ${Array.isArray(r.matches)?r.matches.length+' 处':'见引用'} · ${r.scanComplete===false?'扫描不完整':'扫描状态见结果'}</summary>` + (r.scanComplete===false?'<p class="assistant-evidence-warning">部分扫描，不能据此断言全项目无匹配。</p>':'') + (Array.isArray(r.matches)?r.matches.map((m:Record<string,unknown>)=>html`<p>${m.path}:${m.line}:${m.column}</p><pre>${m.snippet}</pre>`).join(''):'') + (outputLink(r)) + html`</details>`;
     if(e.body.tool==='get_diff'&&e.body.ok!==false)return html`<details class="assistant-tool-detail assistant-file-result"><summary>本会话实际差异 · 不包含原有改动</summary>` + (Array.isArray(r.files)?r.files.map((f:Record<string,unknown>)=>html`<h4>${f.path}</h4><p>${f.beforeSha256??'新建'} → ${f.afterSha256}</p>` + (f.workspaceChangedSinceEdit?'<p class="assistant-evidence-warning">文件在本次编辑后又有外部变化，未归为 Agent 修改。</p>':'') + html`<pre>${JSON.stringify(f.edits,null,2)}</pre>`).join(''):'') + (r.historyComplete===false?'<p>有更早变更，请继续读取下一页。</p>':'') + (outputLink(r)) + html`</details>`;
-    return html`<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${e.body.tool??'员工验收结果'} ${e.body.reused?'· 复用已完成结果，未再次执行':''} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${JSON.stringify(e.body.result??e.body,null,2)}</pre>` + (outputLink(e.body.result)) + html`</details>`;
+    return failureNote(e.body.tool,e.body) + html`<details class="assistant-tool-detail"><summary>${toolResultSucceeded(e.body)?'✓':'!'} ${e.body.tool??'员工验收结果'} ${e.body.reused?'· 复用已完成结果，未再次执行':''} ${e.body.tool==='read_output'?(r.complete?'· 日志片段':'· 日志不完整 / 正在采集'):''}</summary><pre>${JSON.stringify(e.body.result??e.body,null,2)}</pre>` + (outputLink(e.body.result)) + html`</details>`;
   }
   if(e.kind==='request_answer')return html`<p class="assistant-system-note">已收到你的${'approved'in e.body?(e.body.approved?'批准':'拒绝'):'选择'}，ApiX 将继续处理。</p>`;
   return html`<p class="assistant-system-note">${({context_budget:'已记录本次上下文占用与指令版本',compacted:'已整理上下文，原始记录仍可回看',stopped:'已请求停止',resumed:'已确认继续',memory_edited:'项目记忆已更新',review_snapshot:'已保存工作区核对快照',delivery_record:'已保存本轮结果',task_started:'任务已开始'} as Record<string,string>)[e.kind]??e.kind}</p>`;

@@ -202,12 +202,25 @@ export function createAssistantLoop(deps:Dependencies){
     const conflict=rows<{id:string;status:string;uncertain:number}>("SELECT s.id,s.status,(COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=s.id AND kind IN ('restart_interrupted','process_unknown','stopped')),0)>COALESCE((SELECT MAX(id) FROM assistant_events WHERE session_id=s.id AND kind='resumed'),0)) AS uncertain FROM assistant_sessions s WHERE s.project_id=?",s.project_id).find(other=>other.uncertain||(!finishing||other.id!==s.id)&&(busy.has(other.id)||['running','waiting_agents'].includes(other.status)));if(conflict)throw new Error('本项目存在活跃或未核对操作，请先检查后继续');
   }
   function redactPending(p:Record<string,unknown>){return p.kind==='approval'?{...p,args:redact(p.args,false)}:p;}
+  // attention 的原因只从已有记录派生（重启中断 / 待批准 / 检查失败），不新增状态字段；
+  // 任何一次 resumed 都会重置前两种原因，避免恢复后仍挂着旧解释。
+  function attentionReason(s:Pick<AssistantSession,'id'|'status'|'pending'>){
+    if(s.status!=='attention')return null;
+    if(s.pending&&object(JSON.parse(s.pending)).kind==='approval')return 'approval';
+    const marks=row<{restart:number|null;rejected:number|null;resumed:number|null}>(`SELECT
+      (SELECT MAX(id) FROM assistant_events WHERE session_id=? AND kind='restart_interrupted') restart,
+      (SELECT MAX(id) FROM assistant_events WHERE session_id=? AND kind='completion_rejected') rejected,
+      (SELECT MAX(id) FROM assistant_events WHERE session_id=? AND kind='resumed') resumed`,s.id,s.id,s.id)!;
+    if((marks.restart??0)>(marks.resumed??0))return 'restart';
+    if((marks.rejected??0)>(marks.resumed??0))return 'check_failed';
+    return null;
+  }
   async function details(id:string){
     for(let attempt=0;attempt<2;attempt++){
     const wasBusy=busy.has(id);let s=get(id),verification=await verificationState(s),review=await deliveries.state(s,verification);const fresh=get(id),changed=fresh.version!==s.version||wasBusy!==busy.has(id);
     if(changed&&!attempt)continue;
     if(changed){s=fresh;verification={verificationStatus:s.needs_verification?'not_run':'not_required',contract:contract(s),checks:[]};review={...review,task:deliveries.current(id),latestDelivery:null,baselineReady:false};}
-    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,modelConfigurationBlocked:s.status==='attention'&&modelConfigurationBlocked(id),childAttention:childAttention(s)??projectAttention(s),verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,workerInteractions:workerInteractions(s),busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
+    return {...s,...projection.settings(id),optimizationMode:saving(id)?'saving':'standard',status:unsavedSafety.has(id)?'attention':s.status,modelConfigurationBlocked:s.status==='attention'&&modelConfigurationBlocked(id),attentionReason:attentionReason(s),childAttention:childAttention(s)??projectAttention(s),verification:verification.verificationStatus==='verified'?s.verification:null,...verification,acceptanceStatus:review.latestDelivery?.status==='accepted'?'accepted':'not_accepted',review,capabilities:commandCapabilities(),runtimeSafety:unsavedSafety.has(id)?{persisted:false,error:unsavedSafety.get(id)}:null,pending:s.pending?redactPending(JSON.parse(s.pending)):null,workerInteractions:workerInteractions(s),busy:busy.has(id)||changed,limits:progress.settings(s.project_id),policy:deps.policy(s.project_id),...eventPage(id),notes:notes(s.project_id)};
     }
     throw new Error('会话状态仍在变化，请刷新后重试');
   }
